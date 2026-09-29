@@ -3,16 +3,21 @@ import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RespawnNeededError } from "../../lib/errors";
 import { AnimationEventName, consumeAllowedAnim } from "../../sync/animation";
-import { dismountRiderOf, releaseRiderClone } from "../../sync/mountApply";
+import { dismountRiderOf, releaseRiderClone, stopMoving } from "../../sync/mountApply";
 import { RagdollService } from "./ragdollService";
 import { MountService } from "./mountService";
 import { logToPlatformLog } from "../../logging";
+import { NiPoint3 } from "../../sync/movement";
+import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 
 // The get-up has blended in by then; the 3D rebuild restores a head an execution took
 const RESTORE_BODY_S = 1.5;
 const IDLE_EXIT_ANIM = "IdleForceDefaultState";
 // The ragdoll removal's latent call may never return, so the get-up goes ahead without it
 const RESURRECT_RAGDOLL_MS = 2000;
+// The ragdoll has come to rest by then, so the second height tells whether the corpse sank
+const CORPSE_RECHECK_S = 3;
+const CORPSE_LOG_GAP_MS = 1000;
 
 export class DeathService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -34,7 +39,7 @@ export class DeathService extends ClientListener {
   }
 
   private onApplyDeathState(e: ApplyDeathStateEvent) {
-    this.applyDeathState(e.actor, e.isDead);
+    this.applyDeathState(e.actor, e.isDead, e.trigger, e.serverPos);
   }
 
   private hookDisableKillMoves() {
@@ -85,18 +90,18 @@ export class DeathService extends ClientListener {
     );
   }
 
-  private applyDeathState = (actor: Actor, isDead: boolean) => {
+  private applyDeathState = (actor: Actor, isDead: boolean, trigger?: string, serverPos?: NiPoint3) => {
     if (actor.isDead() === isDead && this.isPlayer(actor) === false) {
       return;
     }
     if (isDead === true) {
-      this.killActor(actor, null);
+      this.killActor(actor, null, trigger, serverPos);
     } else {
       this.resurrectActor(actor);
     }
   };
 
-  private killActor = (actor: Actor, killer: Actor | null = null): void => {
+  private killActor = (actor: Actor, killer: Actor | null = null, trigger?: string, serverPos?: NiPoint3): void => {
     if (this.isPlayer(actor) === true) {
       // The ragdoll starts from the ground, not the saddle
       this.controller.lookupListener(MountService).dismountNow("death");
@@ -110,10 +115,30 @@ export class DeathService extends ClientListener {
       // A seated rider clone leaves the saddle and a ridden horse throws its rider before the kill
       releaseRiderClone(actor.getFormID());
       dismountRiderOf(actor.getFormID());
+      // A ragdoll that starts while a translate still drags the copy and its follow package aims below it is dragged into the ground
+      stopMoving(actor);
+      this.logCorpse(actor, trigger, serverPos);
       actor.endDeferredKill();
       actor.kill(killer);
     }
   };
+
+  // Where the copy died on this client against the server's position, and where its ragdoll came to rest
+  private logCorpse(actor: Actor, trigger: string | undefined, serverPos: NiPoint3 | undefined): void {
+    const now = Date.now();
+    if (now - this.lastCorpseLog < CORPSE_LOG_GAP_MS) return;
+    this.lastCorpseLog = now;
+    const formId = actor.getFormID();
+    const pos = ObjectReferenceEx.getPos(actor);
+    const away = serverPos ? `${Math.round(ObjectReferenceEx.getDistanceNoZ(pos, serverPos))} units from the server pos, dz ${Math.round(pos[2] - serverPos[2])}` : "server pos unknown";
+    logToPlatformLog(this, `kill ${formId.toString(16)} (${trigger ?? "unknown"}): 3D ${actor.is3DLoaded()}, z ${Math.round(pos[2])}, ${away}`);
+    this.sp.Utility.wait(CORPSE_RECHECK_S).then(() => this.controller.once("update", () => {
+      const corpse = Actor.from(this.sp.Game.getFormEx(formId));
+      if (!corpse || !corpse.isDead()) return;
+      const rest = ObjectReferenceEx.getPos(corpse);
+      logToPlatformLog(this, `corpse ${formId.toString(16)} ${CORPSE_RECHECK_S} s later: z ${Math.round(rest[2])} (moved ${Math.round(rest[2] - pos[2])}), ${serverPos ? `dz to server pos ${Math.round(rest[2] - serverPos[2])}` : ""}, 3D ${corpse.is3DLoaded()}`);
+    }));
+  }
 
   private resurrectActor = (actor: Actor): void => {
     if (this.isPlayer(actor) === true) {
@@ -184,4 +209,6 @@ export class DeathService extends ClientListener {
   private playerDead = false;
 
   private busyForOtherReasonsCounter = 0;
+
+  private lastCorpseLog = 0;
 }

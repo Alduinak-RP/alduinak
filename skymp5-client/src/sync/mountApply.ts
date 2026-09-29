@@ -120,7 +120,7 @@ const logOnce = (state: MountState, text: string): void => {
 };
 
 // The last normal apply left a self offset that keeps a clone walking, and a suppressed clone gets no translation to correct it
-const stopMoving = (ac: Actor): void => {
+export const stopMoving = (ac: Actor): void => {
   ac.clearKeepOffsetFromActor();
   ac.stopTranslation();
 };

@@ -4,11 +4,13 @@ import { NiPoint3 } from "../sync/movement";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 
 export class SpawnProcess {
+  // isDead: a copy that arrives as a corpse is not stood up first, the first apply kills it
   constructor(
     appearance: Appearance | null,
     pos: NiPoint3,
     refrId: number,
     private callback: () => void,
+    private isDead = false,
   ) {
     const refr = ObjectReference.from(Game.getFormEx(refrId));
     if (!refr || refr.getFormID() !== refrId) {
@@ -39,6 +41,9 @@ export class SpawnProcess {
 
     const ac = Actor.from(refr);
     if (ac) {
+      if (this.isDead) {
+        return this.callback();
+      }
       return ac.resurrect().then(() => {
         this.callback();
       });

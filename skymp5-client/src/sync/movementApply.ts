@@ -62,7 +62,10 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
   }
   applyHealthPercentage(ac, m.healthPercentage);
 
-  SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: m.isDead });
+  // A kill before the 3D and its collision are in starts the ragdoll on nothing; a later apply kills the copy once it is loaded
+  if (!m.isDead || refr.is3DLoaded()) {
+    SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: m.isDead, trigger: "movement", serverPos: m.pos });
+  }
 };
 
 const applyHeadTracking = (ac: Actor, m: Movement) => {

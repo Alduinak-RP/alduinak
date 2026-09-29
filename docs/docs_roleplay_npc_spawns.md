@@ -162,7 +162,12 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   refilled sooner gets its fresh NPC while the old corpse stays, and a zone
   that despawns sooner leaves its corpses until their time is up. Only an
   admin reset removes corpses early. Set `"npcCorpseSeconds"` in
-  `server-settings.json` to change the 300 second default.
+  `server-settings.json` to change the 300 second default. On each client the
+  copy's translation and follow package are stopped before the kill so the
+  ragdoll is not dragged into the ground, a copy that arrives as a corpse is
+  killed once its 3D is in and is not stood up first, and every kill of a copy
+  logs `DeathService: kill <id> (<trigger>): 3D, z, distance to the server pos`
+  plus the corpse's height 3 s later to `skyrim-platform.log`.
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.

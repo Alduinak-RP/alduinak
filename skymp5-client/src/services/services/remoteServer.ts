@@ -871,7 +871,8 @@ export class RemoteServer extends ClientListener {
           if (spawnSeq !== this.playerSpawnSeq) return;
           this.controller.emitter.emit("applyDeathStateEvent", {
             actor: Game.getPlayer()!,
-            isDead: true
+            isDead: true,
+            trigger: "spawn"
           });
         });
       }
@@ -1221,7 +1222,9 @@ export class RemoteServer extends ClientListener {
         try {
           this.controller.emitter.emit("applyDeathStateEvent", {
             actor: actor,
-            isDead: msgData
+            isDead: msgData,
+            trigger: "container",
+            serverPos: form.movement?.pos
           });
         } catch (e) {
           if (e instanceof RespawnNeededError) {

@@ -194,7 +194,8 @@ export class FormView {
               appearance,
               spawnPosition,
               spawningRefr.getFormID(),
-              callback
+              callback,
+              !!model.isDead
             );
           }
         };
@@ -524,11 +525,11 @@ export class FormView {
       }
     }
 
-    // Hosts skip applyMovement, so a copy still standing after the server's death is killed here
-    if (model.isDead) {
+    // Hosts skip applyMovement, so a copy still standing after the server's death is killed here, once its 3D is in so the ragdoll finds the ground
+    if (model.isDead && refr.is3DLoaded()) {
       const ac = Actor.from(refr);
       if (ac && !ac.isDead()) {
-        SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: true });
+        SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: true, trigger: "model", serverPos: model.movement?.pos });
       }
     }
 
