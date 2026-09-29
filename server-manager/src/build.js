@@ -449,6 +449,20 @@ class Builder {
     const dir = config.paths.launcher
     const dep = await this.ensureDeps(dir, 'launcher', 'npm')
     if (!dep.ok) return dep
+    // The installer bundles the cleaned-master patches the backend serves, so fresh installs skip that download
+    const mastersSrc = path.join(config.repoRoot, 'build', 'client-files', 'cleaned-masters')
+    const mastersDst = path.join(dir, 'src-tauri', 'resources', 'cleaned-masters')
+    const isPatch = f => f.toLowerCase().endsWith('.vcdiff')
+    const patches = fs.existsSync(mastersSrc) ? fs.readdirSync(mastersSrc).filter(isPatch) : []
+    if (!patches.length) return { ok: false, error: `no cleaned-master patches (*.vcdiff) in ${mastersSrc}, the launcher bundles them` }
+    try {
+      fs.mkdirSync(mastersDst, { recursive: true })
+      for (const f of fs.readdirSync(mastersDst).filter(f => isPatch(f) && !patches.includes(f))) fs.unlinkSync(path.join(mastersDst, f))
+      for (const f of patches) fs.copyFileSync(path.join(mastersSrc, f), path.join(mastersDst, f))
+    } catch (err) {
+      return { ok: false, error: `launcher: could not copy the cleaned-master patches (${err.message})` }
+    }
+    this.line(`[launcher] bundling ${patches.length} cleaned-master patch(es) from ${mastersSrc}`)
     const cargo = path.join(process.env.USERPROFILE || '', '.cargo', 'bin')
     // Windows keeps PATH under whatever casing it came with; a second key would be ambiguous
     const pathKey = Object.keys(process.env).find(k => k.toUpperCase() === 'PATH') || 'PATH'

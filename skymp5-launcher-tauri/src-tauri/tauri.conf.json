@@ -30,6 +30,7 @@
     "resources": {
       "resources/7zip/*": "7zip/",
       "resources/xdelta/*": "xdelta/",
+      "resources/cleaned-masters/*": "cleaned-masters/",
       "resources/controlmap.txt": "controlmap.txt"
     },
     "windows": {

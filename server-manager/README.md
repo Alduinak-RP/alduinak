@@ -166,7 +166,15 @@ fails it prints a direct download URL - save that zip as
     `.../<stamp>/client/Data/<key file>` (except the CEF runtime) and
     `build/dist/backup/server-settings-<stamp>.json`.
   - **Launcher**: **Save version** writes only `tauri.conf.json`. **Build
-    launcher** builds `build/launcher/AlduinakLauncher.exe`; its button then
+    launcher** first copies the cleaned-master patches
+    (`build/client-files/cleaned-masters/*.vcdiff`, GOG and Steam, about
+    55 MB) into the gitignored
+    `skymp5-launcher-tauri/src-tauri/resources/cleaned-masters`, so the
+    installer carries them and a fresh install cleans its masters without
+    downloading them from this server (a patch missing from the install or
+    failing its checksum still downloads from `/files/cleaned-masters`); it
+    stops with an error when that folder has no patch. It then builds
+    `build/launcher/AlduinakLauncher.exe`; its button then
     turns into **Update Version**, which writes the launcher version into
     `versions.json`. Press it only after the installer is uploaded where
     `launcherUrl` points. **Download URL** (Save) writes `launcherUrl` in
@@ -281,7 +289,7 @@ Each Build button then does the JS/packaging work:
 | Button | Does |
 |--------|------|
 | **Build server** | Runs the `build-ts` steps of `skymp5-server/package.json` (`tsc --noEmit`, then esbuild) with the bundle written to `build/dist/testserver/dist_back/skymp5-server.js`, rebuilds `gamemode.js`, then prunes `build/dist/testserver` to the deploy set. `scam_native.node` (from CI or CMake) and `gamemode.js` are preserved. |
-| **Build launcher** | Builds the Tauri installer `AlduinakLauncher.exe` → `build/launcher` (launchers update from `launcherUrl` in `versions.json`). |
+| **Build launcher** | Copies the cleaned-master patches from `build/client-files/cleaned-masters` into the launcher's resources, then builds the Tauri installer `AlduinakLauncher.exe` → `build/launcher` (launchers update from `launcherUrl` in `versions.json`). |
 | **Build client** | Rebuilds the front-end UI and `skymp5-client.js` into `build/dist/testclient` (`ALDUINAK_CLIENT_OUT` steers the client webpack output) and checks the key files from `KEY_FILES` in `scripts/client-package.js` are there. The `Data` folder is what goes to Nexus as the Alduinak Client Files mod; the launcher installs it from the manifest like any other mod. |
 | **Migrate server / settings / client** | Copy a tested build to `build/dist/server`, `build/dist/client` and the live manifest, see the Build tab notes above; `node tools/test-migrate.js` exercises the copy, merge, mirror and URL rewrite in temp folders, `node tools/test-modsync-diff.js` the version-aware manifest diff. |
 

@@ -236,8 +236,13 @@ pub const MASTERS: &[Master] = &[
 // Folder earlier launchers and the standalone patcher kept original masters in
 const BACKUP_DIR: &str = "Original ESMs backups";
 
-// Downloads a cleaning patch once into the downloads folder, verified by sha256
+// The launcher's bundled cleaning patch, else one downloaded once into the downloads folder; both verified by sha256
 async fn cleaned_master_patch(v: &MasterVariant) -> Result<PathBuf, String> {
+    let bundled = resource_dir().join("cleaned-masters").join(v.patch);
+    if bundled.exists() {
+        if mo2::sha256_file(&bundled).await.map(|h| h == v.patch_sha256).unwrap_or(false) { return Ok(bundled); }
+        log(format!("[masters] the bundled {} fails its checksum, downloading it", v.patch));
+    }
     let dir = mo2::downloads_dir().join("cleaned-masters");
     let file = dir.join(v.patch);
     if file.exists() && mo2::sha256_file(&file).await.map(|h| h == v.patch_sha256).unwrap_or(false) { return Ok(file); }
@@ -488,4 +493,20 @@ pub async fn create_isolated(base_override: Option<String>, force: bool) -> Resu
     store().set("isolatedGame", json!(true));
     log(format!("[isolated] Alduinak install ready at {}", base.display()));
     Ok(base)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Every patch bundled on this machine matches the table and is picked over a download
+    #[tokio::test]
+    async fn bundled_patches_are_used() {
+        for v in MASTERS.iter().flat_map(|m| m.variants) {
+            let bundled = resource_dir().join("cleaned-masters").join(v.patch);
+            if !bundled.exists() { continue; }
+            assert_eq!(mo2::sha256_file(&bundled).await.unwrap(), v.patch_sha256, "{}", v.patch);
+            assert_eq!(cleaned_master_patch(v).await.unwrap(), bundled, "{}", v.patch);
+        }
+    }
 }
