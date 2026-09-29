@@ -9,12 +9,15 @@ const path   = require('path')
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'faction-proxy-test-'))
 const TOKEN = 'test-proxy-token-0123456789'
-process.env.FACTION_WHITELIST_FILE = path.join(tmp, 'faction-whitelist.json')
 process.env.BAN_LOG_DIR = tmp
-process.env.MASTER_API_AUTH_TOKEN = TOKEN
+// The backend reads its master API token from server-settings.json; the test server file is pointed at nothing
+process.env.SERVER_SETTINGS_PATH = path.join(tmp, 'server-settings.json')
+process.env.TEST_SERVER_SETTINGS_PATH = path.join(tmp, 'no-test-server.json')
+fs.writeFileSync(process.env.SERVER_SETTINGS_PATH, JSON.stringify({ masterApiAuthToken: TOKEN }))
 
 const backendDir = path.join(__dirname, '..', '..', 'skymp5-backend')
-fs.copyFileSync(path.join(backendDir, 'seeds', 'faction-whitelist.json'), process.env.FACTION_WHITELIST_FILE)
+// Without a MongoDB connection the backend stores live in memory, so the fixture is seeded straight into the factions store
+require(path.join(backendDir, 'sources', 'db')).store('factions').set('whitelist', JSON.parse(fs.readFileSync(path.join(backendDir, 'test', 'fixtures', 'faction-whitelist.json'), 'utf8')))
 
 const config = require('../src/config')
 const { factionsPathAllowed, factionsRequest } = require('../src/backendApi')
@@ -64,7 +67,7 @@ async function run() {
   const wrong = await factionsRequest('GET', '')
   assert.equal(wrong.status, 403)
   config.backendApi = { port: server.address().port, token: '', key: '' }
-  assert.match((await factionsRequest('GET', '')).error, /MASTER_API_AUTH_TOKEN/)
+  assert.match((await factionsRequest('GET', '')).error, /masterApiAuthToken/)
   console.log('pass  token requests against a local backend copy')
 
   server.close()
