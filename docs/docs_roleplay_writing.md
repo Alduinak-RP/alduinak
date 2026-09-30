@@ -42,18 +42,18 @@ never by form id.
 | `AldSealingWax` (MISC) | Sealing Wax | `GlazedCandles01` | |
 
 Recipes: anyone makes the blanks (tier `Anyone`), at the tanning rack or at
-the woodcrafting bench, from Roll of Paper (the vanilla `PaperRoll`) with
-leather and strips; a Novice woodworker makes the paper from firewood; the
-Sealing Wax is Novice blacksmith work:
+the woodcrafting bench, from Roll of Paper (the vanilla `PaperRoll`), a
+journal or book with leather and one Leather Strips; a Novice woodworker makes
+the paper from firewood; the Sealing Wax is Novice blacksmith work:
 
 | Output | Bench | Ingredients |
 |---|---|---|
 | Roll of Paper (4) | woodcrafting bench | 1 Firewood (woodworker Novice) |
-| Blank Parchment | tanning rack | 1 Roll of Paper, 1 Leather Strips |
-| Blank Parchment | woodcrafting bench | 1 Roll of Paper, 1 Leather Strips |
-| Blank Journal | tanning rack | 2 Roll of Paper, 1 Leather, 2 Leather Strips |
+| Blank Parchment | tanning rack | 1 Roll of Paper |
+| Blank Parchment | woodcrafting bench | 1 Roll of Paper |
+| Blank Journal | tanning rack | 2 Roll of Paper, 1 Leather, 1 Leather Strips |
 | Blank Journal | woodcrafting bench | 2 Roll of Paper, 1 Leather, 1 Leather Strips |
-| Blank Book | tanning rack | 4 Roll of Paper, 2 Leather, 4 Leather Strips |
+| Blank Book | tanning rack | 4 Roll of Paper, 2 Leather, 1 Leather Strips |
 | Blank Book | woodcrafting bench | 4 Roll of Paper, 1 Leather, 1 Leather Strips |
 | Sealing Wax | smelter | 1 Beehive Husk, 1 Charcoal |
 

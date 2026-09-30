@@ -2854,6 +2854,19 @@
     "items": {
      "Firewood01": 1
     }
+   },
+   {
+    "edid": "AldRecipeSmith_SkyforgeNordHeroBow",
+    "formId": "0x041330",
+    "bench": "CraftingSmithingSkyforge",
+    "output": "NordHeroBow",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Adept",
+    "items": {
+     "DraugrBow": 1,
+     "IngotSteel": 3
+    }
    }
   ]
  },
@@ -7964,7 +7977,7 @@
   ]
  },
  "disableReferences": {
-  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). Then the duplicate floor of Digitus Quintus' House, the Two-Moons Delegation Hall (The Great City of Solitude cell 00B213): the flat SMDEFloSol03 tile 00B27A at (320,-1008,0) z-fights the ceiling-carrying SMDEFloSol01 tile 00B448 one unit east of it, so the flat one goes and the ceiling stays. Then Immersive Armors' shield painting activator 020EC5 in Whiterun (exterior, near 29461,-2367,-2054): its Ecks_ShieldPaintingRackActivateScript adds the Configure Auxiliary Armors power to a player who lacks it, and with IAGRemoveSpell at 0 (overrides.globals) on every activation, since Papyrus binds its && before the trailing || !IAGRemoveSpell.GetValue(); its enable parent C06FuneralClutter, opposite, would switch it on regardless of the flag, so a listed reference with an enable parent that could turn it on gets the player, opposite, as disableActors does. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run. Then the removals of Alduinak925.esp, which Graves disabled and dropped under the floor (the flag alone keeps them off): the Thalmor Embassy kitchen table with its food, crate and rag, the firewood pile by the new Solitude smelter, two barrels in Whiterun (0C1E28, and 0057D8 of JKs Whiterun.esp), the Throat of the World blizzard hazard 105375 (a placed hazard), the MQ204 pushback triggers 097010 and 09DD0F and the rock trim 06B52C on the path to the summit, and the vanilla Windhelm gate doors 0A17D2 and 0A17D3, which AldWorldRef_005932 and AldWorldRef_005933 replace.",
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). Then the duplicate floor of Digitus Quintus' House, the Two-Moons Delegation Hall (The Great City of Solitude cell 00B213): the flat SMDEFloSol03 tile 00B27A at (320,-1008,0) z-fights the ceiling-carrying SMDEFloSol01 tile 00B448 one unit east of it, so the flat one goes and the ceiling stays. Then Immersive Armors' shield painting activator 020EC5 in Whiterun (exterior, near 29461,-2367,-2054): its Ecks_ShieldPaintingRackActivateScript adds the Configure Auxiliary Armors power to a player who lacks it, and with IAGRemoveSpell at 0 (overrides.globals) on every activation, since Papyrus binds its && before the trailing || !IAGRemoveSpell.GetValue(); its enable parent C06FuneralClutter, opposite, would switch it on regardless of the flag, so a listed reference with an enable parent that could turn it on gets the player, opposite, as disableActors does. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run. Then the removals of Alduinak925.esp, which Graves disabled and dropped under the floor (the flag alone keeps them off): the Thalmor Embassy kitchen table with its food, crate and rag, the firewood pile by the new Solitude smelter, two barrels in Whiterun (0C1E28, and 0057D8 of JKs Whiterun.esp), the Throat of the World blizzard hazard 105375 (a placed hazard), the MQ204 pushback triggers 097010 and 09DD0F and the rock trim 06B52C on the path to the summit, and the vanilla Windhelm gate doors 0A17D2 and 0A17D3, which AldWorldRef_005932 and AldWorldRef_005933 replace. Then the owner's list of 2026-09-30: the Hearthfire oven 0018C1 (base 00283F:HearthFires.esm) the plugin placed in the Moorside Inn (cell 0138CE) at (682,-301,0); Graves's oven AldWorldRef_005938 (041300 of world.placements) at (768,-392,0) in the same room stays.",
   "refs": [
    "0A467D:Skyrim.esm",
    "025D97:Skyrim.esm",
@@ -8047,7 +8060,8 @@
    "0A17D3:Skyrim.esm",
    "0C1E28:Skyrim.esm",
    "0057D8:JKs Whiterun.esp",
-   "050C60:Skyrim.esm"
+   "050C60:Skyrim.esm",
+   "0018C1:AlduinakAdditions.esp"
   ]
  },
  "enableReferences": {
@@ -8945,8 +8959,7 @@
     "profession": "tailor",
     "tier": "Anyone",
     "items": {
-     "PaperRoll": 1,
-     "LeatherStrips": 1
+     "PaperRoll": 1
     }
    },
    {
@@ -8959,7 +8972,7 @@
     "items": {
      "PaperRoll": 2,
      "Leather01": 1,
-     "LeatherStrips": 2
+     "LeatherStrips": 1
     }
    },
    {
@@ -8972,7 +8985,7 @@
     "items": {
      "PaperRoll": 4,
      "Leather01": 2,
-     "LeatherStrips": 4
+     "LeatherStrips": 1
     }
    },
    {
@@ -8983,8 +8996,7 @@
     "profession": "woodworker",
     "tier": "Anyone",
     "items": {
-     "PaperRoll": 1,
-     "LeatherStrips": 1
+     "PaperRoll": 1
     }
    },
    {
@@ -9461,6 +9473,17 @@
     ],
     "tier": "Novice",
     "profession": "tailor"
+   },
+   {
+    "name": "Skyforge smith bow",
+    "benches": [
+     "CraftingSmithingSkyforge"
+    ],
+    "match": [
+     "AldRecipeSmith_SkyforgeNordHeroBow"
+    ],
+    "tier": "Adept",
+    "profession": "blacksmith"
    }
   ]
  },

@@ -156,7 +156,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Profession | Free (Anyone) | Novice | Adept | Expert | Master | Legendary |
 |---|---|---|---|---|---|---|
 | Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions | the weak poisons and the weak aversions | the plain Potions of each school, attribute and resistance, Cure Disease, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma | - |
-| Blacksmith | the two war horns, nails, iron fittings, locks and hinges | iron and corundum at the forge, iron, corundum and steel ingots at the smelter (shared with the miner), the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver; gold and silver ingots at the smelter (shared with the miner); Steel Smithing, Advanced Armors | orichalcum, dwarven, moonstone, and the gear of the smith's own people; orichalcum and moonstone ingots at the smelter; Dwarven, Orcish, Elven Smithing | malachite, quicksilver, ebony, stalhrim, and the Skyforge; malachite, quicksilver and ebony ingots at the smelter; Ebony, Glass Smithing, Arcane Blacksmith | daedric (Daedra Heart) and dragon (bone, scales) gear, taken off the hidden list; Daedric Smithing, Dragon Armor |
+| Blacksmith | the two war horns, nails, iron fittings, locks and hinges | iron and corundum at the forge, iron, corundum and steel ingots at the smelter (shared with the miner), the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver; gold and silver ingots at the smelter (shared with the miner); the Nord Hero weapons and bow at the Skyforge (Companions, Nords); Steel Smithing, Advanced Armors | orichalcum, dwarven, moonstone, and the gear of the smith's own people; orichalcum and moonstone ingots at the smelter; Dwarven, Orcish, Elven Smithing | malachite, quicksilver, ebony, stalhrim, and the Skyforge; malachite, quicksilver and ebony ingots at the smelter; Ebony, Glass Smithing, Arcane Blacksmith | daedric (Daedra Heart) and dragon (bone, scales) gear, taken off the hidden list; Daedric Smithing, Dragon Armor |
 | Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue | - |
 | Farmer | - | `AldPerk_NoviceFarmer` | `AldPerk_AdeptFarmer` | `AldPerk_ExpertFarmer` | `AldPerk_MasterFarmer` | `AldPerk_LegendaryFarmer` |
 | Hunter | - | the only one who sees and takes pelts off dead animals; tans leather at the tanning rack, shared with the tailor | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) | - |
@@ -341,6 +341,14 @@ Immersive Armors' Heavy and Light Skyforge Shields are made at the Skyforge
 too, not at the woodcrafting bench: blacksmith Adept work (steel and
 corundum), open to every people. Their Improve entries ask for the same rank,
 and the Nord rule's "Skyforge" match no longer gates them (`racial.clear`).
+
+The Nord Hero Bow (the Skyforge Bow) is on the Skyforge list for the smith as
+well: `AldRecipeSmith_SkyforgeNordHeroBow` (one Ancient Nord Bow and three
+Steel Ingots, the vanilla recipe's cost) is blacksmith Adept work for the
+Companions' Nords, like the Nord Hero sword, war axe, greatsword and battle
+axe beside it. The vanilla `RecipeWeaponSkyforgeBow` stays the woodworker's at
+Expert, so a character holding both ranks sees the bow twice. Its Improve
+entry stays the woodworker's (Adept).
 
 Stalhrim, the Blades armour and the Skyforge Bow stay craftable at their mastery
 tier. Every crossbow and bolt, the Dawnguard ones and the Curios bolts alike, is
