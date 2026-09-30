@@ -282,32 +282,6 @@ void InstallTextDisplayDataIsNotEqualHook()
     vtbl.write_vfunc(0x2, TextDisplayDataIsNotEqual::thunk);
 }
 
-// The browser's Personal menu replaces the vanilla Skills menu, so its quick key opens nothing
-struct MenuOpenHandlerCanProcess
-{
-  static bool thunk(RE::MenuOpenHandler* a_this, RE::InputEvent* a_event)
-  {
-    const auto userEvents = RE::UserEvents::GetSingleton();
-    if (a_event && userEvents &&
-        a_event->QUserEvent() == userEvents->quickStats) {
-      static std::atomic<bool> logged{ false };
-      if (!logged.exchange(true)) {
-        logger::info("Quick Stats key ignored, the Skills menu stays shut");
-      }
-      return false;
-    }
-    return func(a_this, a_event);
-  }
-  static inline REL::Relocation<decltype(&thunk)> func;
-};
-
-void InstallQuickStatsBlock()
-{
-  REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_MenuOpenHandler[0] };
-  MenuOpenHandlerCanProcess::func =
-    vtbl.write_vfunc(0x1, MenuOpenHandlerCanProcess::thunk);
-}
-
 void BindNativeMethod(RE::BSScript::Internal::VirtualMachine* thisArg,
                       RE::BSScript::IFunction* func);
 
@@ -380,7 +354,6 @@ void Hooks::Install()
   InstallCreateSourceVoiceGuard();
   InstallCompoundFrustumStateGuard();
   InstallTextDisplayDataIsNotEqualHook();
-  InstallQuickStatsBlock();
   CarryHold::Install();
   HookVirtualMachineBind();
 

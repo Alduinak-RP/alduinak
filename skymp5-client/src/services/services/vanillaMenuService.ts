@@ -1,7 +1,6 @@
 import { Menu } from "skyrimPlatform";
 import { logToPlatformLog } from "../../logging";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { keepMenusClosed } from "./menuBlockUtil";
 
 // Paths and members of SkyUI's quest_journal.swf (SkyUI_SE.bsa wins over Skyrim - Interface.bsa)
 const JOURNAL_ROOT = "_root.QuestJournalFader.Menu_mc";
@@ -18,12 +17,6 @@ const SYSTEM_LIST_HOLDER = `${SYSTEM_PAGE}.CategoryList_mc`;
 const SYSTEM_LIST = `${SYSTEM_LIST_HOLDER}.List_mc`;
 // Text keys of the System entries to drop; $MOD MANAGER reads CREATIONS
 const HIDDEN_SYSTEM_ENTRIES = ["$QUICKSAVE", "$SAVE", "$LOAD", "$INSTALLED CONTENT", "$MOD MANAGER", "$MOD CONFIGURATION", "$HELP"];
-// Paths and members of SkyUI's tweenmenu.swf
-const TWEEN_ROOT = "_root.TweenMenu_mc";
-// TweenMenu.FrameToLabelMap[1]: the Selections_mc frame label that Up (and the Skills rect) highlights
-const TWEEN_SKILLS_LABEL = "_global.TweenMenu.FrameToLabelMap.1";
-// Selections_mc frame of the "Skills" label
-const TWEEN_SKILLS_FRAME = 2;
 // hudmenu.swf's movie; SkyUI's widget manager puts its widgets in WidgetContainer beside it
 const HUD_ROOT = "_root.HUDMovieBaseInstance";
 const HUD_CLIPS = [HUD_ROOT, "_root.WidgetContainer"];
@@ -34,11 +27,6 @@ const MAX_PATH_MISSES = 10;
 const MAX_JOURNAL_SWITCHES = 5;
 // Updates to wait after an invoke before reading the state it set
 const INVOKE_SETTLE_UPDATES = 2;
-
-interface TweenState {
-  misses: number;
-  trimmed: boolean;
-}
 
 interface JournalState {
   misses: number;
@@ -64,12 +52,11 @@ export class VanillaMenuService extends ClientListener {
         // menuOpen runs as a task after this update's handler, so the first pass is not left to the next update
         this.trimJournal(this.journal);
       }
-      if (e.name === Menu.Tween) this.tween = { misses: 0, trimmed: false };
       if (e.name === Menu.HUD) this.hudDirty = true;
+      if (e.name === Menu.Stats) this.logOnce("stats", "Skills menu (StatsMenu) opened");
     });
     this.controller.on("menuClose", (e) => {
       if (e.name === Menu.Journal) this.journal = undefined;
-      if (e.name === Menu.Tween) this.tween = undefined;
       if (e.name === Menu.Loading) this.hudDirty = true;
     });
     this.controller.emitter.on("uiHiddenChanged", (e) => {
@@ -77,13 +64,10 @@ export class VanillaMenuService extends ClientListener {
       this.hudDirty = true;
     });
     this.controller.on("update", () => this.onUpdate());
-    // SkyrimPlatform drops the Quick Stats key and the Tween Menu has no Skills; anything else that opens StatsMenu is shut at once
-    keepMenusClosed(this.sp, this.controller, [Menu.Stats], () => this.logOnce("stats", "StatsMenu opened and was closed at once"));
   }
 
   private onUpdate(): void {
     if (this.journal && !this.journal.failed) this.trimJournal(this.journal);
-    if (this.tween) this.trimTween(this.tween);
     this.syncHud();
   }
 
@@ -108,35 +92,6 @@ export class VanillaMenuService extends ClientListener {
     for (const clip of HUD_CLIPS) ui.setBool(Menu.HUD, `${clip}._visible`, !this.hudHidden);
     this.hudWritten = this.hudHidden;
     if (this.hudHidden) this.logOnce("hud", `HUD Menu hidden with the interface (${HUD_CLIPS.join(", ")})`);
-  }
-
-  // Up and the Skills rect highlight the "None" frame, so a second Up or Enter never reaches OpenHighlightedMenu(1)
-  private trimTween(t: TweenState): void {
-    const ui = this.sp.Ui;
-    const at = (member: string) => `${TWEEN_ROOT}.${member}`;
-    if (!t.trimmed) {
-      if (ui.getString(Menu.Tween, at("SkillsInputRect._name")) !== "SkillsInputRect") {
-        if (++t.misses > MAX_PATH_MISSES) {
-          this.tween = undefined;
-          this.logOnce("tween:missing", `Tween Menu left as it is: ${at("SkillsInputRect")} not found`);
-        }
-        return;
-      }
-      t.trimmed = true;
-      const label = ui.getString(Menu.Tween, TWEEN_SKILLS_LABEL);
-      ui.setString(Menu.Tween, TWEEN_SKILLS_LABEL, "None");
-      const remapped = ui.getString(Menu.Tween, TWEEN_SKILLS_LABEL) === "None";
-      ui.setBool(Menu.Tween, at("Selections_mc.SkillsText_mc._visible"), false);
-      // onMouseDown reaches every clip, hidden or not, so the rect's handlers are replaced
-      ui.setBool(Menu.Tween, at("SkillsInputRect.onMouseDown"), false);
-      ui.setBool(Menu.Tween, at("SkillsInputRect.onRollOver"), false);
-      ui.setBool(Menu.Tween, at("SkillsInputRect._visible"), false);
-      this.logOnce("tween", `Tween Menu hides Skills; Up highlights ${remapped ? "nothing" : `"${label}", reset each update`}`);
-    }
-    // Backstop for a highlight that still reached the Skills frame
-    if (ui.getInt(Menu.Tween, at("Selections_mc._currentframe")) === TWEEN_SKILLS_FRAME) {
-      ui.invokeString(Menu.Tween, at("Selections_mc.gotoAndStop"), "None");
-    }
   }
 
   // Esc and J both land on the System page with the other tabs gone, the state RestoreSavedSettings sets when the engine disables tabs
@@ -271,7 +226,6 @@ export class VanillaMenuService extends ClientListener {
   }
 
   private journal?: JournalState;
-  private tween?: TweenState;
   private hudHidden = false;
   // True while the HUD clips were last written hidden
   private hudWritten = false;

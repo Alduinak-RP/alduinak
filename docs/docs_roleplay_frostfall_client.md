@@ -113,8 +113,8 @@ Permissions are enforced **server-side** — unauthorized buttons just reply
 `VanillaMenuService` trims the vanilla menus the browser menus replace. It
 works at runtime through SKSE's UI natives (`Ui.get*`, `Ui.set*`,
 `Ui.invoke*`) on the menus' own ActionScript, read from the SWFs that win in
-this load order: SkyUI's `quest_journal.swf`, `tweenmenu.swf` and
-`hudmenu.swf` inside `SkyUI_SE.bsa` (plugin archives load over
+this load order: SkyUI's `quest_journal.swf` and `hudmenu.swf` inside
+`SkyUI_SE.bsa` (plugin archives load over
 `Skyrim - Interface.bsa`; no loose copy exists in the MO2 mods). A path that
 is not there leaves the menu as it is and writes one `VanillaMenuService: ...`
 line to `skyrim-platform.log`.
@@ -156,25 +156,10 @@ line to `skyrim-platform.log`.
   run Quicksave or open Load on entries the player cannot see.
   `setInteractive(true)` gives input back once it shows, when the page is in
   `MAIN_STATE` (in its other states the page keeps the list disabled itself).
-- **Tween menu (Tab)**: no Skills option. `TweenMenu.handleInput` opens a
-  direction's menu on its second press (or Enter) once `Selections_mc` sits on
-  that direction's frame, and `SkillsInputRect.onMouseDown` opens Skills
-  straight away. The service sets `_global.TweenMenu.FrameToLabelMap[1]` (Up)
-  to `"None"`, so Up highlights nothing and never opens anything, hides
-  `Selections_mc.SkillsText_mc` and `SkillsInputRect`, and replaces the
-  rect's `onMouseDown` and `onRollOver` with `false` (a hidden clip still gets
-  `onMouseDown`). Should the label map not be reachable, a `Selections_mc`
-  that lands on the Skills frame is sent back to `"None"` on the next update.
-  The engine still hears `HighlightMenu(1)` on Up, as for any direction.
-- **Skills menu (StatsMenu)**: never shows. SkyrimPlatform hooks
-  `MenuOpenHandler::CanProcess` (vtable slot 1, `Hooks.cpp`
-  `InstallQuickStatsBlock`) and refuses the `Quick Stats` user event (`/` by
-  default), so the key opens nothing and the first press logs `Quick Stats
-  key ignored` to `skyrim-platform.log`; the Tween menu has no Skills (above).
-  Anything else that opens StatsMenu is closed on its `menuOpen` by
-  `keepMenusClosed` (one frame at most, logged once as `StatsMenu opened and
-  was closed at once`). The Personal menu's Skills tab is a browser page and
-  is not affected.
+- **Skills menu (StatsMenu)**: vanilla. The Tween menu (Tab) offers Skills
+  on Up and the Quick Stats key (`/` by default) opens it; the service only
+  logs `Skills menu (StatsMenu) opened` the first time it shows. The Personal
+  menu's Skills tab is a separate browser page.
 - **HUD with the hide UI key (`F1`)**: `BrowserService.setUiHidden` emits
   `uiHiddenChanged`, and on the next update the service sets `_visible` on
   `_root.HUDMovieBaseInstance` (hudmenu.swf's whole HUD: compass, the three
