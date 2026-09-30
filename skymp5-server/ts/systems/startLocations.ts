@@ -32,6 +32,24 @@ export const DEFAULT_START_LOCATIONS: StartLocation[] = [
 const START_SPREAD_UNITS = 100;
 const START_LIFT_Z = 64;
 
+const MENU_KEY_LINE = "Use [get alt interaction button] to open your personal menu";
+const WELCOME_LINES = [
+  "Use [get voice key button] to speak to others. Alt + [get voice key button] changes your voice range.",
+  "Use [get emote wheel button] to open the emote wheel.",
+  "Use [get release mouse button] to hide/reveal the mouse",
+  "Use [get hide interface button] to hide the UI for screenshots.",
+  "Use [get activate chat button] to use the text chat, where you will also find additional settings.",
+];
+
+const withArticle = (word: string): string => `${/^[aeiou]/i.test(word) ? "an" : "a"} ${word.toLowerCase()}`;
+
+// The profession line for the configured craft slots, for example "... a primary craft, then a secondary (up to Adept) and a tertiary (up to Novice)."
+export function professionIntroLine(slots: Array<{ name: string; capName: string }>): string {
+  if (slots.length < 2) return `${MENU_KEY_LINE} to pick a profession.`;
+  const subs = slots.slice(1).map((s) => `${withArticle(s.name)} (up to ${s.capName})`);
+  return `${MENU_KEY_LINE} to pick your professions: ${withArticle(slots[0].name)} craft, then ${subs.join(" and ")}.`;
+}
+
 // The client swaps each bracketed placeholder for the player's key binding and drops a line whose key is unbound
 export const INTRO_PAGES: IntroPage[] = [
   {
@@ -40,16 +58,14 @@ export const INTRO_PAGES: IntroPage[] = [
   {
     caption: "Welcome to Alduinak",
     align: "left",
-    text: [
-      "Use [get alt interaction button] to open your personal menu to pick a profession.",
-      "Use [get voice key button] to speak to others. Alt + [get voice key button] changes your voice range.",
-      "Use [get emote wheel button] to open the emote wheel.",
-      "Use [get release mouse button] to hide/reveal the mouse",
-      "Use [get hide interface button] to hide the UI for screenshots.",
-      "Use [get activate chat button] to use the text chat, where you will also find additional settings.",
-    ].join("\n"),
+    text: [professionIntroLine([])].concat(WELCOME_LINES).join("\n"),
   },
 ];
+
+// MasterySystem states its craft slots at boot; Spawn reads the pages at each intro
+export function setIntroProfessions(slots: Array<{ name: string; capName: string }>): void {
+  INTRO_PAGES[1].text = [professionIntroLine(slots)].concat(WELCOME_LINES).join("\n");
+}
 
 export const INTRO_QUESTION = "Where will your journey begin?";
 

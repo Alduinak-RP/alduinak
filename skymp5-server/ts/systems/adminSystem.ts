@@ -37,8 +37,8 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry, plus Edit: <zone name> when it replaces that zone
 //                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete" | "npcZoneActivate" | "npcZoneDeactivate", target }  target: zone name
 //                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
-//                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
-//                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
+//                     { customPacketType: "adminAction", action: "masteryGrant", target, amount, slot? }  worked hours to add (negative removes) to a craft slot (0 primary, 1 secondary, 2 tertiary; default 0), any tier, self allowed
+//                     { customPacketType: "adminAction", action: "masteryReset", target, slot? }  clears the chosen craft of that slot (default the primary) and its hours; the player's own resets are not spent
 //                     { customPacketType: "adminAction", action: "masteryLegendary", target }  lifts the character to Legendary in its profession
 //                     { customPacketType: "adminAction", action: "attrSet", target, health?, magicka?, stamina? }  permanent max attribute change, -1000..1000, absolute not additive
 //                     { customPacketType: "adminAction", action: "needsReset", target }  hunger and fatigue back to the new-character values, the client re-synced
@@ -58,7 +58,7 @@ type Mp = any;
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       av: the online row's permanent max attribute change {health, magicka, stamina}
 //                       f: the profile's fallen characters [{a, n, s, r}] (actor id hex, name, slot, realm or perma-dead), ok: whether a revive is allowed (living characters below the limit); both only when f is not empty
-//                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
+//                       m / mastery: MasterySummary {profession, label, rank, rankName, hours, slots} of the online row / of the admin's own character; slots lists every configured craft slot
 //                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | oblivion | other; the front files a missing or unknown group under Other
 //                     { customPacketType: "attributeBonus", health, magicka, stamina }  the character's permanent max attribute change, re-sent on every actor assign
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
@@ -405,6 +405,16 @@ export class AdminSystem implements System {
     return { f, ok: livingCount(mp, profileId) < profileMaxCharacters(mp, this.limits, profileId) };
   }
 
+  // The craft slot a mastery action names (0, the primary, when absent), or why it cannot be used: a sub-slot must be configured and chosen
+  private masterySlotOf(ctx: SystemContext, actorId: number, content: Content): number | string {
+    const raw = content["slot"];
+    const slot = raw === undefined || raw === null || raw === "" ? 0 : Number(raw);
+    if (slot === 0) return 0;
+    const held = Number.isInteger(slot) && slot > 0 ? this.mastery.summaryOf(ctx, actorId).slots[slot] : undefined;
+    if (!held) return "this server has no such craft slot";
+    return held.profession ? slot : `no ${held.name.toLowerCase()} craft chosen`;
+  }
+
   // Permanent max attribute change of one character, stored on the actor so it outlives the session
   private attrBonus(mp: Mp, actorId: number): AttrBonus {
     let raw: any = null;
@@ -668,9 +678,16 @@ export class AdminSystem implements System {
         this.reply(mp, userId, true, `PK'd ${target.name}`);
       } else if (action === "masteryGrant") {
         const amount = Number(content["amount"]);
-        const summary = this.mastery.grantPoints(ctx, target.actorId, amount);
+        const slot = this.masterySlotOf(ctx, target.actorId, content);
+        if (typeof slot === "string") return this.reply(mp, userId, false, `${target.name}: ${slot}`);
+        const summary = this.mastery.grantPoints(ctx, target.actorId, amount, slot);
         if (!summary) {
           this.reply(mp, userId, false, `Hours must be a whole number between -${MAX_GRANT} and ${MAX_GRANT}`);
+        } else if (slot > 0) {
+          const s = summary.slots[slot];
+          const craft = `${s.name.toLowerCase()} ${s.label}`;
+          this.adminLog(`profile ${adminProfile} granted ${amount} mastery hour(s) to ${target.name}'s ${craft} (profile ${target.profileId}), now ${s.hours}h, ${s.rankName}`);
+          this.reply(mp, userId, true, `${target.name}: ${craft} ${s.hours}h, ${s.rankName}`);
         } else {
           const standing = summary.label ? `${summary.rankName} ${summary.label}` : "no craft chosen";
           this.adminLog(`profile ${adminProfile} granted ${amount} mastery hour(s) to ${target.name} (profile ${target.profileId}), now ${summary.hours}h, ${standing}`);
@@ -690,9 +707,13 @@ export class AdminSystem implements System {
         if (summary) this.adminLog(`profile ${adminProfile} made ${target.name} (profile ${target.profileId}) Legendary ${summary.label}, now ${summary.hours}h`);
         this.reply(mp, userId, !!summary, summary ? `${target.name}: ${summary.hours}h, ${summary.rankName} ${summary.label}` : `${target.name} has no craft`);
       } else if (action === "masteryReset") {
-        const ok = this.mastery.resetCharacter(ctx, target.actorId);
-        if (ok) this.adminLog(`profile ${adminProfile} reset the craft and hours of ${target.name} (profile ${target.profileId})`);
-        this.reply(mp, userId, ok, ok ? `Reset the craft and hours of ${target.name}` : `${target.name} has no craft to reset`);
+        const slot = this.masterySlotOf(ctx, target.actorId, content);
+        if (typeof slot === "string") return this.reply(mp, userId, false, `${target.name}: ${slot}`);
+        const held = slot > 0 ? this.mastery.summaryOf(ctx, target.actorId).slots[slot] : null;
+        const craft = held ? `${held.name.toLowerCase()} craft` : "craft";
+        const ok = this.mastery.resetCharacter(ctx, target.actorId, slot);
+        if (ok) this.adminLog(`profile ${adminProfile} reset the ${craft}${held ? ` (${held.label})` : ""} and hours of ${target.name} (profile ${target.profileId})`);
+        this.reply(mp, userId, ok, ok ? `Reset the ${craft} and hours of ${target.name}` : `${target.name} has no ${craft} to reset`);
       } else if (action === "needsReset") {
         // NeedsSystem answers synchronously; no answer means needs are switched off
         const result: { ok: boolean | null } = { ok: null };

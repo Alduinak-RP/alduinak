@@ -5,6 +5,7 @@ import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
 import { hasSpellConditions, spellInfo, SpellType } from "./espmMagic";
 import { GOLD_BASE_ID, HUNTING_KNIFE_ID, addItemTo, addSpellTo, chainMpHook, hadStarterGold, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
 import { parseStartingItems } from "./spawn";
+import { setIntroProfessions } from "./startLocations";
 import { BLANK_BOOK_EDID } from "./writingSystem";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
 import {
@@ -439,6 +440,7 @@ export class MasterySystem implements System {
     const parsed = parseSlots(all?.["masterySlots"], this.rankHours);
     this.slots = parsed.slots;
     if (parsed.error) this.log(`[mastery] masterySlots ${parsed.error}, default kept`);
+    setIntroProfessions(this.slots.map((slot) => ({ name: slot.name, capName: RANK_NAMES[slot.cap] })));
     const slotKits = all?.["masterySlotKits"];
     if (typeof slotKits === "boolean") this.slotKits = slotKits;
     else if (slotKits !== undefined) this.log("[mastery] masterySlotKits must be true or false, default kept");

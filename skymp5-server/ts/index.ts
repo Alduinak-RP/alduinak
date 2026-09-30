@@ -245,6 +245,8 @@ const main = async () => {
   // Race numbers from racialPassives scale hunger drain and fatigue costs
   const racialSystem = new RacialSystem(log);
   needsSystem.addModifierSource(racialSystem);
+  // Base magicka keeps the race's bonus, a mage's on top of the rank value
+  masterySystem.setRacial(racialSystem);
   const furnitureSeatSystem = new FurnitureSeatSystem(log);
   const companionSystem = new CompanionSystem(log, hostingSystem);
   // NPC AI runs on the client that hosts it; the audit moves hosting to the aggro holder, the owner or the nearest player
