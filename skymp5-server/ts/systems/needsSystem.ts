@@ -13,7 +13,7 @@ type Mp = any;
 //
 // Hunger runs from 0 (full) to 1000 and drains only while the character is online and past character creation; eating a food takes it down by the
 // amount needsFoodHunger gives its Survival hunger effect, or else the effect's Survival_HungerRestoreEffectScript AmountToRestore global.
-// Fatigue is a bar from 0 to 1 that refills at 100% per online hour and nothing else. Work costs a share of it by the character's rank in
+// Fatigue is a bar from 0 to 1 that refills at 100% per online hour, and at login for the time logged out. Work costs a share of it by the character's rank in
 // the profession the work belongs to (Free for any other), from FATIGUE_COST: gathering, crafting and tempering, and a kill (split among everyone
 // who hit the victim); flora, refining, cooking, alchemy and skinning cost half, and spells cost nothing. Work the bar
 // cannot pay is refused; a craft is refused before the native craft runs and the client's local craft is undone by resending its inventory,
@@ -42,6 +42,7 @@ type Mp = any;
 // server-settings.json keys (all optional):
 //   needsEnabled                  false switches hunger and fatigue off, default true
 //   needsFatigueEnabled           false makes every fatigue cost nothing, hunger stays, default true
+//   needsFatigueOfflinePerHour    share of the bar refilled per hour logged out, applied at login, default 1 (the online rate); 0 turns it off
 //   needsHungerDrainPerHour       hunger points per online hour, default 125 (full to starving in about 8 hours)
 //   needsHungerOffline            true drains hunger while logged out too, default false
 //   needsHungerStart              hunger of a new character, default 145 (Survival's starting value, Satisfied)
@@ -225,6 +226,7 @@ export class NeedsSystem implements System {
     };
     this.drainPerHour = num("needsHungerDrainPerHour", 125);
     this.hungerOffline = all["needsHungerOffline"] === true;
+    this.fatigueOfflinePerMs = num("needsFatigueOfflinePerHour", 1) / 3600000;
     this.hungerStart = clamp(num("needsHungerStart", DEFAULT_HUNGER_START), 0, HUNGER_MAX);
     this.stages = numberList(all["needsHungerStages"], DEFAULT_STAGES.length) || DEFAULT_STAGES.slice();
     this.stageAbilities = all["needsHungerStageAbilities"] !== false;
@@ -247,7 +249,7 @@ export class NeedsSystem implements System {
     await this.resolveAlcohol(ctx, all["needsAlcoholItems"], s.dataDir, s.loadOrder);
     const foodLine = Object.entries(foodHunger).map(([edid, v]) => `${edid.replace(FOOD_EFFECT_PREFIX, "")} ${v}`).join(", ");
     const drinkLine = this.alcoholDiscount > 0 && this.alcoholMs > 0 ? `a drink saves ${ALCOHOL_PROFESSIONS.join(" and ")}s ${pct(this.alcoholDiscount)}% on their own crafts for ${this.alcoholMs / 60000} min` : "drinks discount nothing";
-    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue refills 100% per online hour, costs by rank: gathering ${FATIGUE_COST.gather.map(tenth).join("/")}%, crafting ${FATIGUE_COST.craft.map(tenth).join("/")}%, kills ${FATIGUE_COST.fight.map(tenth).join("/")}%, spells free, ${drinkLine}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}`);
+    this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue refills 100% per online hour and ${tenth(this.fatigueOfflinePerMs * 3600000)}% per offline hour, costs by rank: gathering ${FATIGUE_COST.gather.map(tenth).join("/")}%, crafting ${FATIGUE_COST.craft.map(tenth).join("/")}%, kills ${FATIGUE_COST.fight.map(tenth).join("/")}%, spells free, ${drinkLine}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
@@ -582,7 +584,9 @@ export class NeedsSystem implements System {
     const stored = this.read(ctx, actorId);
     const rec = stored || { v: 2, hunger: this.hungerStart, fatigue: 1, at: now, stageSpell: 0, fatigueSpell: 0, wellFed: false, drinkUntil: 0 };
     const savedAgo = stored ? formatWait(now - stored.at) : "never";
+    const before = rec.fatigue;
     if (stored) this.advance(rec, now, false);
+    if (rec.fatigue > before) this.log(`[needs] ${hex(actorId)} rested offline ${savedAgo}: fatigue ${pct(before)}% -> ${pct(rec.fatigue)}%`);
     this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, assignedAt: now, resyncAt: 0, swappedSinceAssign: false, pendingSince: 0 });
     this.write(ctx, actorId, rec);
     this.log(`[needs] ${hex(actorId)} online: hunger ${Math.round(rec.hunger)} (${HUNGER_STAGE_NAMES[this.hungerStage(rec)]}), fatigue ${pct(rec.fatigue)}% (${FATIGUE_STAGE_NAMES[this.fatigueStage(rec)]}), saved ${savedAgo}${stored ? " ago" : ""}, abilities ${hex(rec.stageSpell)}/${hex(rec.fatigueSpell)}`);
@@ -747,7 +751,7 @@ export class NeedsSystem implements System {
     }
   }
 
-  // Fatigue regenerates only online; hunger waits while a pending creation holds it
+  // Hunger waits while a pending creation holds it
   private catchUp(entry: Online, now = Date.now()): void {
     this.advance(entry.rec, now, true, entry.pendingSince <= 0);
   }
@@ -755,7 +759,7 @@ export class NeedsSystem implements System {
   private advance(rec: NeedsRecord, now: number, online: boolean, hunger = true): void {
     const ms = Math.max(0, now - rec.at);
     if (hunger && (online || this.hungerOffline)) rec.hunger = clamp(rec.hunger + this.drainPerHour * ms / 3600000, 0, HUNGER_MAX);
-    if (online) rec.fatigue = clamp(rec.fatigue + REGEN_PER_MS * ms, 0, 1);
+    rec.fatigue = clamp(rec.fatigue + (online ? REGEN_PER_MS : this.fatigueOfflinePerMs) * ms, 0, 1);
     if (rec.hunger >= this.stages[0]) rec.wellFed = false;
     rec.at = Math.max(rec.at, now);
   }
@@ -930,6 +934,7 @@ export class NeedsSystem implements System {
   private enabled = true;
   private drainPerHour = 125;
   private hungerOffline = false;
+  private fatigueOfflinePerMs = REGEN_PER_MS;
   private hungerStart = DEFAULT_HUNGER_START;
   private stages = DEFAULT_STAGES.slice();
   private stageAbilities = true;

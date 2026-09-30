@@ -234,7 +234,10 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   stamina 1.
 
 **Fatigue** is a bar from 0 to 1 (notices show it as a percentage). It refills at 100% per hour while the character
-is logged in, and nothing else speeds it up or slows it down: no offline refill, no bed, no racial or membership
+is logged in, and at `needsFatigueOfflinePerHour` (default 1, the same 100% per hour; 0 turns it off) for the time the
+character was logged out, from its last save to the next login. The offline share is added once at login, the bar stops
+at 100%, and the server logs `[needs] <id> rested offline <time>: fatigue A% -> B%` just before the `online` line (no
+line when the bar was already full). Nothing else speeds it up or slows it down: no bed, no racial or membership
 discount, no free bench. Eating never costs fatigue.
 
 Every action costs a share of the bar by the character's rank **in the profession the action belongs to**; a character
@@ -461,6 +464,8 @@ None of these has been run yet.
   Drained, Tired, Weary, then Debilitated, and magicka stops regenerating at Debilitated; after the sixth, max magicka
   is 1 point, spells fail to cast, and the client log shows no errors; resting 10 minutes restores 16% of the bar and
   part of the magicka maximum.
+- Spend the bar to about 50%, log out for 15 minutes and log back in: the readout shows about 75% at once and the server
+  log has `[needs] <id> rested offline 15 min: fatigue 50% -> 75%`; out for an hour or more, the bar is full.
 - With a stamina or magicka penalty on, stop the game service for over a minute (the client returns to the main menu)
   or change character, then rejoin: the maximum matches the red segment again, never shorter or longer than before. A
   client hot reload leaves it unchanged.
