@@ -172,7 +172,13 @@ export class BountyBoardSystem implements System {
     ctx.gm.once(WORLD_LOADED_EVENT, () => {
       this.worldLoaded = true;
       this.swapMisfiledNotes(ctx);
-      for (const primary of this.primaries()) this.stashOf(ctx, primary, this.read(ctx, primary) || emptyRecord());
+      // After the other systems' leftover sweeps, which could take a new box's reused ff id for a leftover
+      setImmediate(() => {
+        for (const primary of this.primaries()) {
+          try { this.stashOf(ctx, primary, this.read(ctx, primary) || emptyRecord()); }
+          catch (e) { this.log(`[bounty] strongbox check failed for ${primary.toString(16)}: ${e}`); }
+        }
+      });
     });
     // A character switch mid-connection voids the session, same as trade.
     ctx.gm.on("userAssignActor", (userId: number) => {

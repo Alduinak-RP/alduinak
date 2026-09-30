@@ -84,8 +84,10 @@ Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
 ## Strongbox
 
 Every board has a strongbox: a real container (`CONT`) the server places with
-`PlaceAtMe` at every start, right after the world DB has loaded, for each
-board that has none yet. Its anchor is the visible
+`PlaceAtMe` at every start, right after the world DB has loaded and the
+companion, pet and NPC leftover sweeps have run (a new box can take the
+reused ff id of a leftover, and the companion sweep deletes any container
+under one), for each board that has none yet. Its anchor is the visible
 board (`12cb`, the second reference of the board's cluster in `BOARDS`), so
 it sits at that board's foot in the city worldspace; the canonical ref is the
 invisible primitive, which floats about 105-155 units above the visible board
