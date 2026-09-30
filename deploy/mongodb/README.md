@@ -51,8 +51,11 @@ else back:
   with `forbidden-items.py` from the professions plugin b843723d in
   `alduinak-r13\esp\professions` and the 89-plugin load order).
   `strip-intent.py` remakes it when given that list with `--list`.
-- Owner overrides go on every command of a run: `--also-give 0x0002AC61`
-  returns an id that stays removed, `--also-keep 0x26005565` keeps one removed.
+- Owner overrides go on every command of a run (plan, backup, apply):
+  `--also-give 0x0002AC61` returns an id that stays removed, `--also-keep 0x26005565`
+  keeps one removed. Several ids go in one quoted list, each flag once:
+  `--also-give '0x000139BF,0x0002AC61'` (PowerShell turns an unquoted list into
+  decimal numbers, which the script refuses, as it refuses any id the strip did not remove).
 - Reports and backups go to `Desktop\alduinak-r13\restore-strip`.
 
 Run from the repo root in PowerShell, in this order. MongoDB must be running

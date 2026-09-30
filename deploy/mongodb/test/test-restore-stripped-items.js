@@ -332,11 +332,16 @@ async function main() {
   assert.equal(r.given('c0cd4:Skyrim.esm', RING), 7)
 
   // Owner overrides: --also-give returns an intended removal, --also-keep keeps a return, never both
-  r = await plan(world(), ['--also-give', '0x000139BF', '--also-keep', '3B97C'])
+  r = await plan(world(), ['--also-give', '0x000139BF', '--also-keep', '0x3B97C'])
   assert.equal(r.given('c4bd5:Skyrim.esm', 0x000139BF), 1)
   assert.equal(r.given('11', RING), 0)
   assert.equal(r.h('11').stays.find(g => g.baseId === S.hex(RING)).why, 'kept by --also-keep')
-  await assert.rejects(plan(world(), ['--also-give', '0x3B97C', '--also-keep', '0x0003B97C']), err => err instanceof S.UsageError)
+  const usage = re => err => err instanceof S.UsageError && re.test(err.message)
+  await assert.rejects(plan(world(), ['--also-give', '0x3B97C', '--also-keep', '0x0003B97C']), usage(/in both/))
+  // PowerShell 5.1 turns an unquoted 0x000139BF,0x0002AC61 into 80319,175201; a repeated flag would keep only its last value
+  await assert.rejects(plan(world(), ['--also-give', '80319,175201']), usage(/with 0x/))
+  await assert.rejects(plan(world(), ['--also-keep', `0x${NEW.toString(16)}`]), usage(/not an item the strip removed/))
+  await assert.rejects(plan(world(), ['--also-give', '0x000139BF', '--also-give', '0x0002AC61']), usage(/given twice/))
 
   // Refusals: an intent file of another backup, a load order that shifted the ids, a bad id list
   const bad = path.join(TMP, 'bad-intent.json')

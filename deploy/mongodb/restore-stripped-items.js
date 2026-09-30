@@ -23,7 +23,8 @@ const USAGE = [
   '  restore --backup <dir> [--apply]',
   '          roll an apply back to the backed up inventories; a dry run unless --apply',
   'all but restore also take [--strip <strip backup dir>] [--intent <strip-intent.json>] [--strip-plan <strip-inventories-plan-*.json>]',
-  '  [--also-keep <id,...>] (keep these base ids removed too) [--also-give <id,...>] (return these although the intent keeps them; never spells)',
+  "  [--also-keep '0x...,0x...'] (keep these removed base ids removed too) [--also-give '0x...,0x...'] (return these although the intent keeps them; never spells)",
+  '  ids are hex with 0x; quote a list in PowerShell, and give each flag once',
   '  [--per-document] (count returns per document only, not across the characters and claimed containers of a profile)',
 ].join('\n')
 
@@ -42,13 +43,19 @@ function readJson(file, what) {
   catch (err) { throw new Refusal(`cannot read ${what} ${file} (${err.code || 'not valid JSON'})`) }
 }
 
+// PowerShell 5.1 hands an unquoted comma list of 0x ids to node as decimals, so the prefix is required
 function idList(text, flag) {
   const ids = new Set()
   for (const s of String(text || '').split(',').map(x => x.trim()).filter(Boolean)) {
-    if (!/^(0x)?[0-9a-f]{1,8}$/i.test(s)) throw new UsageError(`${flag} takes hex base ids such as 0x0002AC61, not ${s}`)
+    if (!/^0x[0-9a-f]{1,8}$/i.test(s)) throw new UsageError(`${flag} takes hex base ids with 0x such as 0x0002AC61, not ${s}; quote a list: ${flag} '0x000139BF,0x0002AC61'`)
     ids.add(parseInt(s, 16) >>> 0)
   }
   return ids
+}
+
+function checkRemoved(ids, flag, classes) {
+  const bad = [...ids].filter(id => !classes.has(id))
+  if (bad.length) throw new UsageError(`${flag} ${bad.map(hex).join(', ')}: not an item the strip removed`)
 }
 
 function byHex(obj) { return new Map(Object.entries(obj || {}).map(([k, v]) => [parseInt(k, 16) >>> 0, v])) }
@@ -111,6 +118,8 @@ function loadInputs(flags, settings) {
   const dir = path.resolve(flags.strip || STRIP_DIR)
   const strip = S.readBackup(dir, settings)
   const intent = loadIntent(path.resolve(flags.intent || INTENT_FILE), strip.info, settings)
+  checkRemoved(keep, '--also-keep', intent.classes)
+  checkRemoved(give, '--also-give', intent.classes)
   const stripPlan = loadStripPlan(flags.stripPlan && path.resolve(flags.stripPlan), strip.info)
   const { purge, BSON } = S.requireDriver()
   return { dir, strip, intent, stripPlan, keep, give, earlier: earlierApplies(strip.info.docsSha256), isPlayer: purge.isPlayer, BSON, owners: null, profiles: null, pool: !flags.perDocument }

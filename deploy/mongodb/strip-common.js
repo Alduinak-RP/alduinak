@@ -203,6 +203,7 @@ function parseArgs(argv, spec) {
     else if (spec.valued[a]) {
       const v = rest[++i]
       if (!v || v.startsWith('--')) throw new UsageError(`${a} needs a value`)
+      if (flags[spec.valued[a]] !== null) throw new UsageError(`${a} is given twice, give it once`)
       flags[spec.valued[a]] = v
     } else throw new UsageError(`unknown argument ${a}`)
   }
