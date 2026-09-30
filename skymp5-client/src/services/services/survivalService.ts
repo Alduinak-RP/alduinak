@@ -2,6 +2,7 @@ import { Actor, Menu, ObjectReference } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { SpSnippetMessage } from "../messages/spSnippetMessage";
 import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
 import { onWidgetsCleared } from "./widgetMenuUtil";
 import { NeedsService, UPDATE_ESM, globalOf, readGlobal } from "./needsService";
@@ -77,7 +78,8 @@ const listText = (items: string[]): string => items.join(", ") || "none";
  * service takes the cold share of maximum health like the hunger and fatigue penalties, drives the health meter's red
  * end, the compass thermometer and the freezing water global, refreshes the movement speed when the stage or disease
  * spells change, reports swimming, a flame cloak and the engine's warmth total, and drops a disease the player's own
- * engine gave that the server never granted. Nothing runs until a survivalState arrives.
+ * engine gave that the server never granted. What the server granted is the spawn's learnedSpells plus every Actor
+ * AddSpell and RemoveSpell snippet it sent the player since. Nothing runs until a survivalState arrives.
  *
  *   Client -> Server: { "customPacketType": "survivalRequest" }
  *                     { "customPacketType": "survivalReport", "swimming", "flameCloak", "engineWarmth"? }
@@ -88,6 +90,8 @@ export class SurvivalService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    this.controller.emitter.on("spSnippetMessage", (e) => this.onSpSnippet(e));
+    this.controller.emitter.on("createActorMessage", (e) => { if (e.message.isMe) this.serverSpells.clear(); });
     // A new actor starts over on the server: swimming false and no warmth compared yet
     onWidgetsCleared(this.controller, () => this.controller.once("update", () => {
       this.reported = "";
@@ -216,12 +220,24 @@ export class SurvivalService extends ClientListener {
     sendCustomPacket(this.controller, payload);
   }
 
+  // The server's spell grants and removals on the player after the spawn's learnedSpells, which the world model never gets
+  private onSpSnippet(event: ConnectionMessage<SpSnippetMessage>): void {
+    const msg = event.message;
+    const fn = String(msg.function).toLowerCase();
+    if (msg.selfId !== PLAYER_ID || String(msg.class).toLowerCase() !== "actor" || (fn !== "addspell" && fn !== "removespell")) return;
+    const arg = msg.arguments[0] as { formId?: unknown } | undefined;
+    const id = typeof arg?.formId === "number" ? arg.formId >>> 0 : 0;
+    if (id) this.serverSpells.set(id, fn === "addspell");
+  }
+
   // A disease on the player the server does not list at two checks in a row came from the player's own engine
   private guardDiseases(player: Actor): void {
     const remote = this.controller.lookupListener(RemoteServer);
     const learned = remote.getWorldModel().forms[remote.getMyActorIndex()]?.learnedSpells;
-    if (!Array.isArray(learned) || !learned.length) return;
+    if (!Array.isArray(learned)) return;
     const listed = new Set(learned.map((id) => id >>> 0));
+    this.serverSpells.forEach((added, id) => (added ? listed.add(id) : listed.delete(id)));
+    if (!listed.size) return;
     const seen = this.unlistedSeen;
     this.unlistedSeen = [];
     for (const id of this.diseaseIds()) {
@@ -233,7 +249,8 @@ export class SurvivalService extends ClientListener {
       }
       const removed = player.removeSpell(spell);
       const dispelled = player.dispelSpell(spell);
-      logToPlatformLog(this, `local disease dropped ${hex(id)} ${spell.getName()}: not granted by the server, removed ${removed}, dispelled ${dispelled}`);
+      logToPlatformLog(this, `local disease dropped ${hex(id)} ${spell.getName()}: not granted by the server (spawn list ${learned.length}, ` +
+        `${this.serverSpells.size} server grant(s) and removal(s) since), removed ${removed}, dispelled ${dispelled}`);
     }
   }
 
@@ -262,7 +279,8 @@ export class SurvivalService extends ClientListener {
       `temperature ${state.temperatureLevel}, warmth ${state.warmth}, freezing area ${state.freezingArea ? "yes" : "no"}, afflictions ${listText(state.afflictions)}, ` +
       `diseases ${this.diseaseText(state)}; swim and flame cloak poll every ${POLL_MS} ms (${cloaks} of ${FLAME_CLOAK_EFFECTS.length} cloak effects found), ` +
       `engine warmth ${WARMTH_REPORT_MS / 1000} s after the last equip change, movement refresh ${MOVEMENT_REFRESH_MS / 1000} s after a stage or disease change, ` +
-      `disease guard every ${GUARD_MS / 1000} s over ${this.diseaseIds().length} of ${total} disease spells (dropped when unlisted at two checks in a row), ` +
+      `disease guard every ${GUARD_MS / 1000} s over ${this.diseaseIds().length} of ${total} disease spells (dropped when neither the spawn list nor a later ` +
+      `server AddSpell names it at two checks in a row, ${this.serverSpells.size} server grant(s) and removal(s) so far), ` +
       `freezing water global AldSurvival_FreezingArea ${freezing}`);
   }
 
@@ -280,4 +298,6 @@ export class SurvivalService extends ClientListener {
   private hudLogKey = "";
   private unlistedSeen: number[] = [];
   private diseases: number[] | null = null;
+  // Spell id -> true when the server's last snippet on the player added it, false when it removed it
+  private serverSpells = new Map<number, boolean>();
 }

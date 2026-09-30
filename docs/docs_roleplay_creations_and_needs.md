@@ -613,8 +613,11 @@ regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
   stages the record held at logout), and the `[needs]` lines name the factor (`hunger drain survival x1.5`). Chills
   speeds cold gain.
 - **Local infections**: the victim's own engine can still apply a vanilla creature disease (the `ATKD` attack spells);
-  `SurvivalService` drops any Disease spell the server's learned spells do not list at two checks 10 s apart
-  (`local disease dropped b8782 Rockjoint: not granted by the server, ...` in `skyrim-platform.log`).
+  `SurvivalService` drops any Disease spell the server does not list at two checks 10 s apart. The server's list is the
+  spawn's learned spells plus every `AddSpell` and `RemoveSpell` the server sent the player since (the world model
+  keeps only the spawn copy), so a disease, food poisoning or stage spell granted after the spawn stays
+  (`local disease dropped b8782 Rockjoint: not granted by the server (spawn list 41, 3 server grant(s) and removal(s)
+  since), ...` in `skyrim-platform.log`).
 - Notices: "You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming days. A Cure Disease
   potion or a healing potion cures it." (from someone near you, for contagion). The Active Effects page lists every
   disease, affliction and the cold stage.
