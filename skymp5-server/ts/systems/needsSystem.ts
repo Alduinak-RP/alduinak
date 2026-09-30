@@ -644,15 +644,15 @@ export class NeedsSystem implements System {
     return this.fatigueOn ? fatigueCost(effort, rank, half) : 0;
   }
 
-  // Whether the bar can pay for one action of this effort at the rank; an offline character or needs switched off are never refused
-  canPay(actorId: number, effort: Effort, rank: number, half = false): boolean {
+  // Whether the bar can pay for one action of this effort at the rank, times multiplier; an offline character or needs switched off are never refused
+  canPay(actorId: number, effort: Effort, rank: number, half = false, multiplier = 1): boolean {
     const entry = this.online.get(actorId);
-    return !entry || !this.enabled || this.affords(entry, this.costOf(effort, rank, half));
+    return !entry || !this.enabled || this.affords(entry, this.costOf(effort, rank, half) * multiplier);
   }
 
-  // Takes one action of this effort at the rank off the bar; what names the work for the log
-  pay(ctx: SystemContext, actorId: number, effort: Effort, rank: number, what: string, half = false): void {
-    this.spend(ctx, actorId, this.costOf(effort, rank, half), what);
+  // Takes one action of this effort at the rank, times multiplier, off the bar; what names the work for the log
+  pay(ctx: SystemContext, actorId: number, effort: Effort, rank: number, what: string, half = false, multiplier = 1): void {
+    this.spend(ctx, actorId, this.costOf(effort, rank, half) * multiplier, what);
   }
 
   private affords(entry: Online, cost: number): boolean {

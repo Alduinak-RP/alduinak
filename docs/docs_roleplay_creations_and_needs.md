@@ -256,7 +256,9 @@ takes real effort costs more of it (0.9.6 values; actions per full bar in bracke
 
 Half cost: flora (plants that are not crops), refining (the smelter, the tanning rack and thread), cooking, alchemy and
 skinning. Rabbits, pheasants and salmon hanging on racks cost nothing. Spells cost nothing. A shared recipe (smelting,
-tanning, charcoal) gives every profession that shares it both its rank discount and its hours.
+tanning, charcoal) gives every profession that shares it both its rank discount and its hours. An alchemist of Novice or
+better pays `gatheringAlchemistFloraDiscount` (50%) less again for alchemy flora, flora that hands over an ingredient
+(flowers, mushrooms, herbs, berries, eggs): 1% a flower at Novice.
 
 **Warmed by drink.** A cook or alchemist of Novice or better who drinks an alcohol pays `needsAlcoholDiscount` (25%)
 less fatigue for the crafts priced by their own rank (the cooking pot and oven for a cook, the alchemy lab for an

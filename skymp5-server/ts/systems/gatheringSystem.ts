@@ -25,6 +25,7 @@ type Mp = any;
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 30
+//   gatheringAlchemistFloraDiscount  share of an alchemy flora harvest's fatigue an alchemist saves, default 0.5, 0 turns it off
 //
 // A swing of the axe, every ore off a vein and every harvest cost one gathering action of the fatigue bar by the rank in
 // woodworker, miner, or farmer and alchemist (NeedsSystem), and a bar that cannot pay for one more turns the station away. A chopper keeps swinging, a yield every swing, until the bar cannot pay for the next.
@@ -42,6 +43,7 @@ type Mp = any;
 // A plant is handed over by the native harvest, and the fatigue, the kneel and any extra yield follow only once the ref reads harvested,
 // so a plant the native side refuses or already holds harvested costs nothing. Hearthfire planters (BYOHHouseFlora*, BYOHHouseIngrd*,
 // the mead barrel) hand over a non-playable token whose BYOHHiddenObjectScript would swap it for the produce; the server makes that swap.
+// An alchemist of Novice or better pays gatheringAlchemistFloraDiscount less for alchemy flora, flora whose harvest is an ingredient.
 // Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
 // rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
 // Catching a bee costs nothing and plays nothing.
@@ -65,6 +67,7 @@ const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 // Overrides the record's total on every vein; 0 keeps the record's own
 const DEFAULT_VEIN_TOTAL = 6;
 const DEFAULT_PICK_MINUTES = 30;
+const DEFAULT_ALCHEMIST_FLORA_DISCOUNT = 0.5;
 // A fake harvestable gives its item again this long after it was taken
 const FAKE_HARVEST_MS = 20 * 3600000;
 // Kneel of a harvest by farmer rank, Free to Legendary
@@ -187,6 +190,8 @@ export class GatheringSystem implements System {
     if (Number.isFinite(veinTotal) && veinTotal >= 0) this.veinTotalOverride = Math.floor(veinTotal);
     const pick = Number(all?.["gatheringPickMinutes"]);
     if (Number.isFinite(pick) && pick >= 0) this.pickMs = pick * 60000;
+    const discount = Number(all?.["gatheringAlchemistFloraDiscount"]);
+    if (all?.["gatheringAlchemistFloraDiscount"] !== undefined && Number.isFinite(discount)) this.alchemistFloraDiscount = Math.min(1, Math.max(0, discount));
     const regen = Number(all?.["gatheringVeinRegenMinutes"]);
     if (Number.isFinite(regen) && regen > 0) this.regenMs = regen * 60000;
     await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
@@ -202,7 +207,7 @@ export class GatheringSystem implements System {
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop and kneels ${FLORA_MS / 1000} s for flora except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop and kneels ${FLORA_MS / 1000} s for flora except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank, an alchemist pays ${Math.round(this.alchemistFloraDiscount * 100)}% less for alchemy flora`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -416,10 +421,13 @@ export class GatheringSystem implements System {
     if (props["crop"] && hoe && !holdsItem(mp, actorId, (baseId) => baseId === hoe)) return this.deny(ctx, actorId, "You need a hoe to harvest this crop.");
     const rank = this.mastery.rankIn(ctx, actorId, PICKERS);
     const flora = !props["crop"];
-    if (!props["free"] && !this.needs.canPay(actorId, "gather", rank, flora)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
+    const alchemist = flora && !!props["ingredient"] && this.alchemistFloraDiscount > 0 && this.mastery.rankOf(ctx, actorId, "alchemist") > FREE;
+    const multiplier = alchemist ? 1 - this.alchemistFloraDiscount : 1;
+    if (!props["free"] && !this.needs.canPay(actorId, "gather", rank, flora, multiplier)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
     const kneelMs = props["instant"] ? 0 : flora ? FLORA_MS : CROP_MS;
     const settle = () => {
-      if (!props["free"]) this.needs.pay(ctx, actorId, "gather", rank, `harvest ${name} ${flora ? "flora" : "crop"} r${rank}`, flora);
+      const label = `harvest ${name} ${flora ? "flora" : "crop"} r${rank}${alchemist ? `, alchemist -${Math.round(this.alchemistFloraDiscount * 100)}%` : ""}`;
+      if (!props["free"]) this.needs.pay(ctx, actorId, "gather", rank, label, flora, multiplier);
       if (kneelMs > 0) sendActionLock(mp, actorId, flora ? HARVEST_ANIM : CROP_ANIM, kneelMs / 1000, flora ? undefined : CROP_EXIT_ANIM);
     };
     return () => {
@@ -797,10 +805,23 @@ export class GatheringSystem implements System {
     else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1, crop: 1 } };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
     else if ((type === "ACTI" || type === "FLOR") && scripts.has("defaultfakeharvestablescript")) station = { kind: "fake", props: scripts.get("defaultfakeharvestablescript")! };
-    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { instant: this.isInstantFlora(res, baseId) ? 1 : 0, free: FREE_RACK_RE.test(String(res.record.editorId || "").toLowerCase()) ? 1 : 0, crop: this.isCrop(res) ? 1 : 0, item: espmFieldFormIds(res, "PFIG")[0] || 0, ...this.hiddenProduce(ctx, espmFieldFormIds(res, "PFIG")[0] || 0, name) } };
+    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: this.plantProps(ctx, res, baseId, name) };
     const out = station ? { ...station, name } : null;
     this.stationCache.set(baseId, out);
     return out;
+  }
+
+  // ingredient: the plant (or its Hearthfire token) hands over an ingredient, which makes non-crop flora alchemy flora
+  private plantProps(ctx: SystemContext, res: any, baseId: number, name: string): Record<string, number> {
+    const item = espmFieldFormIds(res, "PFIG")[0] || 0;
+    const hidden = this.hiddenProduce(ctx, item, name);
+    const ingredient = String(this.lookup(ctx, hidden.produce || item)?.record.type || "") === "INGR" ? 1 : 0;
+    return {
+      instant: this.isInstantFlora(res, baseId) ? 1 : 0,
+      free: FREE_RACK_RE.test(String(res.record.editorId || "").toLowerCase()) ? 1 : 0,
+      crop: this.isCrop(res) ? 1 : 0,
+      item, ingredient, ...hidden,
+    };
   }
 
   private isCrop(res: any): boolean {
@@ -924,6 +945,7 @@ export class GatheringSystem implements System {
   private produceMs = new Map<number, number>();
   private instantFlora = new Set<number>();
   private pickMs = DEFAULT_PICK_MINUTES * 60000;
+  private alchemistFloraDiscount = DEFAULT_ALCHEMIST_FLORA_DISCOUNT;
   // Actor id -> epoch ms its harvest kneel ends
   private harvestUntil = new Map<number, number>();
   // Picked nirnroot and critter refs -> epoch ms they grow back

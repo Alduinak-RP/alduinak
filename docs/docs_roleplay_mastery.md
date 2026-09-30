@@ -552,7 +552,15 @@ the nirnroot activators) need the plugin hoe `AldToolHoe` in the inventory: "You
 need a hoe to harvest this crop." Tree fruit, mushrooms and flowers need nothing
 and cost half the fatigue. Fish and hanging
 clutter never kneel. Picking credits farmer and alchemist hours and costs a
-gathering action of fatigue by the better of those ranks.
+gathering action of fatigue by the better of those ranks. An alchemist (Novice
+or better) pays half of that again for alchemy flora, a plant that is not a
+crop and hands over an ingredient: flowers, mushrooms, herbs, berries, eggs,
+pearls, barnacles and the Hearthfire herb planters, not the food plants (apples,
+vegetables, cheese, fish, meat) or nirnroot, a crop
+(`gatheringAlchemistFloraDiscount`, 0.5). A Novice alchemist's flower costs 1%
+of the bar where a Novice farmer's costs 2.1% and a Free picker's 4.2%; the
+charge line reads `[needs] <id> harvest <plant> flora r<rank>, alchemist -50%:
+-N%, fatigue F%`.
 
 The plant itself comes from the native harvest. The fatigue, the kneel and the
 Adept and Master extra follow only once the plant reads harvested (Papyrus
