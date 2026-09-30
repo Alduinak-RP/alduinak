@@ -90,8 +90,10 @@ Placed objects must not move when a player bumps into them: only actors
 natively (`StaticFreeze.cpp`, built into `SkyrimPlatformImpl.dll`): every
 `objectLoaded` and `cellAttach` event queues its reference, a
 `cellFullyLoaded` queues every ref of that cell and a game load every ref of
-the loaded cells, and on the game thread (once per Papyrus update, up to 1024
-refs) a ref whose 3D holds a havok body of a dynamic motion type (dynamic,
+the attached interior or grid cells (read straight from `TES`; the worldspace
+sky cell is skipped), and inside the Papyrus update native, on an engine job
+thread (once per Papyrus update, up to 1024 refs), a ref whose parent cell is
+attached and whose 3D holds a havok body of a dynamic motion type (dynamic,
 sphere, box or thin box inertia) gets the engine's `SetMotionType` Keyframed,
 the call the Papyrus function makes. Fixed and already keyframed bodies
 (statics, doors, animated objects) are never touched, so no model folder list
@@ -105,15 +107,20 @@ native pass freezes a marked copy like a placed ref every time its 3D loads,
 follow-ups included even when `SpawnProcess` keyframed it first as it enabled
 it (ammo copies stay dynamic); non-item copies need no mark. A ref whose 3D
 is not in yet is looked at again every 200 ms (up to 50 times; a disabled one
-waits for its next `objectLoaded`), and a frozen ref is looked at again one
+waits for its next `objectLoaded`; an event ref in a cell that is not
+attached yet waits the same way), and a frozen ref is looked at again one
 and three seconds later in case its havok was rebuilt, a schedule that every
 later `objectLoaded` or `cellAttach` of it starts over until its 3D unloads.
-`skyrim-platform.log` carries one line per cell and session at most, written
+Every look checks the kept classes again, since `ff` ids are reused.
+`skyrim-platform.log` carries one line per cell and game load at most, written
 once the cell's refs have been quiet for 5 s: `StaticFreeze: cell X froze N
-refs (S only by a load sweep, R frozen again on a follow-up); kept H without
-dynamic havok, A actors, P projectiles, M ammo, I runtime items, D without
-3D, O other`. S counts refs no event reported and R refs whose first
-keyframing did not hold; both should stay near zero. An object that still
+refs (S only by a cell sweep, L only by the post-load sweep, R frozen again on
+a follow-up); kept H without dynamic havok, A actors, P projectiles, M ammo, I
+runtime items, D without 3D, O other`. S counts refs only a `cellFullyLoaded`
+sweep reported, L refs that neither an event nor a cell sweep reported before
+the game load's sweep, and R refs whose first keyframing did not hold; all
+three should stay near zero, and an L that stays 0 across logins means the
+post-load sweep can go. An object that still
 moves: its console id and base tell whether it is one of the kept classes.
 
 `staticRefsService.ts` (client) no longer freezes anything. It blocks engine

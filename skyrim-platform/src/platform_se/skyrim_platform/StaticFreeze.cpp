@@ -35,10 +35,18 @@ enum class Result
   kCount
 };
 
+// What queued a ref first
+enum class Source : uint8_t
+{
+  kEvent,
+  kCellSweep,
+  kLoadSweep
+};
+
 struct Pending
 {
   Clock::time_point due;
-  bool fromSweep = false;
+  Source source = Source::kEvent;
   uint16_t tries = 0;
   uint8_t pass = 0;
 };
@@ -46,7 +54,8 @@ struct Pending
 struct CellStats
 {
   std::unordered_map<RE::FormID, Result> results;
-  uint32_t bySweep = 0;
+  uint32_t byCellSweep = 0;
+  uint32_t byLoadSweep = 0;
   uint32_t refrozen = 0;
   Clock::time_point last;
 };
@@ -71,7 +80,7 @@ std::unordered_set<RE::FormID> g_serverCopies;
 std::unordered_map<RE::FormID, CellStats> g_cellStats;
 std::unordered_set<RE::FormID> g_loggedCells;
 
-// Event sinks may run off the game thread, so they only queue ids
+// Event sinks run on other engine threads than Update, so they only queue ids
 template <class F>
 void Request(F&& change)
 {
@@ -226,7 +235,8 @@ bool FreezeDynamic(RE::TESObjectREFR* ref, RE::NiAVObject* root)
 CellStats* StatsFor(RE::TESObjectREFR* ref, Clock::time_point now)
 {
   const auto cell = ref->GetParentCell();
-  if (!cell || g_loggedCells.contains(cell->GetFormID())) {
+  if (!cell || !cell->IsAttached() ||
+      g_loggedCells.contains(cell->GetFormID())) {
     return nullptr;
   }
   auto& stats = g_cellStats[cell->GetFormID()];
@@ -235,7 +245,7 @@ CellStats* StatsFor(RE::TESObjectREFR* ref, Clock::time_point now)
 }
 
 // A ref counts once per cell line, and frozen outranks a later look that finds it keyframed
-void Record(RE::TESObjectREFR* ref, Result result, bool fromSweep,
+void Record(RE::TESObjectREFR* ref, Result result, Source source,
             Clock::time_point now)
 {
   const auto stats = StatsFor(ref, now);
@@ -244,9 +254,13 @@ void Record(RE::TESObjectREFR* ref, Result result, bool fromSweep,
   }
   const auto [it, inserted] =
     stats->results.try_emplace(ref->GetFormID(), result);
-  if (result == Result::kFrozen && fromSweep &&
+  if (result == Result::kFrozen &&
       (inserted || it->second != Result::kFrozen)) {
-    ++stats->bySweep;
+    if (source == Source::kCellSweep) {
+      ++stats->byCellSweep;
+    } else if (source == Source::kLoadSweep) {
+      ++stats->byLoadSweep;
+    }
   }
   if (it->second != Result::kFrozen) {
     it->second = result;
@@ -261,13 +275,23 @@ bool Look(RE::FormID id, Pending& pending, Clock::time_point now)
     g_frozen.erase(id);
     return false;
   }
-  const auto root = ref->Get3D();
+  // Checked on follow-ups too, since ff ids are reused
+  if (const auto reason = KeptReason(ref)) {
+    g_frozen.erase(id);
+    if (pending.pass == 0) {
+      Record(ref, *reason, pending.source, now);
+    }
+    return false;
+  }
+  const auto cell = ref->GetParentCell();
+  const bool attached = cell && cell->IsAttached();
+  const RE::NiPointer<RE::NiAVObject> root(attached ? ref->Get3D() : nullptr);
   if (pending.pass > 0) {
     // 3D that comes back queues the ref again through objectLoaded
     if (!root) {
       return false;
     }
-    if (FreezeDynamic(ref, root)) {
+    if (FreezeDynamic(ref, root.get())) {
       if (const auto stats = StatsFor(ref, now)) {
         ++stats->refrozen;
       }
@@ -278,32 +302,49 @@ bool Look(RE::FormID id, Pending& pending, Clock::time_point now)
     pending.due = now + kFollowUpGaps[pending.pass++];
     return true;
   }
-  if (const auto reason = KeptReason(ref)) {
-    Record(ref, *reason, pending.fromSweep, now);
-    return false;
-  }
   if (!root) {
-    if (!pending.fromSweep && !ref->IsDisabled() &&
+    if (pending.source == Source::kEvent && !ref->IsDisabled() &&
         ++pending.tries < kNo3DTries) {
       pending.due = now + kNo3DRetry;
       return true;
     }
-    Record(ref, Result::kNo3D, pending.fromSweep, now);
+    Record(ref, Result::kNo3D, pending.source, now);
     return false;
   }
-  const bool frozen = FreezeDynamic(ref, root);
-  Record(ref, frozen ? Result::kFrozen : Result::kNoHavok, pending.fromSweep,
+  const bool frozen = FreezeDynamic(ref, root.get());
+  Record(ref, frozen ? Result::kFrozen : Result::kNoHavok, pending.source,
          now);
   // An event may rebuild the havok of a ref frozen earlier
   const bool frozenEarlier =
     g_frozen.contains(id) || g_serverCopies.contains(id);
-  if (!frozen && (pending.fromSweep || !frozenEarlier)) {
+  if (!frozen && (pending.source != Source::kEvent || !frozenEarlier)) {
     return false;
   }
   g_frozen.insert(id);
   pending.due = now + kFollowUpGaps[0];
   pending.pass = 1;
   return true;
+}
+
+// RE::TES::ForEachReference and TES members past 0x128 have SE offsets in this CommonLib build, wrong on 1.6
+template <class F>
+void ForEachLoadedCell(F&& f)
+{
+  const auto tes = RE::TES::GetSingleton();
+  if (!tes) {
+    return;
+  }
+  if (tes->interiorCell) {
+    f(tes->interiorCell);
+    return;
+  }
+  const auto grid = tes->gridCells;
+  const uint32_t length = grid ? grid->length : 0;
+  for (uint32_t x = 0; x < length; ++x) {
+    for (uint32_t y = 0; y < length; ++y) {
+      f(grid->GetCell(x, y));
+    }
+  }
 }
 
 void TakeRequests(Clock::time_point now)
@@ -318,6 +359,7 @@ void TakeRequests(Clock::time_point now)
     g_frozen.clear();
     g_serverCopies.clear();
     g_cellStats.clear();
+    g_loggedCells.clear();
   }
   for (const auto& [id, serverCopy] : requests.serverCopies) {
     if (serverCopy) {
@@ -335,22 +377,25 @@ void TakeRequests(Clock::time_point now)
       g_frozen.erase(id);
     }
   }
-  const auto sweep = [&](RE::TESObjectREFR* ref) {
-    if (ref) {
-      g_pending.try_emplace(ref->GetFormID(), Pending{ now, true });
+  const auto sweep = [&](RE::TESObjectCELL* cell, Source source) {
+    if (!cell || !cell->IsAttached()) {
+      return;
     }
-    return RE::BSContainer::ForEachResult::kContinue;
+    cell->ForEachReference([&](RE::TESObjectREFR* ref) {
+      if (ref) {
+        g_pending.try_emplace(ref->GetFormID(), Pending{ now, source });
+      }
+      return RE::BSContainer::ForEachResult::kContinue;
+    });
   };
-  if (requests.sweepAll) {
-    if (const auto tes = RE::TES::GetSingleton()) {
-      tes->ForEachReference(sweep);
-    }
-  }
   for (const auto cellId : requests.cells) {
-    const auto cell = RE::TESForm::LookupByID<RE::TESObjectCELL>(cellId);
-    if (cell && cell->IsAttached()) {
-      cell->ForEachReference(sweep);
-    }
+    sweep(RE::TESForm::LookupByID<RE::TESObjectCELL>(cellId),
+          Source::kCellSweep);
+  }
+  // Last, so its count holds only refs no event or cell sweep queued
+  if (requests.sweepAll) {
+    ForEachLoadedCell(
+      [&](RE::TESObjectCELL* cell) { sweep(cell, Source::kLoadSweep); });
   }
 }
 
@@ -370,11 +415,12 @@ void FlushLogs(Clock::time_point now)
       return n[static_cast<size_t>(result)];
     };
     spdlog::info(
-      "StaticFreeze: cell {:08X} froze {} refs ({} only by a load sweep, {} "
-      "frozen again on a follow-up); kept {} without dynamic havok, {} "
-      "actors, {} projectiles, {} ammo, {} runtime items, {} without 3D, {} "
-      "other",
-      it->first, count(Result::kFrozen), stats.bySweep, stats.refrozen,
+      "StaticFreeze: cell {:08X} froze {} refs ({} only by a cell sweep, {} "
+      "only by the post-load sweep, {} frozen again on a follow-up); kept {} "
+      "without dynamic havok, {} actors, {} projectiles, {} ammo, {} runtime "
+      "items, {} without 3D, {} other",
+      it->first, count(Result::kFrozen), stats.byCellSweep,
+      stats.byLoadSweep, stats.refrozen,
       count(Result::kNoHavok), count(Result::kActor),
       count(Result::kProjectile), count(Result::kAmmo),
       count(Result::kRuntimeItem), count(Result::kNo3D),

@@ -7,6 +7,6 @@ void HandleSkseMessage(SKSE::MessagingInterface::Message* msg);
 // A client copy of a server item is frozen like a placed ref; other runtime items are engine drops that stay dynamic
 void MarkServerCopy(RE::FormID id, bool serverCopy);
 
-// Game thread, once per Papyrus update
+// Once per Papyrus update, inside the TESModPlatform::Add native on an engine job thread
 void Update();
 }
