@@ -24,6 +24,7 @@ import { QueueSystem } from "./systems/queueSystem";
 import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
 import { NeedsSystem } from "./systems/needsSystem";
+import { RacialSystem } from "./systems/racialSystem";
 import { GatheringSystem } from "./systems/gatheringSystem";
 import { FactionCraftSystem } from "./systems/factionCraftSystem";
 import { HuntingSystem } from "./systems/huntingSystem";
@@ -240,6 +241,9 @@ const main = async () => {
   const npcSpawnSystem = new NpcSpawnSystem(log);
   const masterySystem = new MasterySystem(log);
   const needsSystem = new NeedsSystem(log, masterySystem);
+  // Race numbers from racialPassives scale hunger drain and fatigue costs
+  const racialSystem = new RacialSystem(log);
+  needsSystem.addModifierSource(racialSystem);
   const furnitureSeatSystem = new FurnitureSeatSystem(log);
   const companionSystem = new CompanionSystem(log, hostingSystem);
   // NPC AI runs on the client that hosts it; the audit moves hosting to the aggro holder, the owner or the nearest player
@@ -325,6 +329,8 @@ const main = async () => {
     new TimeSystem(log),
     weatherSystem,
     furnitureSeatSystem,
+    // Before needs, whose boot line lists the race factors this one parses
+    racialSystem,
     // Before mastery, whose hooks wrap this one's, so a craft refused for fatigue is never credited
     needsSystem,
     masterySystem,

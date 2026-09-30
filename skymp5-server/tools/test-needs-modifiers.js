@@ -17,6 +17,7 @@ const load = (file) => {
 }
 
 const { NeedsSystem, fatigueCost } = load('needsSystem.ts')
+const { RacialSystem, parseRacialPassives } = load('racialSystem.ts')
 
 const NORD = 0xff000001
 const ALTMER = 0xff000002
@@ -200,6 +201,35 @@ async function main() {
     const hunger = t.sys.online.get(ORC).rec.hunger
     assert.ok(Math.abs(hunger - (145 + 125 * 0.85)) < 0.01, `Orc offline hunger ${hunger}`)
     assert.ok(t.logs.some((l) => l.startsWith('[needs] ff000003 online:') && l.endsWith('hunger drain race x0.85, fatigue costs race x0.85')), t.logs.join('\n'))
+  })
+
+  await test('RacialSystem as the source: racialPassives numbers by appearance race, aliases, creation and enabled false', () => {
+    const RACE_IDS = { 0x13747: 'OrcRace', 0xa82b9: 'OrcRaceVampire', 0x13743: 'HighElfRace', 0x13746: 'NordRace' }
+    const block = { races: { OrcRace: { hungerRateMult: 0.85, fatigueCostMult: 0.85 }, HighElfRace: { fatigueCostMult: 0.75 } } }
+    const racial = new RacialSystem(() => {})
+    const t = setup([racial])
+    t.mp.lookupEspmRecordById = (id) => (RACE_IDS[id] ? { record: { type: 'RACE', editorId: RACE_IDS[id], fields: [] } } : id === SPELL ? SPELL_RECORD : {})
+    racial.mp = t.mp
+    assert.deepEqual(racial.configure(block), [])
+    const VAMPIRE = 0xff000004
+    t.mp.set(ORC, 'appearance', { raceId: 0x13747 })
+    t.mp.set(ALTMER, 'appearance', { raceId: 0x13743 })
+    t.mp.set(NORD, 'appearance', { raceId: 0x13746 })
+    t.mp.set(VAMPIRE, 'appearance', { raceId: 0xa82b9 })
+    t.mp.set(VAMPIRE, 'private.creationPending', true)
+    assert.equal(racial.fatigueCostMult(ORC), 0.85)
+    assert.equal(racial.hungerDrainMult(ALTMER), 1)
+    assert.equal(racial.fatigueCostMult(NORD), 1)
+    assert.equal(racial.traits(VAMPIRE).key, '')
+    t.mp.set(VAMPIRE, 'private.creationPending', false)
+    racial.raceCache.delete(VAMPIRE)
+    assert.equal(racial.traits(VAMPIRE).key, 'OrcRace')
+    t.sys.chargeCraft(t.ctx, ALTMER, RECIPE)
+    near(1 - t.fatigue(ALTMER), fatigueCost('craft', 1) * 0.75, 'Altmer craft through RacialSystem')
+    racial.configure({ ...block, enabled: false })
+    assert.equal(racial.fatigueCostMult(ORC), 1)
+    const { problems } = parseRacialPassives({ races: { OrcRace: { fatigueCostMult: 0, coldRateMult: 0 } } })
+    assert.deepEqual(problems, ['races.OrcRace.fatigueCostMult 0 is not a positive number, 1 is used'])
   })
 
   let failed = 0
