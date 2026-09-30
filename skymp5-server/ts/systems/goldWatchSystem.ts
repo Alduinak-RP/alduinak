@@ -12,6 +12,7 @@ type Mp = any;
 // Inventory watch (B14, B24): the same samples log every drop of gold and every drop of Salt Pile the actor's own
 // crafts, eats, puts, drops and takes in the interval do not explain, with those tallies and the trade and bounty
 // packets seen, so a reported disappearance lands next to its cause or stands out as unexplained.
+// A drop of the item the actor just ate is logged, the trace of an eat the client also sent as a drop (G9).
 //
 // server-settings.json keys:
 //   goldAlertThreshold  gold gained between two samples that raises an alert, 0 disables the alert; the drop lines stay (default 5000)
@@ -23,6 +24,8 @@ const SALT_BASE_ID = 0x00034cdf;
 const WATCHED: Array<{ baseId: number; label: string }> = [{ baseId: GOLD_BASE_ID, label: "gold" }, { baseId: SALT_BASE_ID, label: "salt" }];
 // Packets that move items the hooks never see
 const MOVE_PACKETS = new Set(["tradeAccept", "bountyBoardPost"]);
+// The false drop arrives right behind the eat's OnEquip
+const EAT_DROP_WINDOW_MS = 2000;
 
 // What the hooks saw an actor do with one watched item since the last sample
 interface Tally {
@@ -51,6 +54,8 @@ export class GoldWatchSystem implements System {
   // actorId -> trade and bounty packets since the last sample
   private packets = new Map<number, string[]>();
   private inputCache = new Map<number, Map<number, number>>();
+  // actorId -> the last item the actor ate
+  private lastEat = new Map<number, { baseId: number; at: number }>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -81,10 +86,16 @@ export class GoldWatchSystem implements System {
     after("onCraft", (actorId, _craftedId, _count, recipeId) => {
       for (const [baseId, count] of this.recipeInputs(recipeId)) this.tally(actorId, baseId).crafts += count;
     });
-    after("onEatItem", (actorId, baseId) => { if (this.watched(baseId)) this.tally(actorId, baseId).eats += 1; });
+    after("onEatItem", (actorId, baseId) => {
+      this.lastEat.set(actorId, { baseId, at: Date.now() });
+      if (this.watched(baseId)) this.tally(actorId, baseId).eats += 1;
+    });
     after("onPutItem", (_targetId, actorId, baseId, count) => { if (this.watched(baseId)) this.tally(actorId, baseId).puts += count; });
     after("onTakeItem", (_sourceId, actorId, baseId, count) => { if (this.watched(baseId)) this.tally(actorId, baseId).takes += count; });
-    after("onDropItem", (actorId, baseId, count) => { if (this.watched(baseId)) this.tally(actorId, baseId).drops += count; });
+    after("onDropItem", (actorId, baseId, count) => {
+      this.noteDropAfterEat(actorId, baseId, count);
+      if (this.watched(baseId)) this.tally(actorId, baseId).drops += count;
+    });
   }
 
   disconnect(userId: number): void {
@@ -93,6 +104,7 @@ export class GoldWatchSystem implements System {
     this.lastCounts.delete(actorId);
     this.tallies.delete(actorId);
     this.packets.delete(actorId);
+    this.lastEat.delete(actorId);
   }
 
   customPacket(userId: number, type: string, _content: Content): void {
@@ -136,6 +148,16 @@ export class GoldWatchSystem implements System {
         this.log(`[inv] ${this.who(mp, actorId)} ${label} ${was} -> ${now}${unexplained > 0 ? `, ${unexplained} unexplained` : ""} (interval: crafts ${t.crafts}, eats ${t.eats}, puts ${t.puts}, drops ${t.drops}, takes ${t.takes}${packets.length ? `, packets ${packets.join(" ")}` : ""})`);
       }
     }
+  }
+
+  private noteDropAfterEat(actorId: number, baseId: number, count: number): void {
+    const eat = this.lastEat.get(actorId);
+    const ms = eat && eat.baseId === baseId ? Date.now() - eat.at : Infinity;
+    if (ms > EAT_DROP_WINDOW_MS) return;
+    let edid = "";
+    try { edid = String(this.mp.lookupEspmRecordById(baseId)?.record?.editorId || ""); } catch { }
+    // Outside the native drop call
+    setImmediate(() => this.log(`[inv] ${this.who(this.mp, actorId)} drop of ${edid || "item"} ${hex(baseId)} x${count} ${ms} ms after eating one: the client sent the eat as a drop too`));
   }
 
   private watched(baseId: number): boolean {

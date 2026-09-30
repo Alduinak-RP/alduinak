@@ -215,6 +215,19 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   blood potion) restores its global's Large amount only to an actor with the `Vampire` keyword, from its `HasKeyword`
   condition. Several hunger effects on one food add up, as their scripts would. A food the server refuses for its 10
   second cooldown restores nothing. Survival's gutworm disease multiplier is not applied (no disease).
+- Eating, drinking or applying a poison from the inventory takes the item out of the pack with no container and no
+  world reference, which `DropItemService` read as a drop: whenever the same item lay in the world within 2000 units
+  (the cabbages, potatoes and cheese bowls of every inn and kitchen, the potions of a dungeon) it deleted those local
+  copies and sent `DropItem`, so the server dropped one more at the player's feet, or, when the eaten one was the
+  last, threw `Source inventory doesn't have enough <id> (1 is required while 0 present)` (249 of those for foods,
+  potions and ingredients in the September logs). Since 1.0 a potion or ingredient that leaves the pack with no world
+  reference within a second of its own equip is eaten, not dropped, and the client logs `DropItemService: consumed,
+  not dropped: <name> <id> left the pack with no world reference <ms> ms from its equip; the nearest <name> in the
+  world <d> units away was left alone` (or `no <name> in the world within 2000 units`) to `skyrim-platform.log`; a
+  real drop logs `DropItemService: dropped <id> x<n>: world reference <id|none>, <k> local copies removed`. The
+  server's inventory watch logs `[inv] <name> (<id>, profile P) drop of <editor id> <id> xN <ms> ms after eating
+  one: the client sent the eat as a drop too` if such a drop still arrives (see `GoldWatchSystem` in
+  `docs_server_configuration_reference.md`).
 - The item card still reads Survival's text, "Restore 2 points of Hunger." and so on: the number is written into the
   effect description string of the Survival esl, not read from the server.
 - Common foods: VerySmall (40, 4%): ale, mead, wine and spirits, milk, butter, flour, cheese wedges, half a loaf, raw
