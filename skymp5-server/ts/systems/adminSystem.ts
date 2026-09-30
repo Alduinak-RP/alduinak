@@ -4,6 +4,7 @@ import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForReq
 import { NpcSpawnSystem, pick } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { NEEDS_RESET_EVENT } from "./needsSystem";
+import { SURVIVAL_ADMIN_EVENT, SURVIVAL_RESET_EVENT, SurvivalAdminRequest, SurvivalAdminResult, SurvivalSummary } from "./survivalSystem";
 import { PetSystem, PetKind } from "./petSystem";
 import { JobSystem } from "./jobSystem";
 import { WeatherSystem } from "./weatherSystem";
@@ -42,6 +43,11 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "masteryLegendary", target }  lifts the character to Legendary in its profession
 //                     { customPacketType: "adminAction", action: "attrSet", target, health?, magicka?, stamina? }  permanent max attribute change, -1000..1000, absolute not additive
 //                     { customPacketType: "adminAction", action: "needsReset", target }  hunger and fatigue back to the new-character values, the client re-synced
+//                     { customPacketType: "adminAction", action: "survivalReset", target }  new-character cold, food poisoning, afflictions and diseases cleared, body rules applied again
+//                     { customPacketType: "adminAction", action: "survivalInfo", target }  answered with the survival readout: cold, area, level, warmth and sickness
+//                     { customPacketType: "adminAction", action: "survivalCold", target, cold }  cold 0-1000
+//                     { customPacketType: "adminAction", action: "survivalDisease", target, disease, stage? }  disease: catalog id or name; stage 1-3, default 1; a held one is set to the stage
+//                     { customPacketType: "adminAction", action: "survivalCure", target, disease? }  that disease, or with none every sickness (diseases, food poisoning, afflictions)
 //                     { customPacketType: "adminAction", action: "revive", target }  target: a fallen character's actor id hex (online or not); refused while the profile's living limit is reached
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
 //                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..10000, self allowed
@@ -54,8 +60,10 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "weatherSet", region, weather, minutes }  region "" = the admin's own; weather: catalog desc or editor id; minutes null = until cleared, else 1..1440
 //                     { customPacketType: "adminAction", action: "weatherClear", region }  rolls a normal weather again
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?, av?, f?, ok?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather}, mastery }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?, av?, sv?, f?, ok?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather}, mastery, survival }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
+//                       sv: the online row's SurvivalSummary {cold, stage, area, level, warmth, freezingArea, diseases: [{id, name, stage, nextAt}], afflictions: [{name, until}], foodPoisonUntil} once survival settled on it
+//                       survival: SurvivalCatalog {diseases: [{id, name, contagious}], coldMax, coldStages} for the survival row, null with survival off or without the players cap
 //                       av: the online row's permanent max attribute change {health, magicka, stamina}
 //                       f: the profile's fallen characters [{a, n, s, r}] (actor id hex, name, slot, realm or perma-dead), ok: whether a revive is allowed (living characters below the limit); both only when f is not empty
 //                       m / mastery: MasterySummary {profession, label, rank, rankName, hours, slots} of the online row / of the admin's own character; slots lists every configured craft slot
@@ -80,6 +88,7 @@ const MAX_ATTR_BONUS = 1000;
 const MAX_ITEM_SPAWN = 10000;
 const ITEM_PAGE_SIZE = 50;
 const SPAWN_COOLDOWN_MS = 250;
+const SURVIVAL_OFF = "Survival is switched off on this server";
 
 const ADMIN_MODES: Array<{ id: string; label: string }> = [
   { id: "god", label: "God" },
@@ -378,6 +387,7 @@ export class AdminSystem implements System {
         ping: pings.get(p.userId) ?? null,
         m: this.mastery.summaryOf(ctx, p.actorId),
         av: this.attrBonus(mp, p.actorId),
+        ...this.survivalRow(ctx, p.actorId),
       };
       if (p.profileId > 0) byProfile.set(p.profileId, row);
       else extra.push(row);
@@ -571,6 +581,7 @@ export class AdminSystem implements System {
             tier,
             caps,
             mastery: this.mastery.summaryOf(ctx, myActorId),
+            survival: caps.players ? this.survival(ctx, 0, "", { op: "catalog" })?.catalog ?? null : null,
           }));
         } catch (e) {
           this.log(`AdminSystem: adminMenu reply failed: ${e}`);
@@ -720,6 +731,8 @@ export class AdminSystem implements System {
         ctx.gm.emit(NEEDS_RESET_EVENT, target.actorId, `profile ${adminProfile}`, (done: boolean) => { result.ok = done; });
         if (result.ok) this.adminLog(`profile ${adminProfile} reset the hunger and fatigue of ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, !!result.ok, result.ok ? `Reset the hunger and fatigue of ${target.name}` : result.ok === null ? "Needs are switched off on this server" : `${target.name} has no needs to reset yet`);
+      } else if (action.startsWith("survival")) {
+        this.survivalAction(ctx, userId, adminProfile, target, action, content);
       } else if (action === "itemSpawn") {
         this.spawnItem(mp, userId, myActorId, adminProfile, tier, target, content);
       } else {
@@ -729,6 +742,43 @@ export class AdminSystem implements System {
       this.log(`AdminSystem: action '${action}' by profile ${adminProfile} failed: ${e}`);
       this.reply(mp, userId, false, "Action failed, see server log");
     }
+  }
+
+  // The Players tab's survival row; SurvivalSystem answers synchronously and no answer means survival is off
+  private survivalAction(ctx: SystemContext, userId: number, adminProfile: number, target: OnlinePlayer, action: string, content: Content): void {
+    const mp = ctx.svr as Mp;
+    const by = `profile ${adminProfile}`;
+    const who = `${target.name} (profile ${target.profileId})`;
+    if (action === "survivalReset") {
+      const result: { ok: boolean | null } = { ok: null };
+      ctx.gm.emit(SURVIVAL_RESET_EVENT, target.actorId, by, (done: boolean) => { result.ok = done; });
+      if (result.ok) this.adminLog(`profile ${adminProfile} reset the survival state of ${who}`);
+      return this.reply(mp, userId, !!result.ok, result.ok ? `Reset the survival state of ${target.name}` : result.ok === null ? SURVIVAL_OFF : `${target.name} is not followed by survival yet`);
+    }
+    const requests: Record<string, { request: SurvivalAdminRequest; verb: string }> = {
+      survivalInfo: { request: { op: "summary" }, verb: "" },
+      survivalCold: { request: { op: "setCold", cold: content["cold"] }, verb: "set the cold of" },
+      survivalDisease: { request: { op: "giveDisease", disease: content["disease"], stage: content["stage"] }, verb: "gave a disease to" },
+      survivalCure: { request: { op: "cure", disease: content["disease"] }, verb: "cured" },
+    };
+    const known = requests[action];
+    if (!known) return this.reply(mp, userId, false, `Unknown action '${action}'`);
+    const result = this.survival(ctx, target.actorId, by, known.request);
+    if (!result) return this.reply(mp, userId, false, SURVIVAL_OFF);
+    if (result.ok && known.verb) this.adminLog(`profile ${adminProfile} ${known.verb} ${who}: ${result.text}`);
+    this.reply(mp, userId, result.ok, `${target.name}: ${result.text}`);
+  }
+
+  private survival(ctx: SystemContext, actorId: number, by: string, request: SurvivalAdminRequest): SurvivalAdminResult | null {
+    const answer: { result: SurvivalAdminResult | null } = { result: null };
+    ctx.gm.emit(SURVIVAL_ADMIN_EVENT, actorId, by, request, (result: SurvivalAdminResult) => { answer.result = result; });
+    return answer.result;
+  }
+
+  // sv for an online roster row once survival settled on the character
+  private survivalRow(ctx: SystemContext, actorId: number): { sv?: SurvivalSummary } {
+    const summary = this.survival(ctx, actorId, "", { op: "summary" })?.summary;
+    return summary ? { sv: summary } : {};
   }
 
   // The target may be offline: a fallen body keeps its form while its player is away
