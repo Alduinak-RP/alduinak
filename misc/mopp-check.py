@@ -220,35 +220,41 @@ def verdict(c, code):
                 orphans=orphan_code(code, cover))
 
 
-def restore_hint(c, code, build, base):
-    """The last code byte put back from the build-type byte, when that leaves the shape clean."""
+def restore_byte(c, code, build, base):
+    """(file offset, old, new) that restores the last code byte from the build-type byte, if that cleans the shape."""
     if not code or code[-1] == build:
         return None
     w = verdict(c, code[:-1] + bytes([build]))
     if w['bad'] or w['stray'] or w['unaligned'] or w['unreachable'] or w['faults']:
         return None
-    return (f'set file byte 0x{base + len(code) - 1:X} from {code[-1]:02X} to {build:02X} (the build-type byte holds '
-            f'the last code byte): no bad key, stray, unaligned jump or unreachable triangle is left')
+    return base + len(code) - 1, code[-1], build
 
 
-def check_nif(d):
-    """Report lines for the problem shapes of a NIF, and its count of MOPP compressed-mesh shapes."""
+def mopp_shapes(d):
+    """(block, shape block, compressed mesh data or None, code, build type, code file offset) of each MOPP shape."""
     blocks = nif_blocks(d)
-    lines, shapes = [], 0
     for k, (kind, off, _size) in enumerate(blocks):
         if kind != 'bhkMoppBvTreeShape':
             continue
         ref = struct.unpack_from('<i', d, off)[0]
         if not 0 <= ref < len(blocks) or blocks[ref][0] != 'bhkCompressedMeshShape':
             continue
-        shapes += 1
         data = struct.unpack_from('<i', d, blocks[ref][1] + 52)[0]
         if not 0 <= data < len(blocks) or blocks[data][0] != 'bhkCompressedMeshShapeData':
+            yield k, ref, None, None, None, None
+            continue
+        size, base = u32(d, off + 20), off + 41
+        yield k, ref, cms_data(d, blocks[data][1], blocks[data][2]), d[base:base + size], d[off + 40], base
+
+
+def check_nif(d):
+    """Report lines for the problem shapes of a NIF, and its count of MOPP compressed-mesh shapes."""
+    lines, shapes = [], 0
+    for k, ref, c, code, build, base in mopp_shapes(d):
+        shapes += 1
+        if c is None:
             lines.append(f'block {k}: shape {ref} has no compressed mesh data')
             continue
-        c = cms_data(d, blocks[data][1], blocks[data][2])
-        size, build, base = u32(d, off + 20), d[off + 40], off + 41
-        code = d[base:base + size]
         v = verdict(c, code)
         out = [f'DATA {p}' for p in data_problems(c)] + [f'FAULT {f}' for f in v['faults']]
         for key, (pc, why) in sorted(v['bad'].items()):
@@ -262,10 +268,10 @@ def check_nif(d):
             orphans = ', '.join(f'0x{s:X}-0x{e - 1:X}' for s, e in v['orphans']) or 'none'
             out.append(f'UNREACHABLE {len(v["unreachable"])} triangles, e.g. '
                        + ' '.join(f'0x{x:X}' for x in v['unreachable'][:6]) + f'; orphan code {orphans}')
-        if out:
-            hint = restore_hint(c, code, build, base)
-            if hint:
-                out.append(f'HINT {hint}')
+        fix = restore_byte(c, code, build, base) if out else None
+        if fix:
+            out.append(f'HINT set file byte 0x{fix[0]:X} from {fix[1]:02X} to {fix[2]:02X} (the build-type byte '
+                       f'holds the last code byte): no bad key, stray, unaligned jump or unreachable triangle is left')
         if out:
             lines.append(f'block {k}: {len(c["big"])} big triangles, {len(c["chunks"])} chunks, {len(v["keys"])} keys, '
                          f'build type 0x{build:02X}')

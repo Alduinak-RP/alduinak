@@ -1,16 +1,10 @@
 # Lowers the invisible north parapet of the Windhelm arena pit so Graves's stairs work both ways (see README.md).
 #   python misc/mesh-patches/arena_parapet.py --out <dir> [--data "C:/GOG Games/Skyrim Anniversary Edition/Data"]
-import argparse
-import hashlib
-import os
 import struct
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from bsalib import Bsa  # noqa: E402
-from niflib import nif_blocks  # noqa: E402
+from meshpatch import arguments, check, read_source, write_loose
+from niflib import nif_blocks
 
-DATA = 'C:/GOG Games/Skyrim Anniversary Edition/Data/'
 ARCHIVE = 'WindhelmSSE.bsa'
 MESH = 'meshes/SurWindhelmCustomMeshes/Experimental/ArenaTestv2Exp.nif'
 SOURCE_SHA256 = '8c9b17e7f6284b90373bec046bedf4f8d28d6223098e794aa925f7fe27bdf8f7'
@@ -96,26 +90,14 @@ def decode(d):
     return blocks, chunk, triangles(chunk)
 
 
-def check(ok, message):
-    if not ok:
-        raise SystemExit(f'FAILED: {message}')
-
-
 def height(chunk, tris):
     zs = [vertex(chunk, v)[2] for t in tris for v in t]
     return (max(zs) - min(zs)) * HAVOK_SCALE
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--out', required=True, help='folder that receives meshes/...; an MO2 mod folder or a staging folder')
-    ap.add_argument('--data', default=DATA, help='Skyrim Data folder holding WindhelmSSE.bsa, read-only')
-    args = ap.parse_args()
-
-    source = Bsa(os.path.join(args.data, ARCHIVE)).read(MESH.replace('/', '\\'))
-    check(source is not None, f'{MESH} not in {ARCHIVE}')
-    check(hashlib.sha256(source).hexdigest() == SOURCE_SHA256,
-          f'{ARCHIVE} ships a different {MESH}; Capital Windhelm Expansion changed, redo the diagnosis before patching')
+    args = arguments(ARCHIVE)
+    source = read_source(args.data, ARCHIVE, MESH, SOURCE_SHA256)
     blocks, chunk, tris = decode(source)
     transform = chunk['transform']
     check(transform is None or transform[:3] + transform[4:7] == (0.0,) * 6, f'chunk {CHUNK} has a non-identity transform')
@@ -148,20 +130,13 @@ def main():
         check(sum(n1[i] * n2[i] for i in range(3)) > 0, f'triangle {k} flipped its facing')
     after_height = height(chunk2, [tris2[k] for k in PARAPET])
     check(0 < after_height < 5, f'parapet is still {after_height:.1f} units tall')
-    digest = hashlib.sha256(patched).hexdigest()
-    check(digest == PATCHED_SHA256, f'patched sha256 {digest} differs from the pinned result')
-
-    target = os.path.join(args.out, *MESH.split('/'))
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, 'wb') as f:
-        f.write(patched)
-    check(hashlib.sha256(open(target, 'rb').read()).hexdigest() == digest, f'{target} did not read back identical')
+    target = write_loose(args.out, MESH, patched, PATCHED_SHA256)
 
     print(f'source  {ARCHIVE}:{MESH} sha256 {SOURCE_SHA256}')
     print(f'changed 4 bytes: vertices {TOP_VERTICES} z {OLD_TOP} -> {NEW_TOP} at ' + ', '.join(f'0x{o:X}' for o in TOP_OFFSETS))
     print(f'parapet triangles {sorted(PARAPET)}: {before_height:.1f} -> {after_height:.1f} units tall; '
           f'other {len(tris) - len(PARAPET)} triangles of chunk {CHUNK} and all other blocks unchanged')
-    print(f'wrote   {target} sha256 {digest}')
+    print(f'wrote   {target} sha256 {PATCHED_SHA256}')
 
 
 if __name__ == '__main__':
