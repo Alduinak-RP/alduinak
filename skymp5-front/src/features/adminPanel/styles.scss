@@ -757,6 +757,11 @@ $admin-row-gutter: 16px;
     text-align: center;
   }
 
+  // Craft slot picker of the grant row
+  &__mastery-slot {
+    flex: 0 0 180px;
+  }
+
   // Scale SkyrimButton's default 30px type down to fit the compact 32px-tall buttons.
   &__actions,
   &__form--debug,

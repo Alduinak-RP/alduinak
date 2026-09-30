@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
 import { copyText } from '../../utils/copyText';
-import MasteryMenu, { MasteryData } from '../masteryMenu';
+import MasteryMenu, { MasteryData, MasterySlot, slotName } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
 import FactionTab, { FactionMenuData } from './factionTab';
 import FactionAssign from './factionAssign';
@@ -51,6 +51,7 @@ interface PanelMastery {
   rank: number;
   rankName: string;
   hours: number;
+  slots?: MasterySlot[]; // every configured craft slot, primary first; absent on older servers
 }
 
 interface PanelLocation {
@@ -295,8 +296,13 @@ const isAttrAmount = (text: string): boolean =>
 const attrForm = (av: PanelAttrs | null | undefined): Record<string, string> =>
   ({ health: String(av ? av.health : 0), magicka: String(av ? av.magicka : 0), stamina: String(av ? av.stamina : 0) });
 
+// The craft slots when the server configures more than one, null otherwise
+const craftSlots = (m: PanelMastery | null | undefined): MasterySlot[] | null => (m && m.slots && m.slots.length > 1 ? m.slots : null);
+
 const masteryText = (m: PanelMastery | null | undefined): string => {
   if (!m) return 'unknown';
+  const slots = craftSlots(m);
+  if (slots) return slots.map((s) => (s.profession ? (s.label || s.profession) + ', ' + s.rankName + ', ' + s.hours + ' h' : 'no ' + slotName(s).toLowerCase())).join(' \u00b7 ');
   if (!m.profession) return 'No craft chosen' + (m.hours ? ' (' + m.hours + ' h banked)' : '');
   return m.label + ' \u00b7 ' + m.rankName + ' \u00b7 ' + m.hours + (m.hours === 1 ? ' hour' : ' hours');
 };
@@ -412,6 +418,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   // An Add or Save waits for the server's answer; a refusal keeps the form as it was
   const [zonePending, setZonePending] = useState(false);
   const [grantHours, setGrantHours] = useState('1');
+  // Craft slot index the grant and reset act on
+  const [grantSlot, setGrantSlot] = useState('0');
   const [attrs, setAttrs] = useState<Record<string, string>>(attrForm(null));
   const [petKind, setPetKind] = useState<PetKind>('horse');
   const [petBase, setPetBase] = useState('');
@@ -508,6 +516,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   useEffect(() => {
     setAttrs(attrForm(selectedPlayer ? selectedPlayer.av : null));
     setPkArmed('');
+    setGrantSlot('0');
   }, [selected]);
 
   // Mastery rows stay tied to the selected character.
@@ -746,14 +755,30 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 {masteryRows.length === 0 ? (
                   <span className="admin-panel__hint">Select an online player to grant mastery hours</span>
                 ) : (
-                  masteryRows.map((r) => (
-                    <div key={r.key} className="admin-panel__mastery-row">
-                      <span className="admin-panel__mastery-who" title={r.who}>{r.who}</span>
-                      <span className="admin-panel__mastery-info" title={masteryText(r.m)}>{masteryText(r.m)}</span>
-                      <Button text="Grant" width={96} height={30} disabled={!canGrant} onClick={() => send(ev.masteryGrant, r.target, Number(grantHours))} />
-                      <Button text="Reset craft" width={116} height={30} disabled={!(r.m && r.m.profession)} onClick={() => send(ev.masteryReset, r.target)} />
-                    </div>
-                  ))
+                  masteryRows.map((r) => {
+                    const slots = craftSlots(r.m);
+                    const picked = slots ? slots.filter((s) => String(s.slot) === grantSlot)[0] || slots[0] : null;
+                    const slot = picked ? picked.slot : 0;
+                    // A sub-slot takes hours only once its craft is chosen; the primary banks them either way
+                    const grantOk = canGrant && !(picked && slot > 0 && !picked.profession);
+                    const resetOk = picked ? !!picked.profession : !!(r.m && r.m.profession);
+                    return (
+                      <div key={r.key} className="admin-panel__mastery-row">
+                        <span className="admin-panel__mastery-who" title={r.who}>{r.who}</span>
+                        <span className="admin-panel__mastery-info" title={masteryText(r.m)}>{masteryText(r.m)}</span>
+                        {slots ? (
+                          <Dropdown
+                            className="admin-panel__mastery-slot"
+                            value={String(slot)}
+                            options={slots.map((s) => ({ value: String(s.slot), label: slotName(s) + ': ' + (s.profession ? s.label || s.profession : 'empty') }))}
+                            onChange={setGrantSlot}
+                          />
+                        ) : null}
+                        <Button text="Grant" width={96} height={30} disabled={!grantOk} onClick={() => send(ev.masteryGrant, r.target, Number(grantHours), slot)} />
+                        <Button text="Reset craft" width={116} height={30} disabled={!resetOk} onClick={() => send(ev.masteryReset, r.target, slot)} />
+                      </div>
+                    );
+                  })
                 )}
               </div>
             ) : null}
