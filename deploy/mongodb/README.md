@@ -40,14 +40,14 @@ else back:
   new copy, so any copy held now counts as returned, also one crafted,
   looted or bought since the strip and also in the same document
   (`--per-document` does not change that); `--ignore-held '0x0003B97C'`
-  gives an id back in full, not counting held copies. It also caps each profile at what it
-  lost less what its characters, their pets (stored saddlebags, or the actor
-  of a pet out in the world) and its claimed containers hold now, so a return
-  moved to a chest, a pet or another character counts too (`--per-document`
-  counts only the document and a character's own pets). Known limit: a return
-  since sold, used, dropped, given to someone else, or left in a chest the
-  profile no longer claims or on a deleted character is not seen and comes
-  back again.
+  gives an id back in full, not counting held copies.
+- It also caps each profile at what it lost less what its characters, their
+  pets (stored saddlebags, or the actor of a pet out in the world) and its
+  claimed containers hold now, so a return moved to a chest, a pet or another
+  character counts too (`--per-document` counts only the document and a
+  character's own pets). Known limit: a return since sold, used, dropped,
+  given to someone else, or left in a chest the profile no longer claims or
+  on a deleted character is not seen and comes back again.
 - An apply settles every item id it decided for each document it reached,
   given or already back at the time, and later runs never give that id to
   that document again (a return it counted and the player sold since stays
@@ -66,10 +66,11 @@ else back:
   the report names what a material keyword covers when the names do not say
   it (the daedric keyword on Ancient Nord armour), names what stays removed,
   and lists gear whose recipe takes ebony ingots without an ebony keyword
-  (Einherjar, Nordic Carved, the Black Dragon Ninjato) as one decision. It also carries the part of
-  the strip's list the backup needs (the full list, sha 3c3871dd, was rebuilt
-  with `forbidden-items.py` from the professions plugin b843723d in
-  `alduinak-r13\esp\professions` and the 89-plugin load order).
+  (Einherjar, Nordic Carved, the Black Dragon Ninjato) as one decision. It
+  also carries the part of the strip's list the backup needs (the full list,
+  sha 3c3871dd, was rebuilt with `forbidden-items.py` from the professions
+  plugin b843723d in `alduinak-r13\esp\professions` and the 89-plugin load
+  order).
 - Every run first checks the Data folder of the server settings: the strip's
   plugins must keep their light flags (the backup's form ids depend on them)
   and the plugins behind the removed items (their defining plugin, winning
@@ -80,37 +81,63 @@ else back:
   it already holds (`--list` takes the full list instead); then take a new
   backup.
 - Owner overrides go on every command of a run (plan, backup, apply):
-  `--also-give 0x0002AC61` returns an id that stays removed, `--also-keep 0x26005565`
-  keeps one removed. Several ids go in one quoted list, each flag once:
-  `--also-give '0x000139BF,0x0002AC61'` (PowerShell turns an unquoted list into
-  decimal numbers, which the script refuses, as it refuses any id the strip did not remove).
+  `--also-give 0x0002AC61` returns an id that stays removed,
+  `--also-keep 0x26005565` keeps one removed, `--ignore-held 0x0003B97C`
+  gives one back in full. Several ids go in one quoted list, each flag once:
+  `--also-give '0x000139BF,0x0002AC61'` (PowerShell turns an unquoted list
+  into decimal numbers, which the script refuses, as it refuses any id the
+  strip did not remove).
 - Reports and backups go to `Desktop\alduinak-r13\restore-strip`.
 
-Run from the repo root in PowerShell, in this order. MongoDB must be running
-and the game server stopped; the scripts read the connection from
-`build\dist\server\server-settings.json`, so no password is typed.
+Run from the repo root in PowerShell, one block at a time. MongoDB must be
+running and the game server stopped; the scripts read the connection from
+`build\dist\server\server-settings.json`, so no password is typed. Nobody
+edits a character in the Server Manager until the last `plan`.
+
+Block 1, review (reads only, writes a report):
 
 ```
 cd C:\Users\Administrator\Desktop\alduinak
 Get-Service AlduinakGameServer
 node deploy/mongodb/restore-stripped-items.js plan
 Get-ChildItem C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\restore-plan-*.txt | Sort-Object LastWriteTime | Select-Object -Last 1 | ForEach-Object { notepad $_.FullName }
+```
+
+Stop here. `Get-Service` must say Stopped. Read the summary: per character
+and container it lists what comes back, what is counted as back and what
+stays removed, and "FOR THE OWNER TO DECIDE" lists the calls to make. The
+blocks below carry no override flags. For each call you decide the other
+way, add its flag to the end of every command in blocks 2 and 3 (backup,
+both applies and the plan), the same on each, for example
+`--also-give '0x000139BF,0x0002AC61'` or `--also-keep '0x26005565'`, and run
+the `plan` of block 1 once more with them to check the summary.
+
+Block 2, backup and dry run (writes nothing to the database):
+
+```
 node deploy/mongodb/restore-stripped-items.js backup --out C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\rollback-1
 node deploy/mongodb/restore-stripped-items.js apply --backup C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\rollback-1
+```
+
+Stop here and read the dry run: its header repeats the override flags it
+got, and its last line says what `--apply` would give. It refuses if a
+document changed since the backup; then take the backup again into
+`rollback-2` and use that name from there on.
+
+Block 3, apply and check:
+
+```
 node deploy/mongodb/restore-stripped-items.js apply --backup C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\rollback-1 --apply
 node deploy/mongodb/restore-stripped-items.js plan
 ```
 
-`Get-Service` must say Stopped, and nobody edits a character in the Server
-Manager until the last `plan`. The apply checks the game server again right
-before its first write and writes a document only while its inventory is
-still what it read, so it stops (roll back, take a new backup) rather than
-overwrite a change made in between. Read the summary before the backup: per
-character and container it lists what comes back, what is already back and
-what stays removed, and "FOR THE OWNER TO DECIDE" lists the calls to make. The first `apply`
-is a dry run; it refuses if a document changed since the backup (take the
-backup again into `rollback-2` and use that name from there on). The last
-`plan` is the check: "comes back: 0 items".
+The last `plan` is the check: "comes back: 0 items" and "it wrote N of N
+documents". The apply checks the game server again right before its first
+write and writes a document only while its inventory is still what it read,
+so it stops rather than overwrite a change made in between. If it stops part
+way, its error prints the rollback command; otherwise the next `plan` names
+the documents it never wrote, and a new backup (`rollback-2`) and apply give
+them their items.
 
 To undo the apply, do it before the game server is started again: the
 rollback puts back only documents that still hold what the apply wrote
@@ -118,10 +145,15 @@ rollback puts back only documents that still hold what the apply wrote
 them gained or lost an item, which the first login or save can do. With
 `--skip-changed` it rolls back the others and leaves the changed ones as
 they are, keeping what the apply gave (they stay settled; the ones rolled
-back come back in the next `plan`). Dry run first, then:
+back come back in the next `plan`). Dry run first:
 
 ```
 node deploy/mongodb/restore-stripped-items.js restore --backup C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\rollback-1
+```
+
+then, after reading it:
+
+```
 node deploy/mongodb/restore-stripped-items.js restore --backup C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\rollback-1 --apply
 ```
 
