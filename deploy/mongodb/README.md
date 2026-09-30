@@ -65,7 +65,15 @@ else back:
   the strip's list the backup needs (the full list, sha 3c3871dd, was rebuilt
   with `forbidden-items.py` from the professions plugin b843723d in
   `alduinak-r13\esp\professions` and the 89-plugin load order).
-  `strip-intent.py` remakes it when given that list with `--list`.
+- Every run first checks the Data folder of the server settings: the strip's
+  plugins must keep their light flags (the backup's form ids depend on them)
+  and the plugins behind the removed items (their defining plugin, winning
+  override and template) must be byte for byte the ones `strip-intent.json`
+  was made from. When one changed (a plugin update, a CK save), it refuses
+  and asks for `python deploy/mongodb/strip-intent.py`, which sorts the
+  items again from the plugins as they are now, reusing the part of the list
+  it already holds (`--list` takes the full list instead); then take a new
+  backup.
 - Owner overrides go on every command of a run (plan, backup, apply):
   `--also-give 0x0002AC61` returns an id that stays removed, `--also-keep 0x26005565`
   keeps one removed. Several ids go in one quoted list, each flag once:

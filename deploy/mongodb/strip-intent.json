@@ -1,5 +1,5 @@
 {
- "createdAt": "2026-09-30T08:48:56.899490+00:00",
+ "createdAt": "2026-09-30T09:46:28.878029+00:00",
  "backup": "C:\\Users\\Administrator\\Desktop\\alduinak-r13\\rollback-strip",
  "docsSha256": "994ae951b4ace28fc2eb21c338dfcda0cdca89bf75ffb4336c19bbefa4059436",
  "listSha256": "3c3871ddaa62bca553b9b22ecc519be577ef406fc4bab90463770ca9fb824eb7",
@@ -99,359 +99,448 @@
  "plugins": [
   {
    "name": "Skyrim.esm",
-   "light": false
+   "light": false,
+   "sha256": "64e18549ba5d352727c9bac5241882bd05d124b8351be81783ce0323de164cee"
   },
   {
    "name": "Update.esm",
-   "light": false
+   "light": false,
+   "sha256": "655138032423ae6a9652ab5bfade2cb58bd2d1e9ed8012bad0133e021ba9ed0f"
   },
   {
    "name": "Dawnguard.esm",
-   "light": false
+   "light": false,
+   "sha256": "a17408743060559823dcc958c9fe94c9e70b90fbe6ef474d420585878b8ff1a0"
   },
   {
    "name": "HearthFires.esm",
-   "light": false
+   "light": false,
+   "sha256": "dcb2b593979a60b9ad511173d1ded23e4713d0287832492d5d4439d0383c7b29"
   },
   {
    "name": "Dragonborn.esm",
-   "light": false
+   "light": false,
+   "sha256": "df8ae7dc97ab8a453e2e083cc3cfcd1cb24ec42d14cd5b50e2df39e520b6f386"
   },
   {
    "name": "ccBGSSSE001-Fish.esm",
-   "light": false
+   "light": false,
+   "sha256": "8bcf6f1f14404584f650fe95a461594b546e2898213d04ea969d6b24ce757288"
   },
   {
    "name": "ccQDRSSE001-SurvivalMode.esl",
-   "light": true
+   "light": true,
+   "sha256": "cb7f09c86c7ac61f33afa4a0b2a1690daaf0780f5e608074c8517256f62edbf2"
   },
   {
    "name": "ccBGSSSE037-Curios.esl",
-   "light": true
+   "light": true,
+   "sha256": "75209dbb177ea27f3abd164b6ecf07670ecdc3858cc01e4a3db8d1e2443136fe"
   },
   {
    "name": "ccBGSSSE025-AdvDSGS.esm",
-   "light": false
+   "light": false,
+   "sha256": "ca313e6ae5846c72fbe81a7aa1e0c1103378aa70bcfeb865ef1267508ab7da1d"
   },
   {
    "name": "Lux Via - Markarth Entrance and Farm Overhaul.esp",
-   "light": false
+   "light": false,
+   "sha256": "06938cad0e250cbe2eb1ff98fd52ebd8073d6d1ee7ef8344da1c12ead847316f"
   },
   {
    "name": "1SilverArmor.esl",
-   "light": true
+   "light": true,
+   "sha256": "179480afa8af600a9dcc60fd81efbc590f7d526c6a67ba32473cde08b8a060bb"
   },
   {
    "name": "RihadSwordsmanSet.esl",
-   "light": true
+   "light": true,
+   "sha256": "a54e93bee7390e992abf47fff1a78f4e6f54f54400747444695db401f4483d1d"
   },
   {
    "name": "ApachiiHairFemales.esm",
-   "light": false
+   "light": false,
+   "sha256": "2f94336130a9dadc0ee3c0ebb2060d63737b11c4944d0336964ad0390dd170bb"
   },
   {
    "name": "ApachiiHair.esm",
-   "light": false
+   "light": false,
+   "sha256": "8a4399f3ee4948751d4afb96b685815c60bbaf3f25d98a31ecea4060a06ca991"
   },
   {
    "name": "ApachiiHairMales.esm",
-   "light": false
+   "light": false,
+   "sha256": "987beb554084084083c5f02d77035d9f8ac1c736b0f7a76d5190dbbdb763dd11"
   },
   {
    "name": "Sentinel - Master Plugin.esp",
-   "light": true
+   "light": true,
+   "sha256": "efc1e46a3828aa819a9e9480c72d5576ff60f8278426e9bacc16bcdbdec2b3ac"
   },
   {
    "name": "DynDOLOD.esm",
-   "light": false
+   "light": false,
+   "sha256": "c1e66918b4fc4a4ef02e0c0ecae2d012337cec3395ac388a401c0c58303db66f"
   },
   {
    "name": "SkyUI_SE.esp",
-   "light": true
+   "light": true,
+   "sha256": "61eb77164ed3632344ac2ccac4c8a4e69c62397999e7d8d558c162fd205616cf"
   },
   {
    "name": "Helgen.esp",
-   "light": false
+   "light": false,
+   "sha256": "24dba2bd7ebae0b3f6ea87ea869cebcab005692274cf70e2638ce6860e54c53e"
   },
   {
    "name": "MCMHelper.esp",
-   "light": true
+   "light": true,
+   "sha256": "5f9dad2ca8896ad2ad0c8ade678dc684f005c62d54dd6e9bcd7efe1b0fc7f7fc"
   },
   {
    "name": "FSMPM - The FSMP MCM.esp",
-   "light": true
+   "light": true,
+   "sha256": "bd310dd2db50d431d0108ead6ac135c716a20a775fdef3d5d99171b978f7cd71"
   },
   {
    "name": "WindhelmSSE.esp",
-   "light": false
+   "light": false,
+   "sha256": "77ff48032f6479209e911e123ab5ecaf4c4dbf056e67eba0ef2f65a090c3d3e6"
   },
   {
    "name": "The Great City of Falkreath.esp",
-   "light": false
+   "light": false,
+   "sha256": "d848ac5cd63a26cda794d7509f05c02176f6bdac84364a977bc88167a93ae8e4"
   },
   {
    "name": "JK's Whiterun's Outskirts.esp",
-   "light": false
+   "light": false,
+   "sha256": "c5cf1d6649be524627917fa5ebdcb64a082a16da150605e6387dd478f1512c04"
   },
   {
    "name": "Warbirds Whiterun Metropolis.esp",
-   "light": false
+   "light": false,
+   "sha256": "bf72733b033115dcf9dda43c37fa0dfcf39875051f34648807b04becbf3a12ed"
   },
   {
    "name": "City of Dawnstar.esp",
-   "light": false
+   "light": false,
+   "sha256": "b8b67614b3250208a63b01e51859cbb031183d2ed6b988c5488e0acf3b342e9f"
   },
   {
    "name": "AVExpansion.esp",
-   "light": false
+   "light": false,
+   "sha256": "3ddcef7a9e1e90a9d519b7d336a2bac7924d37a4c1e010e70d995fa68788e20e"
   },
   {
    "name": "The Great City of Solitude.esp",
-   "light": false
+   "light": false,
+   "sha256": "8b52ce2fa6d21d95d16db3b4d630e05bae87eaaea1439a0b0bbdba0ef867af4e"
   },
   {
    "name": "JK's Windhelm's Outskirts.esp",
-   "light": true
+   "light": true,
+   "sha256": "2f6e30c4137ec5f5164d0b820cc9b46044f67da89d82c53bce472dd05ea5db97"
   },
   {
    "name": "waccf_armor and clothing extension.esp",
-   "light": false
+   "light": false,
+   "sha256": "7e7178077446ad4cf4fa2fa2529a85d075a8142225f8bca0cdb915b0ac2d5098"
   },
   {
    "name": "MoreCraftableEquipment.esp",
-   "light": false
+   "light": false,
+   "sha256": "1ef6e240fcd9c87d63e3e021bccd67afc96b5e263ee811a790978ffb36a1c81e"
   },
   {
    "name": "Hothtrooper44_ArmorCompilation.esp",
-   "light": false
+   "light": false,
+   "sha256": "cf73beb2ef1f12ba0834a110eccf16687e721290214f2056c8aa9b2c90ef5df8"
   },
   {
    "name": "Vernim Wood.esp",
-   "light": false
+   "light": false,
+   "sha256": "f41a7c1778efc3e47a7709b2c51cd3f920d8ac29de8b617cccc700b2e70d248d"
   },
   {
    "name": "AnotherOakwood.esp",
-   "light": false
+   "light": false,
+   "sha256": "e29668024dc76c1dfb8e3724448522ae1b8853815cc221c5f0024e433d2b2264"
   },
   {
    "name": "RiftenExtension.esp",
-   "light": false
+   "light": false,
+   "sha256": "5a965e4826982c89fe5dcf4f3bcec63a1e09d95af2c12a66bd602807f8c4dbe9"
   },
   {
    "name": "RiftenExtensionNorth.esp",
-   "light": false
+   "light": false,
+   "sha256": "68d03af5e045a139a6ff2eccaf313b80c213d72106e1e8fa9c4de5b97eabde8d"
   },
   {
    "name": "MammothManor.esp",
-   "light": false
+   "light": false,
+   "sha256": "2d0f8802572fe9fc7761cbf0afa5ffce0806392a33bb5daf672d191f2fd48906"
   },
   {
    "name": "Greymoor.esp",
-   "light": false
+   "light": false,
+   "sha256": "c3da279b0ca5e74ce2688b4693cf6cf1529861a91d982e7771e73e197131d2dd"
   },
   {
    "name": "Amol Village.esp",
-   "light": false
+   "light": false,
+   "sha256": "9c5d3b9ed39e514809e9cefe7cff83f8710a60ea248525fbcf8bff5ad3e7b958"
   },
   {
    "name": "1AncientImperial.esp",
-   "light": false
+   "light": false,
+   "sha256": "da5ea26bd2cf2d51cde6c7d11c4265c4fe2b5de6136ea930a8c9cdc703c11e5a"
   },
   {
    "name": "Granitehall.esp",
-   "light": false
+   "light": false,
+   "sha256": "e2bb30f7370ceb335f142c9d4b18aa18b30665fef184ea0c535b5498835c2fc1"
   },
   {
    "name": "Lainalten.esp",
-   "light": false
+   "light": false,
+   "sha256": "0662fce098a3d8e28cbd2c7247ffd8302299caa326db452c0eee802a000379a5"
   },
   {
    "name": "Missives.esp",
-   "light": false
+   "light": false,
+   "sha256": "6892d9199efc513003d74afb071b3191ab30305434f5b904af13df30cc85f28a"
   },
   {
    "name": "Winterhold Restored.esp",
-   "light": false
+   "light": false,
+   "sha256": "26876b112497fca117b5dd1305a424668b3ff995a6042d29aef690fe08d6f6d5"
   },
   {
    "name": "Cloaks&Capes.esp",
-   "light": false
+   "light": false,
+   "sha256": "dbc1aa28ba652c01d7be983473c2c95cd0e0a1203b11212824a39cc2c6b1cbfe"
   },
   {
    "name": "Closed Helmets StandAlone.esp",
-   "light": true
+   "light": true,
+   "sha256": "43ce408d0f187b6fce6186111c3c9273fc218ec616cb79d816360ae54440fb6f"
   },
   {
    "name": "CommonClothes.esp",
-   "light": false
+   "light": false,
+   "sha256": "f3f30b811401f4839a05b0e3a3164775cb57e074e179b68caf2806648de8a413"
   },
   {
    "name": "Imperial Battlemage Armor.esp",
-   "light": true
+   "light": true,
+   "sha256": "15342466501f00cd686bb3a33cbcf85ad4d7bb691b6c88b13d4718f82121861f"
   },
   {
    "name": "Imperial Guard Centurion Armor SE - Johnskyrim.esp",
-   "light": false
+   "light": false,
+   "sha256": "a18173786ad73350c0d03eef7e3484db2fe82b5129564a051791488b1a479fb7"
   },
   {
    "name": "Immersive Weapons.esp",
-   "light": false
+   "light": false,
+   "sha256": "bc084ae9f523c167eea11d1d7363314250b8fe7e7912607f58292e91e788e3c7"
   },
   {
    "name": "DIS_Heavy_Legion.esp",
-   "light": false
+   "light": false,
+   "sha256": "728a6a6ea1dd369469068f19db97f14fee07d2e72864d7acdc3343f29a6a0d37"
   },
   {
    "name": "Sentinel.esp",
-   "light": true
+   "light": true,
+   "sha256": "d7e2ebc505005a455fea366961c5e2243c2db4d239d39390352d4890ba5c64fd"
   },
   {
    "name": "EinherjarArmors.esp",
-   "light": true
+   "light": true,
+   "sha256": "89b9c0b15bc58482a163a1d1fe4c6fd1f649f14dcc805a26adf403e994cedab5"
   },
   {
    "name": "Titus Mede I's Armor - My version by Xtudo.esp",
-   "light": true
+   "light": true,
+   "sha256": "dcd661cafe04eb8331c238e8dedee4ae8d7cf80eb14c764d41b4e889b30f9701"
   },
   {
    "name": "evgnnsmpaccessories.esp",
-   "light": true
+   "light": true,
+   "sha256": "94f72b681bcf84e0f725fae3b6bde88e611dc71251933a4fa5af4adbf8e6fed2"
   },
   {
    "name": "Viking's Longhouse.esp",
-   "light": false
+   "light": false,
+   "sha256": "5cbe262a1a4cd2cfb328c618cd50154420cc30456c901ce8dcde82443f6d7813"
   },
   {
    "name": "Kad_MoonMonkRobes.esp",
-   "light": true
+   "light": true,
+   "sha256": "8d9d7489f7ffd683c9e4a904e8f01b5f5d2b4128f87e76cf743b0652f6761026"
   },
   {
    "name": "Armors of the Velothi Pt2.esp",
-   "light": true
+   "light": true,
+   "sha256": "b505934e0a8fc4e278e05f71db79f8688f39b0436823781181e9dac53fd3c3ba"
   },
   {
    "name": "GVLT_LifeswornVestige.esp",
-   "light": true
+   "light": true,
+   "sha256": "ffff4affb9071610bb99172b0dd5ba5cb1456b5496eb0918b7170a12583d4fa0"
   },
   {
    "name": "MoreCraftableEquipment_CloaksandCapes.esp",
-   "light": true
+   "light": true,
+   "sha256": "d75366385d6be8a69877cdc19473f06091ac27178bb28dcdd288a5e56d561363"
   },
   {
    "name": "Redgarb.esp",
-   "light": true
+   "light": true,
+   "sha256": "cda53a4959a56766a6093553a93e84386d3a96233a3afe94144afa0605db9005"
   },
   {
    "name": "RedoranTombWarden.esp",
-   "light": true
+   "light": true,
+   "sha256": "a9cf911681645e73bab9a867468cff8a0930f24eddbadc3d1f9813e053c1f85b"
   },
   {
    "name": "ArgonianWeapons.esp",
-   "light": false
+   "light": false,
+   "sha256": "42f375dbf6064fed3d059caf96b2ebd7e7f1da9c264869bc7141c4d767dee65e"
   },
   {
    "name": "Kad_BogBlightMask.esp",
-   "light": true
+   "light": true,
+   "sha256": "ff3b43d9779a2f262a3b6b5b6d68bf3a1318e0e0f3673527d6363ed22798d5e5"
   },
   {
    "name": "EyepatchEyewearCollection.esp",
-   "light": true
+   "light": true,
+   "sha256": "84bbd5026fc8525e4aaec3b6b11e0ef2e0d3c18aeca0298d1648b47b56ef0b21"
   },
   {
    "name": "CuyiAntlers.esp",
-   "light": true
+   "light": true,
+   "sha256": "b5643affc0019c5147e5555995ef102900f5849468a654128925ec998f6ac514"
   },
   {
    "name": "The Great Town of Karthwasten.esp",
-   "light": true
+   "light": true,
+   "sha256": "30e813e334ed4b39c28929a5d787ec85880ab03d8bc5223495b373f224fe0469"
   },
   {
    "name": "JK's Riften Outskirts.esp",
-   "light": true
+   "light": true,
+   "sha256": "3129ec5357c6d6e0093957eea251706308f202a6c752aec98d77a0639b6a75f5"
   },
   {
    "name": "JKs Whiterun.esp",
-   "light": false
+   "light": false,
+   "sha256": "ad642b720688836b802920b0d38948c09abdc2fcbb025f5d1ce5be3466694917"
   },
   {
    "name": "JK's Riverwood.esp",
-   "light": false
+   "light": false,
+   "sha256": "ddc9648a9d45f89d16a0f4c179191ee98f237220e1a667e9df1d102c04dd4dc4"
   },
   {
    "name": "The Great City of Morthal.esp",
-   "light": false
+   "light": false,
+   "sha256": "0c1fdab555f3a1a532979a83d17aaa6ba39372defde89d0fe1f08a2af4ea326d"
   },
   {
    "name": "The Great City of Dragon Bridge.esp",
-   "light": false
+   "light": false,
+   "sha256": "2c34dd4481feb3a51fb95064ef941c39de16787f0155e83fdc77f181bdccfeff"
   },
   {
    "name": "Reich Corigate.esp",
-   "light": false
+   "light": false,
+   "sha256": "2216752d0a48169cc3b7c2d9197d0af5b458b5f091a92ff46e5dff785bc4dd2c"
   },
   {
    "name": "Saltdeposits.esp",
-   "light": false
+   "light": false,
+   "sha256": "a0969bd003246368daee39da403fd3fc578f6196250e1809da03f9983f8b2cbb"
   },
   {
    "name": "Lillemyr.esp",
-   "light": true
+   "light": true,
+   "sha256": "e543a6398bb2423c9e0e907c7f3d02c103c96887e45bbeaf690596b1110c8bba"
   },
   {
    "name": "Markarth Entrance and Farm Overhaul - Performance patch.esp",
-   "light": true
+   "light": true,
+   "sha256": "2912598082b9d48120202e280eba3f89511ffd65e1b0aa8a08fda04c2ad67007"
   },
   {
    "name": "MoreCraftableEquipment_BYOHLooms.esp",
-   "light": true
+   "light": true,
+   "sha256": "727380559026234bd405eafaadeec9757ed21fd60e436e57cd06c604a199edf6"
   },
   {
    "name": "Resources - The Great Cities.esp",
-   "light": false
+   "light": false,
+   "sha256": "b0a8524c02fe6acd7a23f20277e0aea6c413f4c1843aceac7742728ba896387c"
   },
   {
    "name": "CapitalWindhelmExpansion - WindhelmGateFixes.esp",
-   "light": true
+   "light": true,
+   "sha256": "dc2b0b9e6c009b043e553b325398fbe21c5c28ae7b3600327816a4cbd22163fe"
   },
   {
    "name": "HammerHair.esp",
-   "light": true
+   "light": true,
+   "sha256": "cb9ee383388dcbf147a87c9f6d132f29ac94dfe723a3ff5f4eeeac076c0e21bf"
   },
   {
    "name": "Beards of Power.esp",
-   "light": true
+   "light": true,
+   "sha256": "6e09201b0fd6557620fae77b714b2ed21c34dbe86d0f979fd1a044606f9a1971"
   },
   {
    "name": "Beards.esp",
-   "light": false
+   "light": false,
+   "sha256": "ad3d6c69f8fa0da8a7bc340602124486c52d30808b795a302d3225d635bda68f"
   },
   {
    "name": "Hothtrooper44_Armor_Ecksstra.esp",
-   "light": false
+   "light": false,
+   "sha256": "dfdb3fdeef737a3c79b6294b6466479701bd93c5c299c7fc1df67fcd9032ae69"
   },
   {
    "name": "Sentinel - More Craftable Equipment.esp",
-   "light": true
+   "light": true,
+   "sha256": "93f98d7a2514a41bf7f9436e400150f7f974d881cfd78dc3830f614ac1435520"
   },
   {
    "name": "Sentinel - City Guards.esp",
-   "light": true
+   "light": true,
+   "sha256": "6474b70ab7f5d10d45256586ebcbbf13d01860d4204f0e20fb837c3df87b603b"
   },
   {
    "name": "Sentinel - Priests and Acolytes.esp",
-   "light": true
+   "light": true,
+   "sha256": "f82b1cddec3bc5a1028feb7565cbf2ce2a2058774b2d1d12306267d4d097a02c"
   },
   {
    "name": "AlduinakAdditions.esp",
-   "light": false
+   "light": false,
+   "sha256": "0197dc1ffe4281fd64804040803fcaa903e1a172f28d384bb5f85d0b65737a63"
   },
   {
    "name": "DynDOLOD.esp",
-   "light": false
+   "light": false,
+   "sha256": "b701dd7c60637f93458b65d0b7e3a72261095e0ea4fde71f41b8225dab98a920"
   },
   {
    "name": "Occlusion.esp",
-   "light": true
+   "light": true,
+   "sha256": "0a69698a943e903c4bb0fb4783e0b14d28c4b3def4be3665eb44062521ff358b"
   }
  ],
  "pluginChanges": [
@@ -466,6 +555,26 @@
    "now": "cd66b45f0961e7ca3f4917e40c8edb0212e75337407a40d9c3caa424ea2985d4"
   }
  ],
+ "sourceSha256": {
+  "Skyrim.esm": "64e18549ba5d352727c9bac5241882bd05d124b8351be81783ce0323de164cee",
+  "Update.esm": "655138032423ae6a9652ab5bfade2cb58bd2d1e9ed8012bad0133e021ba9ed0f",
+  "Dawnguard.esm": "a17408743060559823dcc958c9fe94c9e70b90fbe6ef474d420585878b8ff1a0",
+  "Dragonborn.esm": "df8ae7dc97ab8a453e2e083cc3cfcd1cb24ec42d14cd5b50e2df39e520b6f386",
+  "WindhelmSSE.esp": "77ff48032f6479209e911e123ab5ecaf4c4dbf056e67eba0ef2f65a090c3d3e6",
+  "AVExpansion.esp": "3ddcef7a9e1e90a9d519b7d336a2bac7924d37a4c1e010e70d995fa68788e20e",
+  "waccf_armor and clothing extension.esp": "7e7178077446ad4cf4fa2fa2529a85d075a8142225f8bca0cdb915b0ac2d5098",
+  "MoreCraftableEquipment.esp": "1ef6e240fcd9c87d63e3e021bccd67afc96b5e263ee811a790978ffb36a1c81e",
+  "Hothtrooper44_ArmorCompilation.esp": "cf73beb2ef1f12ba0834a110eccf16687e721290214f2056c8aa9b2c90ef5df8",
+  "Cloaks&Capes.esp": "dbc1aa28ba652c01d7be983473c2c95cd0e0a1203b11212824a39cc2c6b1cbfe",
+  "Closed Helmets StandAlone.esp": "43ce408d0f187b6fce6186111c3c9273fc218ec616cb79d816360ae54440fb6f",
+  "Immersive Weapons.esp": "bc084ae9f523c167eea11d1d7363314250b8fe7e7912607f58292e91e788e3c7",
+  "DIS_Heavy_Legion.esp": "728a6a6ea1dd369469068f19db97f14fee07d2e72864d7acdc3343f29a6a0d37",
+  "Sentinel.esp": "d7e2ebc505005a455fea366961c5e2243c2db4d239d39390352d4890ba5c64fd",
+  "EinherjarArmors.esp": "89b9c0b15bc58482a163a1d1fe4c6fd1f649f14dcc805a26adf403e994cedab5",
+  "Titus Mede I's Armor - My version by Xtudo.esp": "dcd661cafe04eb8331c238e8dedee4ae8d7cf80eb14c764d41b4e889b30f9701",
+  "Redgarb.esp": "cda53a4959a56766a6093553a93e84386d3a96233a3afe94144afa0605db9005",
+  "AlduinakAdditions.esp": "0197dc1ffe4281fd64804040803fcaa903e1a172f28d384bb5f85d0b65737a63"
+ },
  "items": {
   "0x00013920": {
    "listed": true,
@@ -475,6 +584,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -488,6 +601,10 @@
    "adeptRecipe": false,
    "type": "WEAP",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -501,6 +618,10 @@
    "adeptRecipe": false,
    "type": "WEAP",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -514,6 +635,10 @@
    "adeptRecipe": false,
    "type": "WEAP",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -527,6 +652,10 @@
    "adeptRecipe": false,
    "type": "AMMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -540,6 +669,10 @@
    "adeptRecipe": false,
    "type": "AMMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "ammunition",
    "intent": "ebony",
@@ -551,6 +684,10 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -562,6 +699,10 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -575,6 +716,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -586,6 +731,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "a daedric artifact",
    "intent": "ebony",
@@ -599,6 +747,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -610,6 +762,10 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -621,6 +777,10 @@
    "reason": "enchanted",
    "type": "WEAP",
    "plugin": "skyrim.esm",
+   "sources": [
+    "dragonborn.esm",
+    "skyrim.esm"
+   ],
    "staff": true,
    "note": "",
    "intent": null,
@@ -634,6 +794,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -647,6 +811,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -658,6 +826,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "morecraftableequipment.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -669,6 +841,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -680,6 +855,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -691,6 +869,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -702,6 +883,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -713,6 +897,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -724,6 +911,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "update.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -735,6 +926,10 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -746,6 +941,10 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -759,6 +958,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -770,6 +973,10 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -783,6 +990,10 @@
    "adeptRecipe": true,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": "falmer cuirass",
@@ -796,6 +1007,10 @@
    "adeptRecipe": true,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -809,6 +1024,10 @@
    "adeptRecipe": true,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -820,6 +1039,10 @@
    "reason": "enchanted",
    "type": "WEAP",
    "plugin": "skyrim.esm",
+   "sources": [
+    "dragonborn.esm",
+    "skyrim.esm"
+   ],
    "staff": true,
    "note": "",
    "intent": null,
@@ -831,6 +1054,9 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -842,6 +1068,9 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -853,6 +1082,9 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -864,6 +1096,9 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -875,6 +1110,9 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -888,6 +1126,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -899,6 +1141,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -910,6 +1155,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -921,6 +1169,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -932,6 +1183,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -943,6 +1197,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -954,6 +1211,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -965,6 +1225,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -976,6 +1239,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -987,6 +1253,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -998,6 +1267,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "update.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1009,6 +1282,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "update.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1020,6 +1297,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "update.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1031,6 +1312,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "skyrim.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1042,6 +1327,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "waccf_armor and clothing extension.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1053,6 +1342,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "waccf_armor and clothing extension.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1064,6 +1357,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "waccf_armor and clothing extension.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1075,6 +1372,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "waccf_armor and clothing extension.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1086,6 +1387,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "waccf_armor and clothing extension.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1097,6 +1402,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "waccf_armor and clothing extension.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1108,6 +1417,10 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "skyrim.esm",
+   "sources": [
+    "skyrim.esm",
+    "update.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1121,6 +1434,10 @@
    "adeptRecipe": false,
    "type": "AMMO",
    "plugin": "dawnguard.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "dawnguard.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1134,6 +1451,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "dragonborn.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "dragonborn.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1147,6 +1468,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "dragonborn.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "dragonborn.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1160,6 +1485,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "dragonborn.esm",
+   "sources": [
+    "alduinakadditions.esp",
+    "dragonborn.esm"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1171,6 +1500,9 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "windhelmsse.esp",
+   "sources": [
+    "windhelmsse.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1184,6 +1516,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "avexpansion.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "avexpansion.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1195,6 +1531,10 @@
    "reason": "jewelry",
    "type": "ARMO",
    "plugin": "hothtrooper44_armorcompilation.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "hothtrooper44_armorcompilation.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1208,6 +1548,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "hothtrooper44_armorcompilation.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "hothtrooper44_armorcompilation.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1221,6 +1565,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "cloaks&capes.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "cloaks&capes.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1234,6 +1582,10 @@
    "adeptRecipe": false,
    "type": "WEAP",
    "plugin": "immersive weapons.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "immersive weapons.esp"
+   ],
    "staff": false,
    "note": "crafted mostly from ebony (aldcatmat_ebony), but no ebony material keyword",
    "intent": null,
@@ -1247,6 +1599,10 @@
    "adeptRecipe": false,
    "type": "WEAP",
    "plugin": "immersive weapons.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "immersive weapons.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1260,6 +1616,9 @@
    "adeptRecipe": false,
    "type": "WEAP",
    "plugin": "dis_heavy_legion.esp",
+   "sources": [
+    "dis_heavy_legion.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1273,6 +1632,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "dis_heavy_legion.esp",
+   "sources": [
+    "dis_heavy_legion.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1286,6 +1648,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "dis_heavy_legion.esp",
+   "sources": [
+    "dis_heavy_legion.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1299,6 +1664,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "dis_heavy_legion.esp",
+   "sources": [
+    "dis_heavy_legion.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1312,6 +1680,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "dis_heavy_legion.esp",
+   "sources": [
+    "dis_heavy_legion.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1325,6 +1696,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "dis_heavy_legion.esp",
+   "sources": [
+    "dis_heavy_legion.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1336,6 +1710,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "closed helmets standalone.esp",
+   "sources": [
+    "closed helmets standalone.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1347,6 +1724,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "closed helmets standalone.esp",
+   "sources": [
+    "closed helmets standalone.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1358,6 +1738,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "closed helmets standalone.esp",
+   "sources": [
+    "closed helmets standalone.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1369,6 +1752,9 @@
    "reason": "enchanted",
    "type": "ARMO",
    "plugin": "closed helmets standalone.esp",
+   "sources": [
+    "closed helmets standalone.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1382,6 +1768,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1395,6 +1785,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1408,6 +1802,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1421,6 +1819,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1434,6 +1836,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1447,6 +1853,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1460,6 +1870,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1473,6 +1886,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1486,6 +1902,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1499,6 +1918,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1512,6 +1934,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1525,6 +1950,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1538,6 +1966,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1551,6 +1982,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1564,6 +1998,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1577,6 +2014,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1590,6 +2030,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1603,6 +2046,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1616,6 +2062,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1629,6 +2078,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1642,6 +2094,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1655,6 +2110,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1668,6 +2126,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1681,6 +2142,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1694,6 +2158,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1707,6 +2174,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1720,6 +2190,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1733,6 +2206,9 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1746,6 +2222,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1759,6 +2239,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "sentinel.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "sentinel.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1772,6 +2256,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "einherjararmors.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1785,6 +2273,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "einherjararmors.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1798,6 +2290,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "einherjararmors.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1811,6 +2307,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "einherjararmors.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1824,6 +2324,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "einherjararmors.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1837,6 +2341,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "einherjararmors.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1850,6 +2358,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "einherjararmors.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1863,6 +2375,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "titus mede i's armor - my version by xtudo.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1876,6 +2392,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "titus mede i's armor - my version by xtudo.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1889,6 +2409,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "titus mede i's armor - my version by xtudo.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1902,6 +2426,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "titus mede i's armor - my version by xtudo.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1915,6 +2443,10 @@
    "adeptRecipe": true,
    "type": "ARMO",
    "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "titus mede i's armor - my version by xtudo.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": "ebony",
@@ -1928,6 +2460,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "redgarb.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "redgarb.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1941,6 +2477,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "redgarb.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "redgarb.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1954,6 +2494,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "redgarb.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "redgarb.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1967,6 +2511,10 @@
    "factionGear": false,
    "type": "ARMO",
    "plugin": "redgarb.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "redgarb.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,
@@ -1980,6 +2528,10 @@
    "adeptRecipe": false,
    "type": "ARMO",
    "plugin": "redgarb.esp",
+   "sources": [
+    "alduinakadditions.esp",
+    "redgarb.esp"
+   ],
    "staff": false,
    "note": "",
    "intent": null,

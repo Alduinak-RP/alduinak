@@ -3,6 +3,7 @@
 // restore-stripped-items.js against real strip backup documents and stubbed live states: node deploy/mongodb/test/test-restore-stripped-items.js
 
 const assert = require('node:assert/strict')
+const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -10,7 +11,29 @@ const path = require('path')
 const FIX = path.join(__dirname, 'fixtures', 'restore')
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'restore-stripped-'))
 const ROOT = path.join(TMP, 'root')
-process.env.ALDUINAK_SERVER_SETTINGS = path.join(FIX, 'settings.json')
+const DATA = path.join(TMP, 'data')
+const INTENT = path.join(TMP, 'strip-intent.json')
+
+// A Data folder of stand-in plugins with the fixture's light flags, and the fixture intent's hashes pointed at them
+const fixIntent = JSON.parse(fs.readFileSync(path.join(FIX, 'strip-intent.json'), 'utf8'))
+const fixSettings = JSON.parse(fs.readFileSync(path.join(FIX, 'settings.json'), 'utf8'))
+const lightOf = new Map(fixIntent.plugins.map(p => [p.name.toLowerCase(), p.light]))
+function writePlugin(name, light = lightOf.get(name.toLowerCase()) === true, body = name) {
+  const head = Buffer.alloc(12)
+  head.write('TES4', 0, 'latin1')
+  head.writeUInt32LE(light ? 0x200 : 0, 8)
+  fs.writeFileSync(path.join(DATA, name), Buffer.concat([head, Buffer.from(body)]))
+}
+const shaOf = name => crypto.createHash('sha256').update(fs.readFileSync(path.join(DATA, name))).digest('hex')
+fs.mkdirSync(DATA, { recursive: true })
+for (const n of new Set([...fixSettings.loadOrder, ...Object.keys(fixIntent.sourceSha256)])) writePlugin(n)
+fs.writeFileSync(INTENT, JSON.stringify({
+  ...fixIntent,
+  plugins: fixIntent.plugins.map(p => ({ ...p, sha256: shaOf(p.name) })),
+  sourceSha256: Object.fromEntries(Object.keys(fixIntent.sourceSha256).map(n => [n, shaOf(n)])),
+}))
+fs.writeFileSync(path.join(TMP, 'settings.json'), JSON.stringify({ ...fixSettings, dataDir: DATA }))
+process.env.ALDUINAK_SERVER_SETTINGS = path.join(TMP, 'settings.json')
 process.env.ALDUINAK_STRIP_BACKUP = path.join(FIX, 'strip')
 process.env.ALDUINAK_WIPE_BACKUP_ROOT = FIX
 process.env.ALDUINAK_RESTORE_ROOT = ROOT
@@ -21,7 +44,6 @@ const formIds = require(path.join(S.SM, 'formIds'))
 const { BSON } = S.requireDriver()
 const { EJSON, Int32, Long, Double, ObjectId } = BSON
 
-const INTENT = path.join(FIX, 'strip-intent.json')
 const intent = JSON.parse(fs.readFileSync(INTENT, 'utf8'))
 const byHex = o => new Map(Object.entries(o).map(([k, v]) => [parseInt(k, 16) >>> 0, v]))
 const list = { items: new Map([...byHex(intent.items)].filter(([, v]) => v.listed)), spells: byHex(intent.spells) }
@@ -512,6 +534,19 @@ async function main() {
   fs.writeFileSync(bad, JSON.stringify({ ...intent, stripLoadOrder: order }))
   await assert.rejects(R.run(['preview', '--report', path.join(TMP, 'x2.json'), '--intent', bad], { log: quiet }), refused(/load order changed/))
   await assert.rejects(R.run(['plan', '--also-keep', 'ebony'], { log: quiet }), err => err instanceof S.UsageError)
+
+  // Refusals: a plugin whose light flag flipped since the strip, a plugin behind the removed items that changed, an intent without hashes
+  const mid = intent.plugins.find(p => !p.light && !/^(skyrim|update)[.]esm$/i.test(p.name)).name
+  writePlugin(mid, true)
+  await assert.rejects(R.run(['preview', '--report', path.join(TMP, 'x3.json'), '--intent', INTENT], { log: quiet }), refused(new RegExp(`light flag of ${mid.replace(/[.]/g, '[.]')} changed`)))
+  writePlugin(mid)
+  const source = Object.keys(intent.sourceSha256).at(-1)
+  writePlugin(source, undefined, 'a record dropped')
+  await assert.rejects(R.run(['preview', '--report', path.join(TMP, 'x4.json'), '--intent', INTENT], { log: quiet }), refused(/changed since .* was made: run python deploy[/]mongodb[/]strip-intent[.]py/))
+  writePlugin(source)
+  fs.writeFileSync(bad, JSON.stringify({ ...intent, sourceSha256: undefined }))
+  await assert.rejects(R.run(['preview', '--report', path.join(TMP, 'x5.json'), '--intent', bad], { log: quiet }), refused(/carries no plugin hashes/))
+  await R.run(['preview', '--report', path.join(TMP, 'x6.json'), '--intent', INTENT], { log: quiet })
   await assert.rejects(R.run(['backup', '--out', path.join(TMP, 'elsewhere'), '--intent', INTENT], { open: stub(world()).open, log: quiet }), refused(/directly under/))
   // A copy of a backup outside the root is neither applied nor rolled back, so its apply record cannot hide from later runs
   s = stub(world())

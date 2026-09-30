@@ -7,6 +7,7 @@ const path = require('path')
 const S = require('./strip-common')
 
 const formIds = require(path.join(S.SM, 'formIds'))
+const modsync = require(path.join(S.SM, 'modsync'))
 const { gameServerBlocker } = require(path.join(S.SM, 'serviceCheck'))
 const { Refusal, UsageError, plural, hex, sha256, arr, stamp, writeNew, canonical, nameOf, planDoc, ownerLabel, DOCS_FILE } = S
 
@@ -66,12 +67,30 @@ function checkRemoved(ids, flag, classes) {
 function byHex(obj) { return new Map(Object.entries(obj || {}).map(([k, v]) => [parseInt(k, 16) >>> 0, v])) }
 
 // The strip's list as far as the backup touches it, with the owner's intent per base id (strip-intent.py)
-function loadIntent(file, info, settings) {
+// The Data folder must still hold what the intent was read from: the same light flags (the backup's form ids) and the same plugins behind the removed items
+async function checkPlugins(raw, settings, file) {
+  const again = `run python deploy/mongodb/strip-intent.py to sort the removed items again from the plugins as they are now, then take a new backup`
+  if (!settings.dataDir) throw new Refusal('server-settings.json has no dataDir, so the plugins behind strip-intent.json cannot be checked')
+  if (!raw.sourceSha256 || arr(raw.plugins).some(p => !p.sha256)) throw new Refusal(`${file} carries no plugin hashes: ${again}`)
+  const flags = modsync.readPluginFlags(raw.plugins.map(p => p.name), { dataDir: settings.dataDir })
+  const missing = raw.plugins.filter(p => typeof flags[p.name].light !== 'boolean').map(p => p.name)
+  if (missing.length) throw new Refusal(`cannot read ${missing.join(', ')} in ${settings.dataDir}`)
+  const flipped = raw.plugins.filter(p => (flags[p.name].light || /[.]esl$/i.test(p.name)) !== p.light)
+  if (flipped.length) throw new Refusal(`the light flag of ${flipped.map(p => p.name).join(', ')} changed since the strip, so the backup's form ids no longer mean the same records`)
+  const changed = []
+  for (const [name, sha] of Object.entries(raw.sourceSha256)) {
+    if (await modsync.sha256File(path.join(settings.dataDir, name)).catch(() => null) !== sha) changed.push(name)
+  }
+  if (changed.length) throw new Refusal(`${changed.join(', ')} changed since ${file} was made: ${again}`)
+}
+
+async function loadIntent(file, info, settings) {
   const raw = readJson(file, 'intent file')
   if (raw.docsSha256 !== info.docsSha256) throw new Refusal(`${file} was made for another strip backup, run strip-intent.py for this one`)
   if (raw.listSha256 !== info.listSha256) throw new Refusal(`${file} was made from another forbidden-items.json than the one the strip ran with`)
   if (Boolean(raw.factionGear) !== Boolean(info.factionGear)) throw new Refusal(`${file} disagrees with the backup about --faction-gear`)
   S.checkOrder(raw.stripLoadOrder, settings, file, true)
+  await checkPlugins(raw, settings, file)
   const classes = byHex(raw.items)
   const list = { sha: raw.listSha256, slots: S.slotsOf(raw.plugins), items: new Map([...classes].filter(([, v]) => v.listed)), spells: byHex(raw.spells) }
   return { file, sha: sha256(fs.readFileSync(file)), classes, list }
@@ -161,7 +180,7 @@ function resolveEarlier(records, live, settings) {
   return { byDoc, summaries }
 }
 
-function loadInputs(flags, settings) {
+async function loadInputs(flags, settings) {
   const ov = Object.fromEntries(Object.entries(OVERRIDES).map(([k, flag]) => [k, idList(flags[k], flag)]))
   const keep = ov.alsoKeep
   const give = ov.alsoGive
@@ -169,7 +188,7 @@ function loadInputs(flags, settings) {
   if (both.length) throw new UsageError(`${both.map(hex).join(', ')} is in both --also-keep and --also-give`)
   const dir = path.resolve(flags.strip || STRIP_DIR)
   const strip = S.readBackup(dir, settings)
-  const intent = loadIntent(path.resolve(flags.intent || INTENT_FILE), strip.info, settings)
+  const intent = await loadIntent(path.resolve(flags.intent || INTENT_FILE), strip.info, settings)
   for (const [k, flag] of Object.entries(OVERRIDES)) checkRemoved(ov[k], flag, intent.classes)
   const stripPlan = loadStripPlan(flags.stripPlan && path.resolve(flags.stripPlan), strip.info)
   const { purge, BSON } = S.requireDriver()
@@ -711,7 +730,7 @@ async function run(argv, deps = {}) {
   const env = { settings: S.loadSettings(), open: deps.open, blocker: deps.blocker || gameServerBlocker, log }
   S.requireDriver()
   if (mode === 'restore') return rollbackMode(flags, env)
-  const ctx = loadInputs(flags, env.settings)
+  const ctx = await loadInputs(flags, env.settings)
   if (mode === 'preview') return previewMode(flags, ctx, env)
   await { plan: planMode, backup: backupMode, apply: applyMode }[mode](flags, ctx, env)
 }
