@@ -457,6 +457,24 @@ async function main() {
   r = await plan(w, ['--per-document'])
   assert.equal(r.given('c0cd4:Skyrim.esm', RING), 7)
 
+  // Pets: a return kept in a pet's saddlebags counts as held, an active pet by its actor's inventory rather than its stale stored copy
+  const pet = (uid, actorId, rings) => ({ uid, kind: 'horse', name: uid, actorId: new Int32(actorId | 0), inventory: { entries: [{ baseId: new Int32(RING), count: new Int32(rings) }] } })
+  w = world()
+  doc(w, '11').dynamicFields = { 'private.pets': { list: [pet('stored', 0, 3)] } }
+  r = await plan(w)
+  assert.equal(r.given('11', RING), 2)
+  r = await plan(w, ['--per-document'])
+  assert.equal(r.given('11', RING), 2)
+  doc(w, '11').dynamicFields['private.pets'].list.push(pet('out', 0xFF0000A0, 4))
+  w.push({ _id: new ObjectId('6ac0000000000000000000bb'), formDesc: 'a0', recType: new Int32(1), profileId: new Int32(-1), inv: { entries: [{ baseId: new Int32(RING), count: new Int32(1) }] } })
+  r = await plan(w)
+  assert.equal(r.given('11', RING), 1)
+  alt.dynamicFields = { 'private.pets': { list: [pet('alt', 0, 2)] } }
+  w.push(alt)
+  r = await plan(w)
+  assert.equal(r.given('11', RING) + r.given('c0cd4:Skyrim.esm', RING), 1)
+  assert.equal(r.given('c0cd4:Skyrim.esm', RING), 0)
+
   // Owner overrides: --also-give returns an intended removal, --also-keep keeps a return, never both
   r = await plan(world(), ['--also-give', '0x000139BF', '--also-keep', '0x3B97C'])
   assert.equal(r.given('c4bd5:Skyrim.esm', 0x000139BF), 1)

@@ -37,9 +37,13 @@ else back:
   `min(removed, backup total - current total)`, counting every variant of the
   item. An item an admin or a trade already returned is not given twice, and
   no entry is ever lowered or removed. It also caps each profile at what it
-  lost less what its characters and claimed containers hold now, so a return
-  moved to a chest or another character counts too (`--per-document` turns
-  that off).
+  lost less what its characters, their pets (stored saddlebags, or the actor
+  of a pet out in the world) and its claimed containers hold now, so a return
+  moved to a chest, a pet or another character counts too (`--per-document`
+  counts only the document and a character's own pets). Known limit: a return
+  since sold, used, dropped, given to someone else, or left in a chest the
+  profile no longer claims or on a deleted character is not seen and comes
+  back again.
 - An apply settles every item id it decided for each document it reached,
   given or already back at the time, and later runs never give that id to
   that document again (a return it counted and the player sold since stays

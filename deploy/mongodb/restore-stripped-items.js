@@ -39,6 +39,7 @@ const ROLLED_BACK_LOG = 'restore-applied.rolled-back.log'
 const INTENTS = { ebony: 'ebony equipment', 'spell tome': 'spell tomes', 'falmer cuirass': 'Falmer chest armour' }
 const GROUPS = { jewelry: 'jewelry', scroll: 'scrolls', enchanted: 'enchanted gear', staff: 'staves', 'spell tome': 'spell tomes', 'enchanted entry': 'player-enchanted gear' }
 const WORN = ['worn', 'wornLeft']
+const PETS_PROP = 'private.pets'
 
 function readJson(file, what) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) }
@@ -170,7 +171,7 @@ function loadInputs(flags, settings) {
   checkRemoved(give, '--also-give', intent.classes)
   const stripPlan = loadStripPlan(flags.stripPlan && path.resolve(flags.stripPlan), strip.info)
   const { purge, BSON } = S.requireDriver()
-  return { dir, strip, intent, stripPlan, keep, give, settings, records: earlierApplies(strip.info.docsSha256), earlier: NO_EARLIER, isPlayer: purge.isPlayer, BSON, owners: null, profiles: null, pool: !flags.perDocument }
+  return { dir, strip, intent, stripPlan, keep, give, settings, records: earlierApplies(strip.info.docsSha256), earlier: NO_EARLIER, isPlayer: purge.isPlayer, BSON, owners: null, profiles: null, actors: null, pool: !flags.perDocument }
 }
 
 // ── The restore rule ─────────────────────────────────────────────────────────
@@ -278,8 +279,8 @@ function assess(doc, live, ctx) {
     g.removed += r.count
     groups.set(r.baseId, g)
   }
-  const backupEntries = arr(doc.inv && doc.inv.entries)
-  const liveEntries = live ? arr(live.inv && live.inv.entries) : []
+  const backupEntries = heldEntries(doc, null)
+  const liveEntries = live ? heldEntries(live, ctx.actors) : []
   const settled = ctx.earlier.byDoc.get(row.id) || new Set()
   for (const g of groups.values()) {
     const cls = classes.get(g.baseId)
@@ -296,15 +297,33 @@ function assess(doc, live, ctx) {
   return row
 }
 
-// Listed base ids held now per profile, over its characters and the containers it claims (the strip left none of them there)
-function profileTotals(targets, list) {
+// The pets a character keeps (private.pets), with the form description of each one out in the world
+function petsOf(doc) {
+  const rec = doc && doc.dynamicFields && doc.dynamicFields[PETS_PROP]
+  return arr(rec && rec.list).filter(p => p && typeof p === 'object').map(p => {
+    const actorId = formIds.num(p.actorId) >>> 0
+    return { pet: p, actorDesc: actorId >>> 24 === 0xFF ? formIds.descOf(actorId, null) : null }
+  })
+}
+
+// What a document holds: its inventory and, for a character, its pets' saddlebags (an active pet's actor when it is in actors, else its stored copy)
+function heldEntries(doc, actors) {
+  const pets = petsOf(doc).flatMap(({ pet, actorDesc }) => {
+    const actor = actors && actorDesc ? actors.get(actorDesc) : null
+    return arr(actor ? actor.inv && actor.inv.entries : pet.inventory && pet.inventory.entries)
+  })
+  return [...arr(doc && doc.inv && doc.inv.entries), ...pets]
+}
+
+// Listed base ids held now per profile, over its characters, their pets and the containers it claims (the strip left none of them there)
+function profileTotals(targets, list, actors) {
   const out = new Map()
-  const add = (profile, doc) => {
+  const add = (profile, entries) => {
     const m = out.get(profile) || out.set(profile, new Map()).get(profile)
-    for (const e of arr(doc.inv && doc.inv.entries)) if (list.items.has(idOf(e))) m.set(idOf(e), (m.get(idOf(e)) || 0) + countOf(e))
+    for (const e of entries) if (list.items.has(idOf(e))) m.set(idOf(e), (m.get(idOf(e)) || 0) + countOf(e))
   }
-  for (const d of targets.players) if (!d.isDeleted) add(formIds.num(d.profileId), d)
-  for (const c of targets.containers) add(c.profile, c.doc)
+  for (const d of targets.players) if (!d.isDeleted) add(formIds.num(d.profileId), heldEntries(d, actors))
+  for (const c of targets.containers) add(c.profile, arr(c.doc.inv && c.doc.inv.entries))
   return out
 }
 
@@ -425,6 +444,8 @@ function render(title, rows, t, meta) {
   L.push(`  comes back: ${plural(t.giveItems, 'item', 'items')} (items / entries / holders)`)
   for (const [k, v] of Object.entries(t.give)) L.push(`    ${k.padEnd(34)} ${String(v.items).padStart(5)} / ${String(v.entries).padStart(4)} / ${v.holders}`)
   L.push(`  already back since the strip, not given again: ${plural(t.back, 'item', 'items')}${t.earlier ? `, ${t.earlier} of them by an earlier restore` : ''}${t.elsewhere ? `, ${t.elsewhere} held elsewhere on the same profile` : ''}`)
+  L.push(`    held now counts ${meta.poolByProfile ? "the profile's characters, their pets and its claimed containers" : "the document itself and a character's pets"}; a return since sold, used, dropped,`)
+  L.push('    given away, or left in a chest nobody of the profile claims or on a deleted character is not seen and comes back again')
   L.push(`  stays removed: ${plural(t.stayItems, 'item', 'items')} (items / entries / holders)`)
   for (const [k, v] of Object.entries(t.stays)) L.push(`    ${k.padEnd(34)} ${String(v.items).padStart(5)} / ${String(v.entries).padStart(4)} / ${v.holders}`)
   L.push(`    ${'learned spells (never restored)'.padEnd(34)} ${String(t.spells).padStart(5)}`)
@@ -496,7 +517,10 @@ async function liveRows(col, ctx) {
   ctx.earlier = resolveEarlier(ctx.records, live, ctx.settings)
   const targets = await S.findTargets(col, ctx.intent.list, true)
   ctx.owners = targets.owned
-  ctx.profiles = ctx.pool ? profileTotals(targets, ctx.intent.list) : null
+  const descs = [...new Set(targets.players.flatMap(d => petsOf(d).map(p => p.actorDesc).filter(Boolean)))]
+  ctx.actors = new Map()
+  if (descs.length) for await (const doc of col.find({ formDesc: { $in: descs } }, { promoteValues: false })) ctx.actors.set(doc.formDesc, doc)
+  ctx.profiles = ctx.pool ? profileTotals(targets, ctx.intent.list, ctx.actors) : null
   return restoreRows(ctx.strip.docs.map(doc => ({ doc, live: live.get(String(doc._id)) || null })), ctx)
 }
 
