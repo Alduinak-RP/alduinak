@@ -55,6 +55,25 @@ export function parseStartingItems(raw: unknown): { baseId: number; count: numbe
 // One kit per profile+slot, persisted so delete/recreate cycling can't farm gold
 const STARTER_GRANTS_FILE = "./starter-grants.json";
 
+// Claims a starter-grants.json key for a grant beside the kit, such as "<profileId>:<slot>:race"; false when it was claimed before or the file is unreadable
+export const claimStarterGrant = (key: string, log: (line: string) => void): boolean => {
+  let granted: Record<string, boolean> = {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(STARTER_GRANTS_FILE, "utf8"));
+    if (parsed && typeof parsed === "object") granted = parsed;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code !== "ENOENT") {
+      log(`[spawn] starter-grants read failed, ${key} not granted: ${e}`);
+      return false;
+    }
+  }
+  if (granted[key]) return false;
+  granted[key] = true;
+  try { fs.writeFileSync(STARTER_GRANTS_FILE, JSON.stringify(granted)); }
+  catch (e) { log(`[spawn] starter-grants write failed: ${e}`); }
+  return true;
+};
+
 // characterSelectMenuRequest guards: rapid repeats are ignored, and a request right after actor assign is treated as a stale client menu event
 const REQUEST_COOLDOWN_MS = 15 * 1000;
 const ASSIGN_GRACE_MS = 10 * 1000;

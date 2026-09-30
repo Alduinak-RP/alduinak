@@ -4,8 +4,8 @@ import { NeedsModifierSource } from "./needsSystem";
 import { resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
 import { ActorValue, SpellType, actorRaceId, fieldData, raceAbilityResist, spellEffects, spellInfo, view } from "./espmMagic";
-import { chainMpHook, hex, isCreationPending } from "./actorUtil";
-import { parseStartingItems } from "./spawn";
+import { GOLD_BASE_ID, addGold, addItemTo, chainMpHook, hex, isCreationPending } from "./actorUtil";
+import { claimStarterGrant, parseStartingItems } from "./spawn";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -16,16 +16,27 @@ type Mp = any;
 // hunger and fatigue factors as a modifier source; the survival lane reads cold, warmth, freezing water and raw meat. baseBonus is the
 // race's starting health, magicka and stamina above the common 50, from the winning RACE record. Resistances, stats, claws and powers
 // stay in the plugin; the boot report prints one line per playable race with what the plugin and the settings give it.
+// A race's startingItems are given once when its character's creation finishes, on top of the kit, once per profile and slot through
+// starter-grants.json ("<profileId>:<slot>:race"), and recorded in private.racial.startItems; private.starterGold is never set, so the
+// profession kit's gold rule is unchanged. A character created since startItemsSince that never got them gets them at its next login.
 //
 // server-settings.json (all optional; a missing multiplier is 1, a missing warmth 0 and a missing flag false):
-//   racialPassives.enabled   false makes every trait neutral, default true
-//   racialPassives.aliases   { "<race editor id>": "<entry race editor id>" } over the built-in vampire and child race map
-//   racialPassives.races     { "<race editor id>": { coldRateMult, warmth, freezingWaterImmune, hungerRateMult, fatigueCostMult,
-//                            rawMeatSafe, startingItems } }
-//   racialPassives.powers    { "<SPEL editor id>": { cooldownHours, consumeOnMiss, commandAnimal } }, read but not acted on yet
+//   racialPassives.enabled          false makes every trait neutral and grants nothing, default true
+//   racialPassives.aliases          { "<race editor id>": "<entry race editor id>" } over the built-in vampire and child race map
+//   racialPassives.races            { "<race editor id>": { coldRateMult, warmth, freezingWaterImmune, hungerRateMult, fatigueCostMult,
+//                                   rawMeatSafe, startingItems } }
+//   racialPassives.powers           { "<SPEL editor id>": { cooldownHours, consumeOnMiss, commandAnimal } }, read but not acted on yet
+//   racialPassives.startItemsSince  epoch ms or a date string; characters created since then are backfilled, default the 1.0 launch
+//
+// Persistence: private.racial = { v, powers, startItems?: { race, items, at, via, slot, note? } } on the character's actor form.
 
 const SETTINGS_KEY = "racialPassives";
 const MAGIC_ENTRIES_KEY = "damageMultConditionalFormulaSettings";
+const RACIAL_PROP = "private.racial";
+// The 1.0 launch, 2026-10-01 16:00 on the server box (UTC-7)
+const DEFAULT_START_ITEMS_SINCE = Date.parse("2026-10-01T16:00:00-07:00");
+// Where a character's creation time can be read: the intro's start location, the character creator, the kit's gold
+const CREATED_AT_PROPS: Array<[string, string]> = [["private.startLocation", "at"], ["private.rp", "createdAt"], ["private.starterGold", "at"]];
 // Skyrim.esm playable races with their vampire forms
 const RACES = [
   { edid: "ArgonianRace", id: 0x13740, vampire: 0x8883a },
@@ -90,6 +101,24 @@ export interface RacialConfig {
   aliases: Record<string, string>;
   races: Map<string, RaceEntry>;
   powers: Map<string, RacialPower>;
+  startItemsSince: number;
+}
+
+interface StartItemsRecord {
+  race: string;
+  items: { baseId: number; count: number }[];
+  at: number;
+  via: "creation" | "login";
+  slot: number;
+  // Why nothing was given
+  note?: string;
+}
+
+interface RacialRecord {
+  v: number;
+  // Spell desc -> epoch ms of the last use
+  powers: Record<string, number>;
+  startItems?: StartItemsRecord;
 }
 
 export interface RacialTraits extends Omit<RaceEntry, "startingItems"> {
@@ -155,7 +184,21 @@ export const parseRacialPassives = (raw: unknown): { config: RacialConfig; probl
       commandAnimal: v.commandAnimal && typeof v.commandAnimal === "object" ? objectOf(v.commandAnimal) : null,
     });
   }
-  return { config: { present: raw !== undefined && raw !== null, enabled: block.enabled !== false, aliases, races, powers }, problems };
+  let startItemsSince = DEFAULT_START_ITEMS_SINCE;
+  if (block.startItemsSince !== undefined) {
+    const since = typeof block.startItemsSince === "number" ? block.startItemsSince : Date.parse(String(block.startItemsSince));
+    if (Number.isFinite(since)) startItemsSince = since;
+    else problems.push(`startItemsSince ${JSON.stringify(block.startItemsSince)} is not a time, the 1.0 launch is used`);
+  }
+  return { config: { present: raw !== undefined && raw !== null, enabled: block.enabled !== false, aliases, races, powers, startItemsSince }, problems };
+};
+
+// Earliest creation time the character carries, 0 when none is known
+const createdAtOf = (mp: Mp, actorId: number): number => {
+  const times = CREATED_AT_PROPS.map(([prop, field]) => {
+    try { return Number(mp.get(actorId, prop)?.[field]); } catch { return NaN; }
+  }).filter((t) => Number.isFinite(t) && t > 0);
+  return times.length ? Math.min(...times) : 0;
 };
 
 // damageMultConditionalFormulaSettings entries with a magic multiplier and GetIsRace == 1 conditions on the target
@@ -188,9 +231,16 @@ export class RacialSystem implements System, NeedsModifierSource {
     const problems = this.configure(all[SETTINGS_KEY]);
     this.magicEntries = magicDamageEntries(all[MAGIC_ENTRIES_KEY]);
     const forget = (actorId: number) => this.raceCache.delete(actorId >>> 0);
-    ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => forget(actorId));
+    ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
+      forget(actorId);
+      this.backfillStartItems(actorId >>> 0);
+    });
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => forget(actorId));
-    ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => forget(actorId));
+    // Emitted inside the appearance hook, after the kit trim; the items follow once it returns
+    ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => {
+      forget(actorId);
+      setImmediate(() => this.grantStartItems(actorId >>> 0, "creation"));
+    });
     // An accepted race menu may change the race; the native side has stored the new appearance before this fires
     chainMpHook(this.mp, "onUpdateAppearanceAttempt", (actorId: number, _appearance: unknown, isAllowed: boolean) => {
       if (isAllowed) forget(actorId);
@@ -249,6 +299,63 @@ export class RacialSystem implements System, NeedsModifierSource {
     return `hunger ${list((e) => e.hungerRateMult)}; fatigue ${list((e) => e.fatigueCostMult)}`;
   }
 
+  // The race's startingItems once per profile and slot, whatever race a recreated character picks
+  private grantStartItems(actorId: number, via: "creation" | "login"): void {
+    const mp = this.mp;
+    try {
+      const t = this.traits(actorId);
+      const items = this.entryOf(t.raceEdid)?.startingItems ?? [];
+      const profileId = Number(mp.get(actorId, "profileId"));
+      if (!items.length || !(profileId >= 0) || this.readRecord(actorId).startItems) return;
+      const rawSlot = mp.get(actorId, "private.charSlot");
+      const slot = Number.isInteger(rawSlot) && rawSlot >= 0 ? rawSlot as number : 0;
+      const record: StartItemsRecord = { race: t.key, items: [], at: Date.now(), via, slot };
+      if (!claimStarterGrant(`${profileId}:${slot}:race`, this.log)) {
+        this.writeRecord(actorId, { ...record, note: "slot already granted" });
+        this.log(`[racial] ${hex(actorId)} ${t.key} start items: none, slot ${slot} of profile ${profileId} had them already (${via})`);
+        return;
+      }
+      for (const i of items) {
+        if (i.baseId === GOLD_BASE_ID) addGold(mp, actorId, i.count);
+        else addItemTo(mp, actorId, i.baseId, i.count, true);
+      }
+      this.writeRecord(actorId, { ...record, items });
+      this.log(`[racial] ${hex(actorId)} ${t.key} start items: ${items.map((i) => `${i.count} ${i.baseId === GOLD_BASE_ID ? "gold" : hex(i.baseId)}`).join(" + ")} (slot ${slot}, ${via})`);
+    } catch (e) {
+      this.log(`[racial] ${hex(actorId)} start items failed (${via}): ${e}`);
+    }
+  }
+
+  // A character created since startItemsSince that never got its race's items gets them at login
+  private backfillStartItems(actorId: number): void {
+    const mp = this.mp;
+    try {
+      if (!this.config.enabled || isCreationPending(mp, actorId)) return;
+      const t = this.traits(actorId);
+      if (!this.entryOf(t.raceEdid)?.startingItems.length || this.readRecord(actorId).startItems) return;
+      const created = createdAtOf(mp, actorId);
+      if (created && created < this.config.startItemsSince) return;
+      if (!created) {
+        this.writeRecord(actorId, { race: t.key, items: [], at: Date.now(), via: "login", slot: -1, note: "creation time unknown" });
+        this.log(`[racial] ${hex(actorId)} ${t.key} start items: none, creation time unknown`);
+        return;
+      }
+      this.grantStartItems(actorId, "login");
+    } catch (e) {
+      this.log(`[racial] ${hex(actorId)} start items backfill failed: ${e}`);
+    }
+  }
+
+  private readRecord(actorId: number): RacialRecord {
+    const raw = objectOf(this.mp.get(actorId, RACIAL_PROP));
+    const startItems = raw.startItems && typeof raw.startItems === "object" ? raw.startItems as StartItemsRecord : undefined;
+    return { v: 1, powers: objectOf(raw.powers) as Record<string, number>, ...(startItems ? { startItems } : {}) };
+  }
+
+  private writeRecord(actorId: number, startItems: StartItemsRecord): void {
+    this.mp.set(actorId, RACIAL_PROP, { ...this.readRecord(actorId), startItems });
+  }
+
   // Race id of the actor, 0 while its creation is pending; cached until it is forgotten
   private raceOf(actorId: number): number {
     const hit = this.raceCache.get(actorId);
@@ -304,7 +411,7 @@ export class RacialSystem implements System, NeedsModifierSource {
       ? [ACBS_HEALTH, ACBS_MAGICKA, ACBS_STAMINA].map((o) => view(playerAcbs).getInt16(o, true))
       : [COMMON_START, COMMON_START, COMMON_START];
     const powers = Array.from(this.config.powers).map(([k, p]) => `${k} ${round(p.cooldownHours)} h`);
-    this.log(`[racial] ready: ${!this.config.present ? "no racialPassives block, every race neutral" : `${this.config.enabled ? "on" : "off (enabled false), every race neutral"}, ${this.config.races.size} race entries (${Array.from(this.config.races.keys()).join(", ") || "none"}), ${Object.keys(this.config.aliases).length} aliases, powers ${powers.join(", ") || "none"} (read, not acted on yet)`}; Player NPC_ offsets H/M/S ${offsets.join("/")}`);
+    this.log(`[racial] ready: ${!this.config.present ? "no racialPassives block, every race neutral" : `${this.config.enabled ? "on" : "off (enabled false), every race neutral"}, ${this.config.races.size} race entries (${Array.from(this.config.races.keys()).join(", ") || "none"}), ${Object.keys(this.config.aliases).length} aliases, powers ${powers.join(", ") || "none"} (read, not acted on yet), start items once per slot, backfilled at login for characters created since ${new Date(this.config.startItemsSince).toISOString().slice(0, 16)}Z`}; Player NPC_ offsets H/M/S ${offsets.join("/")}`);
     this.log(`[racial] magic damage entries: ${this.magicEntries.map((e) => `${e.key} x${round(e.mult)} on ${e.raceIds.map((id) => this.edidOf(id) || hex(id)).join(", ")}`).join("; ") || "none"}`);
     const notInPlugin: string[] = [];
     for (const race of RACES) {
