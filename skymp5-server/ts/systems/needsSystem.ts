@@ -3,8 +3,9 @@ import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CREATION_FIN
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds, readVmadScripts } from "./formIdUtil";
 import { CastType, SpellType, fieldData, keywordConditionsPass, spellEffects, spellInfo, view } from "./espmMagic";
-import { addSpellTo, removeSpellFrom, formatWait, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
+import { formatWait, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
 import { FREE, LEGENDARY, MasterySystem } from "./masterySystem";
+import { LOAD_PACKETS, StageAbilityTracker } from "./stageAbilities";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -73,14 +74,6 @@ const NOTICE_PACKET = "masteryNotice";
 const HUNGER_MAX = 1000;
 const POLL_MS = 1000;
 const TICK_MS = 60000;
-// The client wipes and re-applies learnedSpells about a second after its load; a stage ability change has to land after that.
-// The load can outlast this, so the packets the client sends once per load (weatherRequest and gameTimeRequest at its loadGame,
-// needsRequest at its createActor) each schedule a re-send of any ability swapped during the login window, which the wipe
-// would otherwise have dropped
-const LOGIN_SYNC_DELAY_MS = 5000;
-const RESYNC_DELAY_MS = 3000;
-const LOGIN_WINDOW_MS = 3 * 60000;
-const LOAD_PACKETS = new Set(["weatherRequest", "gameTimeRequest"]);
 const NOTICE_GAP_MS = 2000;
 // Longest a pending race menu or creator holds hunger; a creation stuck past this drains like play
 const CREATION_HUNGER_HOLD_MS = 20 * 60000;
@@ -172,11 +165,6 @@ interface Online {
   rec: NeedsRecord;
   // Last state sent to the client, so the minute tick only sends changes
   sent: string;
-  syncStageAt: number;
-  // A re-send of the held abilities is due when one was swapped inside the login window
-  assignedAt: number;
-  resyncAt: number;
-  swappedSinceAssign: boolean;
   // Epoch ms the minute tick first saw this character's creation pending, 0 when it is not, -1 once the hold ran out
   pendingSince: number;
 }
@@ -228,7 +216,9 @@ export const NEEDS_RESET_EVENT = "needsReset";
 export class NeedsSystem implements System {
   systemName = "NeedsSystem";
 
-  constructor(private log: Log, private mastery: MasterySystem) { }
+  constructor(private log: Log, private mastery: MasterySystem) {
+    this.abilities = new StageAbilityTracker("needs", log);
+  }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -607,7 +597,8 @@ export class NeedsSystem implements System {
     const fatigue = this.modifier(actorId, "fatigueCostMult");
     if (stored) this.advance(rec, now, false, true, hunger.mult);
     if (rec.fatigue > before) this.log(`[needs] ${hex(actorId)} rested offline ${savedAgo}: fatigue ${pct(before)}% -> ${pct(rec.fatigue)}%`);
-    this.online.set(actorId, { actorId, userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, assignedAt: now, resyncAt: 0, swappedSinceAssign: false, pendingSince: 0 });
+    this.online.set(actorId, { actorId, userId, rec, sent: "", pendingSince: 0 });
+    this.abilities.begin(actorId, now);
     this.write(ctx, actorId, rec);
     this.log(`[needs] ${hex(actorId)} online: hunger ${Math.round(rec.hunger)} (${HUNGER_STAGE_NAMES[this.hungerStage(rec)]}), fatigue ${pct(rec.fatigue)}% (${FATIGUE_STAGE_NAMES[this.fatigueStage(rec)]}), saved ${savedAgo}${stored ? " ago" : ""}, abilities ${hex(rec.stageSpell)}/${hex(rec.fatigueSpell)}${hunger.note ? `, hunger drain ${hunger.note}` : ""}${fatigue.note ? `, fatigue costs ${fatigue.note}` : ""}`);
     this.sendState(ctx, actorId, false);
@@ -644,6 +635,7 @@ export class NeedsSystem implements System {
     this.catchUp(entry);
     this.write(ctx, actorId, entry.rec);
     this.online.delete(actorId);
+    this.abilities.end(actorId);
   }
 
   // needsRequest: the state goes out again; that and the once-per-load packets each schedule the ability re-send
@@ -651,10 +643,10 @@ export class NeedsSystem implements System {
     if (!this.enabled || (type !== REQUEST_PACKET && !LOAD_PACKETS.has(type))) return;
     for (const [actorId, entry] of this.online) {
       if (entry.userId !== userId) continue;
-      entry.resyncAt = Date.now() + RESYNC_DELAY_MS;
+      this.abilities.scheduleResend(actorId);
       if (type !== REQUEST_PACKET) continue;
       this.sendState(ctx, actorId, false, true);
-      this.log(`[needs] ${hex(actorId)} request: state resent${entry.swappedSinceAssign ? ", abilities to re-send" : ""}`);
+      this.log(`[needs] ${hex(actorId)} request: state resent${this.abilities.swappedSinceLogin(actorId) ? ", abilities to re-send" : ""}`);
     }
   }
 
@@ -738,16 +730,14 @@ export class NeedsSystem implements System {
           this.write(ctx, actorId, entry.rec);
           this.syncStages(ctx, actorId, entry);
           this.sendState(ctx, actorId, false);
-        } else if (entry.syncStageAt && now >= entry.syncStageAt) {
-          entry.syncStageAt = 0;
+        } else if (this.abilities.takeLoginSync(actorId, now)) {
           this.syncStages(ctx, actorId, entry);
         }
-        if (entry.resyncAt && now >= entry.resyncAt) {
-          entry.resyncAt = 0;
+        if (this.abilities.takeResend(actorId, now)) {
           this.resendAbilities(ctx, actorId, entry);
           this.syncStages(ctx, actorId, entry);
         }
-        if (tick && entry.swappedSinceAssign && now - entry.assignedAt > LOGIN_WINDOW_MS) entry.swappedSinceAssign = false;
+        if (tick) this.abilities.expire(actorId, now);
       } catch (e) {
         this.log(`[needs] update for ${hex(actorId)} failed: ${e}`);
       }
@@ -852,7 +842,7 @@ export class NeedsSystem implements System {
   }
 
   private syncStages(ctx: SystemContext, actorId: number, entry: Online): void {
-    if (entry.syncStageAt && Date.now() < entry.syncStageAt) return;
+    if (this.abilities.waiting(actorId)) return;
     const stage = this.hungerStage(entry.rec);
     const fatigueStage = this.fatigueStage(entry.rec);
     const hungerBefore = this.hungerSpells.indexOf(entry.rec.stageSpell);
@@ -869,43 +859,17 @@ export class NeedsSystem implements System {
 
   // True when the held ability changed
   private swapAbility(ctx: SystemContext, actorId: number, entry: Online, field: AbilityField, want: number): boolean {
-    if (entry.rec[field] === want) return false;
-    const mp = ctx.svr as Mp;
-    try {
-      if (entry.rec[field]) removeSpellFrom(mp, actorId, entry.rec[field]);
-      if (want) addSpellTo(mp, actorId, want);
-    } catch (e) {
-      this.log(`[needs] ${field} swap failed for ${hex(actorId)}: ${e}`);
-      return false;
-    }
+    if (!this.abilities.swap(ctx.svr as Mp, actorId, entry.rec[field], want, field)) return false;
     entry.rec[field] = want;
-    if (Date.now() - entry.assignedAt < LOGIN_WINDOW_MS) entry.swappedSinceAssign = true;
     this.write(ctx, actorId, entry.rec);
     return true;
   }
 
-  // The client's load wipe drops a swap and re-learns the spawn snapshot's stage; a snippet only goes out when the server's
-  // list changes, so each other stage is added then removed and the held one removed then added, for the login window
   private resendAbilities(ctx: SystemContext, actorId: number, entry: Online): void {
-    if (!entry.swappedSinceAssign) return;
-    const mp = ctx.svr as Mp;
-    for (const [field, stages] of [["stageSpell", this.hungerSpells], ["fatigueSpell", this.fatigueSpells]] as [AbilityField, number[]][]) {
-      const spellId = entry.rec[field];
-      try {
-        for (const stale of stages) {
-          if (!stale || stale === spellId) continue;
-          addSpellTo(mp, actorId, stale);
-          removeSpellFrom(mp, actorId, stale);
-        }
-        if (spellId) {
-          removeSpellFrom(mp, actorId, spellId);
-          addSpellTo(mp, actorId, spellId);
-        }
-        this.log(`[needs] ${hex(actorId)} ${spellId ? `ability resent after login ${hex(spellId)}, other stages cleared` : `${field} stages cleared after login`}`);
-      } catch (e) {
-        this.log(`[needs] ${field} re-send failed for ${hex(actorId)}: ${e}`);
-      }
-    }
+    this.abilities.resend(ctx.svr as Mp, actorId, [
+      { what: "stageSpell", held: entry.rec.stageSpell, stages: this.hungerSpells },
+      { what: "fatigueSpell", held: entry.rec.fatigueSpell, stages: this.fatigueSpells },
+    ]);
   }
 
   private sendState(ctx: SystemContext, actorId: number, closeCrafting: boolean, force = false): void {
@@ -1007,6 +971,7 @@ export class NeedsSystem implements System {
   private foodCache = new Map<number, FoodEffect[]>();
   private amountCache = new Map<number, number>();
   private online = new Map<number, Online>();
+  private abilities: StageAbilityTracker;
   private queue: Queued[] = [];
   private flushScheduled = false;
   private lastNoticeAt = new Map<number, number>();
