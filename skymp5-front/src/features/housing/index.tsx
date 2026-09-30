@@ -23,6 +23,7 @@ interface HousingEvents {
   pets: string;
   pinNote: string;
   takeNote: string;
+  knock: string;
   cancel: string;
   typing: string;
   [key: string]: string;
@@ -62,6 +63,7 @@ export interface HousingData {
   hold?: string; // The hold the property lies in, "" outside every hold
   note?: DoorNote | null;
   letters?: PinnableLetter[]; // Letters this viewer may pin here now
+  canKnock?: boolean; // A door anyone may knock on
   events: HousingEvents;
 }
 
@@ -272,6 +274,10 @@ const Housing = ({ data }: { data: HousingData }) => {
 
           {note && note.canTakeDown ? (
             <button className="housing__button" onClick={() => send(ev.takeNote)}>Take down the note</button>
+          ) : null}
+
+          {data.canKnock && ev.knock ? (
+            <button className="housing__button" onClick={() => send(ev.knock)}>Knock</button>
           ) : null}
         </div>
 

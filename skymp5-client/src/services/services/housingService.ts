@@ -40,6 +40,7 @@ const events = {
   pets: 'housing:pets',
   pinNote: 'housing:pinnote',
   takeNote: 'housing:takenote',
+  knock: 'housing:knock',
   cancel: 'housing:cancel',
   // The rename field took focus
   typing: 'housing:typing',
@@ -114,6 +115,8 @@ interface PropertyMenuInfo {
   note: DoorNoteInfo | null;
   // Letters this viewer may pin here now, empty when pinning is not offered
   letters: Array<{ id: string; title: string }>;
+  // A door anyone may knock on
+  canKnock: boolean;
 }
 
 // The server's petList reply: the pets storable at a door
@@ -126,7 +129,7 @@ interface PetListInfo {
 // Module-level state shared with the browser-side widget setter via runtime injection
 let info: PropertyMenuInfo = {
   target: 0, view: 'denied', owned: false, name: null, locked: false, lockedEntrance: false, lockedExit: false, sides: false,
-  canLock: false, hasKeys: false, canGrantContainers: false, ownerName: null, pets: '', hold: '', note: null, letters: [],
+  canLock: false, hasKeys: false, canGrantContainers: false, ownerName: null, pets: '', hold: '', note: null, letters: [], canKnock: false,
 };
 let targetLabel = '';
 let petList: PetListInfo = { door: 0, category: '', pets: [] };
@@ -153,7 +156,7 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  *   Client -> Server: { "customPacketType": "propertyInfoRequest", "target": <id> }
  *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view", "owned", "name", "locked",
  *                       "lockedEntrance", "lockedExit", "sides", "canLock", "hasKeys", "canGrantContainers",
- *                       "ownerName", "pets", "hold", "note", "letters" }
+ *                       "ownerName", "pets", "hold", "note", "letters", "canKnock" }
  *   Client -> Server: { "customPacketType": "propertyRequest", "action", "target",
  *                       "recipient"?, "name"?, "id"? }  (createkey names the key, pinnote names the letter)
  *   Server -> Client: { "customPacketType": "propertyNotice", "text" }
@@ -176,6 +179,7 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  * `note` is the letter pinned to the half the menu was opened at, shown to
  * every view; `letters` lists the letters this viewer may pin there (pinnote
  * with the letter's id), and a note with canTakeDown offers takenote.
+ * `canKnock` offers Knock (knock) to every view of a door.
  */
 export class HousingService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -271,6 +275,7 @@ export class HousingService extends ClientListener {
           hold: typeof content["hold"] === "string" ? content["hold"] as string : "",
           note: parseNote(content["note"]),
           letters: parseLetters(content["letters"]),
+          canKnock: content["canKnock"] === true,
         };
         this.openMenu();
         break;
@@ -340,7 +345,8 @@ export class HousingService extends ClientListener {
       case events.lockExit:
       case events.unlockExit:
       case events.revokeKeys:
-      case events.takeNote: {
+      case events.takeNote:
+      case events.knock: {
         const action = key.slice("housing:".length);
         sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action, target });
         break;
@@ -455,6 +461,7 @@ export class HousingService extends ClientListener {
       hold: info.hold,
       note: info.note,
       letters: info.letters,
+      canKnock: info.canKnock,
       events: events,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);

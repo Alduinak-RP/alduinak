@@ -33,11 +33,11 @@ type Mp = any;
 //       action: claim | abandon | lock | unlock (both locks) | lockentrance | unlockentrance
 //             | lockexit | unlockexit | rename | transfer
 //             | breaklock (revoke from older clients) | createkey | revokekeys | grantcontainer
-//             | pinnote (id: the letter) | takenote
+//             | pinnote (id: the letter) | takenote | knock
 //   Server -> Client:
 //     { customPacketType: "propertyMenu", target, view, owned, name, locked (either lock),
 //       lockedEntrance, lockedExit, sides, canLock, hasKeys, canGrantContainers, ownerName, pets, hold,
-//       note: null | { title, text, byline, signFaction, brokenSeals, mine, canTakeDown }, letters: [{ id, title }] }
+//       note: null | { title, text, byline, signFaction, brokenSeals, mine, canTakeDown }, letters: [{ id, title }], canKnock }
 //     { customPacketType: "propertyNotice", text }
 //     { customPacketType: "refDecor", full?, refs: [{refId,name,locked}] }
 //
@@ -62,6 +62,10 @@ type Mp = any;
 // the text stays in the writing store. Everyone who opens the menu at that half reads it; the poster (same account and
 // character), the owner, a key holder or an admin takes it down into their own pack, and on an unclaimed door only the
 // poster or an admin. The server acts on the half the user last opened the menu at, never on an id from the packet.
+//
+// Knocking. Every viewer of a door, strangers and faction outsiders included, may knock once per KNOCK_COOLDOWN_MS; the
+// gamemode's chat delivers "<name> knocks on the door." ("Someone" to listeners the knocker is not introduced to) at
+// say range around the door's other half, or around the door itself when it has none.
 
 const HOUSING_PROP = "private.housing";
 const NOTE_PROP = "private.doorNote";
@@ -86,6 +90,7 @@ const MAX_ESPM_CACHE = 4096;
 const DEFAULT_MAX_DISTANCE = 512;
 const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
+const KNOCK_COOLDOWN_MS = 10000;
 // What a hold official may do to someone else's claim
 const MANAGER_ACTIONS = new Set(["abandon", "breaklock", "revoke", "rename", "revokekeys", "transfer", "grantcontainer"]);
 const CHANGE_FAILED = "That cannot be changed right now.";
@@ -326,6 +331,7 @@ export class HousingSystem implements System {
       case "grantcontainer": this.doGrantContainer(ctx, userId, primary, rec, isOwner, isManager, content["recipient"]); break;
       case "pinnote": this.doPinNote(ctx, userId, actorId, primary, rec, content["id"]); break;
       case "takenote": this.doTakeNote(ctx, userId, actorId, primary, rec); break;
+      case "knock": this.doKnock(ctx, userId, actorId, primary, rec); break;
       default: break;
     }
   }
@@ -520,17 +526,18 @@ export class HousingSystem implements System {
   // ── Menu ────────────────────────────────────────────────────────────────────
 
   private sendMenu(ctx: SystemContext, userId: number, actorId: number, target: number): void {
+    const primary = this.primaryOf(ctx, target);
+    const door = (primary && this.menuDoor(ctx, userId, primary)) || target;
+    const canKnock = !!primary && this.baseTypeOf(ctx, door) === "DOOR";
     const faction = this.factionGate ? this.factionGate(actorId, target) : null;
     if (faction && !this.isAdmin(ctx, actorId)) {
       this.send(ctx, userId, {
         customPacketType: "propertyMenu", target, view: "denied", owned: true, name: null, locked: false,
-        canLock: false, hasKeys: false, canGrantContainers: false, ownerName: faction.name, pets: "",
+        canLock: false, hasKeys: false, canGrantContainers: false, ownerName: faction.name, pets: "", canKnock,
       });
       return;
     }
-    const primary = this.primaryOf(ctx, target);
     const rec = primary ? this.read(ctx, primary) : null;
-    const door = (primary && this.menuDoor(ctx, userId, primary)) || target;
     const owned = !!rec && rec.owner !== 0;
     const profileId = this.profileOf(ctx, actorId);
     const isOwner = owned && rec!.owner === profileId;
@@ -566,6 +573,7 @@ export class HousingSystem implements System {
       hold: primary ? (this.holdOf(ctx, primary)?.name ?? "") : "",
       note: primary ? this.noteFor(ctx, actorId, door, primary, rec || emptyRecord()) : null,
       letters: owned && this.canPinAt(ctx, actorId, door) ? this.writings!.lettersOf(ctx.svr, actorId) : [],
+      canKnock,
     });
   }
 
@@ -657,9 +665,9 @@ export class HousingSystem implements System {
     this.log(`[housing] ${line}`);
   }
 
-  private doorLabel(ctx: SystemContext, primary: number, rec: PropertyRecord, door: number): string {
+  private doorLabel(ctx: SystemContext, primary: number, rec: PropertyRecord, door: number, withClaim = true): string {
     const side = this.sideOf(ctx, primary, rec.partner ? rec : { ...rec, partner: this.partnerOf(ctx, primary) }, door);
-    return `door ${door.toString(16)}${side ? ` (${side})` : ""} of ${this.claimLabel(primary, rec)}`;
+    return `door ${door.toString(16)}${side ? ` (${side})` : ""}${withClaim && rec.owner !== 0 ? ` of ${this.claimLabel(primary, rec)}` : ""}`;
   }
 
   private doPinNote(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, rawId: unknown): void {
@@ -745,6 +753,47 @@ export class HousingSystem implements System {
     if (role === "admin") adminAudit(`profile ${this.profileOf(ctx, actorId)} (${adminTierOf(ctx.svr as Mp, actorId, this.roleCfg)}) took down letter ${note.id} from door ${door.toString(16)} (${this.claimLabel(primary, rec)})`);
     this.notice(ctx, userId, "You take the note down. It is in your pack.");
     this.sendMenu(ctx, userId, actorId, primary);
+  }
+
+  // ── Knocking ────────────────────────────────────────────────────────────────
+
+  // Anyone at a door may knock; the chat's say range around its other half hears it, around the door itself for a door without one
+  private doKnock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord): void {
+    const door = this.menuDoorInReach(ctx, userId, actorId, primary, "knock");
+    if (!door) return;
+    if (this.baseTypeOf(ctx, door) !== "DOOR") {
+      this.refuse(ctx, userId, actorId, "knock", door, "Only a door can be knocked on.");
+      return;
+    }
+    const now = Date.now();
+    const wait = KNOCK_COOLDOWN_MS - (now - (this.lastKnockMs.get(actorId) || 0));
+    if (wait > 0) {
+      this.notice(ctx, userId, `You knocked a moment ago. Wait ${Math.ceil(wait / 1000)} s.`);
+      return;
+    }
+    // The gamemode's chat (33_chat_at_ref.js) owns the say range, the names each listener knows and the chat line
+    const emoteAt = (globalThis as any).__alduinakEmoteAt;
+    if (typeof emoteAt !== "function") {
+      this.refuse(ctx, userId, actorId, "knock", door, "Knocking is not available yet.");
+      this.log("[housing] knock needs the gamemode's __alduinakEmoteAt (33_chat_at_ref.js): run Build gamemode");
+      return;
+    }
+    if (this.lastKnockMs.size > 256) {
+      for (const [id, at] of this.lastKnockMs) if (now - at >= KNOCK_COOLDOWN_MS) this.lastKnockMs.delete(id);
+    }
+    this.lastKnockMs.set(actorId, now);
+    const far = this.partnerOf(ctx, door) || door;
+    let heard = 0;
+    try {
+      heard = Number(emoteAt(far, actorId, "knocks on the door.")) || 0;
+    } catch (e) {
+      this.log(`[housing] knock on door ${door.toString(16)} by ${this.who(ctx, actorId)} was not delivered: ${e}`);
+      this.notice(ctx, userId, CHANGE_FAILED);
+      return;
+    }
+    const whereHeard = far === door ? "the door itself" : this.doorLabel(ctx, primary, rec, far, false);
+    this.log(`[housing] knock on ${this.doorLabel(ctx, primary, rec, door)} by ${this.who(ctx, actorId)}: heard by ${heard} within talking range of ${whereHeard}`);
+    this.notice(ctx, userId, "You knock on the door.");
   }
 
   // ── Pets ────────────────────────────────────────────────────────────────────
@@ -1312,6 +1361,7 @@ export class HousingSystem implements System {
   private lastDenyMs = new Map<number, number>();
   // The half each user last opened the menu at
   private menuDoors = new Map<number, number>();
+  private lastKnockMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxDistance = DEFAULT_MAX_DISTANCE;
   private keySplitOnLogin = false;
