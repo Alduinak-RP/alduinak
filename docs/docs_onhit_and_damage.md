@@ -37,6 +37,13 @@ Incoming damage:
 ```
 incomingDamage = isUnarmed ? raceUnarmedDamage : baseWeaponDamage;
 ```
+Claws are that race unarmed damage. The proficiency patcher copies it from a weapon record (`unarmedDamageFrom` in
+spec.json `races.passives`): Khajiit claws hit like a Steel Dagger (7) and, from plugin r27a, Argonian claws like an
+Iron Dagger (6); every other race keeps 4. Being a race value, claws are never tempered, never wear and carry no
+poison, and NPCs of those races hit the same way. Under the rebalance formula (test release B) the claws take the
+dagger's damage and hit rules instead, through `alduinakDamageFormulaSettings.unarmed.raceOverride` (the Steel dagger
+row for Khajiit, the Iron one for Argonians, vampire races included), with the fist's timing. See
+`docs_racial_passives.md`.
 
 Armor damage reduction:
 ```
@@ -55,10 +62,20 @@ spellDamage = sum(magnitude * resistMult(effect's MGEF resist value));
 // detrimental ones (weaknesses) subtracted; capped at 85 like fPlayerMaxResistance
 resistMult = 1 - min(resistance, 85) / 100;
 ```
-So racial passives such as Nord frost, Dunmer fire, Redguard and Bosmer poison, and Argonian and Bosmer disease
-resistance act on server spell damage straight from the plugin's race abilities. Only the resist value the effect
-names applies: magic resistance or armor rating abilities count for the few effects that name them (Vampiric Drain,
-some dragon and Wabbajack effects), and there is no general magic resistance on other spells.
+So the racial resistances act on server spell damage straight from the plugin's race abilities: from plugin r27a
+(`AldRacial_*`, `docs_racial_passives.md`) Nord frost 75, Dark Elf fire 75, the High Elf's weakness to fire, frost and
+shock (x1.25), Argonian poison 75 and Redguard poison 50. Only the resist value the effect names applies: magic
+resistance or armor rating abilities count for the few effects that name them (Vampiric Drain, some dragon and
+Wabbajack effects).
+
+Magic resistance on every other spell, the Breton's 50 and the Orc's 25, comes from two
+`damageMultConditionalFormulaSettings` entries of the Test settings, `racialMagicResistBreton` (`magicDamageMultiplier`
+0.5) and `racialMagicResistOrc` (0.75), each keyed on `GetIsRace` of the target with its vampire race (the JSON is
+under `racialPassives` in the configuration reference). They multiply every server spell hit on such a target, not
+poisons, on top of the element resistance, as vanilla stacks the two; an effect that names MagicResist itself counts
+the Breton's resistance twice (accepted). Without them only the client engine applies the magic resistance, to
+non-damage effects. `RacialSystem` lists them at boot (`[racial] magic damage entries: ...`) and warns about a race
+whose ability resists magic with no entry. The native magic pass (plan task NV7) will replace both entries.
 
 Weapon poison:
 ```
@@ -73,7 +90,8 @@ The Health part joins the weapon damage, so `onHitDamageAttempt`, god mode and b
 swing still delivers the whole poison, while a bash (shield, bow or power bash) neither poisons nor spends a use, as in
 the engine. Stamina and Magicka drop separately on the target. A lingering poison lands as
 one burst (magnitude times seconds) because the hit path has no per-victim timer. Damage Health and Damage Magicka
-poisons name PoisonResist, so the Redguard and Bosmer passives halve them; the vanilla Damage Stamina poisons name no
+poisons name PoisonResist, so the racial poison resistance cuts them (Argonian 75 and Redguard 50 from plugin r27a;
+r22's Bosmer 25 is gone); the vanilla Damage Stamina poisons name no
 resist value and land in full. Paralysis, rate drains (Damage Stamina Rate), weaknesses (PeakValueMod) and influence
 effects, dual effects whose two values are neither Health, Stamina nor Magicka, and any effect whose conditions fail,
 are only counted in the log line (`OnWeaponHit - <aggressor> poisons
