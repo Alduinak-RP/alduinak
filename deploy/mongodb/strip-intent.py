@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Sorts every item strip-inventories.js removed into what the owner meant to remove (ebony gear, spell tomes, Falmer chest armour) and the rest, for restore-stripped-items.js.
+# Sorts every item strip-inventories.js removed into what the owner meant to remove (ebony gear, spell tomes, Falmer chest armour, jewelry) and the rest, for restore-stripped-items.js.
 #   python deploy/mongodb/strip-intent.py [--list <the forbidden-items.json the strip ran with>] [--backup <strip backup dir>] [--settings build/dist/server/server-settings.json] [--out deploy/mongodb/strip-intent.json]
 # The output also carries the part of the list the backup touches, so the restore needs no copy of the whole list and a re-run without --list reuses it.
 # It records each plugin's hash and the plugins behind each item, which the restore checks against the Data folder before it runs.
@@ -26,7 +26,10 @@ EBONY_KW = re.compile(r'^(dlc\d*)?(armor|weap)materi[ae]lebony|^iakmaterialebony
 FALMER_KW = re.compile(r'materi[ae]lfalmer')
 # A world model under a Falmer armour folder, such as Armor\Falmer or DLC01\Armor\FalmerHeavy
 FALMER_DIR = re.compile(r'(^|[\\/])falmer[^\\/]*[\\/]', re.I)
-BODY = 0x4
+BODY = 32
+JEWELRY_KW = {'armorjewelry', 'vendoritemjewelry', 'clothingring', 'clothingnecklace', 'clothingcirclet'}
+# Biped slots by jewelry kind; helmets also take 42 and 43, so any other slot rules an item out
+JEWELRY_SLOTS = {'ring': 36, 'necklace': 35, 'circlet': 42, 'earrings': 43}
 TEACHES_SPELL = 0x04
 LOCALIZED = 0x80
 TEMPLATE = {'ARMO': 'TNAM', 'WEAP': 'CNAM'}
@@ -88,6 +91,31 @@ def recipe_text(parts):
     return ' + '.join(f'{c} {e}' for e, c in parts)
 
 
+def biped(bod):
+    mask = struct.unpack_from('<I', bod, 0)[0] if bod else 0
+    return [30 + i for i in range(32) if mask >> i & 1]
+
+
+def jewelry(kws, slots):
+    # (kind or None, evidence, note for a call the owner may want to make) from the jewelry keywords and biped slots
+    tags = sorted(kws & JEWELRY_KW)
+    other = [s for s in slots if s not in JEWELRY_SLOTS.values()]
+    kinds = [k for k, s in JEWELRY_SLOTS.items() if s in slots]
+    evidence = '; '.join(x for x in ('keyword ' + ', '.join(tags) if tags else '', 'slot ' + ', '.join(map(str, slots)) if slots else '') if x)
+    if other:
+        return None, '', f'keyword {", ".join(tags)}, but worn on slot {", ".join(map(str, other))}, not a jewelry slot' if tags else ''
+    if not tags and kinds in ([], ['earrings']):
+        return None, '', ''
+    kind = kinds[0] if kinds else 'other'
+    if not tags:
+        return kind, evidence, f'{evidence} only, no jewelry keyword'
+    if kind == 'earrings':
+        return kind, evidence, f'earrings: {evidence}'
+    if kind == 'other':
+        return kind, evidence, f'{evidence}, no biped slot'
+    return kind, evidence, ''
+
+
 def classify(lo, kw, gid, recipes, localized):
     key = lo.key_of(gid)
     rec = lo.recs.get(key) if key else None
@@ -129,7 +157,13 @@ def classify(lo, kw, gid, recipes, localized):
     elif 'aldcatmat_ebony' in kws:
         row['note'], row['noteKind'] = 'in the ebony crafting category (aldcatmat_ebony), but no ebony material keyword and no ebony in its recipe', 'ebony category'
     bod = sub(r, 'BOD2') or sub(r, 'BODT') or (base and (sub(base[1], 'BOD2') or sub(base[1], 'BODT')))
-    body = t == 'ARMO' and bod and struct.unpack_from('<I', bod, 0)[0] & BODY
+    slots = biped(bod) if t == 'ARMO' else []
+    kind, evidence, note = jewelry(kws, slots) if t == 'ARMO' else (None, '', '')
+    if note and not row['note']:
+        row['note'], row['noteKind'] = note, 'jewelry'
+    if kind:
+        return {**row, 'intent': 'jewelry', 'jewelry': kind, 'evidence': evidence}
+    body = BODY in slots
     falmer = [f'keyword {k}' for k in sorted(kws) if FALMER_KW.search(k)] or [f'model {p}' for p in worn if FALMER_DIR.search(p)]
     if body and worn and falmer:
         return {**row, 'intent': 'falmer cuirass', 'evidence': f'body slot 32, {falmer[0]}'}

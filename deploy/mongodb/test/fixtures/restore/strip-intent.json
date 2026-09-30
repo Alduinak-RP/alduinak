@@ -1,7 +1,7 @@
 {
- "createdAt": "2026-09-30T09:49:53.166159+00:00",
+ "createdAt": "2026-09-30T10:14:51.832096+00:00",
  "backup": "fixtures/restore/strip",
- "docsSha256": "2bb8acadba4a74bb16a9006266ab161d0de7adfb472aab3ee451ac31f5af5b20",
+ "docsSha256": "81038849d66b3ee02d783d9ba35c125816eb566818fc76b6433c489d732ce14d",
  "listSha256": "3c3871ddaa62bca553b9b22ecc519be577ef406fc4bab90463770ca9fb824eb7",
  "factionGear": false,
  "settings": "fixtures/restore/settings.json",
@@ -699,8 +699,9 @@
    "recipe": "1 IngotCorundum",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "circlet",
+   "evidence": "keyword armorjewelry, clothingcirclet, vendoritemjewelry; slot 42"
   },
   "0x0003B97C": {
    "listed": true,
@@ -718,8 +719,9 @@
    "recipe": "1 ingotSilver",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "ring",
+   "evidence": "keyword armorjewelry, clothingring, vendoritemjewelry; slot 36"
   },
   "0x000877AB": {
    "listed": true,
@@ -737,8 +739,9 @@
    "recipe": "1 GemGarnet + 1 ingotSilver",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "ring",
+   "evidence": "keyword armorjewelry, clothingring, vendoritemjewelry; slot 36"
   },
   "0x000B83CB": {
    "listed": true,
@@ -851,6 +854,22 @@
    "factionGear": false,
    "intent": "unknown",
    "evidence": "no ARMO, WEAP, AMMO, BOOK or SCRL record with this id in the load order"
+  },
+  "0x33000A01": {
+   "listed": true,
+   "edid": "AldTalismanOfWarding",
+   "reason": "enchanted",
+   "name": "Talisman of Warding",
+   "type": "ARMO",
+   "plugin": "alduinakadditions.esp",
+   "staff": false,
+   "craftable": false,
+   "recipe": "",
+   "note": "",
+   "noteKind": "",
+   "intent": "jewelry",
+   "evidence": "keyword clothingnecklace; slot 35",
+   "jewelry": "necklace"
   },
   "0xFE00B88E": {
    "listed": true,

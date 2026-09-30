@@ -1,5 +1,5 @@
 {
- "createdAt": "2026-09-30T09:49:53.166159+00:00",
+ "createdAt": "2026-09-30T10:14:51.832096+00:00",
  "backup": "C:\\Users\\Administrator\\Desktop\\alduinak-r13\\rollback-strip",
  "docsSha256": "994ae951b4ace28fc2eb21c338dfcda0cdca89bf75ffb4336c19bbefa4059436",
  "listSha256": "3c3871ddaa62bca553b9b22ecc519be577ef406fc4bab90463770ca9fb824eb7",
@@ -718,8 +718,9 @@
    "recipe": "2 IngotGold + 1 GemRuby",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "circlet",
+   "evidence": "keyword armorjewelry, clothingcirclet, vendoritemjewelry; slot 42"
   },
   "0x000166FF": {
    "listed": true,
@@ -737,8 +738,9 @@
    "recipe": "1 IngotCorundum",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "circlet",
+   "evidence": "keyword armorjewelry, clothingcirclet, vendoritemjewelry; slot 42"
   },
   "0x00018388": {
    "listed": true,
@@ -816,8 +818,9 @@
    "recipe": "1 ingotSilver",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "ring",
+   "evidence": "keyword armorjewelry, clothingring, vendoritemjewelry; slot 36"
   },
   "0x0004DEE1": {
    "listed": true,
@@ -1024,8 +1027,9 @@
    "recipe": "1 GemGarnet + 1 ingotSilver",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "ring",
+   "evidence": "keyword armorjewelry, clothingring, vendoritemjewelry; slot 36"
   },
   "0x000877D5": {
    "listed": true,
@@ -1043,8 +1047,9 @@
    "recipe": "1 IngotGold",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "necklace",
+   "evidence": "keyword armorjewelry, clothingnecklace, vendoritemjewelry; slot 35"
   },
   "0x00088956": {
    "listed": true,
@@ -1083,8 +1088,9 @@
    "recipe": "1 ingotSilver",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "necklace",
+   "evidence": "keyword armorjewelry, clothingnecklace, vendoritemjewelry; slot 35"
   },
   "0x000B83CB": {
    "listed": true,
@@ -1183,8 +1189,9 @@
    "recipe": "",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "necklace",
+   "evidence": "keyword armorjewelry, vendoritemjewelry; slot 35"
   },
   "0x000C8917": {
    "listed": true,
@@ -1201,8 +1208,9 @@
    "recipe": "",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "necklace",
+   "evidence": "keyword armorjewelry, vendoritemjewelry; slot 35"
   },
   "0x000C8919": {
    "listed": true,
@@ -1219,8 +1227,9 @@
    "recipe": "",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "necklace",
+   "evidence": "keyword armorjewelry, vendoritemjewelry; slot 35"
   },
   "0x000CC844": {
    "listed": true,
@@ -1237,8 +1246,9 @@
    "recipe": "",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "necklace",
+   "evidence": "keyword armorjewelry, vendoritemjewelry; slot 35"
   },
   "0x000CC848": {
    "listed": true,
@@ -1255,8 +1265,9 @@
    "recipe": "",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "necklace",
+   "evidence": "keyword armorjewelry, vendoritemjewelry; slot 35"
   },
   "0x000CEE76": {
    "listed": true,
@@ -1749,8 +1760,9 @@
    "recipe": "",
    "note": "",
    "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "intent": "jewelry",
+   "jewelry": "circlet",
+   "evidence": "keyword armorjewelry, clothingcirclet, vendoritemjewelry; slot 42"
   },
   "0x120012F2": {
    "listed": true,
@@ -1787,10 +1799,11 @@
    "staff": false,
    "craftable": true,
    "recipe": "110 Gold001",
-   "note": "",
-   "noteKind": "",
-   "intent": null,
-   "evidence": ""
+   "note": "earrings: keyword clothingring, vendoritemjewelry; slot 43",
+   "noteKind": "jewelry",
+   "intent": "jewelry",
+   "jewelry": "earrings",
+   "evidence": "keyword clothingring, vendoritemjewelry; slot 43"
   },
   "0x1602149F": {
    "listed": true,
@@ -1829,8 +1842,8 @@
    "staff": false,
    "craftable": true,
    "recipe": "2 Leather01",
-   "note": "",
-   "noteKind": "",
+   "note": "keyword clothingnecklace, but worn on slot 40, 46, not a jewelry slot",
+   "noteKind": "jewelry",
    "intent": null,
    "evidence": ""
   },

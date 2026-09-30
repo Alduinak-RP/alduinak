@@ -27,8 +27,9 @@ one-shot migration.
 
 ## Giving back what the 2026-09-28 strip took too far
 
-The strip was meant to take ebony equipment, spell tomes, learned spells and
-Falmer chest armour only. `restore-stripped-items.js` reads its backup
+The strip was meant to take ebony equipment, spell tomes, learned spells,
+Falmer chest armour and jewelry only (jewelry by the owner's call of
+2026-09-30). `restore-stripped-items.js` reads its backup
 (`Desktop\alduinak-r13\rollback-strip`, left untouched) and gives everything
 else back:
 
@@ -60,8 +61,16 @@ else back:
   `inv.entries` only. Learned spells, `equipmentDump` and spell slots are
   never touched.
 - `strip-intent.json` sorts every removed id from the plugin data: an ebony
-  material keyword, a book that teaches a spell, or a body-slot armour with a
-  Falmer keyword or model folder stays removed. It also keeps each item's
+  material keyword, a book that teaches a spell, a body-slot armour with a
+  Falmer keyword or model folder, or jewelry stays removed. Jewelry is armour
+  worn only on the ring (36), amulet (35), circlet (42) or ears (43) slot
+  with a jewelry keyword (ArmorJewelry, VendorItemJewelry, ClothingRing,
+  ClothingNecklace, ClothingCirclet), or only on the ring, amulet or circlet
+  slot without one, whatever the strip filed it under (an enchanted amulet
+  too); a helmet on the circlet slot is not. The report counts it by kind on
+  the line "jewelry: stays removed", and the borderline ids go to the
+  decisions: the Gold Earrings (ears slot) stay removed, the Leather Cape
+  (ClothingNecklace on cloak slots) comes back. It also keeps each item's
   in-game name (where the plugin stores it inline) and crafting recipe, so
   the report names what a material keyword covers when the names do not say
   it (the daedric keyword on Ancient Nord armour), names what stays removed,
@@ -81,7 +90,8 @@ else back:
   it already holds (`--list` takes the full list instead); then take a new
   backup.
 - Owner overrides go on every command of a run (plan, backup, apply):
-  `--also-give 0x0002AC61` returns an id that stays removed,
+  `--also-give 0x0002AC61` returns an id that stays removed (a jewelry id
+  such as the Silver Ring `0x0003B97C` too),
   `--also-keep 0x26005565` keeps one removed, `--ignore-held 0x0003B97C`
   gives one back in full. Several ids go in one quoted list, each flag once:
   `--also-give '0x000139BF,0x0002AC61'` (PowerShell turns an unquoted list
@@ -105,7 +115,8 @@ Get-ChildItem C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\restore-
 
 Stop here. `Get-Service` must say Stopped. Read the summary: per character
 and container it lists what comes back, what is counted as back and what
-stays removed, and "FOR THE OWNER TO DECIDE" lists the calls to make. The
+stays removed, "jewelry: stays removed" counts the jewelry kept out by
+kind, and "FOR THE OWNER TO DECIDE" lists the calls to make. The
 blocks below carry no override flags. For each call you decide the other
 way, add its flag to the end of every command in blocks 2 and 3 (backup,
 both applies and the plan), the same on each, for example

@@ -594,6 +594,12 @@
      "edid": "EbonySword",
      "count": 2,
      "reason": "material"
+    },
+    {
+     "baseId": "0x33000A01",
+     "edid": "AldTalismanOfWarding",
+     "count": 1,
+     "reason": "enchanted"
     }
    ],
    "spells": [],

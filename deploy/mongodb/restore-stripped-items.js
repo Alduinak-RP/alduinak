@@ -1,6 +1,6 @@
 'use strict'
 
-// Gives back what strip-inventories.js took beyond ebony gear, spell tomes, learned spells and Falmer chest armour, never twice and never taking anything
+// Gives back what strip-inventories.js took beyond ebony gear, spell tomes, learned spells, Falmer chest armour and jewelry, never twice and never taking anything
 
 const fs = require('fs')
 const path = require('path')
@@ -38,7 +38,8 @@ const APPLIED_FILE = 'restore-applied.json'
 const ROLLED_BACK_FILE = 'restore-applied.rolled-back.json'
 const LOG_FILE = 'restore-applied.log'
 const ROLLED_BACK_LOG = 'restore-applied.rolled-back.log'
-const INTENTS = { ebony: 'ebony equipment', 'spell tome': 'spell tomes', 'falmer cuirass': 'Falmer chest armour' }
+const INTENTS = { ebony: 'ebony equipment', 'spell tome': 'spell tomes', 'falmer cuirass': 'Falmer chest armour', jewelry: 'jewelry' }
+const JEWELRY_KINDS = { ring: 'rings', necklace: 'necklaces/amulets', circlet: 'circlets', earrings: 'earrings', other: 'other jewelry' }
 const GROUPS = { jewelry: 'jewelry', scroll: 'scrolls', enchanted: 'enchanted gear', staff: 'staves', 'spell tome': 'spell tomes', 'enchanted entry': 'player-enchanted gear' }
 const WORN = ['worn', 'wornLeft']
 const OVERRIDES = { alsoKeep: '--also-keep', alsoGive: '--also-give', ignoreHeld: '--ignore-held' }
@@ -308,7 +309,7 @@ function assess(doc, live, ctx) {
     const base = { baseId: hex(g.baseId), edid: (cls && cls.edid) || g.edid, name: (cls && cls.name) || '', craftable: Boolean(cls && cls.craftable), group: groupOf(g.reason, cls), removed: g.removed }
     if (!cls || cls.intent === 'unknown') { row.skipped.push({ ...base, count: g.removed, unclassified: true, why: `cannot classify: ${cls ? cls.evidence : 'not in the intent file'}` }); continue }
     const kept = ctx.give.has(g.baseId) ? '' : cls.intent ? INTENTS[cls.intent] : ctx.keep.has(g.baseId) ? 'kept by --also-keep' : ''
-    if (kept) { row.stays.push({ ...base, count: g.removed, why: kept, evidence: cls.evidence || '' }); continue }
+    if (kept) { row.stays.push({ ...base, count: g.removed, why: kept, evidence: cls.evidence || '', ...(cls.jewelry && { jewelry: cls.jewelry }) }); continue }
     if (row.status !== 'ok') { row.skipped.push({ ...base, count: g.removed, why: row.status }); continue }
     const current = totalOf(liveEntries, g.baseId)
     const counted = ctx.ignore.has(g.baseId) ? 0 : current
@@ -415,12 +416,13 @@ function tally(into, g, key, holder) {
 function label(g) { return g.name ? `${g.edid} "${g.name}"` : g.edid }
 
 function totalsOf(rows) {
-  const t = { characters: 0, containers: 0, receiving: 0, give: {}, stays: {}, back: 0, backCraftable: 0, earlier: 0, elsewhere: 0, skipped: 0, skippedDocs: 0, unclassified: 0, spells: 0, problems: 0 }
+  const t = { characters: 0, containers: 0, receiving: 0, give: {}, stays: {}, jewelry: {}, back: 0, backCraftable: 0, earlier: 0, elsewhere: 0, skipped: 0, skippedDocs: 0, unclassified: 0, spells: 0, problems: 0 }
   for (const r of rows) {
     t[r.kind === 'character' ? 'characters' : 'containers']++
     if (r.give.length) t.receiving++
     for (const g of r.give) tally(t.give, g, g.group, r.formDesc)
     for (const g of r.stays) tally(t.stays, g, g.why, r.formDesc)
+    for (const g of r.stays.filter(g => g.why === INTENTS.jewelry)) t.jewelry[g.jewelry || 'other'] = (t.jewelry[g.jewelry || 'other'] || 0) + g.count
     t.back += sum(r.back)
     t.backCraftable += sum(r.back.filter(g => g.craftable))
     t.earlier += r.back.reduce((n, x) => n + x.byEarlierRestore, 0)
@@ -484,6 +486,8 @@ function render(title, rows, t, meta) {
   L.push(`  stays removed: ${plural(t.stayItems, 'item', 'items')} (items / entries / holders)`)
   for (const [k, v] of Object.entries(t.stays)) L.push(`    ${k.padEnd(34)} ${String(v.items).padStart(5)} / ${String(v.entries).padStart(4)} / ${v.holders}`)
   L.push(`    ${'learned spells (never restored)'.padEnd(34)} ${String(t.spells).padStart(5)}`)
+  const jewels = Object.keys(JEWELRY_KINDS).filter(k => t.jewelry[k])
+  if (jewels.length) L.push(`  jewelry: stays removed, ${plural(t.stays[INTENTS.jewelry].items, 'item', 'items')}: ${line(jewels, k => `${JEWELRY_KINDS[k]} ${t.jewelry[k]}`)} (--also-give '0x...' returns an id)`)
   L.push(`  not given: ${plural(t.skipped, 'item', 'items')} in ${plural(t.skippedDocs, 'document', 'documents')} since gone, deleted or changed hands`)
   L.push(`  cannot classify, not given: ${plural(t.unclassified, 'item', 'items')}`)
   if (t.problems) L.push(`  PROBLEMS: ${t.problems} (see the holders marked !); apply refuses until they are resolved`)

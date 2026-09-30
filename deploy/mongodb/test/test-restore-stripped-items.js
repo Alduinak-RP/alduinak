@@ -56,6 +56,9 @@ const total = (doc, base) => doc.inv.entries.reduce((n, e) => n + (id(e) === bas
 const quiet = () => {}
 
 const RING = 0x0003B97C
+const CIRCLET = 0x000166FF
+const TALISMAN = 0x33000A01
+const GIVE_RING = ['--also-give', '0x0003B97C']
 const BOLT = 0x0200D099
 const EINHERJAR_BOOTS = 0xFE00C80E
 const IRON = 0x00012EB7
@@ -139,7 +142,7 @@ async function plan(docs, extra = []) {
 function refused(re) { return err => err instanceof S.Refusal && re.test(err.message) }
 
 async function main() {
-  // Preview: the strip rule on the real backup documents reproduces the strip plan report, ebony and the Falmer cuirass stay, spells never come back
+  // Preview: the strip rule on the real backup documents reproduces the strip plan report, ebony, jewelry and the Falmer cuirass stay, spells never come back
   const pv = path.join(TMP, 'preview.json')
   await R.run(['preview', '--report', pv, '--intent', INTENT], { log: quiet })
   const p = JSON.parse(fs.readFileSync(pv, 'utf8'))
@@ -158,9 +161,19 @@ async function main() {
   assert.match(keptAll.text, /ArmorEinherjarBoots "Einherjar Boots" 0xFE00C80E .*: stays removed by --also-keep/)
   assert.equal(keptAll.given('c0cee:Skyrim.esm', EINHERJAR_BOOTS), 0)
   const ph = fd => p.holders.find(x => x.formDesc === fd)
-  assert.deepEqual(ph('29a').stays.map(g => g.edid), ['ArmorFalmerCuirass'])
-  assert.deepEqual(ph('29a').give.map(g => g.edid).sort(), ['ArmorFalmerBoots', 'ArmorFalmerGauntlets', 'JewelryRingSilver', 'OrcishArrow', 'OrcishBow'])
-  assert.ok(ph('11').stays.every(g => g.why === 'ebony equipment') && ph('11').stays.length === 5)
+  assert.deepEqual(ph('29a').stays.map(g => g.edid).sort(), ['ArmorFalmerCuirass', 'JewelryRingSilver'])
+  assert.deepEqual(ph('29a').give.map(g => g.edid).sort(), ['ArmorFalmerBoots', 'ArmorFalmerGauntlets', 'OrcishArrow', 'OrcishBow'])
+  assert.equal(ph('11').stays.filter(g => g.why === 'ebony equipment').length, 5)
+
+  // Jewelry stays removed whatever the strip filed it under: a plain ring, a circlet, an amulet filed as enchanted gear
+  const kept = (fd, base) => ph(fd).stays.find(g => g.baseId === S.hex(base))
+  assert.deepEqual([kept('11', RING).why, kept('11', RING).jewelry, kept('11', RING).count, kept('11', RING).group], ['jewelry', 'ring', 5, 'jewelry'])
+  assert.deepEqual([kept('14', CIRCLET).why, kept('14', CIRCLET).jewelry], ['jewelry', 'circlet'])
+  assert.deepEqual(ph('14').give.map(g => g.edid), ['EnchClothesRobesMageDestruction05'])
+  assert.deepEqual([kept('f00d', TALISMAN).why, kept('f00d', TALISMAN).jewelry, kept('f00d', TALISMAN).group], ['jewelry', 'necklace', 'enchanted gear'])
+  assert.ok(!p.holders.some(h => h.give.some(g => [RING, CIRCLET, TALISMAN, 0x000877AB].includes(parseInt(g.baseId, 16) >>> 0))))
+  assert.ok(pvText.includes("jewelry: stays removed, 22 items: rings 20, necklaces/amulets 1, circlets 1 (--also-give '0x...' returns an id)"))
+  assert.match(pvText, /JewelryRingSilver "Silver Ring" x5 \[jewelry\]/)
   assert.equal(ph('14').spells.length, 52)
   assert.deepEqual(ph('c4bd5:Skyrim.esm').give, [])
   assert.equal(ph('d03').status, 'the character was deleted')
@@ -180,15 +193,24 @@ async function main() {
   for (const g of ph('29a').give) addEntry(doc(w, '29a'), parseInt(g.baseId, 16), g.count)
   r = await plan(w)
   assert.deepEqual(r.h('29a').give, [])
-  assert.equal(r.h('29a').back.reduce((a, g) => a + g.count, 0), 7)
+  assert.equal(r.h('29a').back.reduce((a, g) => a + g.count, 0), 6)
 
-  // Partly returned: only the rest comes back
+  // Partly returned: only the rest comes back; rings an admin returned stay where they are and no more come back unless --also-give names them
   w = world()
   addEntry(doc(w, '11'), RING, 2)
   addEntry(doc(w, '11'), BOLT, 40)
   r = await plan(w)
-  assert.equal(r.given('11', RING), 3)
+  assert.equal(r.given('11', RING), 0)
+  assert.equal(r.h('11').stays.find(g => g.baseId === S.hex(RING)).count, 5)
   assert.equal(r.given('11', BOLT), 1)
+  assert.equal((await plan(w, GIVE_RING)).given('11', RING), 3)
+  const jw = stub(w)
+  await R.run(['backup', '--out', path.join(ROOT, 'jewelry'), '--intent', INTENT], { open: jw.open, log: quiet })
+  await R.run(['apply', '--backup', path.join(ROOT, 'jewelry'), '--apply', '--intent', INTENT], { open: jw.open, blocker: async () => null, log: quiet })
+  const rings = d => EJSON.stringify(d.inv.entries.filter(e => id(e) === RING))
+  assert.equal(rings(doc(jw.store, '11')), rings(doc(w, '11')))
+  assert.equal(total(doc(jw.store, '11'), BOLT), 41)
+  fs.rmSync(ROOT, { recursive: true })
 
   // Returned plain vs enchanted: totals count every variant, so a plain return is not given again enchanted
   w = world()
@@ -236,7 +258,7 @@ async function main() {
   doc(w, '14').inv.entries = doc(w, '14').inv.entries.slice(3)
   r = await plan(w)
   assert.equal(r.given('f00d', IRON), 3)
-  assert.deepEqual(r.h('f00d').stays.map(g => g.edid), ['EbonySword'])
+  assert.deepEqual(r.h('f00d').stays.map(g => g.edid).sort(), ['AldTalismanOfWarding', 'EbonySword', 'JewelryRingSilver'])
   assert.deepEqual(r.h('14').give, ph('14').give)
 
   // New items gained and deleted characters: every live entry stays at least as it was, gone documents are skipped
@@ -249,7 +271,7 @@ async function main() {
   await R.run(['backup', '--out', path.join(ROOT, 'b1'), '--intent', INTENT], { open: s.open, log: quiet })
   r = await plan(w)
   assert.equal(r.h('75d').status, 'the document no longer exists')
-  assert.equal(r.given('11', RING), 4)
+  assert.equal(r.given('11', RING), 0)
 
   // Apply: a dry run writes nothing, a running server refuses, a document changed after the backup refuses
   await R.run(['apply', '--backup', path.join(ROOT, 'b1'), '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet })
@@ -288,10 +310,10 @@ async function main() {
     }
   }
   after = doc(s.store, '11')
-  assert.equal(total(after, RING), 5)
+  assert.equal(total(after, RING), 1)
   assert.ok(after.inv.entries.find(e => id(e) === RING && e.worn), 'the worn ring stays as it was')
   assert.equal(total(after, NEW), 8)
-  assert.equal(after.inv.entries.length, before.length + 1 + 5 - 0)
+  assert.equal(after.inv.entries.length, before.length + 1 + 4)
   const bootsEntry = doc(s.store, 'c0cee:Skyrim.esm').inv.entries.find(e => id(e) === EINHERJAR_BOOTS)
   assert.equal(bootsEntry.baseId._bsontype, 'Long')
   assert.equal(formIds.num(bootsEntry.count), 46)
@@ -412,20 +434,20 @@ async function main() {
   const arrows = (await plan(world(), ['--also-give', '0x000139BF'])).rep.holders.reduce((n, h) => n + h.give.filter(g => g.baseId === '0x000139BF').reduce((a, g) => a + g.count, 0), 0)
   assert.ok(arrows > 0)
   w = world()
-  addEntry(doc(w, '11'), RING, 2)
+  addEntry(doc(w, '11'), BOLT, 40)
   const back29a = new Set(ph('29a').give.map(g => parseInt(g.baseId, 16) >>> 0))
   for (const g of ph('29a').give) addEntry(doc(w, '29a'), parseInt(g.baseId, 16), g.count)
   s = stub(w)
   await R.run(['backup', '--out', path.join(ROOT, 'settle'), '--intent', INTENT], { open: s.open, log: quiet })
   await R.run(['apply', '--backup', path.join(ROOT, 'settle'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet })
-  assert.equal(total(doc(s.store, '11'), RING), 5)
+  assert.equal(total(doc(s.store, '11'), BOLT), 41)
   assert.ok(!s.writes.some(x => String(x.filter._id) === String(doc(w, '29a')._id)))
-  doc(s.store, '11').inv.entries = doc(s.store, '11').inv.entries.filter(e => id(e) !== RING)
+  doc(s.store, '11').inv.entries = doc(s.store, '11').inv.entries.filter(e => id(e) !== BOLT)
   doc(s.store, '29a').inv.entries = doc(s.store, '29a').inv.entries.filter(e => !back29a.has(id(e)))
   r = await plan(s.store)
   assert.equal(r.rep.totals.giveItems, 0)
-  assert.equal(r.h('11').back.find(g => g.baseId === S.hex(RING)).byEarlierRestore, 5)
-  assert.equal(r.h('29a').back.reduce((n, g) => n + g.byEarlierRestore, 0), 7)
+  assert.equal(r.h('11').back.find(g => g.baseId === S.hex(BOLT)).byEarlierRestore, 41)
+  assert.equal(r.h('29a').back.reduce((n, g) => n + g.byEarlierRestore, 0), 6)
   r = await plan(s.store, ['--also-give', '0x000139BF'])
   assert.equal(r.rep.totals.giveItems, arrows)
   fs.rmSync(ROOT, { recursive: true })
@@ -479,57 +501,58 @@ async function main() {
   assert.equal(formIds.num(boots[0].count), 46)
   fs.rmSync(ROOT, { recursive: true })
 
-  // Profile pooling: rings handed to another character of the same profile count as returned for the whole profile
+  // Profile pooling (rings given back by --also-give): rings handed to another character of the same profile count as returned for the whole profile
   w = world()
   const alt = { _id: new ObjectId('6ac0000000000000000000aa'), formDesc: 'a17', recType: new Int32(1), profileId: new Int32(69), appearanceDump: { name: 'Fixture A Alt' }, inv: { entries: [] } }
   addEntry(alt, RING, 5)
   w.push(alt)
-  r = await plan(w)
+  r = await plan(w, GIVE_RING)
   assert.equal(r.given('11', RING), 5)
   assert.equal(r.given('c0cd4:Skyrim.esm', RING), 2)
   assert.equal(r.h('c0cd4:Skyrim.esm').back.find(g => g.baseId === S.hex(RING)).elsewhere, 5)
-  r = await plan(w, ['--per-document'])
+  r = await plan(w, [...GIVE_RING, '--per-document'])
   assert.equal(r.given('c0cd4:Skyrim.esm', RING), 7)
 
   // Pets: a return kept in a pet's saddlebags counts as held, an active pet by its actor's inventory rather than its stale stored copy
   const pet = (uid, actorId, rings) => ({ uid, kind: 'horse', name: uid, actorId: new Int32(actorId | 0), inventory: { entries: [{ baseId: new Int32(RING), count: new Int32(rings) }] } })
   w = world()
   doc(w, '11').dynamicFields = { 'private.pets': { list: [pet('stored', 0, 3)] } }
-  r = await plan(w)
+  r = await plan(w, GIVE_RING)
   assert.equal(r.given('11', RING), 2)
-  r = await plan(w, ['--per-document'])
+  r = await plan(w, [...GIVE_RING, '--per-document'])
   assert.equal(r.given('11', RING), 2)
   doc(w, '11').dynamicFields['private.pets'].list.push(pet('out', 0xFF0000A0, 4))
   w.push({ _id: new ObjectId('6ac0000000000000000000bb'), formDesc: 'a0', recType: new Int32(1), profileId: new Int32(-1), inv: { entries: [{ baseId: new Int32(RING), count: new Int32(1) }] } })
-  r = await plan(w)
+  r = await plan(w, GIVE_RING)
   assert.equal(r.given('11', RING), 1)
   alt.dynamicFields = { 'private.pets': { list: [pet('alt', 0, 2)] } }
   w.push(alt)
-  r = await plan(w)
+  r = await plan(w, GIVE_RING)
   assert.equal(r.given('11', RING) + r.given('c0cd4:Skyrim.esm', RING), 1)
   assert.equal(r.given('c0cd4:Skyrim.esm', RING), 0)
 
   // A copy crafted since the strip counts as a return, per document too; --ignore-held gives the id in full, and the backup must be taken with it
   w = world()
   addEntry(doc(w, '11'), RING, 3)
-  r = await plan(w)
+  r = await plan(w, GIVE_RING)
   assert.equal(r.given('11', RING), 2)
-  r = await plan(w, ['--per-document'])
+  r = await plan(w, [...GIVE_RING, '--per-document'])
   assert.equal(r.given('11', RING), 2)
   w.push(alt)
-  r = await plan(w, ['--ignore-held', '0x0003B97C'])
+  r = await plan(w, [...GIVE_RING, '--ignore-held', '0x0003B97C'])
   assert.equal(r.given('11', RING), 5)
   assert.equal(r.given('c0cd4:Skyrim.esm', RING), 7)
   s = stub(w)
-  await R.run(['backup', '--out', path.join(ROOT, 'held'), '--intent', INTENT, '--ignore-held', '0x0003B97C'], { open: s.open, log: quiet })
-  await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'held'), '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet }), refused(/--ignore-held 0x0003B97C/))
+  await R.run(['backup', '--out', path.join(ROOT, 'held'), '--intent', INTENT, ...GIVE_RING, '--ignore-held', '0x0003B97C'], { open: s.open, log: quiet })
+  await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'held'), '--intent', INTENT, ...GIVE_RING], { open: s.open, blocker: async () => null, log: quiet }), refused(/--ignore-held 0x0003B97C/))
   fs.rmSync(ROOT, { recursive: true })
 
   // Owner overrides: --also-give returns an intended removal, --also-keep keeps a return, never both
-  r = await plan(world(), ['--also-give', '0x000139BF', '--also-keep', '0x3B97C'])
+  r = await plan(world(), ['--also-give', '0x000139BF', '--also-keep', '0x200D099'])
   assert.equal(r.given('c4bd5:Skyrim.esm', 0x000139BF), 1)
-  assert.equal(r.given('11', RING), 0)
-  assert.equal(r.h('11').stays.find(g => g.baseId === S.hex(RING)).why, 'kept by --also-keep')
+  assert.equal(r.given('11', BOLT), 0)
+  assert.equal(r.h('11').stays.find(g => g.baseId === S.hex(BOLT)).why, 'kept by --also-keep')
+  assert.equal(r.h('11').stays.find(g => g.baseId === S.hex(RING)).why, 'jewelry')
   const usage = re => err => err instanceof S.UsageError && re.test(err.message)
   await assert.rejects(plan(world(), ['--also-give', '0x3B97C', '--also-keep', '0x0003B97C']), usage(/in both/))
   // PowerShell 5.1 turns an unquoted 0x000139BF,0x0002AC61 into 80319,175201; a repeated flag would keep only its last value
