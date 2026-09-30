@@ -93,11 +93,20 @@ are applied by the victim's own engine when the copy's swing connects: the perk 
 client relays, and the race attack spells the client does send are refused by `CanHitWithSpell` (the NPC neither
 holds nor learned them), so the server never sees them and its raised-shield rule cannot zero them. The client's
 `NpcHitSpellBlockService` therefore dispels a Contact-delivery poison hit spell from an NPC aggressor when the paired
-weapon hit (within 250 ms, in either order) was blocked; an unblocked paired hit keeps the poison, and only when no
-weapon hit pairs with the spell does the pose decide (the player held a block facing the aggressor as the spell
-landed). It always dispels when the aggressor is a copy this client does not host (its swing is a replay, the host
-reports the real hit), and puts the health back to the value before the effect when only the poison's own first
-tick was lost. `hit` events from NPC aggressors with a
+weapon hit (within 250 ms, in either order) counts as blocked by the server's own rule: the engine flagged it blocked,
+or the player held a block with the aggressor within 1 rad of their facing (with a shield against arrows and bolts),
+which the server zeroes whatever the engine decided. Only a hit that is neither keeps the poison, and when no weapon
+hit pairs with the spell the pose alone decides. The Falmer poison is known by its effect, `crFalmerFFContact`
+(0x109D7C), and a landing is seen through `magicEffectApply`, `effectStart` (the effect is listed on the player by
+then) and the spell's own hit event, whichever come; the dispel looks again one frame later and dispels once more
+when the effect is still on the player. On top of that the server tells the victim's client about every FalmerRace
+swing it resolves as blocked (custom packet `npcHitPoisonBlocked` with the NPC's id), and that verdict dispels the
+poison of that NPC's landing within the last 3 s even when the client's own verdict kept it; with no landing seen, a
+Falmer poison still on the player is dispelled unless another Falmer's unblocked hit poisoned the player meanwhile.
+It always dispels when the aggressor is a copy this client does not host (its swing is a replay, the host reports the
+real hit), and puts the health back to the value before the effect when only the poison's own first tick was lost.
+Each verdict is logged, at most once per NPC every 5 s (`NpcHitSpellBlockService: dispelled <spells> from <npc>
+(<reason>, <sources>)` or `kept <spells> from <npc> (unblocked, ...)`). `hit` events from NPC aggressors with a
 non-weapon source are logged once per source every 5 s (`HitService: npc ... hit the player with source ...`), which
 says whether the engine raises a hit event for a given hit spell at all. An unblocked hit from a hosted NPC still
 poisons the player locally as before, invisible to god mode and `onHitDamageAttempt`.
@@ -111,7 +120,8 @@ Dawnguard.esm and Dragonborn.esm is FalmerRace (0x131F4), so a wolf, bandit or s
 `hitData.isHitBlocked`), it opens a 7 s guard on that player (the strongest poison, `DLC1crFalmerPoisonedWeapon06`,
 lasts 4 s, plus the client's 2 s `ChangeValues` throttle and the report's travel) holding 48 health points, that
 poison's whole course (12 a second for 4 s), turned into a share of the bar with the base health the server's hit
-damage uses; each blocked hit restarts it with the full 48. A health report lower than
+damage uses; each blocked hit restarts it with the full 48 and sends the `npcHitPoisonBlocked` packet above. A
+health report lower than
 the server's value inside the guard is refused up to what is left of those points: the server keeps its value (or
 lowers it only by the part of the drop beyond them) and echoes it back, so the client's health returns to it, and the
 points refused are spent. An unblocked hit from a FalmerRace NPC closes the guard at once (`OnWeaponHit - <actor>

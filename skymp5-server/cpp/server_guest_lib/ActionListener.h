@@ -132,7 +132,7 @@ private:
     bool logged = false;
   };
 
-  void TrackNpcHitPoison(const MpActor& aggressor, const MpActor& target,
+  void TrackNpcHitPoison(const MpActor& aggressor, MpActor& target,
                          bool blocked);
   float GuardReportedHealth(const MpActor& actor, float current,
                             float reported);

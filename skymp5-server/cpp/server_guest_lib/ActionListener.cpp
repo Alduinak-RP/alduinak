@@ -2377,7 +2377,7 @@ bool CarriesHitPoison(const MpActor& actor)
 
 // A blocked Falmer swing opens the guard, an unblocked one closes it since its poison lands and the report cannot tell the two apart
 void ActionListener::TrackNpcHitPoison(const MpActor& aggressor,
-                                       const MpActor& target, bool blocked)
+                                       MpActor& target, bool blocked)
 {
   if (target.GetProfileId() < 0 || !CarriesHitPoison(aggressor)) {
     return;
@@ -2398,6 +2398,14 @@ void ActionListener::TrackNpcHitPoison(const MpActor& aggressor,
   guard.at = now;
   guard.aggressorId = aggressor.GetFormId();
   guard.budget = kBlockedHitPoisonHealth;
+
+  // The victim's client dispels the poison its own engine applied through the block
+  CustomPacketMessage message;
+  message.contentJsonDump =
+    nlohmann::json{ { "customPacketType", "npcHitPoisonBlocked" },
+                    { "aggressor", aggressor.GetFormId() } }
+      .dump();
+  target.SendToUser(message, true);
 }
 
 // A lower health reported inside the guard is the blocked hit's poison, so the server keeps its value for up to that poison's damage
@@ -2418,10 +2426,10 @@ float ActionListener::GuardReportedHealth(const MpActor& actor, float current,
     return reported;
   }
   float baseHealth = 0.f;
-  const float allowed = std::max(
-    reported,
+  const float absorbable = current -
     CalculateCurrentHealthPercentage(actor, guard.budget, current,
-                                     &baseHealth));
+                                     &baseHealth);
+  const float allowed = std::min(current, reported + absorbable);
   const float refused = (allowed - reported) * baseHealth;
   guard.budget -= refused;
   if (!guard.logged) {
