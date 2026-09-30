@@ -172,6 +172,12 @@ const whereIs = (mp: Mp, refrId: number): { cell: number; x: number; y: number }
   }
 };
 
+// True for a reference in a worldspace, false in an interior cell, null when it is not loaded or no worldspace was scanned
+export function isOutdoors(mp: Mp, refrId: number): boolean | null {
+  const at = worldIds.size ? whereIs(mp, refrId) : null;
+  return at ? worldIds.has(at.cell) : null;
+}
+
 const exactHold = (mp: Mp, refrId: number): Hold | null => {
   const at = whereIs(mp, refrId);
   if (!at) return null;

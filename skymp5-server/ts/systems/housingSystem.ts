@@ -6,7 +6,7 @@ import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles"
 import { writeFileAtomic } from "./fileUtil";
 import { addItemTo, holdsItem, takeItemFrom, userSlotCount } from "./actorUtil";
 import { FactionDef, holdRanksOf, managesHold } from "./factionRules";
-import { Hold, holdOfRefs, loadHolds } from "./holdOf";
+import { Hold, holdOfRefs, isOutdoors, loadHolds } from "./holdOf";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -16,19 +16,23 @@ type Mp = any;
 // Players claim any unowned door or container they are standing at by pressing
 // the housing key. Owners lock it, name it, cut keys, hand ownership over, or
 // give it up. A locked property refuses activation for everyone, owner included,
-// until the owner, an admin or a key holder unlocks
-// it from the menu; RefDecorService mirrors the lock into the engine as a Master
-// lock so every player sees a locked door.
+// until the owner, an admin or a key holder unlocks it from the menu. A door
+// between a worldspace and an interior has two locks: the entrance refuses
+// whoever uses its outdoor half, the exit whoever uses its indoor half. Any
+// other door and every container has one lock that shuts both ways.
+// RefDecorService mirrors each half's lock into the engine as a Master lock so
+// every player sees a locked door.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
 //     { customPacketType: "propertyInfoRequest", target: <refrId> }
 //     { customPacketType: "propertyRequest", action, target, recipient?, name? }
-//       action: claim | abandon | lock | unlock | rename | transfer
+//       action: claim | abandon | lock | unlock (both locks) | lockentrance | unlockentrance
+//             | lockexit | unlockexit | rename | transfer
 //             | breaklock (revoke from older clients) | createkey | revokekeys | grantcontainer
 //   Server -> Client:
-//     { customPacketType: "propertyMenu", target, view, owned, name, locked,
-//       canLock, hasKeys, canGrantContainers, ownerName, pets, hold }
+//     { customPacketType: "propertyMenu", target, view, owned, name, locked (either lock),
+//       lockedEntrance, lockedExit, sides, canLock, hasKeys, canGrantContainers, ownerName, pets, hold }
 //     { customPacketType: "propertyNotice", text }
 //     { customPacketType: "refDecor", full?, refs: [{refId,name,locked}] }
 //
@@ -41,8 +45,8 @@ type Mp = any;
 // re-claim cannot mint a credential that old copies already answer to.
 //
 // Teleport doors are claimed as a pair. The record lives on the lower of the two
-// form ids (the "primary"); the far side stores a pointer to it, so locking a
-// house from the inside locks the outside too.
+// form ids (the "primary"); the far side stores a pointer to it, so a house is
+// managed from either side.
 //
 // Holds. A property lies in the hold its door's location belongs to (holdOf.ts: the cell's location walked up to the
 // LocTypeHold one, either half of a teleport pair). Ranks that manage hold property (Jarl and Steward by default) manage
@@ -75,18 +79,26 @@ const MANAGER_ACTIONS = new Set(["abandon", "breaklock", "revoke", "rename", "re
 const CHANGE_FAILED = "That cannot be changed right now.";
 const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ and - only.";
 
+// The half of a door someone uses: outdoors or indoors of a worldspace-to-interior pair, "" for a property with one lock
+type DoorSide = "outside" | "inside" | "";
+const LOCK_OF_SIDE: Record<DoorSide, string> = { outside: "entrance", inside: "exit", "": "lock" };
+
 // One claimed property. Stored on the primary reference. owner 0 is an
 // ownerless stub kept only to carry `serial` forward.
 interface PropertyRecord {
   owner: number;
   ownerName: string;
   name: string | null;
-  locked: boolean;
+  lockedEntrance: boolean;
+  lockedExit: boolean;
   serial: number;
   cut: number;
   partner: number;
   containers: number[];
 }
+
+// As stored: "locked" is either lock, the one flag builds before the entrance and exit read
+type StoredRecord = PropertyRecord & { locked: boolean };
 
 // The far half of a teleport pair just points at the primary.
 interface PrimaryPointer {
@@ -101,7 +113,7 @@ interface ViewerAccess {
 }
 
 const emptyRecord = (): PropertyRecord => ({
-  owner: 0, ownerName: "", name: null, locked: false,
+  owner: 0, ownerName: "", name: null, lockedEntrance: false, lockedExit: false,
   serial: 1, cut: 0, partner: 0, containers: [],
 });
 
@@ -155,7 +167,7 @@ export class HousingSystem implements System {
     };
   }
 
-  // Faction doors and containers refuse outsiders; locked means locked for everyone, access only lets a player unlock it from the menu
+  // Faction doors and containers refuse outsiders; a shut lock on the half used is shut for everyone, access only lets a player unlock it from the menu
   private onActivate(ctx: SystemContext, targetId: number, casterId: number): boolean {
     const faction = this.factionGate ? this.factionGate(casterId, targetId, "faction door") : null;
     if (faction && !faction.allowed && !this.isAdmin(ctx, casterId)) {
@@ -168,14 +180,18 @@ export class HousingSystem implements System {
     const primary = this.primaryOf(ctx, targetId);
     if (!primary) return true;
     const rec = this.read(ctx, primary);
-    if (!rec || rec.owner === 0 || !rec.locked) return true;
+    if (!rec || rec.owner === 0) return true;
+    // The native side refuses a caster outside the door's cell, so the half pressed is the half the caster stands at
+    const side = this.sideOf(ctx, primary, rec, targetId);
+    if (!this.lockedAt(rec, side)) return true;
 
     const userId = this.userOf(ctx, casterId);
     if (!this.firstDenial(userId)) return false;
     const role = this.accessRole(ctx, primary, rec, casterId);
-    const label = rec.name || "This";
-    this.notice(ctx, userId, role ? `${label} is locked. Unlock it from the housing menu.` : `${label} is locked.`);
-    this.log(`[housing] door ${targetId.toString(16)} of ${this.claimLabel(primary, rec)} denied to ${this.who(ctx, casterId)}: locked${role ? `, may unlock as ${role}` : ""}`);
+    const lock = LOCK_OF_SIDE[side];
+    const text = side ? `The ${lock} of ${rec.name || "this property"} is locked.` : `${rec.name || "This"} is locked.`;
+    this.notice(ctx, userId, role ? `${text} Unlock it from the housing menu.` : text);
+    this.log(`[housing] door ${targetId.toString(16)} of ${this.claimLabel(primary, rec)} denied to ${this.who(ctx, casterId)}: ${side ? `${lock} locked (${side})` : "locked"}${role ? `, may unlock as ${role}` : ""}`);
     return false;
   }
 
@@ -261,8 +277,12 @@ export class HousingSystem implements System {
       case "abandon": this.doAbandon(ctx, userId, actorId, primary, rec, isOwner, isManager); break;
       case "breaklock":
       case "revoke": this.doBreakLock(ctx, userId, actorId, primary, rec, isManager); break;
-      case "lock": this.doLock(ctx, userId, actorId, primary, rec, true); break;
-      case "unlock": this.doLock(ctx, userId, actorId, primary, rec, false); break;
+      case "lock": this.doLock(ctx, userId, actorId, primary, rec, "", true); break;
+      case "unlock": this.doLock(ctx, userId, actorId, primary, rec, "", false); break;
+      case "lockentrance": this.doLock(ctx, userId, actorId, primary, rec, "outside", true); break;
+      case "unlockentrance": this.doLock(ctx, userId, actorId, primary, rec, "outside", false); break;
+      case "lockexit": this.doLock(ctx, userId, actorId, primary, rec, "inside", true); break;
+      case "unlockexit": this.doLock(ctx, userId, actorId, primary, rec, "inside", false); break;
       case "rename": this.doRename(ctx, userId, primary, rec, isOwner, isManager, content["name"]); break;
       case "createkey": this.doCreateKey(ctx, userId, actorId, primary, rec, isOwner, content["name"]); break;
       case "revokekeys": this.doRevokeKeys(ctx, userId, primary, rec, isOwner, isManager); break;
@@ -346,8 +366,9 @@ export class HousingSystem implements System {
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
-  private doLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, locked: boolean): void {
-    const action = locked ? "lock" : "unlock";
+  // The lock of one half, or with side "" both; a property with one lock always turns both
+  private doLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, side: DoorSide, locked: boolean): void {
+    const action = `${locked ? "lock" : "unlock"}${side ? LOCK_OF_SIDE[side] : ""}`;
     if (rec.owner === 0) {
       this.refuse(ctx, userId, actorId, action, primary, "Claim it first.");
       return;
@@ -357,10 +378,15 @@ export class HousingSystem implements System {
       this.refuse(ctx, userId, actorId, action, primary, "You have no key to this.");
       return;
     }
-    rec.locked = locked;
+    const sided = this.hasSides(ctx, primary, rec);
+    const which: DoorSide = sided ? side : "";
+    if (which !== "inside") rec.lockedEntrance = locked;
+    if (which !== "outside") rec.lockedExit = locked;
     if (!this.commit(ctx, userId, primary, rec)) return;
-    this.log(`[housing] ${this.claimLabel(primary, rec)} ${locked ? "locked" : "unlocked"} by ${this.who(ctx, actorId)} as ${role}`);
-    this.notice(ctx, userId, locked ? "Locked." : "Unlocked.");
+    const state = locked ? "locked" : "unlocked";
+    const what = !sided ? "" : which ? `${LOCK_OF_SIDE[which]} ` : "entrance and exit ";
+    this.log(`[housing] ${this.claimLabel(primary, rec)} ${what}${state} by ${this.who(ctx, actorId)} as ${role}`);
+    this.notice(ctx, userId, which ? `${which === "outside" ? "Entrance" : "Exit"} ${state}.` : locked ? "Locked." : "Unlocked.");
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -473,6 +499,8 @@ export class HousingSystem implements System {
     const isManager = !!primary && this.managerRefusal(ctx, actorId, primary) !== null;
     const canLock = owned && this.hasAccess(ctx, primary, rec!, actorId);
     const holdsKey = canLock && !isOwner && !isManager;
+    const lockedEntrance = owned && rec!.lockedEntrance;
+    const lockedExit = owned && rec!.lockedExit;
 
     let view: string;
     if (isOwner) view = "owner";
@@ -487,7 +515,10 @@ export class HousingSystem implements System {
       view,
       owned,
       name: rec ? rec.name : null,
-      locked: owned && rec!.locked,
+      locked: lockedEntrance || lockedExit,
+      lockedEntrance,
+      lockedExit,
+      sides: owned && this.hasSides(ctx, primary, rec!),
       canLock,
       hasKeys: owned,
       canGrantContainers: (isOwner || isManager) && owned && this.baseTypeOf(ctx, primary) === "CONT",
@@ -618,6 +649,35 @@ export class HousingSystem implements System {
     return !!partner && this.withinReach(ctx, actorId, partner);
   }
 
+  // Which half of a claimed pair a reference is, from the cells the two halves stand in: one in a worldspace, one in an interior
+  private sideOf(ctx: SystemContext, primary: number, rec: PropertyRecord, refrId: number): DoorSide {
+    const far = !rec.partner ? 0 : refrId === primary ? rec.partner : refrId === rec.partner ? primary : 0;
+    if (!far) return "";
+    const here = this.outdoors(ctx, refrId);
+    const there = this.outdoors(ctx, far);
+    if (here === null || there === null || here === there) return "";
+    return here ? "outside" : "inside";
+  }
+
+  private hasSides(ctx: SystemContext, primary: number, rec: PropertyRecord): boolean {
+    return this.sideOf(ctx, primary, rec, primary) !== "";
+  }
+
+  // A property with one lock is shut by either flag
+  private lockedAt(rec: PropertyRecord, side: DoorSide): boolean {
+    if (side === "outside") return rec.lockedEntrance;
+    if (side === "inside") return rec.lockedExit;
+    return rec.lockedEntrance || rec.lockedExit;
+  }
+
+  private outdoors(ctx: SystemContext, refrId: number): boolean | null {
+    const cached = this.outdoorsCache.get(refrId);
+    if (cached !== undefined) return cached;
+    const outdoors = isOutdoors(ctx.svr as Mp, refrId);
+    if (outdoors !== null) this.rememberEspm(this.outdoorsCache, refrId, outdoors);
+    return outdoors;
+  }
+
   // ── Keys ────────────────────────────────────────────────────────────────────
 
   // The credential is the form id plus the serial, never the player-chosen
@@ -720,12 +780,26 @@ export class HousingSystem implements System {
     this.sendDecor(ctx, userId, this.decorRefs(ctx));
   }
 
-  // A locked claim is locked for every viewer, so one list serves everyone
+  // Each half carries its own side's lock, the same for every viewer, so one list serves everyone
   private decorRefs(ctx: SystemContext): Array<Record<string, unknown>> {
     const refs: Array<Record<string, unknown>> = [];
+    const count = { sided: 0, entrance: 0, exit: 0, single: 0, locked: 0 };
     for (const { primary, rec } of this.liveClaims(ctx)) {
-      refs.push({ refId: primary, name: rec.name, locked: rec.locked });
-      if (rec.partner) refs.push({ refId: rec.partner, name: rec.name, locked: rec.locked });
+      const side = this.sideOf(ctx, primary, rec, primary);
+      refs.push({ refId: primary, name: rec.name, locked: this.lockedAt(rec, side) });
+      if (rec.partner) refs.push({ refId: rec.partner, name: rec.name, locked: this.lockedAt(rec, this.sideOf(ctx, primary, rec, rec.partner)) });
+      if (side) {
+        count.sided++;
+        if (rec.lockedEntrance) count.entrance++;
+        if (rec.lockedExit) count.exit++;
+      } else {
+        count.single++;
+        if (this.lockedAt(rec, side)) count.locked++;
+      }
+    }
+    if (!this.lockSummaryLogged) {
+      this.lockSummaryLogged = true;
+      this.log(`[housing] lock summary: ${count.sided} doors with an entrance and exit (${count.entrance} entrance locked, ${count.exit} exit locked), ${count.single} with one lock (${count.locked} locked)`);
     }
     return refs;
   }
@@ -838,12 +912,15 @@ export class HousingSystem implements System {
     try {
       const raw = (ctx.svr as Mp).get(primary, HOUSING_PROP);
       if (!raw || typeof raw !== "object" || Number((raw as any).primary)) return null;
-      const r = raw as Partial<PropertyRecord>;
+      const r = raw as Partial<StoredRecord>;
+      // A record from before the entrance and exit keeps its one lock on both
+      const legacy = r.locked === true;
       return {
         owner: Number(r.owner) || 0,
         ownerName: String(r.ownerName || ""),
         name: typeof r.name === "string" && r.name ? r.name : null,
-        locked: r.locked === true,
+        lockedEntrance: typeof r.lockedEntrance === "boolean" ? r.lockedEntrance : legacy,
+        lockedExit: typeof r.lockedExit === "boolean" ? r.lockedExit : legacy,
         serial: Number(r.serial) || 1,
         cut: Number(r.cut) || 0,
         partner: Number(r.partner) || 0,
@@ -857,7 +934,8 @@ export class HousingSystem implements System {
   private write(ctx: SystemContext, primary: number, rec: PropertyRecord): boolean {
     const mp = ctx.svr as Mp;
     try {
-      mp.set(primary, HOUSING_PROP, rec);
+      const stored: StoredRecord = { ...rec, locked: rec.lockedEntrance || rec.lockedExit };
+      mp.set(primary, HOUSING_PROP, stored);
     } catch (e) {
       this.log(`[housing] write failed for ${primary.toString(16)}: ${e}`);
       return false;
@@ -891,7 +969,8 @@ export class HousingSystem implements System {
     rec.owner = 0;
     rec.ownerName = "";
     rec.name = null;
-    rec.locked = false;
+    rec.lockedEntrance = false;
+    rec.lockedExit = false;
     return this.write(ctx, primary, rec);
   }
 
@@ -1007,6 +1086,8 @@ export class HousingSystem implements System {
   private claimed: number[] = [];
   private partnerCache = new Map<number, number>();
   private baseTypeCache = new Map<number, string>();
+  private outdoorsCache = new Map<number, boolean>();
+  private lockSummaryLogged = false;
   private unclaimableLogged = new Set<number>();
   private lastRequestMs = new Map<number, number>();
   private lastDenyMs = new Map<number, number>();

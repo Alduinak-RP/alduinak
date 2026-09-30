@@ -9,6 +9,10 @@ interface HousingEvents {
   breakLock: string;
   lock: string;
   unlock: string;
+  lockEntrance: string;
+  unlockEntrance: string;
+  lockExit: string;
+  unlockExit: string;
   transfer: string;
   rename: string;
   createKey: string;
@@ -27,6 +31,9 @@ export interface HousingData {
   owned: boolean;
   name: string | null;
   locked: boolean;
+  lockedEntrance?: boolean;
+  lockedExit?: boolean;
+  sides?: boolean; // A door from outdoors into an interior: the entrance and the exit lock apart
   canLock?: boolean;
   hasKeys: boolean;
   canGrantContainers: boolean;
@@ -95,8 +102,11 @@ const Housing = ({ data }: { data: HousingData }) => {
     return () => window.removeEventListener('skymp5-client:browserUnfocused', onUnfocused);
   }, []);
 
+  const lockState = data.sides
+    ? ` · entrance ${data.lockedEntrance ? 'locked' : 'open'} · exit ${data.lockedExit ? 'locked' : 'open'}`
+    : (data.locked ? ' · locked' : ' · unlocked');
   const status = hasAccess
-    ? (isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder') + (data.locked ? ' · locked' : ' · unlocked')
+    ? (isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder') + lockState
     : (data.owned ? 'Owned by another' : 'Unclaimed');
 
   return (
@@ -127,7 +137,24 @@ const Housing = ({ data }: { data: HousingData }) => {
             </button>
           ) : null}
 
-          {canLock && data.owned ? (
+          {canLock && data.owned && data.sides ? (
+            <>
+              <button
+                className="housing__button housing__button--primary"
+                onClick={() => send(data.lockedEntrance ? ev.unlockEntrance : ev.lockEntrance)}
+              >
+                {data.lockedEntrance ? 'Unlock Entrance' : 'Lock Entrance'}
+              </button>
+              <button
+                className="housing__button housing__button--primary"
+                onClick={() => send(data.lockedExit ? ev.unlockExit : ev.lockExit)}
+              >
+                {data.lockedExit ? 'Unlock Exit' : 'Lock Exit'}
+              </button>
+            </>
+          ) : null}
+
+          {canLock && data.owned && !data.sides ? (
             <button
               className="housing__button housing__button--primary"
               onClick={() => send(data.locked ? ev.unlock : ev.lock)}
@@ -173,7 +200,11 @@ const Housing = ({ data }: { data: HousingData }) => {
           ) : null}
         </div>
 
-        {isOwner ? (
+        {isOwner && data.sides ? (
+          <p className="housing__hint">A locked entrance stops everyone coming in, a locked exit everyone going out, you included, until it is unlocked here. Leave the exit open and nobody is shut inside. A key lets its holder lock and unlock both too: trade it or leave it in a chest. Void all keys cancels every copy.</p>
+        ) : null}
+
+        {isOwner && !data.sides ? (
           <p className="housing__hint">A locked door stops everyone, you included, until it is unlocked here. A key lets its holder lock and unlock it too: trade it or leave it in a chest. Void all keys cancels every copy.</p>
         ) : null}
 

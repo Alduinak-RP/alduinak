@@ -28,6 +28,10 @@ const events = {
   breakLock: 'housing:breaklock',
   lock: 'housing:lock',
   unlock: 'housing:unlock',
+  lockEntrance: 'housing:lockentrance',
+  unlockEntrance: 'housing:unlockentrance',
+  lockExit: 'housing:lockexit',
+  unlockExit: 'housing:unlockexit',
   transfer: 'housing:transfer',
   rename: 'housing:rename',
   createKey: 'housing:createkey',
@@ -61,6 +65,10 @@ interface PropertyMenuInfo {
   owned: boolean;
   name: string | null;
   locked: boolean;
+  lockedEntrance: boolean;
+  lockedExit: boolean;
+  // A door from outdoors into an interior, with an entrance and an exit locked apart
+  sides: boolean;
   canLock: boolean;
   hasKeys: boolean;
   canGrantContainers: boolean;
@@ -80,7 +88,7 @@ interface PetListInfo {
 
 // Module-level state shared with the browser-side widget setter via runtime injection
 let info: PropertyMenuInfo = {
-  target: 0, view: 'denied', owned: false, name: null, locked: false,
+  target: 0, view: 'denied', owned: false, name: null, locked: false, lockedEntrance: false, lockedExit: false, sides: false,
   canLock: false, hasKeys: false, canGrantContainers: false, ownerName: null, pets: '', hold: '',
 };
 let targetLabel = '';
@@ -106,8 +114,9 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  * Protocol - all messages are MsgType.CustomPacket with a JSON dump.
  *
  *   Client -> Server: { "customPacketType": "propertyInfoRequest", "target": <id> }
- *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view", "owned",
- *                       "name", "locked", "canLock", "hasKeys", "canGrantContainers", "ownerName", "pets", "hold" }
+ *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view", "owned", "name", "locked",
+ *                       "lockedEntrance", "lockedExit", "sides", "canLock", "hasKeys", "canGrantContainers",
+ *                       "ownerName", "pets", "hold" }
  *   Client -> Server: { "customPacketType": "propertyRequest", "action", "target",
  *                       "recipient"?, "name"? }  (createkey names the key)
  *   Server -> Client: { "customPacketType": "propertyNotice", "text" }
@@ -120,7 +129,9 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  * rename/keys/lock/transfer/abandon; 'manager' (an admin, or a Jarl or Steward
  * of the hold the property lies in, shown from `hold`) offers
  * grant/break lock/rename, and lock only when canLock is set; 'keyholder' offers
- * lock/unlock. Transfer and grant-container are two-step: pick the action,
+ * lock/unlock. A door with `sides` offers Lock Entrance and Lock Exit
+ * (lockentrance/lockexit and their unlocks) instead of one Lock. Transfer and
+ * grant-container are two-step: pick the action,
  * then look at the recipient and press the interact key again. Cut a key asks
  * for the key's name in a prompt over the menu and sends createkey with it. A
  * non-empty pets category adds the Pets option: it swaps the menu for the
@@ -208,6 +219,9 @@ export class HousingService extends ClientListener {
           owned,
           name: typeof content["name"] === "string" ? content["name"] as string : null,
           locked: content["locked"] === true,
+          lockedEntrance: content["lockedEntrance"] === true,
+          lockedExit: content["lockedExit"] === true,
+          sides: content["sides"] === true,
           // An older server sends no canLock; its view alone decides then
           canLock: content["canLock"] !== false,
           hasKeys: content["hasKeys"] === true,
@@ -279,6 +293,10 @@ export class HousingService extends ClientListener {
       case events.breakLock:
       case events.lock:
       case events.unlock:
+      case events.lockEntrance:
+      case events.unlockEntrance:
+      case events.lockExit:
+      case events.unlockExit:
       case events.revokeKeys: {
         const action = key.slice("housing:".length);
         sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action, target });
@@ -376,6 +394,9 @@ export class HousingService extends ClientListener {
       owned: info.owned,
       name: info.name,
       locked: info.locked,
+      lockedEntrance: info.lockedEntrance,
+      lockedExit: info.lockedExit,
+      sides: info.sides,
       canLock: info.canLock,
       hasKeys: info.hasKeys,
       canGrantContainers: info.canGrantContainers,
