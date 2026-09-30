@@ -107,6 +107,15 @@ bonus. So `magicka` is the mage rank's value plus `RacialSystem.baseBonus(actorI
 above 50), and a character with no mage slot is held at 100 plus the bonus: a Novice mage Breton writes 175, a High
 Elf with no mage craft 200. See `docs_roleplay_mastery.md`, professionState.
 
+A character in creation spawns with an empty appearance, so its `createActor` carries the base values of the Player
+NPC_ race (NordRace: 100/100/150 with r27a) and the client writes them as base values before the race menu opens.
+Once the race menu is accepted (the native appearance hook) or the creation finishes, RacialSystem sends that client
+`racialBase { raceId, health, stamina }` with the chosen race's base health and stamina, and the client writes them
+with the current percentages kept (`RemoteServer: racialBase ...` in `skyrim-platform.log`, `[racial] <id> base values
+sent after race menu: OrcRace H/S 150/100, magicka left to MasterySystem` in the server log). Magicka is left to
+MasterySystem, which sends it again after the creation. Nothing is sent without a `racialPassives` block or with
+`enabled: false`.
+
 ### Claws
 
 A fist hit's damage is the aggressor's RACE unarmed damage, which the patcher copies from a weapon record
@@ -184,32 +193,39 @@ and the base values (RACE starting value plus the Player NPC_ offsets, within 0.
   engine or base race, missing, not held or stopped race spells, other races' spells running or held, extra spells on
   the client's race record (another plugin on the client) or a base value off.
 
-A wrong race or a missing, unheld or stopped spell or another race's spell sends one `racialResync { raceId, spells,
-problems }` per spawn, and the client runs the race sync again with the server's race and reports once more; an extra
-spell or a base value alone is only logged ("the client's plugins differ from the server's"), since that means other
-plugin files on the client. A report within 2 s of the last one is dropped.
+`racialPassives.selfCheck` switches it: `"off"` (the code default, also without a block or with `enabled: false`)
+compares nothing, `"log"` writes the lines below and never resyncs, `"resync"` (the Test value) also sends one
+`racialResync { raceId, spells, problems }` per spawn for a wrong race or a missing, unheld or stopped spell or another
+race's spell; the client then runs the race sync again with the server's race and reports once more. An extra spell or
+a base value alone is only logged ("the client's plugins differ from the server's"), since that means other plugin
+files on the client. A report within 2 s of the last one is dropped. A character a GM polymorph holds
+(`private.polymorph`, main's Polymorph tab) is not checked (`race check after <reason> skipped: a polymorph holds the
+character (private.polymorph)`), and its traits follow the race it wears while the cached race is kept for the revert.
 
-Magicka: until MasterySystem's written magicka is wired into the check (the `writtenMagicka` hook of RacialSystem,
-plan task MC0, not on this branch), a report whose `masteryMagicka` says the client's MasteryService wrote a base
-magicka skips the magicka comparison, and the line ends `magicka from the mage rank not checked`. Since every
-character past creation now gets a written magicka (100 plus the race bonus for a non-mage), that is every report for
-now: health and stamina are checked, magicka is not.
+The race speed spell counts as on while `AldRaceSpeedEffect` runs on the character; the client line still shows the
+SpeedMult it reads against the spell's value, which cold stages, diseases and other speed effects move.
+
+Magicka is compared with the value MasterySystem last sent the client in `professionState` (index.ts wires
+`MasterySystem.lastMagicka` into RacialSystem's `writtenMagicka`), `(mastery)` in a MISMATCH line; with nothing sent
+yet it is compared with the race's base, `(race)`.
 
 ## Storage
 
 `private.racial = { v, powers: { "<spell desc>": epoch ms }, startItems?: { race, items, at, via, slot, note? } }` on
 the character's actor form. It holds descs, never raw form ids, so the manager's MongoDB purge needs no entry for it.
 The race itself is the appearance race; RacialSystem caches it per character until its next spawn, character select,
-creation finish or accepted race menu, so the busy needs and survival paths read two maps.
+creation finish or accepted race menu, so the busy needs and survival paths read two maps; while a GM polymorph
+holds the character (`private.polymorph`) it reads the appearance race afresh and leaves the cache alone.
 
 ## Log lines
 
 Server, `C:\logs\test\gameserver.log`:
 
 - `[racial] ready: on, 8 race entries (...), 15 aliases, powers AldPowerCommandAnimal 20 h, start items once per slot,
-  backfilled at login for characters created since 2026-10-01T23:00Z; self-check on racialReport (base values within
-  0.5, one report per 2 s, one racialResync per spawn, mage magicka not checked while the client reports a mastery
-  write); Player NPC_ offsets H/M/S 50/50/50`
+  backfilled at login for characters created since 2026-10-01T23:00Z; self-check resync on racialReport (base values
+  within 0.5, one report per 2 s, one racialResync per spawn, mage magicka from MasterySystem, polymorphed characters
+  skipped); racialBase with the race's base health and stamina after an accepted race menu; Player NPC_ offsets H/M/S
+  50/50/50` (`self-check off (racialPassives.selfCheck off)` without the Test key)
 - `[racial] powers: AldPowerCommandAnimal <id> "Command Animal" on no race (cooldown 20 h of real time, counting
   offline, a miss is free, effect commandAnimal not built yet, so casts are refused)` (`not in the load order yet`
   before r27a)
@@ -221,13 +237,15 @@ Server, `C:\logs\test\gameserver.log`:
   `AldRacial_Nord not in plugin yet` and a warning names every such race
 - `[needs] modifier sources: race (hunger OrcRace x0.85; fatigue OrcRace x0.85, WoodElfRace x0.75, DarkElfRace x0.75,
   HighElfRace x0.75)`
-- in play: the check lines above, `[racial] <id> ImperialRace start items: 50 gold (slot 0, creation|login)`, `...
+- in play: the check lines above, `[racial] <id> base values sent after race menu: <Race> H/S h/s, magicka left to
+  MasterySystem`, `[racial] <id> ImperialRace start items: 50 gold (slot 0, creation|login)`, `...
   start items: none, slot <n> of profile <p> had them already (...)`, `[racial] <id> AldPowerCommandAnimal refused:
   its commandAnimal effect is not built yet`, `[racial] <id> <edid> refused: ready again in 13 h 20 min, last used
   <iso>`, `[racial] <id> <edid> used, ready again at <iso> (20 h, counting offline)`.
 
 Client, `skyrim-platform.log`: `RemoteServer: race abilities after <reason>, ... | racialReport sent, mastery magicka
-N|none`, `RemoteServer: racialResync from the server (...)`, `MagicSyncService: racialState: Command Animal ... not
+N|none`, `RemoteServer: racialResync from the server (...)`, `RemoteServer: racialBase for race <id>: health 100 -> 150,
+stamina 150 -> 100 (percentages kept)`, `MagicSyncService: racialState: Command Animal ... not
 available yet` and `MagicSyncService: power ... refused before the relay: ...`.
 
 ## Checks on the Test Server
@@ -236,10 +254,13 @@ With plugin r27a, the Test `racialPassives` block and the two magic entries:
 
 1. Boot: the ten race lines match the table above, no `not in plugin yet` warning, and the magic damage entries line
    names both entries.
-2. The old "only Nords" bug: in one game session create a character of each race, then relog each, die and respawn
-   each; every spawn logs `check ok`, and Active Effects shows the race's "<Race> Blood" ability.
+2. The old "only Nords" bug: with `selfCheck: "resync"`, in one game session create a character of each race, then
+   relog each, die and respawn each; every spawn logs `check ok`, and Active Effects shows the race's "<Race> Blood"
+   ability.
 3. Stats: the check lines read base H/M/S Breton 100/150/100, High Elf 100/200/100, Nord 100/100/150, Orc 150/100/100,
-   Redguard 100/100/200; an Orc survives 100 points of damage.
+   Redguard 100/100/200; an Orc survives 100 points of damage. A new Orc reads 150 health and 100 stamina in its first
+   session, before any relog (`[racial] <id> base values sent after race menu: OrcRace H/S 150/100` and its `check ok
+   OrcRace after race menu closed`).
 4. Resistances: Flames from another player lands half on a Breton, three quarters on an Orc, a quarter on a Dark Elf,
    x1.25 on a High Elf and in full on a Nord (pvp.log); a poisoned blade on an Argonian a quarter.
 5. Claws: against an unarmoured target a Khajiit's plain fist hit deals 7 and an Argonian's 6 where a Nord's deals 4.
@@ -250,7 +271,10 @@ With plugin r27a, the Test `racialPassives` block and the two magic entries:
    `cooldownHours` 0.05) refuses a second Night Eye within 3 minutes, also across a relog, and must be removed before
    any Migrate settings.
 9. Night Eye: castable again and again by a Khajiit without the quick test.
-10. A Breton mage's check line: health and stamina checked, `magicka from the mage rank not checked` until MC0.
+10. A Breton mage's check line: `check ok` with base magicka 175 at Novice (the Novice mage's 125 plus the Breton's
+    r27a bonus of 50), or `base M <n> expected <m> (mastery)` if the mage magicka lost the race bonus.
+11. A Chilly Breton (cold stage 2) or one with a speed disease dies and is resurrected: `check ok`, no speed MISMATCH.
+12. A polymorphed character's resurrect logs `race check after resurrect skipped: a polymorph holds the character`.
 
 ## Deploy
 

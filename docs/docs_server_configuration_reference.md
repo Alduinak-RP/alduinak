@@ -451,8 +451,9 @@ holds every race number a server system reads. `RacialSystem` (`skymp5-server/ts
 only reader; NeedsSystem and SurvivalSystem ask it for a character's traits. The race is the character's appearance
 race, a vampire or child race through `aliases`, cached per character until its next spawn, creation finish or
 accepted race menu; a character still in creation gets neutral traits. All optional: with no block every race is
-neutral. Not a protected setting, so Migrate settings carries it to live. Read at boot. The whole race table is in
-`docs/docs_racial_passives.md`.
+neutral. With a block that is not `enabled: false`, a character whose race menu is accepted gets `racialBase` with its
+race's base health and stamina (the creation spawn carries the Player NPC_ race's). Not a protected setting, so
+Migrate settings carries it to live. Read at boot. The whole race table is in `docs/docs_racial_passives.md`.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -460,6 +461,7 @@ neutral. Not a protected setting, so Migrate settings carries it to live. Read a
 | `aliases` | the 10 vampire races and `ImperialRaceChild`, `NordRaceChild`, `RedguardRaceChild`, `BretonRaceChild`, `BretonRaceChildVampire` to their base race | `{ "<race editor id>": "<race editor id of the entry>" }`, merged over the built-in map; a race with its own `races` entry uses that before its alias |
 | `races` | none | `{ "<race editor id>": { ... } }` with the keys below |
 | `powers` | none | `{ "<SPEL editor id>": { cooldownHours, consumeOnMiss, commandAnimal } }`: the powers the server rations, see Powers below |
+| `selfCheck` | `"off"` | The race check of each client's `racialReport`: `"off"` compares nothing, `"log"` logs `check ok` or `MISMATCH` lines, `"resync"` also sends one `racialResync` per spawn for what the race sync can fix (a wrong race, a missing, unheld or stopped race spell, another race's spell). Off whatever it says without a block or with `enabled: false`; a polymorphed character is never checked. The Test value is `"resync"`; an unknown value is named in a warning and reads `"off"` |
 | `startItemsSince` | `"2026-10-01T16:00:00-07:00"` (the 1.0 launch) | Epoch ms or a date string. A character created at or after it (the earliest of `private.startLocation.at`, `private.rp.createdAt` and `private.starterGold.at`) whose race has `startingItems` and that never got them gets them once at its next login, under the same slot guard, so holding them back past the launch costs nobody anything. A character with no creation time is recorded once as `creation time unknown` and gets nothing |
 
 Race entry keys. A missing multiplier is 1, a missing warmth 0 and a missing flag false; an unusable value keeps that
@@ -561,7 +563,8 @@ pass (plan task NV7), which replaces them:
 Boot lines in `C:\logs\test\gameserver.log`:
 
 - `[racial] ready: on, 8 race entries (NordRace, ...), 15 aliases, powers ..., start items once per slot, backfilled
-  at login for characters created since 2026-10-01T23:00Z; self-check ...; Player NPC_ offsets H/M/S 50/50/50`, or
+  at login for characters created since 2026-10-01T23:00Z; self-check resync on racialReport (...); racialBase with the
+  race's base health and stamina after an accepted race menu; Player NPC_ offsets H/M/S 50/50/50`, or
   `no racialPassives block, every race neutral`, or `off (enabled false), every race neutral`.
 - `[racial] magic damage entries: racialMagicResistBreton x0.5 on BretonRace, BretonRaceVampire; racialMagicResistOrc
   x0.75 on OrcRace, OrcRaceVampire` (or `none`).

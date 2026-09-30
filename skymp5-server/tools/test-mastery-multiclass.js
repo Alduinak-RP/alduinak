@@ -257,6 +257,7 @@ test('skills are the best of the slots, and magicka follows the mage slot and th
   t.sys.grantPoints(t.ctx, ACTOR, 20, 2)
   state = t.last('professionState')
   assert.equal(state.magicka, 175)
+  assert.equal(t.sys.lastMagicka(ACTOR), 175, 'the race check compares what was sent')
   assert.equal(state.profession, 'blacksmith')
   assert.equal(state.slots[2].rankName, 'Novice')
   const bare = setup()
@@ -266,6 +267,7 @@ test('skills are the best of the slots, and magicka follows the mage slot and th
   inCreation.mp.props.set(`${ACTOR}:private.creationPending`, true)
   inCreation.login()
   assert.equal(inCreation.last('professionState').magicka, null)
+  assert.equal(inCreation.sys.lastMagicka(ACTOR), null, 'a spawn starts with no write')
 })
 
 test('a sub-slot mage casts count, and the primary mage keeps its spell tier cap', () => {

@@ -640,6 +640,7 @@ export class MasterySystem implements System {
   }
 
   private goOffline(ctx: SystemContext, actorId: number): void {
+    this.sentMagicka.delete(actorId);
     if (!this.clocks.has(actorId)) return;
     const char = this.load(ctx, actorId);
     if (char) {
@@ -780,6 +781,8 @@ export class MasterySystem implements System {
     if (!isPlayerActor(mp, actorId)) return;
     const now = Date.now();
     this.clocks.set(actorId, { userId, since: now, savedAt: now });
+    // A spawn resets the client's MasteryService write
+    this.sentMagicka.delete(actorId);
     const char = this.load(ctx, actorId, true);
     const rec = char ? char.primary : null;
     if (char && rec && rec.profession) {
@@ -1015,6 +1018,9 @@ export class MasterySystem implements System {
       for (const skill of own ? own.skills : []) skills[skill] = Math.max(skills[skill], RANK_SKILL[slot.rec.rank]);
     }
     const rec = char.primary;
+    const magicka = this.magickaOf(ctx, actorId, inForce);
+    // The client keeps its last write through a null, so the record does too
+    if (magicka !== null) this.sentMagicka.set(actorId, magicka);
     this.send(ctx, userId, {
       customPacketType: "professionState",
       profession: rec.profession,
@@ -1022,9 +1028,14 @@ export class MasterySystem implements System {
       rankName: RANK_NAMES[rec.rank],
       hours: rec.points,
       skills,
-      magicka: this.magickaOf(ctx, actorId, inForce),
+      magicka,
       slots: this.slotSummaries(char),
     });
+  }
+
+  // The base Magicka the client last wrote from professionState this spawn, null for none
+  lastMagicka(actorId: number): number | null {
+    return this.sentMagicka.get(actorId >>> 0) ?? null;
   }
 
   // A mage slot of Novice or better sets base magicka by rank and anyone else is held at the race's base, both with the race's bonus; null in creation
@@ -1670,6 +1681,8 @@ export class MasterySystem implements System {
   private slots: SlotConfig[] = defaultSlots(DEFAULT_RANK_HOURS);
   private slotKits = true;
   private racial: MagickaBonusSource | null = null;
+  // actorId -> the non-null magicka its last professionState carried this spawn
+  private sentMagicka = new Map<number, number>();
   // Rank marker spell -> the profession and rank it stands for
   private markers = new Map<number, RecipeGate>();
   private kits: Record<string, KitItem[]> = { ...DEFAULT_KITS };

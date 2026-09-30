@@ -33,7 +33,7 @@ const lookup = (id) => {
   return {}
 }
 
-const setup = () => {
+const setup = (block = { selfCheck: 'resync' }) => {
   const props = new Map()
   const packets = []
   const users = new Map()
@@ -42,12 +42,14 @@ const setup = () => {
     set: (id, key, v) => { props.set(`${id >>> 0}:${key}`, v) },
     lookupEspmRecordById: lookup,
     getUserActor: (u) => users.get(u) || 0,
+    getUserByActor: (id) => [...users.entries()].find(([, a]) => a === id)?.[0] ?? -1,
+    isConnected: (u) => users.has(u),
     sendCustomPacket: (u, s) => packets.push({ u, ...JSON.parse(s) }),
   }
   const logs = []
   const racial = new RacialSystem((line) => logs.push(String(line)))
   racial.mp = mp
-  racial.configure({})
+  racial.configure(block)
   const actor = (userId, id, raceId) => { users.set(userId, id); mp.set(id, 'appearance', { raceId }); return id }
   // A report of the race exactly as the server expects it; the greater power is not held, as the client cuts it
   const report = (raceId, over = {}) => ({
@@ -147,6 +149,69 @@ test('reports within the gap, during creation, without a race or of another type
   assert.match(t.send(1, t.report(DARK)), /race check after spawn skipped: creation pending$/)
   t.racial.customPacket(9, 'racialReport', t.report(DARK))
   assert.equal(t.packets.length, 0)
+})
+
+test('selfCheck: off by default and with the block missing or disabled compares nothing; log compares without a resync; a bad value is named', () => {
+  for (const block of [{}, null, { enabled: false, selfCheck: 'resync' }]) {
+    const t = setup(block)
+    t.actor(1, 0xff000001, DARK)
+    t.send(1, t.report(DARK, { engineRace: NORD }))
+    assert.deepEqual([t.logs, t.packets], [[], []], JSON.stringify(block))
+  }
+  const t = setup({ selfCheck: 'log' })
+  t.actor(1, 0xff000001, DARK)
+  assert.match(t.send(1, t.report(DARK, { engineRace: NORD })), /MISMATCH DarkElfRace after spawn: .*; no resync, racialPassives.selfCheck is log$/)
+  assert.equal(t.packets.length, 0)
+  const bad = setup()
+  assert.deepEqual(bad.racial.configure({ selfCheck: 'yes' }), ['selfCheck "yes" is not off, log, resync, off is used'])
+})
+
+test('a polymorphed character is not checked, and its traits follow the race it wears without touching the cache', () => {
+  const t = setup({ selfCheck: 'resync', races: { NordRace: { coldRateMult: 0 } } })
+  const id = t.actor(1, 0xff000001, NORD)
+  assert.equal(t.racial.traits(id).raceEdid, 'NordRace')
+  t.mp.set(id, 'private.polymorph', { appearance: { raceId: NORD }, race: 'x' })
+  t.mp.set(id, 'appearance', { raceId: DARK })
+  assert.deepEqual([t.racial.traits(id).raceEdid, t.racial.traits(id).coldRateMult], ['DarkElfRace', 1])
+  assert.match(t.send(1, t.report(DARK)), /race check after spawn skipped: a polymorph holds the character \(private.polymorph\)$/)
+  assert.equal(t.packets.length, 0)
+  t.mp.set(id, 'private.polymorph', null)
+  t.mp.set(id, 'appearance', { raceId: NORD })
+  assert.deepEqual([t.racial.traits(id).raceEdid, t.racial.traits(id).coldRateMult], ['NordRace', 0])
+})
+
+test('racialBase: one packet with the race\'s base health and stamina for an accepted race menu and its creation finish, none with the block off', () => {
+  const queued = []
+  const realImmediate = global.setImmediate
+  global.setImmediate = (fn) => queued.push(fn)
+  const flush = () => { while (queued.length) queued.shift()() }
+  try {
+    const t = setup({})
+    const id = t.actor(1, 0xff000001, NORD)
+    t.mp.set(id, 'appearance', { raceId: DARK })
+    t.racial.forget(id)
+    t.racial.queueBase(id, 'race menu')
+    t.racial.queueBase(id, 'creation')
+    flush()
+    assert.deepEqual(t.packets, [{ u: 1, customPacketType: 'racialBase', raceId: DARK, health: 100, stamina: 100 }])
+    assert.equal(t.logs.pop(), '[racial] ff000001 base values sent after race menu: DarkElfRace H/S 100/100, magicka left to MasterySystem')
+    t.mp.set(id, 'appearance', { raceId: NORD })
+    t.racial.forget(id)
+    t.racial.queueBase(id, 'creation')
+    flush()
+    assert.deepEqual(t.packets.pop(), { u: 1, customPacketType: 'racialBase', raceId: NORD, health: 100, stamina: 150 })
+    t.mp.set(id, 'private.creationPending', true)
+    t.racial.queueBase(id, 'creation')
+    flush()
+    assert.equal(t.packets.length, 1, 'nothing while creation is pending')
+    const off = setup({ enabled: false })
+    off.actor(1, 0xff000001, NORD)
+    off.racial.queueBase(0xff000001, 'creation')
+    flush()
+    assert.equal(off.packets.length, 0)
+  } finally {
+    global.setImmediate = realImmediate
+  }
 })
 
 let failed = 0

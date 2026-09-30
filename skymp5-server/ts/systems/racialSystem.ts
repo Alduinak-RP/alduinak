@@ -20,11 +20,14 @@ type Mp = any;
 // A race's startingItems are given once when its character's creation finishes, on top of the kit, once per profile and slot through
 // starter-grants.json ("<profileId>:<slot>:race"), and recorded in private.racial.startItems; private.starterGold is never set, so the
 // profession kit's gold rule is unchanged. A character created since startItemsSince that never got them gets them at its next login.
-// Self-check: the client reports its race abilities after each race check; the server compares the report with the appearance race,
-// that race's spell list without the withheld greater powers and the base values (RACE start plus the Player NPC_ offsets, magicka as
-// MasterySystem writes it once writtenMagicka is wired), logs "check ok" or "MISMATCH" and sends one racialResync per spawn when the
-// race sync can fix what differs (a wrong race, a missing, unheld or stopped spell, another race's spell); an extra spell or a base value
-// means another plugin on the client, which only the log can show.
+// Self-check (racialPassives.selfCheck, off by default): the client reports its race abilities after each race check; the server
+// compares the report with the appearance race, that race's spell list without the withheld greater powers and the base values (RACE
+// start plus the Player NPC_ offsets, magicka as MasterySystem last sent it), logs "check ok" or "MISMATCH" and, with "resync", sends
+// one racialResync per spawn when the race sync can fix what differs (a wrong race, a missing, unheld or stopped spell, another race's
+// spell); an extra spell or a base value means another plugin on the client, which only the log can show. A character a GM polymorph
+// holds (private.polymorph) is neither checked nor cached, so its traits follow the race it wears.
+// Base values: the createActor of a character in creation carries the Player NPC_ race's health, magicka and stamina, so once its race
+// menu is accepted the client gets the new race's base health and stamina (racialBase); magicka stays MasterySystem's.
 //
 // Client -> Server: { customPacketType: "racialReport", reason, baseRace, engineRace, spells: [{ id, held, state }], stray: [id],
 //                     base: { health, magicka, stamina }, masteryMagicka }
@@ -33,6 +36,7 @@ type Mp = any;
 //   stray: other races' spells running or held; base: base Health, Magicka and Stamina; masteryMagicka: the base Magicka the
 //   client's MasteryService last wrote, null when it wrote none
 // Server -> Client: { customPacketType: "racialResync", raceId, spells, problems }  spells: the race spells the server expects held
+//                   { customPacketType: "racialBase", raceId, health, stamina }  after an accepted race menu or a finished creation
 // Power gate: a player's cast of a power in racialPassives.powers is refused with a notice while its cooldown runs; the cooldown is
 // wall-clock time from the last use, so it counts offline, across relogs, deaths and restarts. A power with an effect block
 // (commandAnimal) is refused until that effect is built; a used one is stamped only when its effect worked, or on a miss with
@@ -49,6 +53,7 @@ type Mp = any;
 //   racialPassives.powers           { "<SPEL editor id>": { cooldownHours, consumeOnMiss, commandAnimal } }; cooldownHours default 0 (none),
 //                                   consumeOnMiss default false, commandAnimal the Command Animal effect's block
 //   racialPassives.startItemsSince  epoch ms or a date string; characters created since then are backfilled, default the 1.0 launch
+//   racialPassives.selfCheck        "off" (default: reports are not compared), "log" (compared and logged) or "resync" (also resynced)
 //
 // Persistence: private.racial = { v, powers, startItems?: { race, items, at, via, slot, note? } } on the character's actor form.
 
@@ -102,6 +107,10 @@ const RESISTS: Array<[string, number]> = [
 const ENTRY_KEYS = new Set(["coldRateMult", "warmth", "freezingWaterImmune", "hungerRateMult", "fatigueCostMult", "rawMeatSafe", "startingItems"]);
 const REPORT_PACKET = "racialReport";
 const RESYNC_PACKET = "racialResync";
+const BASE_PACKET = "racialBase";
+const SELF_CHECK_MODES = ["off", "log", "resync"];
+// Main's polymorph.ts record, set while a GM transform holds the character in another race
+const POLYMORPH_PROP = "private.polymorph";
 // A report this soon after the character's last one is dropped
 const REPORT_MIN_GAP_MS = 2000;
 const MAX_REPORT_SPELLS = 64;
@@ -156,6 +165,7 @@ export interface RacialConfig {
   races: Map<string, RaceEntry>;
   powers: Map<string, RacialPower>;
   startItemsSince: number;
+  selfCheck: string;
 }
 
 interface StartItemsRecord {
@@ -273,7 +283,12 @@ export const parseRacialPassives = (raw: unknown): { config: RacialConfig; probl
     if (Number.isFinite(since)) startItemsSince = since;
     else problems.push(`startItemsSince ${JSON.stringify(block.startItemsSince)} is not a time, the 1.0 launch is used`);
   }
-  return { config: { present: raw !== undefined && raw !== null, enabled: block.enabled !== false, aliases, races, powers, startItemsSince }, problems };
+  let selfCheck = "off";
+  if (block.selfCheck !== undefined) {
+    if (SELF_CHECK_MODES.indexOf(String(block.selfCheck)) !== -1) selfCheck = String(block.selfCheck);
+    else problems.push(`selfCheck ${JSON.stringify(block.selfCheck)} is not ${SELF_CHECK_MODES.join(", ")}, off is used`);
+  }
+  return { config: { present: raw !== undefined && raw !== null, enabled: block.enabled !== false, aliases, races, powers, startItemsSince, selfCheck }, problems };
 };
 
 // Earliest creation time the character carries, 0 when none is known
@@ -326,11 +341,14 @@ export class RacialSystem implements System, NeedsModifierSource {
     // Emitted inside the appearance hook, after the kit trim; the items follow once it returns
     ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => {
       forget(actorId);
+      this.queueBase(actorId >>> 0, "creation");
       setImmediate(() => this.grantStartItems(actorId >>> 0, "creation"));
     });
     // An accepted race menu may change the race; the native side has stored the new appearance before this fires
     chainMpHook(this.mp, "onUpdateAppearanceAttempt", (actorId: number, _appearance: unknown, isAllowed: boolean) => {
-      if (isAllowed) forget(actorId);
+      if (!isAllowed) return;
+      forget(actorId);
+      this.queueBase(actorId >>> 0, "race menu");
     });
     // A power is refused inside the native cast; its use is stamped once the native call returns
     chainMpHook(this.mp, "onSpellCastAttempt", (casterId: number, spellId: number) => this.powerAttempt(casterId >>> 0, spellId >>> 0));
@@ -344,6 +362,41 @@ export class RacialSystem implements System, NeedsModifierSource {
   private forget(actorId: number): void {
     this.raceCache.delete(actorId);
     this.checks.delete(actorId);
+  }
+
+  // Creation finish and the race menu both fire for one creation, so a single racialBase goes out once both returned
+  private queueBase(actorId: number, why: string): void {
+    if (this.baseDue.has(actorId)) return;
+    this.baseDue.add(actorId);
+    setImmediate(() => {
+      this.baseDue.delete(actorId);
+      this.sendBase(actorId, why);
+    });
+  }
+
+  // The accepted race's base health and stamina, which the client still holds from the Player NPC_ race of the creation spawn
+  private sendBase(actorId: number, why: string): void {
+    const mp = this.mp;
+    if (!mp || !this.config.present || !this.config.enabled) return;
+    const who = `[racial] ${hex(actorId)}`;
+    try {
+      const userId = userOf(mp, actorId);
+      if (userId < 0 || isCreationPending(mp, actorId)) return;
+      const raceId = this.raceOf(actorId);
+      const want = this.baseValues(raceId);
+      if (!want) {
+        this.log(`${who} base values after ${why} not sent: race ${hex(raceId)} unreadable`);
+        return;
+      }
+      sendJson(mp, userId, { customPacketType: BASE_PACKET, raceId, health: want[0], stamina: want[2] });
+      this.log(`${who} base values sent after ${why}: ${this.edidOf(raceId) || hex(raceId)} H/S ${round(want[0])}/${round(want[2])}, magicka left to MasterySystem`);
+    } catch (e) {
+      this.log(`${who} base values after ${why} failed: ${e}`);
+    }
+  }
+
+  private polymorphed(actorId: number): boolean {
+    try { return !!this.mp.get(actorId, POLYMORPH_PROP); } catch { return false; }
   }
 
   // Reads the racialPassives block; returns the ignored values
@@ -408,8 +461,13 @@ export class RacialSystem implements System, NeedsModifierSource {
     state.at = now;
     if (this.checks.size >= MAX_CACHED_ACTORS) this.checks.clear();
     this.checks.set(actorId, state);
-    this.selfCheck(actorId, userId, content, state);
+    if (this.checkMode() !== "off") this.selfCheck(actorId, userId, content, state);
     this.sendPowerState(actorId);
+  }
+
+  // The self-check mode in force: off without a block or with racialPassives.enabled false
+  private checkMode(): string {
+    return this.config.present && this.config.enabled ? this.config.selfCheck : "off";
   }
 
   // Compares a client's racialReport with the server's race, spells and base values; one resync per spawn for what the race sync fixes
@@ -419,6 +477,10 @@ export class RacialSystem implements System, NeedsModifierSource {
     const reason = cleanDisplayName(report.reason, 40) || "an unnamed check";
     if (isCreationPending(mp, actorId)) {
       this.log(`${who} race check after ${reason} skipped: creation pending`);
+      return;
+    }
+    if (this.polymorphed(actorId)) {
+      this.log(`${who} race check after ${reason} skipped: a polymorph holds the character (${POLYMORPH_PROP})`);
       return;
     }
     const baseRace = toFormId(report.baseRace);
@@ -479,6 +541,8 @@ export class RacialSystem implements System, NeedsModifierSource {
     let resync = "no resync, the race sync cannot fix a plugin or base value difference";
     if (!fixable || otherPlugin) {
       if (otherPlugin) resync = "no resync, the client's plugins differ from the server's";
+    } else if (this.config.selfCheck !== "resync") {
+      resync = `no resync, racialPassives.selfCheck is ${this.config.selfCheck}`;
     } else if (state.resynced) {
       resync = "resync already sent this spawn";
     } else {
@@ -640,12 +704,13 @@ export class RacialSystem implements System, NeedsModifierSource {
     this.mp.set(actorId, RACIAL_PROP, { ...this.readRecord(actorId), ...patch });
   }
 
-  // Race id of the actor, 0 while its creation is pending; cached until it is forgotten
+  // Race id of the actor, 0 while its creation is pending; cached until it is forgotten, read afresh while a polymorph holds it
   private raceOf(actorId: number): number {
-    const hit = this.raceCache.get(actorId);
-    if (hit !== undefined) return hit;
     const mp = this.mp;
     if (!mp || !actorId) return 0;
+    if (this.polymorphed(actorId)) return actorRaceId(mp, actorId);
+    const hit = this.raceCache.get(actorId);
+    if (hit !== undefined) return hit;
     const raceId = isCreationPending(mp, actorId) ? 0 : actorRaceId(mp, actorId);
     if (this.raceCache.size >= MAX_CACHED_ACTORS) this.raceCache.clear();
     this.raceCache.set(actorId, raceId);
@@ -721,9 +786,13 @@ export class RacialSystem implements System, NeedsModifierSource {
     const offsets = this.playerOffsets();
     const powers = Array.from(this.config.powers).map(([k, p]) => `${k} ${round(p.cooldownHours)} h`);
     const powersLine = this.resolvePowers(spells.resolved, warnings);
-    const selfCheck = `self-check on racialReport (base values within ${BASE_TOLERANCE}, one report per ${REPORT_MIN_GAP_MS / 1000} s, one racialResync per spawn, ` +
-      `mage magicka ${this.writtenMagicka ? "from MasterySystem" : "not checked while the client reports a mastery write"})`;
-    this.log(`[racial] ready: ${!this.config.present ? "no racialPassives block, every race neutral" : `${this.config.enabled ? "on" : "off (enabled false), every race neutral"}, ${this.config.races.size} race entries (${Array.from(this.config.races.keys()).join(", ") || "none"}), ${Object.keys(this.config.aliases).length} aliases, powers ${powers.join(", ") || "none"}, start items once per slot, backfilled at login for characters created since ${new Date(this.config.startItemsSince).toISOString().slice(0, 16)}Z`}; ${selfCheck}; Player NPC_ offsets H/M/S ${offsets.join("/")}`);
+    const mode = this.checkMode();
+    const selfCheck = mode === "off" ? `self-check off (racialPassives.selfCheck ${this.config.selfCheck}${this.config.present && this.config.enabled ? "" : ", racial passives off"})` :
+      `self-check ${mode} on racialReport (base values within ${BASE_TOLERANCE}, one report per ${REPORT_MIN_GAP_MS / 1000} s, ` +
+      `${mode === "resync" ? "one racialResync per spawn" : "never resynced"}, mage magicka ${this.writtenMagicka ? "from MasterySystem" : "not checked while the client reports a mastery write"}, ` +
+      `polymorphed characters skipped)`;
+    const baseLine = this.config.present && this.config.enabled ? "racialBase with the race's base health and stamina after an accepted race menu" : "no racialBase";
+    this.log(`[racial] ready: ${!this.config.present ? "no racialPassives block, every race neutral" : `${this.config.enabled ? "on" : "off (enabled false), every race neutral"}, ${this.config.races.size} race entries (${Array.from(this.config.races.keys()).join(", ") || "none"}), ${Object.keys(this.config.aliases).length} aliases, powers ${powers.join(", ") || "none"}, start items once per slot, backfilled at login for characters created since ${new Date(this.config.startItemsSince).toISOString().slice(0, 16)}Z`}; ${selfCheck}; ${baseLine}; Player NPC_ offsets H/M/S ${offsets.join("/")}`);
     this.log(`[racial] powers: ${powersLine}`);
     this.log(`[racial] magic damage entries: ${this.magicEntries.map((e) => `${e.key} x${round(e.mult)} on ${e.raceIds.map((id) => this.edidOf(id) || hex(id)).join(", ")}`).join("; ") || "none"}`);
     const notInPlugin: string[] = [];
@@ -846,4 +915,6 @@ export class RacialSystem implements System, NeedsModifierSource {
   private powerEffects: Record<string, PowerEffect> = {};
   // "<actorId>:<spellId>" -> when its last refusal was noticed
   private refusedAt = new Map<string, number>();
+  // Actors with a racialBase queued for the next turn
+  private baseDue = new Set<number>();
 }
