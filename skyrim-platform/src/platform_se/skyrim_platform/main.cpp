@@ -170,7 +170,7 @@ DLLEXPORT bool SKSEAPI SKSEPlugin_Load_Impl(const SKSE::LoadInterface* skse)
   logger::info("Loading plugin.");
 
   SKSE::Init(skse);
-  SKSE::AllocTrampoline(64);
+  SKSE::AllocTrampoline(128);
 
   const auto papyrusInterface = SKSE::GetPapyrusInterface();
   if (!papyrusInterface) {

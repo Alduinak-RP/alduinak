@@ -190,6 +190,27 @@ line to `skyrim-platform.log`.
 
 ---
 
+## Engine crash guards
+
+**Occlusion plane sets** (`Hooks.cpp` `InstallCompoundFrustumStateGuard`, 1.6
+only): for each node it culls, the engine saves one dword per compound-frustum
+plane set (`SaveState`, id 76843) into a 256-dword stack buffer and puts them
+back afterwards (`RestoreState`, 76844), with no bound, so a view with more
+than 255 plane sets (most likely from the dense occlusion planes Warbirds
+Whiterun Metropolis adds around Whiterun's outskirts) overwrote a return
+address and crashed a culling job thread. Both functions are replaced by
+copies that fill the buffer only up to the size its caller passes and keep the
+rest on a per-thread stack keyed by the buffer, which the matching restore
+applies and drops; with 255 plane sets or fewer they do exactly what the
+engine did. `skyrim-platform.log` shows
+`Compound frustum save guard installed` at start (or why it was skipped: not
+1.6, or the function bytes differ) and `Compound frustum holds N plane sets`
+the first time a view goes past the buffer. Stack dumps of later culling
+crashes (ids 76553, 32189, 108600) can hold stale SkyrimPlatformImpl.dll
+addresses from these copies; that alone does not point at the guard.
+
+---
+
 ## Gamemode patch (leadership bridge)
 
 Stock SkyMP never turns the dashboard's `private.skympAccess` into the

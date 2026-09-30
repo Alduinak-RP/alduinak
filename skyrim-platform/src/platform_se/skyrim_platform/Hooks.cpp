@@ -1,9 +1,12 @@
 #include "Hooks.h"
 #include "EventHandler.h"
+#include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstring>
 #include <mmsystem.h>
 #include <mutex>
+#include <vector>
 
 namespace hook::internal {
 
@@ -92,6 +95,163 @@ void InstallCreateSourceVoiceGuard()
     return;
   }
   Hooks::write_thunk_call<CreateSourceVoiceGuard>(call);
+}
+
+// BSCompoundFrustum fields that SaveState and RestoreState touch
+struct CompoundFrustum
+{
+  RE::NiFrustumPlanes* planeSets;   // 00
+  std::uint32_t planeSetCapacity;   // 08
+  std::uint32_t pad0C;              // 0C
+  std::uint32_t planeSetSize;       // 10
+  std::uint8_t pad14[0x7C];         // 14
+  std::uint32_t cameraActivePlanes; // 90
+  std::uint8_t pad94[0x24];         // 94
+  std::uint32_t planeSetCount;      // B8
+};
+static_assert(offsetof(CompoundFrustum, planeSetSize) == 0x10);
+static_assert(offsetof(CompoundFrustum, cameraActivePlanes) == 0x90);
+static_assert(offsetof(CompoundFrustum, planeSetCount) == 0xB8);
+
+// The engine saves a dword per plane set into a stack buffer with no bound
+struct CompoundFrustumStateGuard
+{
+  using ActivePlane = RE::NiFrustumPlanes::ActivePlane;
+
+  struct Spill
+  {
+    const std::uint32_t* buffer;
+    std::uint32_t count;
+    std::size_t offset;
+  };
+
+  struct SpillStack
+  {
+    std::vector<Spill> spills;
+    std::vector<std::uint32_t> planes;
+  };
+
+  static inline thread_local SpillStack* t_stack = nullptr;
+  static inline std::atomic<bool> spilled{ false };
+  static inline std::atomic<bool> unmatched{ false };
+
+  static std::uint32_t PlaneSets(const CompoundFrustum* a_frustum)
+  {
+    return (std::min)(a_frustum->planeSetCount, a_frustum->planeSetSize);
+  }
+
+  // buffer[0] holds the camera planes, the rest one entry per plane set
+  static std::uint32_t Room(std::uint32_t a_capacity)
+  {
+    return a_capacity ? a_capacity - 1 : 0;
+  }
+
+  static void SaveState(const CompoundFrustum* a_frustum,
+                        std::uint32_t* a_buffer, std::uint32_t a_capacity)
+  {
+    a_buffer[0] = a_frustum->cameraActivePlanes;
+    const auto count = PlaneSets(a_frustum);
+    const auto room = Room(a_capacity);
+    const auto planeSets = a_frustum->planeSets;
+    const auto kept = (std::min)(count, room);
+    for (std::uint32_t i = 0; i < kept; ++i) {
+      a_buffer[i + 1] = planeSets[i].activePlanes.underlying();
+    }
+    if (count > room) {
+      KeepAside(a_buffer, planeSets, count, room);
+    }
+  }
+
+  static void RestoreState(CompoundFrustum* a_frustum,
+                           const std::uint32_t* a_buffer,
+                           std::uint32_t a_capacity)
+  {
+    a_frustum->cameraActivePlanes = a_buffer[0];
+    const auto count = PlaneSets(a_frustum);
+    const auto room = Room(a_capacity);
+    const auto kept = count > room || spilled.load(std::memory_order_relaxed)
+      ? RestoreKeptAside(a_frustum, a_buffer, count, room)
+      : count;
+    const auto planeSets = a_frustum->planeSets;
+    for (std::uint32_t i = 0; i < kept; ++i) {
+      planeSets[i].activePlanes = static_cast<ActivePlane>(a_buffer[i + 1]);
+    }
+  }
+
+  NOINLINE static void KeepAside(const std::uint32_t* a_buffer,
+                                 const RE::NiFrustumPlanes* a_planeSets,
+                                 std::uint32_t a_count, std::uint32_t a_room)
+  {
+    if (!spilled.load(std::memory_order_relaxed) && !spilled.exchange(true)) {
+      logger::warn("Compound frustum holds {} plane sets, the engine's save "
+                   "buffer fits {}; the rest are kept aside",
+                   a_count, a_room);
+    }
+    if (!t_stack) {
+      t_stack = new SpillStack();
+    }
+    auto& stack = *t_stack;
+    stack.spills.push_back({ a_buffer, a_count, stack.planes.size() });
+    for (auto i = a_room; i < a_count; ++i) {
+      stack.planes.push_back(a_planeSets[i].activePlanes.underlying());
+    }
+  }
+
+  // Puts back what a_buffer's save kept aside; returns the count left to it
+  NOINLINE static std::uint32_t RestoreKeptAside(CompoundFrustum* a_frustum,
+                                                 const std::uint32_t* a_buffer,
+                                                 std::uint32_t a_count,
+                                                 std::uint32_t a_room)
+  {
+    const auto stack = t_stack;
+    if (!stack || stack->spills.empty() ||
+        stack->spills.back().buffer != a_buffer) {
+      if (a_count > a_room && !unmatched.exchange(true)) {
+        logger::warn("Compound frustum restore of {} plane sets found none "
+                     "kept aside, {} left as they are",
+                     a_count, a_count - a_room);
+      }
+      return (std::min)(a_count, a_room);
+    }
+    const auto spill = stack->spills.back();
+    stack->spills.pop_back();
+    const auto restored = (std::min)(a_count, spill.count);
+    const auto aside = stack->planes.data() + spill.offset;
+    const auto asideCount = stack->planes.size() - spill.offset;
+    const auto planeSets = a_frustum->planeSets;
+    for (auto i = a_room; i < restored && i - a_room < asideCount; ++i) {
+      planeSets[i].activePlanes = static_cast<ActivePlane>(aside[i - a_room]);
+    }
+    stack->planes.resize(spill.offset);
+    return (std::min)(restored, a_room);
+  }
+};
+
+void InstallCompoundFrustumStateGuard()
+{
+  if (!REL::Module::IsAE()) {
+    logger::info("Compound frustum save guard skipped, the game is not 1.6");
+    return;
+  }
+  const auto save = REL::ID(76843).address();
+  const auto restore = REL::ID(76844).address();
+  constexpr auto savePattern = REL::make_pattern<
+    "8B 81 90 00 00 00 89 02 44 8B 81 B8 00 00 00 44 39 41 10 44 0F 42 41 10 "
+    "48 8B 09 4E 8D 04 82 49 3B D0 74 1D 48 83 C1 60 ?? ?? ?? ?? ?? ?? ?? ?? "
+    "8B 01 48 8D 49 70 48 83 C2 04 89 02 49 3B D0 75 EF C3">();
+  constexpr auto restorePattern = REL::make_pattern<
+    "44 8B 81 B8 00 00 00 44 39 41 10 8B 02 44 0F 42 41 10 89 81 90 00 00 00 "
+    "48 8B 09 4E 8D 04 82 49 3B D0 74 1E 48 83 C1 60 ?? ?? ?? ?? ?? ?? ?? ?? "
+    "8B 42 04 48 83 C2 04 89 01 48 8D 49 70 49 3B D0 75 EE C3">();
+  if (!savePattern.match(save) || !restorePattern.match(restore)) {
+    logger::warn("Compound frustum SaveState or RestoreState bytes differ, "
+                 "save guard skipped");
+    return;
+  }
+  auto& trampoline = SKSE::GetTrampoline();
+  trampoline.write_branch<5>(save, CompoundFrustumStateGuard::SaveState);
+  trampoline.write_branch<5>(restore, CompoundFrustumStateGuard::RestoreState);
+  logger::info("Compound frustum save guard installed");
 }
 
 // The engine stacks items whose extras compare equal; copies with different custom names must stay apart, as on the server
@@ -217,6 +377,7 @@ void Hooks::Install()
   // InstallOnFrameUpdateHook();
   InstallOnConsoleVPrintHook();
   InstallCreateSourceVoiceGuard();
+  InstallCompoundFrustumStateGuard();
   InstallTextDisplayDataIsNotEqualHook();
   InstallQuickStatsBlock();
   HookVirtualMachineBind();
