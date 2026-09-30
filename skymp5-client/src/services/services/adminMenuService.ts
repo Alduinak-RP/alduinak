@@ -162,6 +162,11 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+// A craft slot index from the front (0 primary, 1 secondary, 2 tertiary); undefined leaves it out of the packet, which the server reads as the primary
+function slotArg(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : undefined;
+}
+
 // The server's adminItems reply, reduced to the strings and numbers the Item Spawner renders
 function parseItems(content: Record<string, unknown>) {
   const rows = Array.isArray(content["items"]) ? content["items"] : [];
@@ -554,12 +559,13 @@ export class AdminMenuService extends ClientListener {
       return;
     }
     if (kind === events.skillReset) {
-      sendCustomPacket(this.controller, { customPacketType: "masteryResetRequest" });
+      // No profession resets the primary
+      sendCustomPacket(this.controller, { customPacketType: "masteryResetRequest", profession: str(e.arguments[1]) || undefined });
       return;
     }
     if (kind === events.skillChoose) {
       const profession = str(e.arguments[1]);
-      if (profession) sendCustomPacket(this.controller, { customPacketType: "masteryChoose", profession });
+      if (profession) sendCustomPacket(this.controller, { customPacketType: "masteryChoose", profession, slot: slotArg(e.arguments[2]) });
       return;
     }
     if (kind === events.factionMenu) {
@@ -719,9 +725,9 @@ export class AdminMenuService extends ClientListener {
     if (kind === events.masteryGrant || kind === events.masteryReset) {
       const target = String(e.arguments[1] ?? "");
       if (kind === events.masteryGrant) {
-        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryGrant", target, amount: Number(e.arguments[2]) });
+        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryGrant", target, amount: Number(e.arguments[2]), slot: slotArg(e.arguments[3]) });
       } else {
-        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryReset", target });
+        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryReset", target, slot: slotArg(e.arguments[2]) });
       }
       // The roster carries the standing; ask for a fresh one
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
