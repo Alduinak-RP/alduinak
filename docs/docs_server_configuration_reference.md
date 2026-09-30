@@ -426,6 +426,15 @@ race speed abilities `AldRaceSpeed_*` among them) and lesser powers (Khajiit Nig
 and spells learned in play (tomes) are kept. The client drops the withheld spells from its own spell lists at
 spawn and after the race menu, always from the list the server sent last. Read by the native server at boot.
 
+The client applies the race's abilities again 6 s after each spawn, game load, resurrect and race menu (with no
+race, loading or Magic menu up) and writes to the Platform log `race abilities after <reason> ...: before ... |
+after ...`; the first Magic menu open per spawn, then at most one a minute, writes `race abilities in the Magic
+menu ...` with what that menu shows. Each race spell reads on, off or power, held or not held (Papyrus `HasSpell`,
+which the Magic menu reads) and unlisted when the server's list lacks it; the race's speed spell reads
+`SpeedMult <now> of <expected>`; other races' spells still running or held are named; the line ends in
+`all in place` or `amiss: ...`, and a Magic menu line that ends amiss has the abilities applied again once the
+menu closes.
+
 ```json5
 {
   // ...

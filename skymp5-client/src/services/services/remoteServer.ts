@@ -131,8 +131,12 @@ const PLAYER_TELEPORT_REACH = 4096;
 const PLAYER_TELEPORT_SAME = 256;
 const RACE_MENU_RETRY_MS = 5000;
 const RACE_MENU_RETRIES = 3;
-// How long the world runs after a spawn or load, with no race menu, before the race abilities are checked and logged
+// How long the world runs after a spawn, load, resurrect or race menu, with no race menu or Magic menu up, before the race abilities are checked and logged
 const RACE_CHECK_SETTLE_MS = 6000;
+// The after snapshot waits out syncRaceAbilities' movement re-read
+const RACE_CHECK_AFTER_S = 3;
+// The Magic menu logs the race abilities on its first open per spawn, then at most this often
+const RACE_MENU_LOG_MS = 60000;
 // How long a furniture activation may take to seat the player before its seat is given back
 const FURNITURE_SEAT_WAIT_MS = 15000;
 
@@ -143,6 +147,17 @@ interface PlayerTeleport {
   moves: number;
   nextCheckAt: number;
   ragdollReturned: boolean;
+}
+
+// The race abilities check of the player's current spawn
+interface RaceCheck {
+  spawnSeq: number;
+  formIdx: number;
+  synced: boolean;
+  settleFrom: number;
+  // Why a check is waiting to run, undefined when none is
+  due?: string;
+  menuLoggedAt: number;
 }
 
 const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
@@ -258,16 +273,21 @@ export class RemoteServer extends ClientListener {
         this.raceMenuSeen = true;
         logToPlatformLog(this, `RaceSex Menu opened, creation pending ${this.raceMenuPending}`);
       }
+      if (e.name === Menu.Magic) this.logRaceAbilitiesInMagicMenu();
     });
     this.controller.on("menuClose", (e) => {
       if (e.name === Menu.RaceSex) {
         logToPlatformLog(this, `RaceSex Menu closed, creation pending ${this.raceMenuPending}, loading ${Ui.isMenuOpen(Menu.Loading)}`);
         this.raceMenuPending = false;
+        this.queueRaceCheck("race menu closed");
       }
     });
     this.controller.emitter.on("gameLoad", () => {
       this.lastLoadAt = Date.now();
-      if (this.raceCheck) this.raceCheck.settleFrom = 0;
+      this.queueRaceCheck("load");
+    });
+    this.controller.emitter.on("applyDeathStateEvent", (e) => {
+      if (!e.isDead && e.actor.getFormID() === 0x14) this.queueRaceCheck("resurrect");
     });
     this.controller.emitter.on("connectionDisconnect", () => { this.playerTeleport = undefined; this.raceMenuPending = false; });
     // Diagnostic: whether the diagnosed clone's graph took the replayed cast event
@@ -806,7 +826,7 @@ export class RemoteServer extends ClientListener {
     // A failed load leaves our 'update' callbacks queued; a newer spawn of ours drops them
     const spawnSeq = msg.isMe ? ++this.playerSpawnSeq : this.playerSpawnSeq;
     if (msg.isMe) {
-      this.raceCheck = { spawnSeq, formIdx: i, synced: false, settleFrom: 0 };
+      this.raceCheck = { spawnSeq, formIdx: i, synced: false, settleFrom: 0, due: "spawn", menuLoggedAt: 0 };
     }
 
     // TODO: move to a separate module
@@ -1347,17 +1367,36 @@ export class RemoteServer extends ClientListener {
     syncRaceAbilities(player, learnedSpells);
   }
 
-  // Once per spawn the race abilities are applied again (the whole spawn sync if it never ran) and logged before and after
-  private checkRaceAbilities(): void {
+  private currentRaceCheck(): RaceCheck | undefined {
     const check = this.raceCheck;
+    if (check && (check.spawnSeq !== this.playerSpawnSeq || check.formIdx !== this.worldModel.playerCharacterFormIdx)) {
+      this.raceCheck = undefined;
+      return undefined;
+    }
+    return check;
+  }
+
+  private queueRaceCheck(reason: string): void {
+    const check = this.currentRaceCheck();
     if (!check) {
       return;
     }
-    if (check.spawnSeq !== this.playerSpawnSeq || check.formIdx !== this.worldModel.playerCharacterFormIdx) {
-      this.raceCheck = undefined;
+    check.due = check.due ?? reason;
+    check.settleFrom = 0;
+  }
+
+  private listedSpellsOf(check: RaceCheck): number[] {
+    const learned = this.worldModel.forms[check.formIdx]?.learnedSpells;
+    return Array.isArray(learned) ? learned : [];
+  }
+
+  // After a spawn, load, resurrect or race menu the race abilities are applied again (the whole spawn sync if it never ran) and logged before and after
+  private checkRaceAbilities(): void {
+    const check = this.currentRaceCheck();
+    if (!check || !check.due) {
       return;
     }
-    if (this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.Main)) {
+    if (this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.Main) || Ui.isMenuOpen(Menu.Magic)) {
       check.settleFrom = 0;
       return;
     }
@@ -1370,22 +1409,45 @@ export class RemoteServer extends ClientListener {
     if (now - check.settleFrom < RACE_CHECK_SETTLE_MS || !player) {
       return;
     }
-    this.raceCheck = undefined;
-    const learned = this.worldModel.forms[check.formIdx]?.learnedSpells;
-    const listed = Array.isArray(learned) ? learned : [];
+    const reason = check.due;
+    check.due = undefined;
+    check.settleFrom = 0;
+    const listed = this.listedSpellsOf(check);
     const before = describeRaceAbilities(player, listed);
     const runSpawnSync = !check.synced && listed.length > 0;
     if (runSpawnSync) {
       this.applySpawnSpells(player, listed);
+      check.synced = true;
     } else {
       syncRaceAbilities(player, listed);
     }
-    this.controller.once("update", () => {
+    const spawnSync = check.synced ? (runSpawnSync ? "missing, ran now" : "ran") : "missing, no list";
+    // Read after syncRaceAbilities re-reads the movement speed
+    Utility.wait(RACE_CHECK_AFTER_S).then(() => {
       const pc = Game.getPlayer();
-      if (pc) {
-        logToPlatformLog(this, `race abilities, spawn ${check.spawnSeq}, spawn sync ${check.synced ? "ran" : runSpawnSync ? "missing, ran now" : "missing, no list"}, server listed ${listed.length}: before ${before} | after ${describeRaceAbilities(pc, listed)}`);
+      if (pc && this.currentRaceCheck() === check) {
+        const after = describeRaceAbilities(pc, listed);
+        logToPlatformLog(this, `race abilities after ${reason}, spawn ${check.spawnSeq}, spawn sync ${spawnSync}, server listed ${listed.length}: ` +
+          `before ${before.text} | after ${after.text}`);
       }
     });
+  }
+
+  // What the owner sees in Active Effects and Powers, on the Magic menu's first open per spawn and then at most once a minute; anything amiss is applied again once the menu closes
+  private logRaceAbilitiesInMagicMenu(): void {
+    const check = this.currentRaceCheck();
+    const player = Game.getPlayer();
+    const now = Date.now();
+    if (!check || !player || (check.menuLoggedAt && now - check.menuLoggedAt < RACE_MENU_LOG_MS)) {
+      return;
+    }
+    check.menuLoggedAt = now;
+    const listed = this.listedSpellsOf(check);
+    const report = describeRaceAbilities(player, listed);
+    logToPlatformLog(this, `race abilities in the Magic menu, spawn ${check.spawnSeq}, server listed ${listed.length}: ${report.text}`);
+    if (report.problems.length) {
+      this.queueRaceCheck(`the Magic menu showed ${report.problems.join(", ")}`);
+    }
   }
 
   /** Packet handlers end **/
@@ -1681,5 +1743,5 @@ export class RemoteServer extends ClientListener {
   private raceMenuRetries = 0;
   private raceMenuSettledAt = 0;
   private lastLoadAt = 0;
-  private raceCheck?: { spawnSeq: number; formIdx: number; synced: boolean; settleFrom: number };
+  private raceCheck?: RaceCheck;
 }
