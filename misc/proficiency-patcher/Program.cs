@@ -332,9 +332,7 @@ static class Steps
                     var perkEdid = entry is JsonObject po ? po["edid"]!.GetValue<string>() : entry!.GetValue<string>();
                     var untilRank = entry is JsonObject po2 ? po2["untilRank"]?.GetValue<string>() : null;
                     if (!c.TryWinning<IPerkGetter>(perkEdid, out var perk)) { c.Error($"perk '{perkEdid}' for {edid} not found"); continue; }
-                    var mgef = c.OwnOrNew(c.Mod.MagicEffects, $"AldMasteryPerk_{perkEdid}");
-                    ConfigureMgef(mgef, $"{perk.Name?.String ?? perkEdid}", perk.Description?.String ?? "");
-                    mgef.Archetype = new MagicEffectArchetype { Type = MagicEffectArchetype.TypeEnum.Script, ActorValue = ActorValue.None };
+                    var mgef = ScriptEffect(c, $"AldMasteryPerk_{perkEdid}", $"{perk.Name?.String ?? perkEdid}", perk.Description?.String ?? "");
                     mgef.PerkToApply.SetTo(perk.FormKey);
                     var effect = new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = 0, Area = 0, Duration = 0 } };
                     if (untilRank != null)
@@ -379,10 +377,7 @@ static class Steps
     {
         var empty = c.Mod.Spells.Where(s => s.Effects.Count == 0).ToList();
         if (empty.Count == 0) return;
-        var mgef = c.OwnOrNew(c.Mod.MagicEffects, "AldMasteryMarkerEffect");
-        ConfigureMgef(mgef, "Mastery", "A mark of what this character has learned.");
-        mgef.Archetype = new MagicEffectArchetype { Type = MagicEffectArchetype.TypeEnum.Script, ActorValue = ActorValue.None };
-        mgef.PerkToApply.SetToNull();
+        var mgef = ScriptEffect(c, "AldMasteryMarkerEffect", "Mastery", "A mark of what this character has learned.");
         foreach (var spell in empty)
             spell.Effects.Add(new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = 0, Area = 0, Duration = 0 } });
         c.Note($"Marker effect: {empty.Count} markers with no perk of their own carry the inert {mgef.EditorID}");
@@ -413,11 +408,24 @@ static class Steps
         return mgef;
     }
 
-    static void ConfigureAbility(Spell spell, string name, string description)
+    // A hidden constant effect of the Script archetype with no script: a mark, a perk carrier or a cast the server acts on
+    static MagicEffect ScriptEffect(PatchContext c, string edid, string name, string description)
+    {
+        var mgef = c.OwnOrNew(c.Mod.MagicEffects, edid);
+        ConfigureMgef(mgef, name, description);
+        mgef.Archetype = new MagicEffectArchetype { Type = MagicEffectArchetype.TypeEnum.Script, ActorValue = ActorValue.None };
+        mgef.PerkToApply.SetToNull();
+        return mgef;
+    }
+
+    static void ConfigureAbility(Spell spell, string name, string description) =>
+        ConfigureSpell(spell, SpellType.Ability, CastType.ConstantEffect, name, description);
+
+    static void ConfigureSpell(Spell spell, SpellType type, CastType cast, string name, string description)
     {
         spell.Name = name;
-        spell.Type = SpellType.Ability;
-        spell.CastType = CastType.ConstantEffect;
+        spell.Type = type;
+        spell.CastType = cast;
         spell.TargetType = TargetType.Self;
         spell.CastDuration = 0;
         spell.ChargeTime = 0;
@@ -1609,6 +1617,10 @@ static class Steps
         if (c.Spec["races"] is not JsonObject spec) return;
         var types = Edids(c, spec["removeSpellTypes"]).Select(x => Enum.Parse<SpellType>(x)).ToHashSet();
         var keep = Edids(c, spec["keepSpells"]).Select(c.KeyOf<ISpellGetter>).ToHashSet();
+        var powers = spec["powers"]?.AsObject() ?? new JsonObject();
+        // A handed out power is a lesser power the sweep would take back off its race on the next run
+        foreach (var (edid, p) in powers)
+            if (Attached(p!) && c.TryWinning<ISpellGetter>(edid, out var own)) keep.Add(own.FormKey);
         var passives = (spec["passives"]?.AsArray() ?? []).Select(x => x!.AsObject())
             .SelectMany(p => Edids(c, p["races"]).Select(r => (Race: r, Spec: p))).ToDictionary(x => x.Race, x => x.Spec);
         foreach (var edid in Edids(c, spec["races"]))
@@ -1641,6 +1653,33 @@ static class Steps
             foreach (var (effect, magnitude) in s["effects"]!.AsObject())
                 SetMagnitude(c, spell.Effects, c.KeyOf<IMagicEffectGetter>(effect), magnitude!.GetValue<float>(), $"Race ability {spell.EditorID}");
         }
+        // The race's own abilities, reusing effects of the masters; the server hands race abilities to players with the race
+        foreach (var (edid, a) in spec["abilities"]?.AsObject() ?? new JsonObject())
+        {
+            var races = Edids(c, a!["races"]).Select(c.Winning<IRaceGetter>).ToList();
+            var effects = a["effects"]!.AsObject();
+            var spell = c.OwnOrNew(c.Mod.Spells, edid);
+            ConfigureAbility(spell, a["name"]!.GetValue<string>(), a["description"]!.GetValue<string>());
+            foreach (var (effect, magnitude) in effects)
+                spell.Effects.Add(new Effect { BaseEffect = new FormLinkNullable<IMagicEffectGetter>(c.KeyOf<IMagicEffectGetter>(effect)), Data = new EffectData { Magnitude = magnitude!.GetValue<float>(), Area = 0, Duration = 0 } });
+            HandOut(c, spell, races);
+            c.Note($"Race ability {edid} ({string.Join(", ", races.Select(r => r.EditorID))}): {string.Join(", ", effects.Select(e => $"{e.Key} {e.Value}"))}");
+        }
+        // Lesser powers keep no engine timer, so the server gates their use; the effect itself does nothing in the engine
+        foreach (var (edid, p) in powers)
+        {
+            var races = Edids(c, p!["races"]).Select(c.Winning<IRaceGetter>).ToList();
+            var e = p["effect"]!.AsObject();
+            var cast = ScriptEffect(c, e["edid"]!.GetValue<string>(), e["name"]!.GetValue<string>(), e["description"]!.GetValue<string>());
+            cast.CastType = CastType.FireAndForget;
+            cast.Flags &= ~MagicEffect.Flag.HideInUI;
+            var spell = c.OwnOrNew(c.Mod.Spells, edid);
+            ConfigureSpell(spell, SpellType.LesserPower, CastType.FireAndForget, p["name"]!.GetValue<string>(), p["description"]!.GetValue<string>());
+            spell.EquipmentType.SetTo(c.KeyOf<IEquipTypeGetter>("Voice"));
+            spell.Effects.Add(new Effect { BaseEffect = cast.ToNullableLink(), Data = new EffectData { Magnitude = 0, Area = 0, Duration = 0 } });
+            if (Attached(p)) HandOut(c, spell, races);
+            c.Note($"Race power {edid} ({string.Join(", ", races.Select(r => r.EditorID))}): lesser power with {cast.EditorID}, {(Attached(p) ? "handed out" : "not handed out (attach false)")}");
+        }
         // Movement speed scales with height, so each sex gets the SpeedMult that brings SpeedMult / 100 x height to the target
         if (spec["speed"] is not JsonObject speed) return;
         var target = speed["target"]!.GetValue<double>();
@@ -1661,14 +1700,22 @@ static class Steps
                     effect.Conditions.Add(new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 1f, Data = new GetIsSexConditionData { RunOnType = Condition.RunOnType.Subject, MaleFemaleGender = s } });
                 spell.Effects.Add(effect);
             }
-            foreach (var winning in races)
-            {
-                var race = c.Override(c.Mod.Races, winning);
-                race.ActorEffect ??= [];
-                if (!race.ActorEffect.Any(x => x.FormKey == spell.FormKey)) race.ActorEffect.Add(spell.ToLink<ISpellRecordGetter>());
-            }
+            HandOut(c, spell, races);
             c.Note($"Race speed {edid} ({string.Join(", ", races.Select(r => r.EditorID))}): " +
                    string.Join(", ", bySex.Zip(spell.Effects, (x, e) => $"{x.Item1?.ToString() ?? "both sexes"} height {x.Item2} SpeedMult +{e.Data!.Magnitude:0.####}")));
+        }
+    }
+
+    static bool Attached(JsonNode power) => power["attach"]?.GetValue<bool>() != false;
+
+    // Appends the spell to each race's spell list once
+    static void HandOut(PatchContext c, Spell spell, IEnumerable<IRaceGetter> races)
+    {
+        foreach (var winning in races)
+        {
+            var race = c.Override(c.Mod.Races, winning);
+            race.ActorEffect ??= [];
+            if (!race.ActorEffect.Any(x => x.FormKey == spell.FormKey)) race.ActorEffect.Add(spell.ToLink<ISpellRecordGetter>());
         }
     }
 

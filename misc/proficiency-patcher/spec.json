@@ -416,7 +416,102 @@
   "AldRaceSpeed_WoodElfVampire": "0x04132C",
   "AldRaceSpeed_Orc": "0x04132D",
   "AldRaceSpeed_Argonian": "0x04132E",
-  "AldRaceSpeed_Khajiit": "0x04132F"
+  "AldRaceSpeed_Khajiit": "0x04132F",
+  "AldCommandAnimalEffect": "0x041330",
+  "AldRacial_Argonian": "0x041331",
+  "AldRacial_Breton": "0x041332",
+  "AldRacial_DarkElf": "0x041333",
+  "AldRacial_HighElf": "0x041334",
+  "AldRacial_Khajiit": "0x041335",
+  "AldRacial_Nord": "0x041336",
+  "AldRacial_Orc": "0x041337",
+  "AldRacial_Redguard": "0x041338",
+  "AldRacial_WoodElf": "0x041339",
+  "AldPowerCommandAnimal": "0x04133A",
+  "AldSurvival_AbNoHealthRegen": "0x041340",
+  "AldDisease_Ataxia1": "0x041341",
+  "AldDisease_Ataxia2": "0x041342",
+  "AldDisease_Ataxia3": "0x041343",
+  "AldDisease_BoneBreakFever1": "0x041344",
+  "AldDisease_BoneBreakFever2": "0x041345",
+  "AldDisease_BoneBreakFever3": "0x041346",
+  "AldDisease_BrainRot1": "0x041347",
+  "AldDisease_BrainRot2": "0x041348",
+  "AldDisease_BrainRot3": "0x041349",
+  "AldDisease_Rattles1": "0x04134A",
+  "AldDisease_Rattles2": "0x04134B",
+  "AldDisease_Rattles3": "0x04134C",
+  "AldDisease_Rockjoint1": "0x04134D",
+  "AldDisease_Rockjoint2": "0x04134E",
+  "AldDisease_Rockjoint3": "0x04134F",
+  "AldDisease_Witbane1": "0x041350",
+  "AldDisease_Witbane2": "0x041351",
+  "AldDisease_Witbane3": "0x041352",
+  "AldDisease_Droops1": "0x041353",
+  "AldDisease_Droops2": "0x041354",
+  "AldDisease_Droops3": "0x041355",
+  "AldDisease_BrownRot1": "0x041356",
+  "AldDisease_BrownRot2": "0x041357",
+  "AldDisease_BrownRot3": "0x041358",
+  "AldDisease_Greenspore1": "0x041359",
+  "AldDisease_Greenspore2": "0x04135A",
+  "AldDisease_Greenspore3": "0x04135B",
+  "AldDisease_Gutworm1": "0x04135C",
+  "AldDisease_Gutworm2": "0x04135D",
+  "AldDisease_Gutworm3": "0x04135E",
+  "AldDisease_AstralVapors1": "0x04135F",
+  "AldDisease_AstralVapors2": "0x041360",
+  "AldDisease_AstralVapors3": "0x041361",
+  "AldDisease_BlackHeartBlight1": "0x041362",
+  "AldDisease_BlackHeartBlight2": "0x041363",
+  "AldDisease_BlackHeartBlight3": "0x041364",
+  "AldDisease_BloodLung1": "0x041365",
+  "AldDisease_BloodLung2": "0x041366",
+  "AldDisease_BloodLung3": "0x041367",
+  "AldDisease_ChanthraxBlight1": "0x041368",
+  "AldDisease_ChanthraxBlight2": "0x041369",
+  "AldDisease_ChanthraxBlight3": "0x04136A",
+  "AldDisease_Chills1": "0x04136B",
+  "AldDisease_Chills2": "0x04136C",
+  "AldDisease_Chills3": "0x04136D",
+  "AldDisease_Collywobbles1": "0x04136E",
+  "AldDisease_Collywobbles2": "0x04136F",
+  "AldDisease_Collywobbles3": "0x041370",
+  "AldDisease_Dampworm1": "0x041371",
+  "AldDisease_Dampworm2": "0x041372",
+  "AldDisease_Dampworm3": "0x041373",
+  "AldDisease_FeebleLimb1": "0x041374",
+  "AldDisease_FeebleLimb2": "0x041375",
+  "AldDisease_FeebleLimb3": "0x041376",
+  "AldDisease_Helljoint1": "0x041377",
+  "AldDisease_Helljoint2": "0x041378",
+  "AldDisease_Helljoint3": "0x041379",
+  "AldDisease_RedRage1": "0x04137A",
+  "AldDisease_RedRage2": "0x04137B",
+  "AldDisease_RedRage3": "0x04137C",
+  "AldDisease_RustChancre1": "0x04137D",
+  "AldDisease_RustChancre2": "0x04137E",
+  "AldDisease_RustChancre3": "0x04137F",
+  "AldDisease_SerpiginousDementia1": "0x041380",
+  "AldDisease_SerpiginousDementia2": "0x041381",
+  "AldDisease_SerpiginousDementia3": "0x041382",
+  "AldDisease_Shakes1": "0x041383",
+  "AldDisease_Shakes2": "0x041384",
+  "AldDisease_Shakes3": "0x041385",
+  "AldDisease_SwampFever1": "0x041386",
+  "AldDisease_SwampFever2": "0x041387",
+  "AldDisease_SwampFever3": "0x041388",
+  "AldDisease_Wither1": "0x041389",
+  "AldDisease_Wither2": "0x04138A",
+  "AldDisease_Wither3": "0x04138B",
+  "AldDisease_WitlessPox1": "0x04138C",
+  "AldDisease_WitlessPox2": "0x04138D",
+  "AldDisease_WitlessPox3": "0x04138E",
+  "AldDisease_YellowTick1": "0x04138F",
+  "AldDisease_YellowTick2": "0x041390",
+  "AldDisease_YellowTick3": "0x041391",
+  "AldSurvival_FreezingArea": "0x041392",
+  "AldSurvival_FreezingWaterDamage": "0x041393"
  },
  "woodcraftingBench": {
   "edid": "AldWoodcraftingBench",
@@ -8438,7 +8533,7 @@
   ]
  },
  "races": {
-  "comment": "The playable races and their vampire forms lose every racial power the game hands a character (greater powers and the vampires' Hunter's Sight); only Khajiit Night Eye stays. passives sets what the owner's list changes (starting attributes, unarmed damage read from a weapon at run time, abilities removed), descriptions is the race menu text, spells the magnitudes of a racial ability. Dunmer, Nord and Redguard already match the list; Argonians drop to the common unarmed damage of 4, and Khajiit lose the client-only claws ability so their unarmed damage is the race's alone. speed gives every race of spells a hidden ability (Equal Racial Speed, retargeted): movement speed is SpeedMult / 100 x the race height, so each sex gets the SpeedMult of target / height, from the heights the race wins with at run time, two effects under GetIsSex when the sexes differ in height; races sharing a spell must share their heights (the Wood Elf vampire does not).",
+  "comment": "The playable races and their vampire forms lose every racial power the game hands a character (greater powers and the vampires' Hunter's Sight); only Khajiit Night Eye and the handed out powers of powers stay. passives sets what the owner's list changes (starting attributes, unarmed damage read from a weapon at run time, abilities removed), descriptions is the race menu text, spells the magnitudes of a racial ability of the masters (none since r27). abilities gives each race one ability of its own (AldRacial_<race>) holding the resistances and weaknesses of the owner's r27 list and the Survival display effects of what the server does for the race (cold, raw meat, hunger and fatigue, Orc warmth, whose server number is racialPassives.races.OrcRace.warmth). powers makes a lesser power and its inert effect, which the server gates and acts on (racialPassives.powers); with attach false the records exist but no race hands the power out (Command Animal waits for its server side, RC6, critique A.4). speed gives every race of spells a hidden ability (Equal Racial Speed, retargeted): movement speed is SpeedMult / 100 x the race height, so each sex gets the SpeedMult of target / height, from the heights the race wins with at run time, two effects under GetIsSex when the sexes differ in height; races sharing a spell must share their heights (the Wood Elf vampire does not).",
   "races": [
    "NordRace",
    "NordRaceVampire",
@@ -8474,7 +8569,7 @@
      "BretonRace",
      "BretonRaceVampire"
     ],
-    "startingMagicka": 75,
+    "startingMagicka": 100,
     "removeSpells": [
      "RaceBreton"
     ]
@@ -8484,7 +8579,7 @@
      "HighElfRace",
      "HighElfRaceVampire"
     ],
-    "startingMagicka": 100,
+    "startingMagicka": 150,
     "removeSpells": [
      "AbHighElfMagicka"
     ]
@@ -8494,7 +8589,46 @@
      "OrcRace",
      "OrcRaceVampire"
     ],
-    "startingStamina": 100
+    "startingHealth": 100,
+    "startingStamina": 50
+   },
+   {
+    "races": [
+     "NordRace",
+     "NordRaceVampire"
+    ],
+    "startingStamina": 100,
+    "removeSpells": [
+     "RaceNord"
+    ]
+   },
+   {
+    "races": [
+     "RedguardRace",
+     "RedguardRaceVampire"
+    ],
+    "startingStamina": 150,
+    "removeSpells": [
+     "RaceRedguard"
+    ]
+   },
+   {
+    "races": [
+     "DarkElfRace",
+     "DarkElfRaceVampire"
+    ],
+    "removeSpells": [
+     "RaceDarkElf"
+    ]
+   },
+   {
+    "races": [
+     "WoodElfRace",
+     "WoodElfRaceVampire"
+    ],
+    "removeSpells": [
+     "RaceWoodElf"
+    ]
    },
    {
     "races": [
@@ -8511,7 +8645,10 @@
      "ArgonianRace",
      "ArgonianRaceVampire"
     ],
-    "unarmedDamage": 4
+    "unarmedDamageFrom": "IronDagger",
+    "removeSpells": [
+     "RaceArgonianResistDisease"
+    ]
    },
    {
     "races": [
@@ -8523,27 +8660,149 @@
     ]
    }
   ],
-  "descriptions": {
-   "ArgonianRace": "The reptilian people of Black Marsh, at home in its swamps and bayous. Argonians breathe underwater and resist 50% of disease.",
-   "BretonRace": "The people of High Rock, of mixed human and elven blood, with a natural gift for the arcane. Bretons have 25 more Magicka.",
-   "DarkElfRace": "The Dunmer of Morrowind, a proud and hardy people shaped by an ashen homeland. Dark Elves resist 50% of fire damage.",
-   "HighElfRace": "The Altmer of the Summerset Isles, long-lived and steeped in magic. High Elves have 50 more Magicka.",
-   "ImperialRace": "The people of Cyrodiil, heart of the Empire, known for their discipline, trade and industry. Imperials spend 25% less fatigue on their professions.",
-   "KhajiitRace": "The cat-folk of Elsweyr, quick and keen-eyed. A Khajiit's claws strike as hard as a steel dagger, and Night Eye lets them see in the dark.",
-   "NordRace": "The tall, fair-haired people of Skyrim, hardened by its long winters. Nords resist 50% of frost damage.",
-   "OrcRace": "The Orsimer of Wrothgar and the mountain strongholds, famed as warriors and smiths. Orcs have 50 more Stamina.",
-   "RedguardRace": "The people of Hammerfell, the most naturally gifted warriors in Tamriel. Redguards resist 50% of poison.",
-   "WoodElfRace": "The Bosmer of Valenwood, nimble woodland hunters. Wood Elves resist 25% of poison and 25% of disease."
-  },
-  "spells": [
-   {
-    "spell": "RaceWoodElf",
+  "abilities": {
+   "AldRacial_Argonian": {
+    "name": "Argonian Blood",
+    "description": "Your Argonian blood resists 75% of disease and poison and lets you eat raw meat safely, but you grow cold 25% faster.",
+    "races": [
+     "ArgonianRace",
+     "ArgonianRaceVampire"
+    ],
     "effects": {
-     "AbResistPoison": 25,
-     "AbResistDisease": 25
+     "AbResistDisease": 75,
+     "AbResistPoison": 75,
+     "Survival_WeaknessColdDisplayEffect": 0,
+     "Survival_ArgonianRawMeatDisplayEffect": 0
+    }
+   },
+   "AldRacial_Breton": {
+    "name": "Breton Blood",
+    "description": "Your Breton blood resists 50% of magic.",
+    "races": [
+     "BretonRace",
+     "BretonRaceVampire"
+    ],
+    "effects": {
+     "AbResistMagic": 50
+    }
+   },
+   "AldRacial_DarkElf": {
+    "name": "Dark Elf Blood",
+    "description": "Your Dark Elf blood resists 75% of fire damage, and your professions cost 25% less fatigue.",
+    "races": [
+     "DarkElfRace",
+     "DarkElfRaceVampire"
+    ],
+    "effects": {
+     "AbResistFire": 75,
+     "Survival_ResistExhaustionDisplayEffect": 0
+    }
+   },
+   "AldRacial_HighElf": {
+    "name": "High Elf Blood",
+    "description": "Your High Elf blood takes 25% more fire, frost and shock damage, and your professions cost 25% less fatigue.",
+    "races": [
+     "HighElfRace",
+     "HighElfRaceVampire"
+    ],
+    "effects": {
+     "AbWeaknessFireConstant": 25,
+     "AbWeaknessFrostConstant": 25,
+     "AbWeaknessShockConstant": 25,
+     "Survival_ResistExhaustionDisplayEffect": 0
+    }
+   },
+   "AldRacial_Khajiit": {
+    "name": "Khajiit Blood",
+    "description": "Your Khajiit blood lets you eat raw meat safely, but you grow cold 25% faster.",
+    "races": [
+     "KhajiitRace",
+     "KhajiitRaceVampire"
+    ],
+    "effects": {
+     "Survival_WeaknessColdDisplayEffect": 0,
+     "Survival_ArgonianRawMeatDisplayEffect": 0
+    }
+   },
+   "AldRacial_Nord": {
+    "name": "Nord Blood",
+    "description": "Your Nord blood resists 75% of frost damage, and you never feel the cold.",
+    "races": [
+     "NordRace",
+     "NordRaceVampire"
+    ],
+    "effects": {
+     "AbResistFrost": 75
+    }
+   },
+   "AldRacial_Orc": {
+    "name": "Orc Blood",
+    "description": "Your Orc blood resists 25% of magic, you grow hungry 15% slower, your professions cost 15% less fatigue, and you keep 10 points of warmth of your own.",
+    "races": [
+     "OrcRace",
+     "OrcRaceVampire"
+    ],
+    "effects": {
+     "AbResistMagic": 25,
+     "Survival_ResistHungerDisplayEffect": 0,
+     "Survival_ResistExhaustionDisplayEffect": 0,
+     "Survival_FortifyWarmthConstant": 10
+    }
+   },
+   "AldRacial_Redguard": {
+    "name": "Redguard Blood",
+    "description": "Your Redguard blood resists 50% of poison and disease.",
+    "races": [
+     "RedguardRace",
+     "RedguardRaceVampire"
+    ],
+    "effects": {
+     "AbResistPoison": 50,
+     "AbResistDisease": 50
+    }
+   },
+   "AldRacial_WoodElf": {
+    "name": "Wood Elf Blood",
+    "description": "Your Wood Elf blood resists 75% of disease, and your professions cost 25% less fatigue.",
+    "races": [
+     "WoodElfRace",
+     "WoodElfRaceVampire"
+    ],
+    "effects": {
+     "AbResistDisease": 75,
+     "Survival_ResistExhaustionDisplayEffect": 0
     }
    }
-  ],
+  },
+  "powers": {
+   "AldPowerCommandAnimal": {
+    "name": "Command Animal",
+    "description": "Once every 20 hours, the animal you face fights for you for 60 seconds.",
+    "effect": {
+     "edid": "AldCommandAnimalEffect",
+     "name": "Command Animal",
+     "description": "The animal you face fights for you for 60 seconds."
+    },
+    "races": [
+     "WoodElfRace",
+     "WoodElfRaceVampire"
+    ],
+    "attach": false
+   }
+  },
+  "descriptions": {
+   "ArgonianRace": "The reptilian people of Black Marsh, at home in its swamps and bayous. Argonians breathe underwater, resist 75% of disease and poison, eat raw meat safely and strike with claws as hard as an iron dagger, but they grow cold 25% faster.",
+   "BretonRace": "The people of High Rock, of mixed human and elven blood, with a natural gift for the arcane. Bretons resist 50% of magic and have 50 more Magicka.",
+   "DarkElfRace": "The Dunmer of Morrowind, a proud and hardy people shaped by an ashen homeland. Dark Elves resist 75% of fire damage and spend 25% less fatigue on their professions.",
+   "HighElfRace": "The Altmer of the Summerset Isles, long-lived and steeped in magic. High Elves have 100 more Magicka and spend 25% less fatigue on their professions, but take 25% more fire, frost and shock damage.",
+   "ImperialRace": "The people of Cyrodiil, heart of the Empire, known for their discipline, trade and industry. Imperials begin their journey with 50 extra gold.",
+   "KhajiitRace": "The cat-folk of Elsweyr, quick and keen-eyed. A Khajiit's claws strike as hard as a steel dagger, Night Eye lets them see in the dark and they eat raw meat safely, but they grow cold 25% faster.",
+   "NordRace": "The tall, fair-haired people of Skyrim, hardened by its long winters. Nords never feel the cold, resist 75% of frost damage and have 50 more Stamina.",
+   "OrcRace": "The Orsimer of Wrothgar and the mountain strongholds, famed as warriors and smiths. Orcs have 50 more Health, resist 25% of magic, grow hungry 15% slower, spend 15% less fatigue on their professions and keep 10 points of warmth of their own.",
+   "RedguardRace": "The people of Hammerfell, the most naturally gifted warriors in Tamriel. Redguards resist 50% of poison and disease and have 100 more Stamina.",
+   "WoodElfRace": "The Bosmer of Valenwood, nimble woodland hunters. Wood Elves resist 75% of disease and spend 25% less fatigue on their professions."
+  },
+  "spells": [],
   "speed": {
    "target": 1.2,
    "effect": "AldRaceSpeedEffect",

@@ -18,6 +18,8 @@ import patch  # noqa: E402
 ESL, LOCALIZED_PLUGIN, COMPRESSED = 0x200, 0x80, 0x40000
 DELETED, DISABLED = patch.DELETED, patch.INITIALLY_DISABLED
 PLAYER_REF = ('skyrim.esm', 0x14)
+# Voice, the equip slot of a power
+VOICE_EQUIP = ('skyrim.esm', 0x25BEE)
 # A localized plugin holds a string id in these, the output the text itself
 LOCALIZED = {'FULL', 'DESC'}
 CELL_GROUPS, WORLD_GROUPS = (6, 8, 9, 10), (1,)
@@ -158,15 +160,28 @@ def check_race(ck, spec, spells, weapons, src, flags, data, out, q):
     if description and zstr(dict(parse_subs(q.data())).get('DESC', b'')) != description:
         return 'description is not the spec text'
     types = {SPELL_TYPES[x] for x in spec.get('removeSpellTypes', [])}
-    keep = set(spec.get('keepSpells', []))
+    keep = kept(spec)
     removable = lambda s: spells.get(s, ('', -1))[1] in types and spells[s][0] not in keep or spells.get(s, ('',))[0] in p.get('removeSpells', [])
     before, after = id_list(src, data, 'SPLO'), id_list(out, q.data(), 'SPLO')
-    added = [spells.get(s, (s,))[0] for s in after if s not in before]
-    speed = [s for s, races in spec.get('speed', {}).get('spells', {}).items() if race in races]
-    if added != speed:
-        return f'spells added: {added}, the speed section adds {speed}'
+    had, holds = {spells.get(s, (s,))[0] for s in before}, {spells.get(s, (s,))[0] for s in after}
+    added = sorted(spells.get(s, (s,))[0] for s in after if s not in before)
+    gains = gained(spec, race)
+    if added != [s for s in gains if s not in had] or not holds >= set(gains):
+        return f'spells added: {added}, the races section hands out {gains}'
     wrong = [spells.get(s, s) for s in before if (s in after) == removable(s)]
     return f'spells kept or removed against the spec: {wrong}' if wrong else None
+
+
+def kept(rs):
+    # Spells of a removed type a race keeps: keepSpells and the powers the section hands out
+    return set(rs.get('keepSpells', [])) | {s for s, p in rs.get('powers', {}).items() if p.get('attach', True)}
+
+
+def gained(rs, race):
+    # The plugin's own spells the races section hands the race: its speed spell, its abilities and its handed out powers
+    return sorted([s for s, races in rs.get('speed', {}).get('spells', {}).items() if race in races]
+                  + [s for s, a in rs.get('abilities', {}).items() if race in a['races']]
+                  + [s for s, p in rs.get('powers', {}).items() if p.get('attach', True) and race in p['races']])
 
 
 def effects_of(pl, data):
@@ -210,6 +225,47 @@ def check_speed(speed, out, ro, races):
             if abs((1 + magnitude / 100) * height - speed['target']) > 1e-5:
                 problems.append(f'SPEL {spell}: SpeedMult +{magnitude} at height {height} gives {(1 + magnitude / 100) * height}, not {speed["target"]}')
         problems.extend(f'RACE {n}: does not hand out {spell}' for n in names if key not in races.get(n, []))
+    return problems
+
+
+def check_abilities(rs, out, ro, races, effects):
+    # Each ability holds the spec's effects and magnitudes, each power one scriptless fire and forget effect, and exactly the races named hand them out
+    problems, own = [], {(t, edid(r)): (k, r) for (t, k), r in ro.items() if k[0] == out.name.lower()}
+
+    def spit(rec):
+        v = dict(rec.subs()).get('SPIT', b'')
+        return (struct.unpack_from('<I', v, 8)[0],) + struct.unpack_from('<II', v, 16) if len(v) >= 24 else None
+
+    def holders(key, want, label):
+        got = sorted(n for n, splo in races.items() if key in splo)
+        return [] if got == sorted(want) else [f'{label}: handed out by {got}, the spec names {sorted(want)}']
+    for spell, a in rs.get('abilities', {}).items():
+        if ('SPEL', spell) not in own:
+            problems.append(f'SPEL {spell}: missing')
+            continue
+        key, rec = own[('SPEL', spell)]
+        if spit(rec) != (SPELL_TYPES['Ability'], 0, 0):
+            problems.append(f'SPEL {spell}: SPIT {spit(rec)} is not a constant effect ability on self')
+        want = [(effects.get(m), float(v), []) for m, v in a['effects'].items()]
+        got = [(m, v, c) for m, v, c in effects_of(out, rec.data())]
+        if got != want:
+            problems.append(f'SPEL {spell}: effects {[(show(m), v, c) for m, v, c in got]}, the spec gives {a["effects"]}')
+        problems.extend(holders(key, a['races'], f'SPEL {spell}'))
+    for spell, p in rs.get('powers', {}).items():
+        effect = p['effect']['edid']
+        if ('SPEL', spell) not in own or ('MGEF', effect) not in own:
+            problems.append(f'SPEL {spell} or its effect {effect}: missing')
+            continue
+        (key, rec), (ekey, erec) = own[('SPEL', spell)], own[('MGEF', effect)]
+        etyp = dict(rec.subs()).get('ETYP', b'')
+        if spit(rec) != (SPELL_TYPES['LesserPower'], 1, 0) or len(etyp) != 4 or out.key(struct.unpack('<I', etyp)[0]) != VOICE_EQUIP:
+            problems.append(f'SPEL {spell}: SPIT {spit(rec)} is not a fire and forget lesser power on self in the voice slot')
+        if effects_of(out, rec.data()) != [[ekey, 0.0, []]]:
+            problems.append(f'SPEL {spell}: effects are not {effect} alone')
+        data, subs = dict(erec.subs()).get('DATA', b''), dict(erec.subs())
+        if len(data) < 88 or struct.unpack_from('<I', data, 64)[0] != 1 or struct.unpack_from('<II', data, 80) != (1, 0) or 'VMAD' in subs:
+            problems.append(f'MGEF {effect}: not a scriptless fire and forget Script effect on self')
+        problems.extend(holders(key, p['races'] if p.get('attach', True) else [], f'SPEL {spell}'))
     return problems
 
 
@@ -498,12 +554,15 @@ def main():
     rs = spec.get('races', {})
     types = {SPELL_TYPES[x] for x in rs.get('removeSpellTypes', [])}
     for race in rs.get('races', []):
-        left = [spells[s][0] for s in races.get(race, []) if s in spells and spells[s][1] in types and spells[s][0] not in rs.get('keepSpells', [])]
+        left = [spells[s][0] for s in races.get(race, []) if s in spells and spells[s][1] in types and spells[s][0] not in kept(rs)]
         if race not in races or left:
             problems.append(f'RACE {race}: {"not found" if race not in races else f"still hands out {left}"}')
     if 'speed' in rs:
         problems.extend(check_speed(rs['speed'], out, ro, races))
         checked['race speed spells checked'] += len(rs['speed']['spells'])
+    if 'abilities' in rs or 'powers' in rs:
+        problems.extend(check_abilities(rs, out, ro, races, effects))
+        checked['racial abilities and powers checked'] += len(rs.get('abilities', {})) + len(rs.get('powers', {}))
     for k in disable_refs:
         final = ro.get(('REFR', k)) or ro.get(('ACHR', k)) or ro.get(('PHZD', k))
         flags = final.flags if final is not None else (winners.get(('REFR', k)) or winners.get(('PHZD', k)) or (None, 0))[1]
