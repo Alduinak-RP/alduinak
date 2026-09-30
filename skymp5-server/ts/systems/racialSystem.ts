@@ -4,7 +4,7 @@ import { NeedsModifierSource } from "./needsSystem";
 import { resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds, toFormId } from "./formIdUtil";
 import { ActorValue, SpellType, actorRaceId, fieldData, raceAbilityResist, spellEffects, spellInfo, view } from "./espmMagic";
-import { GOLD_BASE_ID, addGold, addItemTo, chainMpHook, cleanDisplayName, hex, isCreationPending } from "./actorUtil";
+import { GOLD_BASE_ID, addGold, addItemTo, chainMpHook, cleanDisplayName, formatWait, hex, isCreationPending, isPlayerActor, userOf } from "./actorUtil";
 import { claimStarterGrant, parseStartingItems } from "./spawn";
 import { sendJson } from "./playerText";
 
@@ -33,13 +33,21 @@ type Mp = any;
 //   stray: other races' spells running or held; base: base Health, Magicka and Stamina; masteryMagicka: the base Magicka the
 //   client's MasteryService last wrote, null when it wrote none
 // Server -> Client: { customPacketType: "racialResync", raceId, spells, problems }  spells: the race spells the server expects held
+// Power gate: a player's cast of a power in racialPassives.powers is refused with a notice while its cooldown runs; the cooldown is
+// wall-clock time from the last use, so it counts offline, across relogs, deaths and restarts. A power with an effect block
+// (commandAnimal) is refused until that effect is built; a used one is stamped only when its effect worked, or on a miss with
+// consumeOnMiss; a power with no effect block is stamped at every cast. NPC casters are never gated.
+// Server -> Client: { customPacketType: "racialState", powers: [{ spellId, name, readyInMs, available }] }  the character's rationed
+//   powers (its race's, or any it used), never sent without one; at login, after each racialReport, use and refusal; readyInMs is
+//   relative, so the PC clock does not matter; available false while the power's effect is not built
 //
 // server-settings.json (all optional; a missing multiplier is 1, a missing warmth 0 and a missing flag false):
-//   racialPassives.enabled          false makes every trait neutral and grants nothing, default true
+//   racialPassives.enabled          false makes every trait neutral, grants nothing and refuses no power, default true
 //   racialPassives.aliases          { "<race editor id>": "<entry race editor id>" } over the built-in vampire and child race map
 //   racialPassives.races            { "<race editor id>": { coldRateMult, warmth, freezingWaterImmune, hungerRateMult, fatigueCostMult,
 //                                   rawMeatSafe, startingItems } }
-//   racialPassives.powers           { "<SPEL editor id>": { cooldownHours, consumeOnMiss, commandAnimal } }, read but not acted on yet
+//   racialPassives.powers           { "<SPEL editor id>": { cooldownHours, consumeOnMiss, commandAnimal } }; cooldownHours default 0 (none),
+//                                   consumeOnMiss default false, commandAnimal the Command Animal effect's block
 //   racialPassives.startItemsSince  epoch ms or a date string; characters created since then are backfilled, default the 1.0 launch
 //
 // Persistence: private.racial = { v, powers, startItems?: { race, items, at, via, slot, note? } } on the character's actor form.
@@ -100,6 +108,15 @@ const MAX_REPORT_SPELLS = 64;
 // A base value this close to the expected one matches
 const BASE_TOLERANCE = 0.5;
 const BASE_LABELS = ["H", "M", "S"];
+const STATE_PACKET = "racialState";
+const NOTICE_PACKET = "masteryNotice";
+const POWER_KEYS = new Set(["cooldownHours", "consumeOnMiss", "commandAnimal"]);
+// Settings keys that hold a power's effect block
+const POWER_EFFECT_KEYS = ["commandAnimal"];
+const HOUR_MS = 3600000;
+// A refused power is noticed and logged at most this often per character
+const REFUSAL_GAP_MS = 3000;
+const POWER_PREFIX = "AldPower";
 
 export interface RaceEntry {
   coldRateMult: number;
@@ -115,7 +132,22 @@ export interface RacialPower {
   cooldownHours: number;
   consumeOnMiss: boolean;
   commandAnimal: Record<string, unknown> | null;
+  // The effect block's settings key, "" for a power that is only rationed
+  effect: string;
 }
+
+// A rationed power resolved in the load order
+export interface PowerEntry {
+  edid: string;
+  spellId: number;
+  // The private.racial.powers key
+  desc: string;
+  name: string;
+  power: RacialPower;
+}
+
+// Runs a power's effect after a cast; true when it worked
+type PowerEffect = (casterId: number, entry: PowerEntry) => boolean;
 
 export interface RacialConfig {
   present: boolean;
@@ -223,10 +255,16 @@ export const parseRacialPassives = (raw: unknown): { config: RacialConfig; probl
     const v = objectOf(value);
     const hours = Number(v.cooldownHours);
     if (v.cooldownHours !== undefined && !(Number.isFinite(hours) && hours >= 0)) problems.push(`powers.${edid}.cooldownHours is not a non-negative number, 0 is used`);
+    for (const key of Object.keys(v)) if (!POWER_KEYS.has(key)) problems.push(`powers.${edid}.${key} is not a known key`);
+    for (const key of POWER_EFFECT_KEYS) {
+      if (v[key] !== undefined && !(v[key] && typeof v[key] === "object" && !Array.isArray(v[key]))) problems.push(`powers.${edid}.${key} is not an object, the power has no effect`);
+    }
+    const commandAnimal = v.commandAnimal && typeof v.commandAnimal === "object" && !Array.isArray(v.commandAnimal) ? objectOf(v.commandAnimal) : null;
     powers.set(edid, {
       cooldownHours: Number.isFinite(hours) && hours >= 0 ? hours : 0,
       consumeOnMiss: v.consumeOnMiss === true,
-      commandAnimal: v.commandAnimal && typeof v.commandAnimal === "object" ? objectOf(v.commandAnimal) : null,
+      commandAnimal,
+      effect: commandAnimal ? "commandAnimal" : "",
     });
   }
   let startItemsSince = DEFAULT_START_ITEMS_SINCE;
@@ -282,6 +320,7 @@ export class RacialSystem implements System, NeedsModifierSource {
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       forget(actorId);
       this.backfillStartItems(actorId >>> 0);
+      this.sendPowerState(actorId >>> 0);
     });
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => forget(actorId));
     // Emitted inside the appearance hook, after the kit trim; the items follow once it returns
@@ -292,6 +331,11 @@ export class RacialSystem implements System, NeedsModifierSource {
     // An accepted race menu may change the race; the native side has stored the new appearance before this fires
     chainMpHook(this.mp, "onUpdateAppearanceAttempt", (actorId: number, _appearance: unknown, isAllowed: boolean) => {
       if (isAllowed) forget(actorId);
+    });
+    // A power is refused inside the native cast; its use is stamped once the native call returns
+    chainMpHook(this.mp, "onSpellCastAttempt", (casterId: number, spellId: number) => this.powerAttempt(casterId >>> 0, spellId >>> 0));
+    chainMpHook(this.mp, "onSpellCast", (casterId: number, spellId: number) => {
+      setImmediate(() => this.powerCast(casterId >>> 0, spellId >>> 0));
     });
     await this.report(s.dataDir, s.loadOrder, problems);
   }
@@ -365,6 +409,7 @@ export class RacialSystem implements System, NeedsModifierSource {
     if (this.checks.size >= MAX_CACHED_ACTORS) this.checks.clear();
     this.checks.set(actorId, state);
     this.selfCheck(actorId, userId, content, state);
+    this.sendPowerState(actorId);
   }
 
   // Compares a client's racialReport with the server's race, spells and base values; one resync per spawn for what the race sync fixes
@@ -444,6 +489,100 @@ export class RacialSystem implements System, NeedsModifierSource {
     this.log(`${who} MISMATCH ${name(raceId)} after ${reason}: ${problems.join("; ")}; ${baseText}; ${resync}`);
   }
 
+  // Epoch ms of the power's last use, 0 for never
+  private lastUse(actorId: number, entry: PowerEntry): number {
+    const last = Number(this.readRecord(actorId).powers[entry.desc]);
+    return last > 0 ? last : 0;
+  }
+
+  // Milliseconds until the power is ready again; a use stamped in the future counts as a full cooldown
+  readyInMs(actorId: number, entry: PowerEntry, now = Date.now()): number {
+    const cooldown = entry.power.cooldownHours * HOUR_MS;
+    const last = this.lastUse(actorId, entry);
+    return cooldown > 0 && last ? Math.max(0, Math.min(cooldown, last + cooldown - now)) : 0;
+  }
+
+  // Rationed powers of the character: its race's, and any it has a use stamped for
+  private powersOf(actorId: number): PowerEntry[] {
+    const onRace = this.raceSpells(this.raceOf(actorId));
+    const used = this.readRecord(actorId).powers;
+    return Array.from(this.powerById.values()).filter((e) => onRace.indexOf(e.spellId) !== -1 || used[e.desc] !== undefined);
+  }
+
+  private effectReady(entry: PowerEntry): boolean {
+    return !entry.power.effect || !!this.powerEffects[entry.power.effect];
+  }
+
+  // Sent only to a character with a rationed power
+  private sendPowerState(actorId: number): void {
+    if (!this.config.enabled || !this.powerById.size || !this.mp) return;
+    const userId = userOf(this.mp, actorId);
+    const powers = userId < 0 ? [] : this.powersOf(actorId);
+    if (!powers.length) return;
+    sendJson(this.mp, userId, {
+      customPacketType: STATE_PACKET,
+      powers: powers.map((e) => ({ spellId: e.spellId, name: e.name, readyInMs: this.readyInMs(actorId, e), available: this.effectReady(e) })),
+    });
+  }
+
+  // A player's rationed power inside its cooldown, or one whose effect is not built yet, is refused
+  private powerAttempt(casterId: number, spellId: number): boolean {
+    const entry = this.powerById.get(spellId);
+    if (!entry || !this.config.enabled || !isPlayerActor(this.mp, casterId)) return true;
+    if (!this.effectReady(entry)) {
+      this.refuse(casterId, entry, `${entry.name} is not available yet.`, `its ${entry.power.effect} effect is not built yet`);
+      return false;
+    }
+    const readyIn = this.readyInMs(casterId, entry);
+    if (readyIn <= 0) return true;
+    const wait = formatWait(readyIn);
+    this.refuse(casterId, entry, `${entry.name} is ready again in ${wait}.`, `ready again in ${wait}, last used ${new Date(this.lastUse(casterId, entry)).toISOString()}`);
+    return false;
+  }
+
+  // The notice, log line and racialState follow once the native call returns, at most once per REFUSAL_GAP_MS per character and power
+  private refuse(casterId: number, entry: PowerEntry, notice: string, why: string): void {
+    const key = `${casterId}:${entry.spellId}`;
+    const now = Date.now();
+    if (now - (this.refusedAt.get(key) || 0) < REFUSAL_GAP_MS) return;
+    if (this.refusedAt.size >= MAX_CACHED_ACTORS) this.refusedAt.clear();
+    this.refusedAt.set(key, now);
+    setImmediate(() => {
+      this.log(`[racial] ${hex(casterId)} ${entry.edid} refused: ${why}`);
+      sendJson(this.mp, userOf(this.mp, casterId), { customPacketType: NOTICE_PACKET, text: notice });
+      this.sendPowerState(casterId);
+    });
+  }
+
+  // After a cast went through: the power's effect runs, and a used power is stamped
+  private powerCast(casterId: number, spellId: number): void {
+    const entry = this.powerById.get(spellId);
+    if (!entry || !this.config.enabled || !isPlayerActor(this.mp, casterId) || !this.effectReady(entry)) return;
+    const who = `[racial] ${hex(casterId)} ${entry.edid}`;
+    const run = entry.power.effect ? this.powerEffects[entry.power.effect] : null;
+    let worked = true;
+    if (run) {
+      try {
+        worked = run(casterId, entry) === true;
+      } catch (e) {
+        worked = false;
+        this.log(`${who} effect failed: ${e}`);
+      }
+    }
+    if (!worked && !entry.power.consumeOnMiss) {
+      this.log(`${who} cast with no effect, the power stays ready`);
+      return;
+    }
+    if (!(entry.power.cooldownHours > 0)) {
+      this.log(`${who} used, no cooldown`);
+      return;
+    }
+    const now = Date.now();
+    this.writeRecord(casterId, { powers: { ...this.readRecord(casterId).powers, [entry.desc]: now } });
+    this.log(`${who} used${worked ? "" : " with no effect (consumeOnMiss)"}, ready again at ${new Date(now + entry.power.cooldownHours * HOUR_MS).toISOString()} (${round(entry.power.cooldownHours)} h, counting offline)`);
+    this.sendPowerState(casterId);
+  }
+
   // The race's startingItems once per profile and slot, whatever race a recreated character picks
   private grantStartItems(actorId: number, via: "creation" | "login"): void {
     const mp = this.mp;
@@ -456,7 +595,7 @@ export class RacialSystem implements System, NeedsModifierSource {
       const slot = Number.isInteger(rawSlot) && rawSlot >= 0 ? rawSlot as number : 0;
       const record: StartItemsRecord = { race: t.key, items: [], at: Date.now(), via, slot };
       if (!claimStarterGrant(`${profileId}:${slot}:race`, this.log)) {
-        this.writeRecord(actorId, { ...record, note: "slot already granted" });
+        this.writeRecord(actorId, { startItems: { ...record, note: "slot already granted" } });
         this.log(`[racial] ${hex(actorId)} ${t.key} start items: none, slot ${slot} of profile ${profileId} had them already (${via})`);
         return;
       }
@@ -464,7 +603,7 @@ export class RacialSystem implements System, NeedsModifierSource {
         if (i.baseId === GOLD_BASE_ID) addGold(mp, actorId, i.count);
         else addItemTo(mp, actorId, i.baseId, i.count, true);
       }
-      this.writeRecord(actorId, { ...record, items });
+      this.writeRecord(actorId, { startItems: { ...record, items } });
       this.log(`[racial] ${hex(actorId)} ${t.key} start items: ${items.map((i) => `${i.count} ${i.baseId === GOLD_BASE_ID ? "gold" : hex(i.baseId)}`).join(" + ")} (slot ${slot}, ${via})`);
     } catch (e) {
       this.log(`[racial] ${hex(actorId)} start items failed (${via}): ${e}`);
@@ -481,7 +620,7 @@ export class RacialSystem implements System, NeedsModifierSource {
       const created = createdAtOf(mp, actorId);
       if (created && created < this.config.startItemsSince) return;
       if (!created) {
-        this.writeRecord(actorId, { race: t.key, items: [], at: Date.now(), via: "login", slot: -1, note: "creation time unknown" });
+        this.writeRecord(actorId, { startItems: { race: t.key, items: [], at: Date.now(), via: "login", slot: -1, note: "creation time unknown" } });
         this.log(`[racial] ${hex(actorId)} ${t.key} start items: none, creation time unknown`);
         return;
       }
@@ -497,8 +636,8 @@ export class RacialSystem implements System, NeedsModifierSource {
     return { v: 1, powers: objectOf(raw.powers) as Record<string, number>, ...(startItems ? { startItems } : {}) };
   }
 
-  private writeRecord(actorId: number, startItems: StartItemsRecord): void {
-    this.mp.set(actorId, RACIAL_PROP, { ...this.readRecord(actorId), startItems });
+  private writeRecord(actorId: number, patch: Partial<Omit<RacialRecord, "v">>): void {
+    this.mp.set(actorId, RACIAL_PROP, { ...this.readRecord(actorId), ...patch });
   }
 
   // Race id of the actor, 0 while its creation is pending; cached until it is forgotten
@@ -572,7 +711,7 @@ export class RacialSystem implements System, NeedsModifierSource {
     const mp = this.mp;
     const warnings = problems.map((p) => `racialPassives.${p}`);
     const abilityNames = RACES.filter((r) => !NO_ABILITY.has(r.edid)).map((r) => ABILITY_PREFIX + r.edid.replace(/Race$/, ""));
-    const spells = await resolveEditorIds(abilityNames, dataDir, loadOrder, this.log, ["SPEL"]);
+    const spells = await resolveEditorIds(abilityNames.concat(Array.from(this.config.powers.keys())), dataDir, loadOrder, this.log, ["SPEL"]);
     const knownRaces = new Set([...RACES.map((r) => r.edid), ...Object.keys(this.config.aliases)]);
     const otherKeys = Array.from(this.config.races.keys()).filter((k) => !knownRaces.has(k));
     if (otherKeys.length) {
@@ -581,9 +720,11 @@ export class RacialSystem implements System, NeedsModifierSource {
     }
     const offsets = this.playerOffsets();
     const powers = Array.from(this.config.powers).map(([k, p]) => `${k} ${round(p.cooldownHours)} h`);
+    const powersLine = this.resolvePowers(spells.resolved, warnings);
     const selfCheck = `self-check on racialReport (base values within ${BASE_TOLERANCE}, one report per ${REPORT_MIN_GAP_MS / 1000} s, one racialResync per spawn, ` +
       `mage magicka ${this.writtenMagicka ? "from MasterySystem" : "not checked while the client reports a mastery write"})`;
-    this.log(`[racial] ready: ${!this.config.present ? "no racialPassives block, every race neutral" : `${this.config.enabled ? "on" : "off (enabled false), every race neutral"}, ${this.config.races.size} race entries (${Array.from(this.config.races.keys()).join(", ") || "none"}), ${Object.keys(this.config.aliases).length} aliases, powers ${powers.join(", ") || "none"} (read, not acted on yet), start items once per slot, backfilled at login for characters created since ${new Date(this.config.startItemsSince).toISOString().slice(0, 16)}Z`}; ${selfCheck}; Player NPC_ offsets H/M/S ${offsets.join("/")}`);
+    this.log(`[racial] ready: ${!this.config.present ? "no racialPassives block, every race neutral" : `${this.config.enabled ? "on" : "off (enabled false), every race neutral"}, ${this.config.races.size} race entries (${Array.from(this.config.races.keys()).join(", ") || "none"}), ${Object.keys(this.config.aliases).length} aliases, powers ${powers.join(", ") || "none"}, start items once per slot, backfilled at login for characters created since ${new Date(this.config.startItemsSince).toISOString().slice(0, 16)}Z`}; ${selfCheck}; Player NPC_ offsets H/M/S ${offsets.join("/")}`);
+    this.log(`[racial] powers: ${powersLine}`);
     this.log(`[racial] magic damage entries: ${this.magicEntries.map((e) => `${e.key} x${round(e.mult)} on ${e.raceIds.map((id) => this.edidOf(id) || hex(id)).join(", ")}`).join("; ") || "none"}`);
     const notInPlugin: string[] = [];
     for (const race of RACES) {
@@ -595,6 +736,50 @@ export class RacialSystem implements System, NeedsModifierSource {
     }
     if (notInPlugin.length) this.log(`[racial] warning: ${notInPlugin.length} races have no AldRacial_* ability in the load order yet (${notInPlugin.join(", ")}); expected until plugin r27a`);
     for (const w of warnings) this.log(`[racial] warning: ${w}`);
+  }
+
+  // Resolves the rationed powers in the load order; returns what each one does and which races carry it
+  private resolvePowers(resolved: Map<string, string>, warnings: string[]): string {
+    const mp = this.mp;
+    this.powerById.clear();
+    const parts: string[] = [];
+    for (const [edid, power] of this.config.powers) {
+      const scanned = resolved.get(edid.toLowerCase());
+      let spellId = 0;
+      try { spellId = scanned ? mp.getIdFromDesc(scanned) >>> 0 : 0; } catch { spellId = 0; }
+      const effect = !power.effect ? "no effect" : `effect ${power.effect}${this.powerEffects[power.effect] ? "" : " not built yet, so casts are refused"}`;
+      const rules = `${power.cooldownHours > 0 ? `cooldown ${round(power.cooldownHours)} h of real time, counting offline` : "no cooldown"}, ` +
+        `${power.consumeOnMiss ? "a miss uses it" : "a miss is free"}, ${effect}`;
+      if (!spellId) {
+        parts.push(`${edid} not in the load order yet (${rules})`);
+        continue;
+      }
+      const type = spellInfo(mp, spellId).type;
+      if (type !== SpellType.LesserPower && type !== SpellType.Power) warnings.push(`racialPassives.powers.${edid} is not a power (spell type ${type})`);
+      let desc = scanned || "";
+      try { desc = String(mp.getDescFromId(spellId)) || desc; } catch { /* keep the scanned desc */ }
+      const entry: PowerEntry = { edid, spellId, desc, name: this.spellName(spellId, edid), power };
+      this.powerById.set(spellId, entry);
+      const races = RACES.flatMap((r) => [r.id, r.vampire]).filter((id) => this.raceSpells(id).indexOf(spellId) !== -1).map((id) => this.edidOf(id) || hex(id));
+      parts.push(`${edid} ${hex(spellId)} "${entry.name}" on ${races.join(", ") || "no race"} (${rules})`);
+    }
+    const unrationed = new Map<string, string[]>();
+    for (const raceId of RACES.flatMap((r) => [r.id, r.vampire])) {
+      for (const id of this.raceSpells(raceId)) {
+        const edid = this.edidOf(id);
+        if (edid.startsWith(POWER_PREFIX) && !this.powerById.has(id)) unrationed.set(edid, (unrationed.get(edid) || []).concat(this.edidOf(raceId) || hex(raceId)));
+      }
+    }
+    for (const [edid, races] of unrationed) warnings.push(`${edid} is on ${races.join(", ")} but racialPassives.powers has no entry for it, so its casts are not rationed`);
+    if (!this.config.enabled) return `off (enabled false), none refused${parts.length ? `; configured ${parts.join("; ")}` : ""}`;
+    return parts.join("; ") || "none rationed";
+  }
+
+  // The spell's in-game name, else its editor id spelled out
+  private spellName(spellId: number, edid: string): string {
+    const full = fieldData(this.lookup(spellId), "FULL");
+    const text = full ? Buffer.from(full).toString("utf8").replace(/\0+$/, "") : "";
+    return /^[\x20-\x7e]+$/.test(text) ? text : edid.replace(new RegExp(`^${POWER_PREFIX}`), "").replace(/([a-z])([A-Z])/g, "$1 $2");
   }
 
   private raceLine(mp: Mp, race: typeof RACES[number], offsets: number[], resolved: Map<string, string>, notInPlugin: string[], warnings: string[]): string {
@@ -656,4 +841,9 @@ export class RacialSystem implements System, NeedsModifierSource {
   private offsets: number[] | null = null;
   // actorId -> the self-check of its current spawn
   private checks = new Map<number, CheckState>();
+  private powerById = new Map<number, PowerEntry>();
+  // Built power effects by settings key; a power whose effect is missing here is refused
+  private powerEffects: Record<string, PowerEffect> = {};
+  // "<actorId>:<spellId>" -> when its last refusal was noticed
+  private refusedAt = new Map<string, number>();
 }
