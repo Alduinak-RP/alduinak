@@ -548,16 +548,17 @@ rose from three to six) is read as full.
 Harvesting a crop hoes the field for 5 seconds (the `IdleHoe` farming idle, left
 through `IdleStop` so the hoe prop goes away) and flora kneels the picker 2 seconds,
 whatever the rank; a farmer's or alchemist's yield doubles at Adept and triples at Master.
-Crops (flora whose editor id holds wheat, gourd, nirnroot, cabbage or potato, and
-the nirnroot activators) need the plugin hoe `AldToolHoe` in the inventory: "You
-need a hoe to harvest this crop." Tree fruit, mushrooms and flowers need nothing
-and cost half the fatigue. Fish and hanging
+Crops (flora whose editor id holds wheat, gourd, cabbage or potato) need the
+plugin hoe `AldToolHoe` in the inventory: "You need a hoe to harvest this crop."
+Tree fruit, mushrooms, flowers and nirnroot (the wild `TreeFloraNirnroot01`, the
+crimson `TreeFloraNirnrootRed01` and Hearthfire's `BYOHHouseIngrdNirnroot01`
+planter) need nothing, kneel 2 seconds and cost half the fatigue. Fish and hanging
 clutter never kneel. Picking credits farmer and alchemist hours and costs a
 gathering action of fatigue by the better of those ranks. An alchemist (Novice
 or better) pays half of that again for alchemy flora, a plant that is not a
 crop and hands over an ingredient: flowers, mushrooms, herbs, berries, eggs,
-pearls, barnacles and the Hearthfire herb planters, not the food plants (apples,
-vegetables, cheese, fish, meat) or nirnroot, a crop
+pearls, barnacles, nirnroot and the Hearthfire herb planters, not the food
+plants (apples, vegetables, cheese, fish, meat) or crops
 (`gatheringAlchemistFloraDiscount`, 0.5). A Novice alchemist's flower costs 1%
 of the bar where a Novice farmer's costs 2.1% and a Free picker's 4.2%; the
 charge line reads `[needs] <id> harvest <plant> flora r<rank>, alchemist -50%:

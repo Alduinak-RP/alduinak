@@ -273,8 +273,8 @@ until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
   (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
   A crop needs a hoe and takes 5 s of hoeing (`IdleHoe`); flora takes a 2 s kneel. The charge line names the plant
-  and its class: `[needs] <id> harvest <editor id> flora|crop r<rank>: -N%, fatigue F%` (Nirnroot, wild and planted,
-  is a crop). A plant is charged only once the native harvest handed it over; one that gave nothing costs nothing
+  and its class: `[needs] <id> harvest <editor id> flora|crop r<rank>: -N%, fatigue F%` (Nirnroot, wild, crimson and
+  planted, is flora: no hoe). A plant is charged only once the native harvest handed it over; one that gave nothing costs nothing
   (`[gathering] <id> harvest of <plant> <ref> handed over nothing, no fatigue taken`).
 - Crafting is every recipe the server accepts at any station, and every temper at the workbench or grindstone, by the
   rank of a character whose profession works that bench keyword (MasterySystem `craftCost`). Smiths and miners both get

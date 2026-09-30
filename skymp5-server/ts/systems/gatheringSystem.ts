@@ -76,7 +76,7 @@ const CROP_MS = 5000;
 const FLORA_MS = 2000;
 // What one node, swing or strike hands over by the worker's rank: double at Adept, triple at Master
 const YIELD_BY_RANK = [1, 1, 2, 2, 3, 3];
-const CROP_WORDS = ["wheat", "gourd", "nirnroot", "cabbage", "potato"];
+const CROP_WORDS = ["wheat", "gourd", "cabbage", "potato"];
 // Skyrim.esm Hoe
 // Skyrim.esm DLC2PickaxeList, every pickaxe
 const PICKAXES = 0x0010acc4;
@@ -207,7 +207,7 @@ export class GatheringSystem implements System {
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop and kneels ${FLORA_MS / 1000} s for flora except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank, an alchemist pays ${Math.round(this.alchemistFloraDiscount * 100)}% less for alchemy flora`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop (${CROP_WORDS.join("/")}) and kneels ${FLORA_MS / 1000} s for flora (nirnroot included) except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank, an alchemist pays ${Math.round(this.alchemistFloraDiscount * 100)}% less for alchemy flora`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -802,7 +802,7 @@ export class GatheringSystem implements System {
     else if (type === "ACTI" && scripts.has("mineorescript")) station = { kind: "vein", props: scripts.get("mineorescript")! };
     else if (type === "FURN" && scripts.has("mineorefurniturescript")) station = { kind: "marker", props: scripts.get("mineorefurniturescript")! };
     else if (type === "CONT" && this.produceMs.has(baseId)) station = { kind: "produce", props: { base: baseId } };
-    else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1, crop: 1 } };
+    else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: this.nirnrootProps(ctx, scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0) };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
     else if ((type === "ACTI" || type === "FLOR") && scripts.has("defaultfakeharvestablescript")) station = { kind: "fake", props: scripts.get("defaultfakeharvestablescript")! };
     else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: this.plantProps(ctx, res, baseId, name) };
@@ -815,13 +815,21 @@ export class GatheringSystem implements System {
   private plantProps(ctx: SystemContext, res: any, baseId: number, name: string): Record<string, number> {
     const item = espmFieldFormIds(res, "PFIG")[0] || 0;
     const hidden = this.hiddenProduce(ctx, item, name);
-    const ingredient = String(this.lookup(ctx, hidden.produce || item)?.record.type || "") === "INGR" ? 1 : 0;
     return {
       instant: this.isInstantFlora(res, baseId) ? 1 : 0,
       free: FREE_RACK_RE.test(String(res.record.editorId || "").toLowerCase()) ? 1 : 0,
       crop: this.isCrop(res) ? 1 : 0,
-      item, ingredient, ...hidden,
+      item, ingredient: this.isIngredient(ctx, hidden.produce || item) ? 1 : 0, ...hidden,
     };
+  }
+
+  // Wild and crimson nirnroot are flora picked by hand
+  private nirnrootProps(ctx: SystemContext, item: number): Record<string, number> {
+    return { item, harvest: 1, ingredient: this.isIngredient(ctx, item) ? 1 : 0 };
+  }
+
+  private isIngredient(ctx: SystemContext, formId: number): boolean {
+    return String(this.lookup(ctx, formId)?.record.type || "") === "INGR";
   }
 
   private isCrop(res: any): boolean {
