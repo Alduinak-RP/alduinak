@@ -178,10 +178,10 @@ export const resyncRaceAbilities = (actor: Actor, keep: Array<number>, expected:
 // AldRaceSpeedEffect, the one SpeedMult effect all AldRaceSpeed_* spells share
 const RACE_SPEED_EFFECT_ID = 0x041324;
 const RACE_SPEED_EFFECT_PLUGIN = 'AlduinakAdditions.esp';
-// SpeedMult may sit this far from the speed spell's value before it counts as another race's speed
+// SpeedMult may sit this far from base plus the speed spell's value before the log notes other speed effects
 const SPEED_MULT_TOLERANCE = 0.5;
 
-// The racialReport fields the server compares (racialSystem.ts); a speed spell reads on while SpeedMult carries it
+// The racialReport fields the server compares (racialSystem.ts); a speed spell reads on while its effect runs
 export interface RaceAbilityData {
   baseRace: number;
   engineRace: number;
@@ -216,13 +216,15 @@ export const describeRaceAbilities = (actor: Actor, listed: Array<number>): Race
     const held = actor.hasSpell(spell);
     let state: string;
     let on: 'on' | 'off' | 'power';
-    if (speedEffectId && effects.some((effect) => effect.getFormID() === speedEffectId)) {
-      // One effect for both sexes, else the male one first
+    const speedEffect = speedEffectId ? effects.find((effect) => effect.getFormID() === speedEffectId) : undefined;
+    if (speedEffect) {
+      // One effect for both sexes, else the male one first; cold stages, diseases and other speed effects move SpeedMult too
       ownSpeed = true;
       const expected = actor.getBaseActorValue('SpeedMult') + spell.getNthEffectMagnitude(spell.getNumEffects() > 1 ? base?.getSex() ?? 0 : 0);
-      state = `SpeedMult ${speedMult.toFixed(1)} of ${expected.toFixed(1)}`;
-      on = Math.abs(speedMult - expected) > SPEED_MULT_TOLERANCE ? 'off' : 'on';
-      if (on === 'off') problems.push(`${hex(spell)} SpeedMult ${speedMult.toFixed(1)} not ${expected.toFixed(1)}`);
+      on = held && actor.hasMagicEffect(speedEffect) ? 'on' : 'off';
+      const others = Math.abs(speedMult - expected) > SPEED_MULT_TOLERANCE ? ', other speed effects count' : '';
+      state = `${on}, SpeedMult ${speedMult.toFixed(1)} of ${expected.toFixed(1)}${others}`;
+      if (on === 'off') problems.push(`${hex(spell)} speed effect off`);
     } else if (effects[0]?.getCastingType() !== CASTING_CONSTANT_EFFECT) {
       state = on = 'power';
     } else {

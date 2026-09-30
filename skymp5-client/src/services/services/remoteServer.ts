@@ -310,6 +310,8 @@ export class RemoteServer extends ClientListener {
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onRacialResync(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onRacialBase(e));
+    this.controller.on("update", () => this.applyRaceBase());
     // The engine loses worn enchantment abilities on scripted equips, inventory changes and stray dispels
     this.controller.on("equip", (e) => this.onPlayerWornChange(e.actor));
     this.controller.on("containerChanged", (e) => this.onPlayerWornChange(e.oldContainer, e.newContainer));
@@ -1471,6 +1473,41 @@ export class RemoteServer extends ClientListener {
     });
   }
 
+  // The server's racialBase after an accepted race menu: the creation spawn carried the Player NPC_ race's base values
+  private onRacialBase(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (!content || content["customPacketType"] !== "racialBase") {
+      return;
+    }
+    const value = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+    this.raceBase = { raceId: Number(content["raceId"]) >>> 0, spawnSeq: this.playerSpawnSeq, health: value(content["health"]), stamina: value(content["stamina"]) };
+  }
+
+  // Written once the race menu and loading are over, with the current percentages kept as the server syncs shares of the maximum
+  private applyRaceBase(): void {
+    const pending = this.raceBase;
+    if (!pending || this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading)) {
+      return;
+    }
+    this.raceBase = undefined;
+    const player = Game.getPlayer();
+    if (!player || pending.spawnSeq !== this.playerSpawnSeq) {
+      return;
+    }
+    const changes = new Array<string>();
+    for (const [av, value] of [["Health", pending.health], ["Stamina", pending.stamina]] as Array<[string, number]>) {
+      const before = player.getBaseActorValue(av);
+      if (!value || Math.abs(before - value) < 0.5) {
+        continue;
+      }
+      const share = player.getActorValuePercentage(av);
+      player.setActorValue(av, value);
+      setActorValuePercentage(player, av, share);
+      changes.push(`${av.toLowerCase()} ${Math.round(before)} -> ${Math.round(value)}`);
+    }
+    logToPlatformLog(this, `racialBase for race ${pending.raceId.toString(16)}: ${changes.length ? `${changes.join(", ")} (percentages kept)` : "health and stamina already the race's"}`);
+  }
+
   // What the owner sees in Active Effects and Powers, on the Magic menu's first open per spawn and then at most once a minute; anything amiss is applied again once the menu closes
   private logRaceAbilitiesInMagicMenu(): void {
     const check = this.currentRaceCheck();
@@ -1782,4 +1819,5 @@ export class RemoteServer extends ClientListener {
   private raceMenuSettledAt = 0;
   private lastLoadAt = 0;
   private raceCheck?: RaceCheck;
+  private raceBase?: { raceId: number; spawnSeq: number; health: number; stamina: number };
 }

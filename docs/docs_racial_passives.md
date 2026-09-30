@@ -272,7 +272,9 @@ With plugin r27a, the Test `racialPassives` block and the two magic entries:
    any Migrate settings.
 9. Night Eye: castable again and again by a Khajiit without the quick test.
 10. A Breton mage's check line: `check ok` with base magicka 175 at Novice (the Novice mage's 125 plus the Breton's
-    r27a bonus of 50), or `base M <n> expected <m> (mastery)` if the mage magicka lost the race bonus.
+    r27a bonus of 50), or `base M <n> expected <m> (mastery)` when the client's base magicka is not what MasterySystem
+    sent it (a race switch or another write on the client that dropped it). The check trusts MasterySystem's own sum,
+    so a wrong value computed on the server shows only in the `professionState` it sends.
 11. A Chilly Breton (cold stage 2) or one with a speed disease dies and is resurrected: `check ok`, no speed MISMATCH.
 12. A polymorphed character's resurrect logs `race check after resurrect skipped: a polymorph holds the character`.
 
