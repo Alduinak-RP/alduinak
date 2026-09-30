@@ -43,6 +43,10 @@ const raceOf = raceId => RACES[Number(raceId) >>> 0] || 'Other'
 const countIn = (inventory, ids) => (inventory || []).reduce((n, e) => n + (ids.has(Number(e.baseId) >>> 0) ? Number(e.count) || 0 : 0), 0)
 const goldOf = inventory => countIn(inventory, GOLD_IDS)
 
+// Placed containers holding items: references (recType 0; 1 is an actor) not deleted, the query narrowing the read
+const CONTAINER_QUERY = { recType: 0, isDeleted: { $ne: true }, 'inv.entries.0': { $exists: true } }
+const containerInventories = changeForms => changeForms.filter(cf => cf.recType === 0 && cf.isDeleted !== true && cf.inv?.entries?.length).map(cf => cf.inv.entries)
+
 // [label, form ids] per material in the server's load order, light flags read from the plugin headers in dataDir; a plugin left out of the order drops its ids
 function materialIds(settings) {
   const names = (Array.isArray(settings.loadOrder) ? settings.loadOrder : []).map(formIds.basename)
@@ -175,4 +179,4 @@ function stats(rows, containers = [], materials = []) {
   }
 }
 
-module.exports = { RACE_NAMES, MATERIALS, readBackend, buildRows, assignmentsOf, factionChoices, materialIds, stats }
+module.exports = { RACE_NAMES, MATERIALS, CONTAINER_QUERY, readBackend, buildRows, assignmentsOf, factionChoices, materialIds, containerInventories, stats }

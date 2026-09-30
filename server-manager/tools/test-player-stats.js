@@ -79,26 +79,40 @@ function main() {
         character('Ada', inv([0xf, 120], [0x000db5d2, 3], [0x000800e4, 10], [THREAD, 4], [0x0005ace4, 2])),
         character('Bo', inv([0xf, 30], [0x0006f993, 5], [0x0300300e, 2]), { fallen: 'Sovngarde' }),
       ]],
-      [2, [character('Cy', inv([0xf, 50], [0x00033760, 6], [0x06000bc7, 1], [0x0403cf16, 1]))]],
+      [2, [
+        character('Cy', inv([0xf, 50], [0x00033760, 6], [0x06000bc7, 1], [0x0403cf16, 1])),
+        // Every stack of an id counts, an entry without a count adds nothing
+        character('Dee', [...inv([0xf, 10], [0xf, 5], [0x000db5d2, 2]), { baseId: 0x000db5d2, count: 1, health: 1.5 }, { baseId: 0x0005ace4 }]),
+        character('Eve', undefined),
+      ]],
       // A profile the backend does not know is not an account row, so its character is left out
       [3, [character('Orphan', inv([0xf, 9999], [0x000db5d2, 99]))]],
     ])
     const rows = P.buildRows(backend, chars, '')
-    const containers = [
-      inv([0xf, 400], [0x000db5d2, 7], [0x0005ace4, 3], [0x0005ace5, 8]),
-      inv([0x000800e4, 5], [THREAD, 1], [0x00033760, 4], [0x0006f993, 10]),
+    const refs = entries => ({ recType: 0, inv: { entries } })
+    const containers = P.containerInventories([
+      refs([...inv([0xf, 400], [0x000db5d2, 7], [0x0005ace4, 3], [0x0005ace5, 8], [0xf, 20]), { baseId: 0x000db5d2, count: 2, health: 1.25 }]),
+      { ...refs(inv([0x000800e4, 5], [THREAD, 1], [0x00033760, 4], [0x0006f993, 10])), isDeleted: false },
       // Refined Amber at a light slot belongs to another load order
-      inv([0xf, 25], [0xfe001bc7, 2]),
-    ]
+      refs(inv([0xf, 25], [0xfe001bc7, 2])),
+      // An actor's inventory, a deleted container and ones without items are not containers
+      { ...refs(inv([0xf, 1000], [0x000db5d2, 50])), recType: 1 },
+      { ...refs(inv([0xf, 1000], [0x000db5d2, 50])), isDeleted: true },
+      refs([]),
+      { recType: 0 },
+    ])
+    assert.equal(containers.length, 3)
+    assert.deepEqual(P.CONTAINER_QUERY, { recType: 0, isDeleted: { $ne: true }, 'inv.entries.0': { $exists: true } })
     const s = P.stats(rows, containers, materials)
     assert.equal(s.players, 2)
-    assert.equal(s.carriedWealth, 200)
-    assert.equal(s.storedWealth, 425)
-    assert.equal(s.totalWealth, 625)
-    assert.equal(s.averageWealth, 100)
+    assert.deepEqual(rows.map(r => r.gold), [150, 65])
+    assert.equal(s.carriedWealth, 215)
+    assert.equal(s.storedWealth, 445)
+    assert.equal(s.totalWealth, 660)
+    assert.equal(s.averageWealth, 108)
     assert.deepEqual(s.wealth, { '50 to 499': 2 })
     assert.deepEqual(s.materialOrder, P.MATERIALS.map(x => x[0]))
-    assert.equal(s.materials['Leather'], 10)
+    assert.equal(s.materials['Leather'], 15)
     assert.equal(s.materials['Leather Strips'], 15)
     assert.equal(s.materials['Iron Ingot'], 5)
     assert.equal(s.materials['Steel Ingot'], 8)
@@ -110,7 +124,7 @@ function main() {
 
     // Without containers or materials the page keeps its carried totals
     const bare = P.stats(rows)
-    assert.equal(bare.totalWealth, 200)
+    assert.equal(bare.totalWealth, 215)
     assert.equal(bare.storedWealth, 0)
     assert.deepEqual(bare.materials, {})
     assert.deepEqual(bare.materialOrder, [])

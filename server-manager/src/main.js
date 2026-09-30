@@ -570,8 +570,8 @@ ipcMain.handle('players:detail', async (_e, profileId) => {
 
 // Inventory entries of every container in the store: references (recType 0) holding items
 async function readContainerInventories(settings) {
-  const query = { recType: 0, isDeleted: { $ne: true }, 'inv.entries.0': { $exists: true } }
-  return withMongoChangeForms(settings, async col => (await col.find(query, { projection: { 'inv.entries': 1 } }).toArray()).map(cf => cf.inv.entries))
+  const projection = { recType: 1, isDeleted: 1, 'inv.entries': 1 }
+  return withMongoChangeForms(settings, async col => playerData.containerInventories(await col.find(playerData.CONTAINER_QUERY, { projection }).toArray()))
 }
 
 ipcMain.handle('players:stats', async () => {
