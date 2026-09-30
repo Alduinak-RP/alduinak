@@ -131,6 +131,8 @@ const PLAYER_TELEPORT_REACH = 4096;
 const PLAYER_TELEPORT_SAME = 256;
 const RACE_MENU_RETRY_MS = 5000;
 const RACE_MENU_RETRIES = 3;
+// How long the world runs after a spawn or load, with no race menu, before the race abilities are checked and logged
+const RACE_CHECK_SETTLE_MS = 6000;
 // How long a furniture activation may take to seat the player before its seat is given back
 const FURNITURE_SEAT_WAIT_MS = 15000;
 
@@ -250,6 +252,7 @@ export class RemoteServer extends ClientListener {
     this.controller.on("update", () => this.sweepCloneCasts());
     this.controller.on("update", () => this.checkPlayerTeleport());
     this.controller.on("update", () => this.checkRaceMenu());
+    this.controller.on("update", () => this.checkRaceAbilities());
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.RaceSex) {
         this.raceMenuSeen = true;
@@ -262,7 +265,10 @@ export class RemoteServer extends ClientListener {
         this.raceMenuPending = false;
       }
     });
-    this.controller.emitter.on("gameLoad", () => { this.lastLoadAt = Date.now(); });
+    this.controller.emitter.on("gameLoad", () => {
+      this.lastLoadAt = Date.now();
+      if (this.raceCheck) this.raceCheck.settleFrom = 0;
+    });
     this.controller.emitter.on("connectionDisconnect", () => { this.playerTeleport = undefined; this.raceMenuPending = false; });
     // Diagnostic: whether the diagnosed clone's graph took the replayed cast event
     this.sp.hooks.sendAnimationEvent.add({
@@ -799,6 +805,9 @@ export class RemoteServer extends ClientListener {
 
     // A failed load leaves our 'update' callbacks queued; a newer spawn of ours drops them
     const spawnSeq = msg.isMe ? ++this.playerSpawnSeq : this.playerSpawnSeq;
+    if (msg.isMe) {
+      this.raceCheck = { spawnSeq, formIdx: i, synced: false, settleFrom: 0 };
+    }
 
     // TODO: move to a separate module
 
@@ -850,19 +859,11 @@ export class RemoteServer extends ClientListener {
           const player = Game.getPlayer();
 
           if (player && spawnSeq === this.playerSpawnSeq && i === this.worldModel.playerCharacterFormIdx) {
-            dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, learnedSpells);
-            removeUnlistedSpells(player, learnedSpells);
-            learnSpells(player, learnedSpells);
-            syncRaceAbilities(player, learnedSpells);
+            this.applySpawnSpells(player, learnedSpells);
+            if (this.raceCheck?.spawnSeq === spawnSeq) this.raceCheck.synced = true;
             logTrace(this,
               `player learnedSpells:`, JSON.stringify(learnedSpells),
             );
-            Utility.wait(5).then(() => {
-              const pc = Game.getPlayer();
-              if (pc) {
-                logToPlatformLog(this, 'race abilities', describeRaceAbilities(pc));
-              }
-            });
           }
         });
       });
@@ -1339,6 +1340,54 @@ export class RemoteServer extends ClientListener {
     this.showRaceMenu(`not open ${RACE_MENU_RETRY_MS} ms after the spawn settled, retry ${this.raceMenuRetries}/${RACE_MENU_RETRIES}`);
   }
 
+  private applySpawnSpells(player: Actor, learnedSpells: number[]): void {
+    dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, learnedSpells);
+    removeUnlistedSpells(player, learnedSpells);
+    learnSpells(player, learnedSpells);
+    syncRaceAbilities(player, learnedSpells);
+  }
+
+  // Once per spawn the race abilities are applied again (the whole spawn sync if it never ran) and logged before and after
+  private checkRaceAbilities(): void {
+    const check = this.raceCheck;
+    if (!check) {
+      return;
+    }
+    if (check.spawnSeq !== this.playerSpawnSeq || check.formIdx !== this.worldModel.playerCharacterFormIdx) {
+      this.raceCheck = undefined;
+      return;
+    }
+    if (this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.Main)) {
+      check.settleFrom = 0;
+      return;
+    }
+    const now = Date.now();
+    if (!check.settleFrom) {
+      check.settleFrom = now;
+      return;
+    }
+    const player = Game.getPlayer();
+    if (now - check.settleFrom < RACE_CHECK_SETTLE_MS || !player) {
+      return;
+    }
+    this.raceCheck = undefined;
+    const learned = this.worldModel.forms[check.formIdx]?.learnedSpells;
+    const listed = Array.isArray(learned) ? learned : [];
+    const before = describeRaceAbilities(player, listed);
+    const runSpawnSync = !check.synced && listed.length > 0;
+    if (runSpawnSync) {
+      this.applySpawnSpells(player, listed);
+    } else {
+      syncRaceAbilities(player, listed);
+    }
+    this.controller.once("update", () => {
+      const pc = Game.getPlayer();
+      if (pc) {
+        logToPlatformLog(this, `race abilities, spawn ${check.spawnSeq}, spawn sync ${check.synced ? "ran" : runSpawnSync ? "missing, ran now" : "missing, no list"}, server listed ${listed.length}: before ${before} | after ${describeRaceAbilities(pc, listed)}`);
+      }
+    });
+  }
+
   /** Packet handlers end **/
 
   getWorldModel(): WorldModel {
@@ -1632,4 +1681,5 @@ export class RemoteServer extends ClientListener {
   private raceMenuRetries = 0;
   private raceMenuSettledAt = 0;
   private lastLoadAt = 0;
+  private raceCheck?: { spawnSeq: number; formIdx: number; synced: boolean; settleFrom: number };
 }

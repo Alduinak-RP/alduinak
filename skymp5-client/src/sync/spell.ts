@@ -1,4 +1,4 @@
-import { Actor, ActorBase, Game, Race, Spell, Utility, printConsole } from 'skyrimPlatform';
+import { Actor, ActorBase, Game, MagicEffect, Race, Spell, Utility, printConsole } from 'skyrimPlatform';
 import { BLOCKED_POWER_IDS } from '../services/services/magicSyncService';
 import { refreshMovement } from './actorvalues';
 
@@ -38,15 +38,18 @@ export const dropUnlistedBaseSpells = (natives: SpellListNatives, actor: Actor, 
     printConsole('dropUnlistedBaseSpells: removeSpellFromList is missing, SkyrimPlatform is outdated');
   }
   const listed = new Set(spellsIds);
+  const ownRaceId = ActorBase.from(actor.getBaseObject())?.getRace()?.getFormID();
 
   for (const owner of [ActorBase.from(actor.getBaseObject()), actor.getRace()]) {
     if (!owner) {
       continue;
     }
+    // A cut lasts the whole game session, so the character's own race only ever loses the withheld greater powers
+    const ownRace = owner.getFormID() === ownRaceId;
     const unlisted = new Array<Spell>();
     for (let i = 0; i < owner.getSpellCount(); i++) {
       const spell = owner.getNthSpell(i);
-      if (spell && !listed.has(spell.getFormID())) {
+      if (spell && !listed.has(spell.getFormID()) && (!ownRace || BLOCKED_POWER_IDS.has(spell.getFormID()))) {
         unlisted.push(spell);
       }
     }
@@ -82,6 +85,7 @@ export const learnSpells = (actor: Actor, spellsIds: Array<number>) => {
 
 const PLAYABLE_RACE_FIRST = 0x13740;
 const PLAYABLE_RACE_LAST = 0x13749;
+const CASTING_CONSTANT_EFFECT = 0;
 
 const raceSpells = (race: Race) => {
   const spells = new Array<Spell>();
@@ -94,6 +98,28 @@ const raceSpells = (race: Race) => {
   return spells;
 };
 
+const playableRaces = () => {
+  const races = new Array<Race>();
+  for (let id = PLAYABLE_RACE_FIRST; id <= PLAYABLE_RACE_LAST; id++) {
+    const race = Race.from(Game.getFormEx(id));
+    if (race) {
+      races.push(race);
+    }
+  }
+  return races;
+};
+
+const spellEffects = (spell: Spell) => {
+  const effects = new Array<MagicEffect>();
+  for (let i = 0; i < spell.getNumEffects(); i++) {
+    const effect = spell.getNthEffectMagicEffect(i);
+    if (effect) {
+      effects.push(effect);
+    }
+  }
+  return effects;
+};
+
 // A race set on the base never runs SwitchRace, so other races' abilities are dispelled and the current race's are added
 export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
   const current = ActorBase.from(actor.getBaseObject())?.getRace();
@@ -103,13 +129,7 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
   const currentSpells = raceSpells(current);
   const kept = new Set([...keep, ...currentSpells.map((spell) => spell.getFormID())]);
 
-  const others = new Array<Race>();
-  for (let id = PLAYABLE_RACE_FIRST; id <= PLAYABLE_RACE_LAST; id++) {
-    const race = Race.from(Game.getFormEx(id));
-    if (race) {
-      others.push(race);
-    }
-  }
+  const others = playableRaces();
   const actorRace = actor.getRace();
   if (actorRace && !others.some((race) => race.getFormID() === actorRace.getFormID())) {
     others.push(actorRace);
@@ -145,11 +165,28 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
   });
 };
 
-// Base race with whether each of its spells' first effect is active, the added spell count and WaterBreathing, for the platform log
-export const describeRaceAbilities = (actor: Actor) => {
+// Each spell of the base race (on, off, or a power cast on demand, and whether the server listed it), other races' abilities still running and the attribute passives, for the platform log
+export const describeRaceAbilities = (actor: Actor, listed: Array<number>) => {
   const race = ActorBase.from(actor.getBaseObject())?.getRace();
-  const spells = race
-    ? raceSpells(race).map((spell) => `${spell.getFormID().toString(16)}:${actor.hasMagicEffect(spell.getNthEffectMagicEffect(0))}`)
-    : [];
-  return `${race ? race.getFormID().toString(16) : 'none'} [${spells.join(' ')}] added ${actor.getSpellCount()} waterBreathing ${actor.getActorValue('WaterBreathing')}`;
+  const ownSpells = race ? raceSpells(race) : [];
+  const ownEffects = new Array<number>();
+  const spells = ownSpells.map((spell) => {
+    const effects = spellEffects(spell);
+    effects.forEach((effect) => ownEffects.push(effect.getFormID()));
+    const state = effects[0]?.getCastingType() !== CASTING_CONSTANT_EFFECT ? 'power' : effects.some((effect) => actor.hasMagicEffect(effect)) ? 'on' : 'off';
+    return `${spell.getFormID().toString(16)} ${spell.getName()} ${state}${listed.indexOf(spell.getFormID()) === -1 ? ' unlisted' : ''}`;
+  });
+  const stray = new Array<string>();
+  playableRaces().forEach((other) => {
+    if (other.getFormID() === race?.getFormID()) {
+      return;
+    }
+    raceSpells(other).forEach((spell) => {
+      if (spellEffects(spell).some((effect) => ownEffects.indexOf(effect.getFormID()) === -1 && actor.hasMagicEffect(effect))) {
+        stray.push(`${spell.getFormID().toString(16)} ${spell.getName()}`);
+      }
+    });
+  });
+  const av = (name: string) => Math.round(actor.getBaseActorValue(name));
+  return `race ${race ? race.getFormID().toString(16) : 'none'} (actor race ${actor.getRace()?.getFormID().toString(16) ?? 'none'}): ${spells.join(', ') || 'no spells'}; other races running: ${stray.join(', ') || 'none'}; base health ${av('Health')} magicka ${av('Magicka')} stamina ${av('Stamina')}, unarmed ${Math.round(actor.getActorValue('UnarmedDamage'))}, waterBreathing ${actor.getActorValue('WaterBreathing')}, added ${actor.getSpellCount()}`;
 };
