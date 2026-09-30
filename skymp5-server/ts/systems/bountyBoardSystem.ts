@@ -3,7 +3,7 @@ import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./syste
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson, titledName } from "./playerText";
 import { GOLD_BASE_ID, addGold, baseIdOf, baseTypeOf, destroyRef } from "./actorUtil";
-import { containerDesc, placeAtMe } from "./npcPlacement";
+import { containerDesc, moveRefTo, placeAtMe } from "./npcPlacement";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -20,7 +20,9 @@ type Mp = any;
 // Each board keeps a strongbox, a container placed at the visible board once
 // the world DB has loaded (one of another base is swapped then, contents
 // included); the posting fees pile up in it and only the ranks that manage
-// the hold's property (canManage) may open it.
+// the hold's property (canManage) may open it. Where the board's foot is sunk
+// into the ground the box stands its lift higher, and a box off that spot is
+// moved there at startup, contents and all.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -48,6 +50,7 @@ type Mp = any;
 //   bountyBoardMaxTextLen   characters per notice, default 500
 //   bountyBoardMaxDistance  posting reach in game units, default 512
 //   bountyBoardStashBase    CONT base of the strongbox, default 10aad2:Skyrim.esm
+//   bountyBoardStashLift    { "<board name>": units } the strongbox stands above the visible board's foot, over each board's lift
 
 const BOARD_PROP = "private.bountyBoard";
 
@@ -76,17 +79,20 @@ const INVALID_USER_ID = 65535;
 // (what players activate) plus the invisible primitive, and the walled cities
 // carry the whole pair twice (city worldspace and the Tamriel exterior twin).
 // Notes live on the first desc listed and the strongbox stands at the second, the visible board beside it; every other ref is an alias.
-const BOARDS: Array<{ name: string; descs: string[] }> = [
+// lift: units from that board's foot up to the highest landscape under the box, plus 2, from misc/bounty-stash-lift.py (plugin r22)
+const BOARDS: Array<{ name: string; descs: string[]; lift?: number }> = [
   { name: "Whiterun", descs: ["d66:Missives.esp", "12cc:Missives.esp", "21846:Missives.esp", "21847:Missives.esp"] },
   { name: "Riften", descs: ["9492:Missives.esp", "9491:Missives.esp", "21844:Missives.esp", "21845:Missives.esp"] },
   { name: "Windhelm", descs: ["9478:Missives.esp", "9477:Missives.esp", "2183a:Missives.esp", "2183f:Missives.esp"] },
   { name: "Markarth", descs: ["94a3:Missives.esp", "94a2:Missives.esp", "21840:Missives.esp", "21841:Missives.esp"] },
   { name: "Solitude", descs: ["9490:Missives.esp", "948f:Missives.esp", "21838:Missives.esp", "21839:Missives.esp"] },
-  { name: "Dawnstar", descs: ["94b1:Missives.esp", "94ae:Missives.esp"] },
-  { name: "Winterhold", descs: ["94b5:Missives.esp", "94b2:Missives.esp"] },
+  { name: "Dawnstar", descs: ["94b1:Missives.esp", "94ae:Missives.esp"], lift: 49 },
+  { name: "Winterhold", descs: ["94b5:Missives.esp", "94b2:Missives.esp"], lift: 40 },
   { name: "Morthal", descs: ["94ad:Missives.esp", "94aa:Missives.esp"] },
-  { name: "Falkreath", descs: ["94a9:Missives.esp", "94a6:Missives.esp"] },
+  { name: "Falkreath", descs: ["94a9:Missives.esp", "94a6:Missives.esp"], lift: 17 },
 ];
+// A box closer than this to its spot stays put
+const STASH_SPOT_TOLERANCE = 1;
 
 // Riften and Windhelm primaries whose stored notices trade places once, marked done on the first
 const SWAPPED_PRIMARIES = ["9492:Missives.esp", "9478:Missives.esp"];
@@ -156,6 +162,8 @@ export class BountyBoardSystem implements System {
       this.log(`[bounty] Missives.esp is not in the load order, boards disabled`);
       return;
     }
+    const liftSetting = all?.["bountyBoardStashLift"];
+    const lifts = liftSetting && typeof liftSetting === "object" ? liftSetting as Record<string, unknown> : {};
     for (const board of BOARDS) {
       let primary = 0;
       for (const desc of board.descs) {
@@ -165,7 +173,11 @@ export class BountyBoardSystem implements System {
         else if (!this.stashAnchors.has(primary)) this.stashAnchors.set(primary, refrId);
         this.knownBoards.set(refrId, { primary, name: board.name });
       }
+      const lift = Number(lifts[board.name] ?? board.lift ?? 0);
+      if (primary && Number.isFinite(lift) && lift) this.stashLifts.set(primary, lift);
     }
+    const unknownLifts = Object.keys(lifts).filter((name) => !BOARDS.some((b) => b.name === name));
+    if (unknownLifts.length) this.log(`[bounty] bountyBoardStashLift names no board: ${unknownLifts.join(", ")}`);
 
     this.installActivationHook(ctx);
     // Placed forms exist only once the world DB has loaded; every board then gets a strongbox of the configured base, guarded from then on
@@ -175,7 +187,7 @@ export class BountyBoardSystem implements System {
       // After the other systems' leftover sweeps, which could take a new box's reused ff id for a leftover
       setImmediate(() => {
         for (const primary of this.primaries()) {
-          try { this.stashOf(ctx, primary, this.read(ctx, primary) || emptyRecord()); }
+          try { this.stashOf(ctx, primary, this.read(ctx, primary) || emptyRecord(), true); }
           catch (e) { this.log(`[bounty] strongbox check failed for ${primary.toString(16)}: ${e}`); }
         }
       });
@@ -190,7 +202,8 @@ export class BountyBoardSystem implements System {
       const userId = this.userOf(ctx, Number(actorId) >>> 0);
       if (userId >= 0) this.onOpenRequest(ctx, userId);
     };
-    this.log(`[bounty] ready, ${BOARDS.length} boards, ${this.costGold} gold a notice, ${this.expiryDays} days on the board`);
+    const liftLine = Array.from(this.stashLifts, ([primary, lift]) => `${this.boardNameOf(primary)} ${lift}`).join(", ") || "none";
+    this.log(`[bounty] ready, ${BOARDS.length} boards, ${this.costGold} gold a notice, ${this.expiryDays} days on the board, strongbox lifts ${liftLine}`);
   }
 
   // Activating a board opens the menu instead of the vanilla activation.
@@ -559,19 +572,27 @@ export class BountyBoardSystem implements System {
     this.appendLog(`${describeActor(ctx.svr, actorId)} opened the ${board.name} board strongbox`);
   }
 
-  // The board's strongbox at the foot of the visible board; one of another base hands its contents over and is deleted; 0 when none can be had
-  private stashOf(ctx: SystemContext, primary: number, rec: BoardRecord): number {
+  // The board's strongbox at the foot of the visible board, its lift higher; one of another base hands its contents over and is deleted; 0 when none can be had
+  private stashOf(ctx: SystemContext, primary: number, rec: BoardRecord, settle = false): number {
     const mp = ctx.svr as Mp;
     const old = rec.stash && this.isStash(ctx, rec.stash) ? rec.stash : 0;
     if (old && (!this.stashDesc || baseIdOf(mp, old) === mp.getIdFromDesc(this.stashDesc) >>> 0)) {
       this.stashes.set(old, primary);
+      if (settle) this.settleStash(ctx, primary, old);
       return old;
     }
     if (!this.worldLoaded || !this.stashDesc) return 0;
     const name = this.boardNameOf(primary);
+    const anchor = this.stashAnchors.get(primary) || primary;
+    const lift = this.stashLifts.get(primary) || 0;
     let stash = 0;
     try {
-      stash = placeAtMe(mp, this.stashAnchors.get(primary) || primary, this.stashDesc) >>> 0;
+      // A lifted box is enabled only once raised, so no client sees it sunk at the board's foot first
+      stash = placeAtMe(mp, anchor, this.stashDesc, lift !== 0) >>> 0;
+      if (lift) {
+        moveRefTo(mp, stash, anchor, [0, 0, lift]);
+        mp.set(stash, "isDisabled", false);
+      }
       mp.set(stash, "inventory", old ? mp.get(old, "inventory") : { entries: [] });
     } catch (e) {
       this.log(`[bounty] could not place the ${name} board strongbox: ${e}`);
@@ -585,8 +606,9 @@ export class BountyBoardSystem implements System {
     }
     rec.stash = stash;
     this.stashes.set(stash, primary);
+    const at = lift ? ` ${lift} units above the board's foot` : "";
     if (!old) {
-      this.log(`[bounty] placed the ${name} board strongbox ${stash.toString(16)}`);
+      this.log(`[bounty] placed the ${name} board strongbox ${stash.toString(16)}${at}`);
       return stash;
     }
     this.stashes.delete(old);
@@ -598,8 +620,29 @@ export class BountyBoardSystem implements System {
     } catch (e) {
       this.log(`[bounty] could not remove the ${name} board's old strongbox ${old.toString(16)}: ${e}`);
     }
-    this.log(`[bounty] placed the ${name} board strongbox ${stash.toString(16)} in place of ${old.toString(16)} (${oldBase}), contents moved`);
+    this.log(`[bounty] placed the ${name} board strongbox ${stash.toString(16)}${at} in place of ${old.toString(16)} (${oldBase}), contents moved`);
     return stash;
+  }
+
+  // A box off its spot, sunk into the ground or left where the board stood before, is moved there with its contents
+  private settleStash(ctx: SystemContext, primary: number, stash: number): void {
+    const mp = ctx.svr as Mp;
+    const name = this.boardNameOf(primary);
+    const anchor = this.stashAnchors.get(primary) || primary;
+    const lift = this.stashLifts.get(primary) || 0;
+    try {
+      const from = (mp.get(stash, "pos") as number[]).map(Number);
+      const foot = (mp.get(anchor, "pos") as number[]).map(Number);
+      const off = Math.hypot(from[0] - foot[0], from[1] - foot[1], from[2] - foot[2] - lift);
+      const sameWorld = mp.get(stash, "worldOrCellDesc") === mp.get(anchor, "worldOrCellDesc");
+      if (sameWorld && !(off > STASH_SPOT_TOLERANCE)) return;
+      moveRefTo(mp, stash, anchor, [0, 0, lift]);
+      const to = (mp.get(stash, "pos") as number[]).map(Number);
+      const count = (mp.get(stash, "inventory")?.entries || []).length;
+      this.log(`[bounty] moved the ${name} board strongbox ${stash.toString(16)} ${Math.round(off)} units to stand ${lift} above the board's foot (z ${from[2].toFixed(1)} -> ${to[2].toFixed(1)}), ${count} item stacks kept`);
+    } catch (e) {
+      this.log(`[bounty] could not move the ${name} board strongbox ${stash.toString(16)}: ${e}`);
+    }
   }
 
   // A stale id from an earlier run is no strongbox
@@ -758,6 +801,8 @@ export class BountyBoardSystem implements System {
   private stashes = new Map<number, number>();
   // Canonical board to the visible board its strongbox is placed at
   private stashAnchors = new Map<number, number>();
+  // Canonical board to the units its strongbox stands above that board's foot
+  private stashLifts = new Map<number, number>();
   private boardBaseIds = new Set<number>();
   private knownBoards = new Map<number, { primary: number; name: string }>();
   private baseIdCache = new Map<number, number>();

@@ -60,6 +60,12 @@ export const placeAtMe = (mp: Mp, anchorId: number, baseDesc: string, disabled =
   return mp.getIdFromDesc(res.desc);
 };
 
+// Papyrus MoveTo: an object reference takes the target's cell, angle and position plus offset, and is saved there
+export const moveRefTo = (mp: Mp, refrId: number, targetId: number, offset: number[]): void => {
+  mp.callPapyrusFunction("method", "ObjectReference", "MoveTo", { type: "form", desc: mp.getDescFromId(refrId) },
+    [{ type: "form", desc: mp.getDescFromId(targetId) }, offset[0], offset[1], offset[2], true]);
+};
+
 // The anchor is usually a player nearby; the new actor then moves to loc and never respawns on its own
 export const placeNpc = (mp: Mp, anchorId: number, baseDesc: string, loc: NpcLocation): number => {
   // Enabled only at loc: a same-grid teleport never reaches clients, so they would create it at the anchor

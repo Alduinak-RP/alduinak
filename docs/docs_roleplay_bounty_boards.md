@@ -92,8 +92,7 @@ board (`12cb`, the second reference of the board's cluster in `BOARDS`), so
 it sits at that board's foot in the city worldspace; the canonical ref is the
 invisible primitive, which floats about 105-155 units above the visible board
 and to one side of it, where a strongbox would hang in the air and catch the
-crosshair meant for the board (the server cannot move a placed non-actor, so
-the base should be small or flat). The posting fees pile
+crosshair meant for the board (the base should be small or flat). The posting fees pile
 up in it. Its base is `bountyBoardStashBase` (default `10aad2:Skyrim.esm`,
 `TreasStrongBox`, the vanilla strongbox); a base that is not a CONT is
 logged at startup and the fee is then simply destroyed, as before. The base's
@@ -101,6 +100,38 @@ own loot (the strongbox has five leveled entries) never lands in it: placing
 it sets an empty inventory, and a reloot adds nothing while `emptyContainers`
 is on (the default). With `emptyContainers` off, or the base listed in
 `containerLootBaseIds`, an emptied strongbox would refill with loot.
+
+**On the ground (F10, 2026-10).** Several visible boards stand with their
+foot sunk into the landscape, so a box at the foot was buried: the vanilla
+strongbox is 20 units tall (OBND 0..20) and at Winterhold the board's foot
+(`94b2`, moved by AlduinakAdditions r22 to 109954.8, 100498.6, -9061.7) is
+35 units below the landscape (Update.esm's LAND, -9024 to -9029 under the box).
+Each board in `BOARDS` has a `lift`, the units from its foot up to the highest
+landscape under the box's footprint (turned with the board) plus 2, read from
+the plugins' LAND records with the r22 board positions: Winterhold 40,
+Dawnstar 49 (City of Dawnstar's land, 45 at the centre), Falkreath 17 (The
+Great City of Falkreath's land, 10 at the centre); Whiterun, Markarth and
+Morthal stand above their land on city statics and the Riften, Windhelm and
+Solitude city worldspaces have no land of their own, so those keep 0.
+`bountyBoardStashLift` (`{ "<board name>": units }`) overrides a board's lift
+without a rebuild; 0 puts its box back at the foot, and a name that is no board
+is logged at startup. A new box of a lifted board is placed disabled, moved up
+with Papyrus `MoveTo` (the anchor's cell and angle, offset by the lift; the
+server saves the new position) and then enabled, so no client sees it sunk
+first; the placement line then reads `[bounty] placed the <board> board
+strongbox <id> <lift> units above the board's foot`. The startup check also
+settles an existing box: one more than 1 unit away from its board's foot plus
+the lift (a box sunk by an earlier start, or one left where a board stood
+before a plugin moved it) is moved there with the same `MoveTo`, keeping its id
+and contents, and logs `[bounty] moved the <board> board strongbox <id> <n>
+units to stand <lift> above the board's foot (z <old> -> <new>), <k> item
+stacks kept`. A box already in place logs nothing, so the line appears once.
+The startup line lists the lifts in use: `[bounty] ready, 9 boards, ...,
+strongbox lifts Dawnstar 49, Winterhold 40, Falkreath 17`. The lifts follow the
+board positions of the plugin: when a plugin moves a board, re-measure with
+`python misc/bounty-stash-lift.py [server-settings.json]` (reads the load order
+and Data folder from the settings, default the Test Server's) and update the
+table or set `bountyBoardStashLift`.
 
 Only the ranks that manage the hold's property may open it: staff, or a
 membership in the board's hold whose rank has the `housing` flag (by default
@@ -207,6 +238,7 @@ menu closes itself when the browser loses focus, like the mastery menu.
 | `bountyBoardMaxTextLen` | 500 | characters per notice |
 | `bountyBoardMaxDistance` | 512 | posting reach in game units |
 | `bountyBoardStashBase` | `10aad2:Skyrim.esm` | CONT base of the strongbox, as a `hex:Plugin` desc or a load-order id |
+| `bountyBoardStashLift` | `{}` (table: Winterhold 40, Dawnstar 49, Falkreath 17) | `{ "<board name>": units }` the strongbox stands above the visible board's foot, over the table's lift; an existing box is moved at the next start |
 
 `bountyBoardCostGold` and `bountyBoardStashBase` also have rows in the manager
 **Settings** tab (Interactions group), so they can be changed there without
