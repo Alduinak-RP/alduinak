@@ -7,11 +7,10 @@ import { closeWidget, onWidgetsCleared, refreshFormMenu } from "./widgetMenuUtil
 import { applyNeedsPenalties, EXHAUSTION_PENALTY_AV, HUNGER_PENALTY_AV } from "../../sync/attributePenalty";
 import { logToPlatformLog } from "../../logging";
 
-// Globals the Survival DOBJ keys name: the HUD draws their 0-100 value as the red end of a meter
-const UPDATE_ESM = "Update.esm";
+// Globals the Survival DOBJ keys name: the HUD draws their 0-100 value as the red end of a meter; SurvivalService owns the cold one
+export const UPDATE_ESM = "Update.esm";
 const HUNGER_PENALTY_GLOBAL = 0x2edf;
 const EXHAUSTION_PENALTY_GLOBAL = 0x2ee0;
-const COLD_PENALTY_GLOBAL = 0x2ede;
 const SURVIVAL_PLUGIN = "ccQDRSSE001-SurvivalMode.esl";
 // Survival_ModeToggle, the switch HUDMenu polls for ShowSurvivalElements; Survival_ModeEnabled (0x826) is script-only
 const SURVIVAL_MODE_GLOBAL = 0x828;
@@ -22,8 +21,25 @@ const FATIGUE_WIDGET_ID = 39;
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
 
+export const globalOf = (sp: Sp, id: number, plugin: string) => sp.GlobalVariable.from(sp.Game.getFormFromFile(id, plugin));
+
+// Read back: "none" means the form lookup failed, so the HUD never saw the value
+export const readGlobal = (sp: Sp, id: number, plugin: string): number | "none" => globalOf(sp, id, plugin)?.getValue() ?? "none";
+
+// The cold and sickness SurvivalService hands over for the readout
+export interface SurvivalReadout {
+  coldStage: number;
+  coldStageName: string;
+  diseases: Array<{ name: string; stage: number }>;
+  afflictions: string[];
+}
+
+const NO_SURVIVAL_READOUT: SurvivalReadout = { coldStage: -1, coldStageName: "", diseases: [], afflictions: [] };
+// Chilly and colder show on the readout
+const READOUT_COLD_STAGE = 2;
+
 // Module-level so the browser-side widget setter can read it (runtime injection)
-let fatigueReadout = { fatigue: 100, stageName: "" };
+let fatigueReadout = { fatigue: 100, stageName: "", ...NO_SURVIVAL_READOUT };
 
 interface NeedsState {
   staminaPenalty: number;
@@ -36,8 +52,9 @@ interface NeedsState {
 /**
  * Hunger and fatigue on the vanilla HUD. The server (NeedsSystem) owns both values and pushes needsState whenever they
  * change; this service applies the max stamina (hunger) and max magicka (fatigue) penalty shares the server sends, shows
- * them as Survival's red meter segments, shows the fatigue left in a small HUD readout while it is below 100, and closes
- * the Crafting Menu when the server refused a craft for fatigue.
+ * them as Survival's red meter segments, shows the fatigue left in a small HUD readout while it is below 100 (with the
+ * cold stage, diseases and afflictions SurvivalService hands over), and closes the Crafting Menu when the server refused
+ * a craft for fatigue.
  *
  *   Client -> Server: { "customPacketType": "needsRequest" }
  *   Server -> Client: { "customPacketType": "needsState", "hunger", "stage", "stageName", "fatigue", "fatigueStage",
@@ -99,39 +116,48 @@ export class NeedsService extends ClientListener {
 
   // Never Survival_ModeEnabledShared: vanilla Update.esm scripts read that one
   private setSurvivalHud(needs: NeedsState): void {
-    const find = (id: number, plugin: string) => this.sp.GlobalVariable.from(this.sp.Game.getFormFromFile(id, plugin));
-    const set = (id: number, plugin: string, value: number): void => find(id, plugin)?.setValue(value);
+    const set = (id: number, plugin: string, value: number): void => globalOf(this.sp, id, plugin)?.setValue(value);
     set(HUNGER_PENALTY_GLOBAL, UPDATE_ESM, Math.round(needs.staminaPenalty * 100));
     set(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM, Math.round(needs.magickaPenalty * 100));
-    set(COLD_PENALTY_GLOBAL, UPDATE_ESM, 0);
     set(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN, needs.survivalMode ? 1 : 0);
-    // Read back: "none" means the form lookup failed, so the HUD never saw the value
-    const read = (id: number, plugin: string) => find(id, plugin)?.getValue() ?? "none";
+    const read = (id: number, plugin: string) => readGlobal(this.sp, id, plugin);
     const line = `survival hud toggle=${read(SURVIVAL_MODE_GLOBAL, SURVIVAL_PLUGIN)} enabled=${read(SURVIVAL_ENABLED_GLOBAL, SURVIVAL_PLUGIN)} hunger=${read(HUNGER_PENALTY_GLOBAL, UPDATE_ESM)} exhaustion=${read(EXHAUSTION_PENALTY_GLOBAL, UPDATE_ESM)} ${this.describeMaxima()}`;
     if (line === this.lastHudLog) return;
     this.lastHudLog = line;
     logToPlatformLog(this, line);
   }
 
-  // Only with the survival HUD flag on, like the red meter segments
+  setSurvivalReadout(readout: SurvivalReadout): void {
+    this.survival = readout;
+    if (this.needs) this.showFatigueReadout(this.needs);
+  }
+
+  // Only with the survival HUD flag on, like the red meter segments; fatigue below 100, Chilly or colder, a disease or an affliction opens it
   private showFatigueReadout(needs: NeedsState): void {
     const fatigue = Math.max(0, Math.min(100, Math.round(needs.fatigue)));
-    const key = needs.survivalMode && fatigue < 100 ? `${fatigue}|${needs.fatigueStageName}` : "";
+    const s = this.survival;
+    const survivalLines = s.coldStage >= READOUT_COLD_STAGE || s.diseases.length > 0 || s.afflictions.length > 0;
+    const key = needs.survivalMode && (fatigue < 100 || survivalLines) ? JSON.stringify([fatigue, needs.fatigueStageName, s]) : "";
     if (key === this.fatigueShown) return;
     this.fatigueShown = key;
     if (!key) return closeWidget(this.sp, FATIGUE_WIDGET_ID);
-    fatigueReadout = { fatigue, stageName: needs.fatigueStageName };
+    fatigueReadout = { fatigue, stageName: needs.fatigueStageName, ...s };
     refreshFormMenu(this.sp, this.fatigueWidgetSetter, { fatigueReadout, FATIGUE_WIDGET_ID });
   }
 
   // Runs inside the CEF browser. Only injected vars + window are available; no spread syntax
   private fatigueWidgetSetter = () => {
-    const widget = { type: "fatigueReadout", id: FATIGUE_WIDGET_ID, fatigue: fatigueReadout.fatigue, stageName: fatigueReadout.stageName };
+    const r = fatigueReadout;
+    const widget = {
+      type: "fatigueReadout", id: FATIGUE_WIDGET_ID, fatigue: r.fatigue, stageName: r.stageName,
+      coldStage: r.coldStage, coldStageName: r.coldStageName, diseases: r.diseases, afflictions: r.afflictions,
+    };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== FATIGUE_WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
 
   private needs: NeedsState | null = null;
+  private survival: SurvivalReadout = NO_SURVIVAL_READOUT;
   private fatigueShown = "";
   private lastHudLog = "";
 }

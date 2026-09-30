@@ -53,6 +53,7 @@ import { PlayerActionService } from "./services/services/playerActionService";
 import { EmoteService } from "./services/services/emoteService";
 import { MasteryService } from "./services/services/masteryService";
 import { NeedsService } from "./services/services/needsService";
+import { SurvivalService } from "./services/services/survivalService";
 import { AttributeBonusService } from "./services/services/attributeBonusService";
 import { BountyBoardService } from "./services/services/bountyBoardService";
 import { WritingService } from "./services/services/writingService";
@@ -164,6 +165,7 @@ const main = () => {
       new EmoteService(sp, controller),
       new MasteryService(sp, controller),
       new NeedsService(sp, controller),
+      new SurvivalService(sp, controller),
       new AttributeBonusService(sp, controller),
       new BountyBoardService(sp, controller),
       new WritingService(sp, controller),

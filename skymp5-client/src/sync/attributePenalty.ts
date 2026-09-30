@@ -9,9 +9,10 @@ export interface PenaltyActor {
   damageActorValue(av: string, amount: number): void;
 }
 
-// Survival_GlobalFunctions.HungerStaminaPenaltyAV and ExhaustionMagickaPenaltyAV: the player keeps the applied penalty in them
+// Survival_GlobalFunctions.HungerStaminaPenaltyAV, ExhaustionMagickaPenaltyAV and ColdHealthPenaltyAV: the player keeps the applied penalty in them
 export const HUNGER_PENALTY_AV = "Variable02";
 export const EXHAUSTION_PENALTY_AV = "Variable03";
+export const COLD_PENALTY_AV = "Variable04";
 
 // A permanent modifier moves the current value by the same amount; the rest keeps the percentage the server holds
 const modMaximum = (actor: PenaltyActor, av: string, delta: number): void => {
