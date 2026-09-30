@@ -193,8 +193,10 @@ fails it prints a direct download URL - save that zip as
     **Migrate settings**, which merges every test setting the live file lacks or
     has differently, except the protected identity keys (name, ports, players,
     database, dataDir, logDir, voice chat, access, admin and Discord keys, daily
-    restart) and the debug toggles (console commands for all, Papyrus hot
-    reload); `loadOrder` and `archives` are left alone, **Migrate client** syncs
+    restart), the debug toggles (console commands for all, Papyrus hot
+    reload) and the switches of features on trial (`alduinakDamageFormulaSettings`,
+    `survivalEnabled`, `masterySlots`, `healthRegenerationMultiplier`, copied to
+    live by hand once signed off); `loadOrder` and `archives` are left alone, **Migrate client** syncs
     them from the manifest so its diff records the plugin shifts the MongoDB
     purge needs.
     **Migrate client** installs the test manifest live (`/files/extras-test/`

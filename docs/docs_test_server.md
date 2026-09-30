@@ -264,7 +264,11 @@ for a second click.
    is written into the live file except the live identity and capacity keys (`name`,
    `port`, `maxPlayers`, `playerSlots`, `masterKey`, database, `dataDir`, `loadOrder`,
    `archives`, `logDir`, `voiceChat`, `access`, admin lists, Discord channels,
-   `dailyRestartAt`, ...). `loadOrder` and `archives` are left alone: **Migrate client**
+   `dailyRestartAt`, ...) and the switches of features still on trial
+   (`alduinakDamageFormulaSettings`, `survivalEnabled`, `masterySlots`,
+   `healthRegenerationMultiplier`), which the owner copies to live by hand once the
+   feature is signed off; the log reads `kept <key> (protected)` for each that differs.
+   `loadOrder` and `archives` are left alone: **Migrate client**
    syncs them from the manifest, whose diff records the plugin shifts the MongoDB purge needs.
    The old file is backed up as `build\dist\backup\server-settings-<timestamp>.json`.
 3. **Migrate client** publishes the test manifest and modlist as the live ones

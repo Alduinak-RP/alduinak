@@ -19,6 +19,7 @@ const SPELL_SLOTS = ['leftSpell', 'rightSpell', 'voiceSpell', 'instantSpell']
 const DYNAMIC_IDS = {
   'private.housing': { refs: ['primary', 'partner'], lists: [] },
   'private.mastery': { refs: [], lists: ['granted'] },
+  'private.masterySlots': { refs: [], lists: ['granted'] },
   'private.needs': { refs: ['stageSpell', 'fatigueSpell'], lists: [] },
 }
 
