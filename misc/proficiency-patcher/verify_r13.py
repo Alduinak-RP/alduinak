@@ -717,6 +717,26 @@ def main():
         if flags & (DISABLED | DELETED):
             problems.append(f'enableReferences {show(k)} is not enabled in the output')
 
+    # The plugins loaded after it (DynDOLOD, Occlusion) may override its cells, worldspaces and placed records, nothing else it holds
+    later_won = set()
+    if 'after' not in stage:
+        log.append('load-order win check skipped: settings.stage.json names no plugins after the plugin')
+    for n in stage.get('after', []):
+        pl = Plugin(os.path.join(stage['dataDir'], n))
+        for r in scan(pl.buf):
+            k = (r.type, pl.key(r.fid))
+            if k not in ro and not (r.type == 'RACE' and edid(r) in rs.get('races', [])):
+                continue
+            if r.type in PLACED or r.type in ('CELL', 'WRLD', 'LAND', 'NAVM'):
+                checked[f'{r.type} overridden again by {n}, loaded after the plugin'] += 1
+            else:
+                problems.append(f'{r.type} {show(k[1])} {edid(r)}: {n}, loaded after the plugin, overrides it')
+                later_won.add(edid(r))
+        pl.buf = None
+    if 'after' in stage:
+        log.append(f'load-order win check against {", ".join(stage["after"]) or "no later plugin"}')
+        checked['races of the races section no later plugin overrides'] += len(set(rs.get('races', [])) - later_won)
+
     # proficiency-ids.json carries the full slot the server and the game give the plugin
     ids = json.load(open(os.path.join(a.out, 'proficiency-ids.json'), encoding='utf-8'))
     local = {edid(r): k[1] for (t, k), r in ro.items() if t == 'SPEL' and k[0] == me}

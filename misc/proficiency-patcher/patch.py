@@ -232,10 +232,13 @@ def stage_settings(settings, plugin, out):
     # The live settings cut after the plugin: the plugins after it would leak their records into the winners; DynDOLOD.esm loads before it and stays
     s = json.load(open(settings, encoding='utf-8'))
     names = [os.path.basename(p).lower() for p in s['loadOrder']]
-    order = [p for p in s['loadOrder'][:names.index(plugin.lower()) + 1] if os.path.basename(p).lower() not in NEVER_MASTERS[1:]]
+    here = names.index(plugin.lower())
+    order = [p for p in s['loadOrder'][:here + 1] if os.path.basename(p).lower() not in NEVER_MASTERS[1:]]
+    # The plugins loaded after it, for verify_r13.py's load-order win check; the patcher reads only dataDir and loadOrder
+    after = [os.path.basename(p) for p in s['loadOrder'][here + 1:]]
     path = os.path.join(out, 'settings.stage.json')
     with open(path, 'w', encoding='utf-8') as f:
-        json.dump({'dataDir': s['dataDir'], 'loadOrder': order}, f, indent=1)
+        json.dump({'dataDir': s['dataDir'], 'loadOrder': order, 'after': after}, f, indent=1)
     return path, s['dataDir']
 
 
