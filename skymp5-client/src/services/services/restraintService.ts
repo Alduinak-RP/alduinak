@@ -718,7 +718,8 @@ export class RestraintService extends ClientListener {
       waits.push("the sheathe");
     }
     waits.forEach((w) => this.lockWaits.add(w));
-    if (waits.length) this.lockBlockedMs = now;
+    if (waits.length) this.lockBlockedMs = -1;
+    else if (this.lockBlockedMs < 0) this.lockBlockedMs = now;
     if (now - lock.since >= LOCK_PREP_MAX_MS) {
       if (waits.length) this.lockWaits.add("the time limit");
       return true;
@@ -867,7 +868,7 @@ export class RestraintService extends ClientListener {
   private lock: ActionLock | null = null;
   private lockPoseAccepted = false;
   private lastLockPoseLogMs = 0;
-  // Last time the lock's pose had to wait, and what it waited for since it was last sent
+  // When the lock's pose first found nothing to wait for (-1 while it waits), and what it waited for since it was last sent
   private lockBlockedMs = 0;
   private lockWaits = new Set<string>();
   private lockPoseResends = 0;
