@@ -1,0 +1,21 @@
+{
+ "createdAt": "2026-09-28T05:30:38.176Z",
+ "databaseName": "skymp",
+ "listSha256": "3c3871ddaa62bca553b9b22ecc519be577ef406fc4bab90463770ca9fb824eb7",
+ "factionGear": false,
+ "withContainers": true,
+ "count": 10,
+ "docsSha256": "2bb8acadba4a74bb16a9006266ab161d0de7adfb472aab3ee451ac31f5af5b20",
+ "ids": [
+  "6ab28f678020dc111ca5daf3",
+  "6ab29a448020dc111ca5dbad",
+  "6ab2eb948020dc111ca5e2e9",
+  "6ab326c08020dc111ca5ef9d",
+  "6ab293808020dc111ca5db59",
+  "6ab297b48020dc111ca5db7d",
+  "6ab7195c8020dc111ca61b60",
+  "6ab60b268020dc111ca60e44",
+  "6ab6d15b8020dc111ca617c1",
+  "6ab700000000000000000001"
+ ]
+}

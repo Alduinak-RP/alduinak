@@ -1,0 +1,2355 @@
+{
+ "createdAt": "2026-09-30T08:48:56.899490+00:00",
+ "backup": "C:\\Users\\Administrator\\Desktop\\alduinak-r13\\rollback-strip",
+ "docsSha256": "994ae951b4ace28fc2eb21c338dfcda0cdca89bf75ffb4336c19bbefa4059436",
+ "listSha256": "3c3871ddaa62bca553b9b22ecc519be577ef406fc4bab90463770ca9fb824eb7",
+ "factionGear": false,
+ "settings": "C:\\Users\\Administrator\\Desktop\\alduinak\\build\\dist\\server\\server-settings.json",
+ "stripLoadOrder": [
+  "Skyrim.esm",
+  "Update.esm",
+  "Dawnguard.esm",
+  "HearthFires.esm",
+  "Dragonborn.esm",
+  "ccBGSSSE001-Fish.esm",
+  "ccQDRSSE001-SurvivalMode.esl",
+  "ccBGSSSE037-Curios.esl",
+  "ccBGSSSE025-AdvDSGS.esm",
+  "Lux Via - Markarth Entrance and Farm Overhaul.esp",
+  "1SilverArmor.esl",
+  "RihadSwordsmanSet.esl",
+  "ApachiiHairFemales.esm",
+  "ApachiiHair.esm",
+  "ApachiiHairMales.esm",
+  "Sentinel - Master Plugin.esp",
+  "DynDOLOD.esm",
+  "SkyUI_SE.esp",
+  "Helgen.esp",
+  "MCMHelper.esp",
+  "FSMPM - The FSMP MCM.esp",
+  "WindhelmSSE.esp",
+  "The Great City of Falkreath.esp",
+  "JK's Whiterun's Outskirts.esp",
+  "Warbirds Whiterun Metropolis.esp",
+  "City of Dawnstar.esp",
+  "AVExpansion.esp",
+  "The Great City of Solitude.esp",
+  "JK's Windhelm's Outskirts.esp",
+  "waccf_armor and clothing extension.esp",
+  "MoreCraftableEquipment.esp",
+  "Hothtrooper44_ArmorCompilation.esp",
+  "Vernim Wood.esp",
+  "AnotherOakwood.esp",
+  "RiftenExtension.esp",
+  "RiftenExtensionNorth.esp",
+  "MammothManor.esp",
+  "Greymoor.esp",
+  "Amol Village.esp",
+  "1AncientImperial.esp",
+  "Granitehall.esp",
+  "Lainalten.esp",
+  "Missives.esp",
+  "Winterhold Restored.esp",
+  "Cloaks&Capes.esp",
+  "Closed Helmets StandAlone.esp",
+  "CommonClothes.esp",
+  "Imperial Battlemage Armor.esp",
+  "Imperial Guard Centurion Armor SE - Johnskyrim.esp",
+  "Immersive Weapons.esp",
+  "DIS_Heavy_Legion.esp",
+  "Sentinel.esp",
+  "EinherjarArmors.esp",
+  "Titus Mede I's Armor - My version by Xtudo.esp",
+  "evgnnsmpaccessories.esp",
+  "Viking's Longhouse.esp",
+  "Kad_MoonMonkRobes.esp",
+  "Armors of the Velothi Pt2.esp",
+  "GVLT_LifeswornVestige.esp",
+  "MoreCraftableEquipment_CloaksandCapes.esp",
+  "Redgarb.esp",
+  "RedoranTombWarden.esp",
+  "ArgonianWeapons.esp",
+  "Kad_BogBlightMask.esp",
+  "EyepatchEyewearCollection.esp",
+  "CuyiAntlers.esp",
+  "The Great Town of Karthwasten.esp",
+  "JK's Riften Outskirts.esp",
+  "JKs Whiterun.esp",
+  "JK's Riverwood.esp",
+  "The Great City of Morthal.esp",
+  "The Great City of Dragon Bridge.esp",
+  "Reich Corigate.esp",
+  "Saltdeposits.esp",
+  "Lillemyr.esp",
+  "Markarth Entrance and Farm Overhaul - Performance patch.esp",
+  "MoreCraftableEquipment_BYOHLooms.esp",
+  "Resources - The Great Cities.esp",
+  "CapitalWindhelmExpansion - WindhelmGateFixes.esp",
+  "HammerHair.esp",
+  "Beards of Power.esp",
+  "Beards.esp",
+  "Hothtrooper44_Armor_Ecksstra.esp",
+  "Sentinel - More Craftable Equipment.esp",
+  "Sentinel - City Guards.esp",
+  "Sentinel - Priests and Acolytes.esp",
+  "AlduinakAdditions.esp",
+  "DynDOLOD.esp",
+  "Occlusion.esp"
+ ],
+ "plugins": [
+  {
+   "name": "Skyrim.esm",
+   "light": false
+  },
+  {
+   "name": "Update.esm",
+   "light": false
+  },
+  {
+   "name": "Dawnguard.esm",
+   "light": false
+  },
+  {
+   "name": "HearthFires.esm",
+   "light": false
+  },
+  {
+   "name": "Dragonborn.esm",
+   "light": false
+  },
+  {
+   "name": "ccBGSSSE001-Fish.esm",
+   "light": false
+  },
+  {
+   "name": "ccQDRSSE001-SurvivalMode.esl",
+   "light": true
+  },
+  {
+   "name": "ccBGSSSE037-Curios.esl",
+   "light": true
+  },
+  {
+   "name": "ccBGSSSE025-AdvDSGS.esm",
+   "light": false
+  },
+  {
+   "name": "Lux Via - Markarth Entrance and Farm Overhaul.esp",
+   "light": false
+  },
+  {
+   "name": "1SilverArmor.esl",
+   "light": true
+  },
+  {
+   "name": "RihadSwordsmanSet.esl",
+   "light": true
+  },
+  {
+   "name": "ApachiiHairFemales.esm",
+   "light": false
+  },
+  {
+   "name": "ApachiiHair.esm",
+   "light": false
+  },
+  {
+   "name": "ApachiiHairMales.esm",
+   "light": false
+  },
+  {
+   "name": "Sentinel - Master Plugin.esp",
+   "light": true
+  },
+  {
+   "name": "DynDOLOD.esm",
+   "light": false
+  },
+  {
+   "name": "SkyUI_SE.esp",
+   "light": true
+  },
+  {
+   "name": "Helgen.esp",
+   "light": false
+  },
+  {
+   "name": "MCMHelper.esp",
+   "light": true
+  },
+  {
+   "name": "FSMPM - The FSMP MCM.esp",
+   "light": true
+  },
+  {
+   "name": "WindhelmSSE.esp",
+   "light": false
+  },
+  {
+   "name": "The Great City of Falkreath.esp",
+   "light": false
+  },
+  {
+   "name": "JK's Whiterun's Outskirts.esp",
+   "light": false
+  },
+  {
+   "name": "Warbirds Whiterun Metropolis.esp",
+   "light": false
+  },
+  {
+   "name": "City of Dawnstar.esp",
+   "light": false
+  },
+  {
+   "name": "AVExpansion.esp",
+   "light": false
+  },
+  {
+   "name": "The Great City of Solitude.esp",
+   "light": false
+  },
+  {
+   "name": "JK's Windhelm's Outskirts.esp",
+   "light": true
+  },
+  {
+   "name": "waccf_armor and clothing extension.esp",
+   "light": false
+  },
+  {
+   "name": "MoreCraftableEquipment.esp",
+   "light": false
+  },
+  {
+   "name": "Hothtrooper44_ArmorCompilation.esp",
+   "light": false
+  },
+  {
+   "name": "Vernim Wood.esp",
+   "light": false
+  },
+  {
+   "name": "AnotherOakwood.esp",
+   "light": false
+  },
+  {
+   "name": "RiftenExtension.esp",
+   "light": false
+  },
+  {
+   "name": "RiftenExtensionNorth.esp",
+   "light": false
+  },
+  {
+   "name": "MammothManor.esp",
+   "light": false
+  },
+  {
+   "name": "Greymoor.esp",
+   "light": false
+  },
+  {
+   "name": "Amol Village.esp",
+   "light": false
+  },
+  {
+   "name": "1AncientImperial.esp",
+   "light": false
+  },
+  {
+   "name": "Granitehall.esp",
+   "light": false
+  },
+  {
+   "name": "Lainalten.esp",
+   "light": false
+  },
+  {
+   "name": "Missives.esp",
+   "light": false
+  },
+  {
+   "name": "Winterhold Restored.esp",
+   "light": false
+  },
+  {
+   "name": "Cloaks&Capes.esp",
+   "light": false
+  },
+  {
+   "name": "Closed Helmets StandAlone.esp",
+   "light": true
+  },
+  {
+   "name": "CommonClothes.esp",
+   "light": false
+  },
+  {
+   "name": "Imperial Battlemage Armor.esp",
+   "light": true
+  },
+  {
+   "name": "Imperial Guard Centurion Armor SE - Johnskyrim.esp",
+   "light": false
+  },
+  {
+   "name": "Immersive Weapons.esp",
+   "light": false
+  },
+  {
+   "name": "DIS_Heavy_Legion.esp",
+   "light": false
+  },
+  {
+   "name": "Sentinel.esp",
+   "light": true
+  },
+  {
+   "name": "EinherjarArmors.esp",
+   "light": true
+  },
+  {
+   "name": "Titus Mede I's Armor - My version by Xtudo.esp",
+   "light": true
+  },
+  {
+   "name": "evgnnsmpaccessories.esp",
+   "light": true
+  },
+  {
+   "name": "Viking's Longhouse.esp",
+   "light": false
+  },
+  {
+   "name": "Kad_MoonMonkRobes.esp",
+   "light": true
+  },
+  {
+   "name": "Armors of the Velothi Pt2.esp",
+   "light": true
+  },
+  {
+   "name": "GVLT_LifeswornVestige.esp",
+   "light": true
+  },
+  {
+   "name": "MoreCraftableEquipment_CloaksandCapes.esp",
+   "light": true
+  },
+  {
+   "name": "Redgarb.esp",
+   "light": true
+  },
+  {
+   "name": "RedoranTombWarden.esp",
+   "light": true
+  },
+  {
+   "name": "ArgonianWeapons.esp",
+   "light": false
+  },
+  {
+   "name": "Kad_BogBlightMask.esp",
+   "light": true
+  },
+  {
+   "name": "EyepatchEyewearCollection.esp",
+   "light": true
+  },
+  {
+   "name": "CuyiAntlers.esp",
+   "light": true
+  },
+  {
+   "name": "The Great Town of Karthwasten.esp",
+   "light": true
+  },
+  {
+   "name": "JK's Riften Outskirts.esp",
+   "light": true
+  },
+  {
+   "name": "JKs Whiterun.esp",
+   "light": false
+  },
+  {
+   "name": "JK's Riverwood.esp",
+   "light": false
+  },
+  {
+   "name": "The Great City of Morthal.esp",
+   "light": false
+  },
+  {
+   "name": "The Great City of Dragon Bridge.esp",
+   "light": false
+  },
+  {
+   "name": "Reich Corigate.esp",
+   "light": false
+  },
+  {
+   "name": "Saltdeposits.esp",
+   "light": false
+  },
+  {
+   "name": "Lillemyr.esp",
+   "light": true
+  },
+  {
+   "name": "Markarth Entrance and Farm Overhaul - Performance patch.esp",
+   "light": true
+  },
+  {
+   "name": "MoreCraftableEquipment_BYOHLooms.esp",
+   "light": true
+  },
+  {
+   "name": "Resources - The Great Cities.esp",
+   "light": false
+  },
+  {
+   "name": "CapitalWindhelmExpansion - WindhelmGateFixes.esp",
+   "light": true
+  },
+  {
+   "name": "HammerHair.esp",
+   "light": true
+  },
+  {
+   "name": "Beards of Power.esp",
+   "light": true
+  },
+  {
+   "name": "Beards.esp",
+   "light": false
+  },
+  {
+   "name": "Hothtrooper44_Armor_Ecksstra.esp",
+   "light": false
+  },
+  {
+   "name": "Sentinel - More Craftable Equipment.esp",
+   "light": true
+  },
+  {
+   "name": "Sentinel - City Guards.esp",
+   "light": true
+  },
+  {
+   "name": "Sentinel - Priests and Acolytes.esp",
+   "light": true
+  },
+  {
+   "name": "AlduinakAdditions.esp",
+   "light": false
+  },
+  {
+   "name": "DynDOLOD.esp",
+   "light": false
+  },
+  {
+   "name": "Occlusion.esp",
+   "light": true
+  }
+ ],
+ "pluginChanges": [
+  {
+   "name": "AlduinakAdditions.esp",
+   "list": "b843723dbe14dc922389d2781f44a6230cf59b1c96dbd0af533d7dcd6adf6212",
+   "now": "0197dc1ffe4281fd64804040803fcaa903e1a172f28d384bb5f85d0b65737a63"
+  },
+  {
+   "name": "H2HBlockDual.esp",
+   "list": null,
+   "now": "cd66b45f0961e7ca3f4917e40c8edb0212e75337407a40d9c3caa424ea2985d4"
+  }
+ ],
+ "items": {
+  "0x00013920": {
+   "listed": true,
+   "edid": "ArmorLeatherBoots",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0001398B": {
+   "listed": true,
+   "edid": "OrcishWarAxe",
+   "reason": "material",
+   "material": "orcish",
+   "adeptRecipe": false,
+   "type": "WEAP",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0001398D": {
+   "listed": true,
+   "edid": "OrcishBow",
+   "reason": "material",
+   "material": "orcish",
+   "adeptRecipe": false,
+   "type": "WEAP",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000139AD": {
+   "listed": true,
+   "edid": "EbonyBow",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "WEAP",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword weapmaterialebony"
+  },
+  "0x000139BB": {
+   "listed": true,
+   "edid": "OrcishArrow",
+   "reason": "material",
+   "material": "orcish",
+   "adeptRecipe": false,
+   "type": "AMMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000139BF": {
+   "listed": true,
+   "edid": "EbonyArrow",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "AMMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "ammunition",
+   "intent": "ebony",
+   "evidence": "keyword weapmaterialebony"
+  },
+  "0x000166FD": {
+   "listed": true,
+   "edid": "ClothesCirclet03",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000166FF": {
+   "listed": true,
+   "edid": "ClothesCirclet05",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x00018388": {
+   "listed": true,
+   "edid": "ArmorDraugrCuirass",
+   "reason": "material",
+   "material": "daedric",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0002AC61": {
+   "listed": true,
+   "edid": "DA05SaviorsHide",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "a daedric artifact",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0x0003619E": {
+   "listed": true,
+   "edid": "ArmorLeatherCuirass",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0003B97C": {
+   "listed": true,
+   "edid": "JewelryRingSilver",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0004DEE1": {
+   "listed": true,
+   "edid": "StaffFrostbite",
+   "reason": "enchanted",
+   "type": "WEAP",
+   "plugin": "skyrim.esm",
+   "staff": true,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x00056A9D": {
+   "listed": true,
+   "edid": "ArmorDraugrBoots",
+   "reason": "material",
+   "material": "daedric",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x00056B17": {
+   "listed": true,
+   "edid": "ArmorDraugrGauntlets",
+   "reason": "material",
+   "material": "daedric",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0005ABC4": {
+   "listed": true,
+   "edid": "DBArmorHelmetMaskLess",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0006492A": {
+   "listed": true,
+   "edid": "DBClothesJesterBootsCicero",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0006492C": {
+   "listed": true,
+   "edid": "DBClothesJesterCicero",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0006492D": {
+   "listed": true,
+   "edid": "DBClothesJesterGlovesCicero",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0006492E": {
+   "listed": true,
+   "edid": "DBClothesJesterHatCicero",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x00065BBF": {
+   "listed": true,
+   "edid": "ClothesThalmorrobes",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0007C932": {
+   "listed": true,
+   "edid": "ClothesMGRobesArchmage",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000877AB": {
+   "listed": true,
+   "edid": "JewelryRingSilverGarnet",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000877D5": {
+   "listed": true,
+   "edid": "JewelryNecklaceGold",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x00088956": {
+   "listed": true,
+   "edid": "ClothesWeddingDress",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0009171B": {
+   "listed": true,
+   "edid": "JewelryNecklaceSilver",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000B83CB": {
+   "listed": true,
+   "edid": "ArmorFalmerCuirass",
+   "reason": "material",
+   "material": "falmer",
+   "adeptRecipe": true,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": "falmer cuirass",
+   "evidence": "body slot 32, model Armor\\Falmer\\FalmerCuirass_GO.nif"
+  },
+  "0x000B83CD": {
+   "listed": true,
+   "edid": "ArmorFalmerBoots",
+   "reason": "material",
+   "material": "falmer",
+   "adeptRecipe": true,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000B83CF": {
+   "listed": true,
+   "edid": "ArmorFalmerGauntlets",
+   "reason": "material",
+   "material": "falmer",
+   "adeptRecipe": true,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000BE121": {
+   "listed": true,
+   "edid": "StaffMagelight",
+   "reason": "enchanted",
+   "type": "WEAP",
+   "plugin": "skyrim.esm",
+   "staff": true,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000C8915": {
+   "listed": true,
+   "edid": "ReligiousDibellaBeauty",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000C8917": {
+   "listed": true,
+   "edid": "ReligiousJulianosMagic",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000C8919": {
+   "listed": true,
+   "edid": "ReligiousKynarethAir",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000CC844": {
+   "listed": true,
+   "edid": "ReligiousStendarrMercy",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000CC848": {
+   "listed": true,
+   "edid": "ReligiousArkayLifeDeath",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000CEE76": {
+   "listed": true,
+   "edid": "ClothesJarl03",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000CF89F": {
+   "listed": true,
+   "edid": "DBClothesShoes",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000CF8A0": {
+   "listed": true,
+   "edid": "DBClothesRobes",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000CF8A9": {
+   "listed": true,
+   "edid": "DBClothesHandWraps",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000D2843": {
+   "listed": true,
+   "edid": "DBArmorGloves",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000D2845": {
+   "listed": true,
+   "edid": "DBArmorBoots",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000E1F14": {
+   "listed": true,
+   "edid": "DBArmorBootsSP",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000E1F15": {
+   "listed": true,
+   "edid": "DBArmorSP",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000E1F16": {
+   "listed": true,
+   "edid": "DBArmorGlovesSP",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000E1F17": {
+   "listed": true,
+   "edid": "DBArmorHelmetSP",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000E35D6": {
+   "listed": true,
+   "edid": "ArmorThievesGuildLeaderBoots",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000E35D7": {
+   "listed": true,
+   "edid": "ArmorThievesGuildLeaderCuirass",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x000E35D8": {
+   "listed": true,
+   "edid": "ArmorThievesGuildLeaderGauntlets",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0010D667": {
+   "listed": true,
+   "edid": "EnchClothesRobesMageRegen01",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0010D66F": {
+   "listed": true,
+   "edid": "EnchClothesRobesMageAlteration05",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0010D675": {
+   "listed": true,
+   "edid": "EnchClothesRobesMageConjuration05",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0010D676": {
+   "listed": true,
+   "edid": "EnchClothesRobesMageDestruction03",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0010D678": {
+   "listed": true,
+   "edid": "EnchClothesRobesMageDestruction05",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0010D67C": {
+   "listed": true,
+   "edid": "EnchClothesRobesMageIllusion05",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0010D684": {
+   "listed": true,
+   "edid": "EnchClothesRobesMageRestoration05",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0010F570": {
+   "listed": true,
+   "edid": "ClothesMGRobesArchmage1Hooded",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "skyrim.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0200D099": {
+   "listed": true,
+   "edid": "DLC1BoltDwarven",
+   "reason": "material",
+   "material": "dwarven",
+   "adeptRecipe": false,
+   "type": "AMMO",
+   "plugin": "dawnguard.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0401CD96": {
+   "listed": true,
+   "edid": "DLC2ArmorNordicHeavyBoots",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "dragonborn.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0401CD98": {
+   "listed": true,
+   "edid": "DLC2ArmorNordicHeavyGauntlets",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "dragonborn.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0401CD99": {
+   "listed": true,
+   "edid": "DLC2ArmorNordicHeavyHelmet",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "dragonborn.esm",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x0D1715F0": {
+   "listed": true,
+   "edid": "0WHHeadRestoredCirclet",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "windhelmsse.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x120012F2": {
+   "listed": true,
+   "edid": "ArmorLeatherCuirassaltdk",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "avexpansion.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x16002859": {
+   "listed": true,
+   "edid": "IASeadogEarings",
+   "reason": "jewelry",
+   "type": "ARMO",
+   "plugin": "hothtrooper44_armorcompilation.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x1602149F": {
+   "listed": true,
+   "edid": "IAShieldSkyforgeLight",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "hothtrooper44_armorcompilation.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x23002DEF": {
+   "listed": true,
+   "edid": "vol_Cape_Leather",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "cloaks&capes.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x26005565": {
+   "listed": true,
+   "edid": "IWBlackDragonNinjato",
+   "reason": "material",
+   "material": "glass",
+   "adeptRecipe": false,
+   "type": "WEAP",
+   "plugin": "immersive weapons.esp",
+   "staff": false,
+   "note": "crafted mostly from ebony (aldcatmat_ebony), but no ebony material keyword",
+   "intent": null,
+   "evidence": ""
+  },
+  "0x26007A65": {
+   "listed": true,
+   "edid": "IWBlackStingDagger",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "WEAP",
+   "plugin": "immersive weapons.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword weapmaterialebony"
+  },
+  "0x270012FB": {
+   "listed": true,
+   "edid": "DIS_Dragon_Sword",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "WEAP",
+   "plugin": "dis_heavy_legion.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword weapmaterialebony"
+  },
+  "0x27001301": {
+   "listed": true,
+   "edid": "DIS_General_Shield",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "dis_heavy_legion.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0x27001302": {
+   "listed": true,
+   "edid": "DIS_General_Boots",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "dis_heavy_legion.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0x27001303": {
+   "listed": true,
+   "edid": "DIS_General_Cuirass",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "dis_heavy_legion.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0x27001304": {
+   "listed": true,
+   "edid": "DIS_General_Gauntlets",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "dis_heavy_legion.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0x27001305": {
+   "listed": true,
+   "edid": "DIS_General_Helmet",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "dis_heavy_legion.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0xFE009817": {
+   "listed": true,
+   "edid": "DBarmorHelmetMaskLess_CLS",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "closed helmets standalone.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00981E": {
+   "listed": true,
+   "edid": "DBclothesHood_CLS",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "closed helmets standalone.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00981F": {
+   "listed": true,
+   "edid": "DBarmorHelmet_CLS",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "closed helmets standalone.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE009826": {
+   "listed": true,
+   "edid": "DBarmorHelmetSP_CLS",
+   "reason": "enchanted",
+   "type": "ARMO",
+   "plugin": "closed helmets standalone.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B82F": {
+   "listed": true,
+   "edid": "TH_Leather1Boots",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B830": {
+   "listed": true,
+   "edid": "TH_Leather1Cuirass",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B831": {
+   "listed": true,
+   "edid": "TH_Leather1Gauntlets",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B833": {
+   "listed": true,
+   "edid": "TH_Leather2Boots",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B834": {
+   "listed": true,
+   "edid": "TH_Leather2Cuirass",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B835": {
+   "listed": true,
+   "edid": "TH_Leather2Gauntlets",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B87C": {
+   "listed": true,
+   "edid": "TH_Nord1Boots",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B87D": {
+   "listed": true,
+   "edid": "TH_Nord1Cuirass",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B87E": {
+   "listed": true,
+   "edid": "TH_Nord1Gauntlets",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B882": {
+   "listed": true,
+   "edid": "TH_Nord2Gauntlets",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B889": {
+   "listed": true,
+   "edid": "TH_Ebony1Boots",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B88A": {
+   "listed": true,
+   "edid": "TH_Ebony1Cuirass",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B88B": {
+   "listed": true,
+   "edid": "TH_Ebony1Gauntlets",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B88C": {
+   "listed": true,
+   "edid": "TH_Ebony1Helmet",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B88D": {
+   "listed": true,
+   "edid": "TH_Ebony1Shield",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B88E": {
+   "listed": true,
+   "edid": "TH_Ebony2Boots",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B88F": {
+   "listed": true,
+   "edid": "TH_Ebony2Cuirass",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B890": {
+   "listed": true,
+   "edid": "TH_Ebony2Gauntlets",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B891": {
+   "listed": true,
+   "edid": "TH_Ebony2Helmet",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B892": {
+   "listed": true,
+   "edid": "TH_Ebony2Shield",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony, spikearmorebony"
+  },
+  "0xFE00B8A6": {
+   "listed": true,
+   "edid": "TH_Thalmor1Boots",
+   "reason": "material",
+   "material": "elven",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B8A7": {
+   "listed": true,
+   "edid": "TH_Thalmor1Cuirass",
+   "reason": "material",
+   "material": "elven",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B8A9": {
+   "listed": true,
+   "edid": "TH_Thalmor1Gauntlets",
+   "reason": "material",
+   "material": "elven",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B8AA": {
+   "listed": true,
+   "edid": "TH_Thalmor1Helmet",
+   "reason": "material",
+   "material": "elven",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B8B0": {
+   "listed": true,
+   "edid": "TH_Thalmor3Boots",
+   "reason": "material",
+   "material": "glass",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B8B1": {
+   "listed": true,
+   "edid": "TH_Thalmor3Cuirass",
+   "reason": "material",
+   "material": "glass",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B8B2": {
+   "listed": true,
+   "edid": "TH_Thalmor3Gauntlets",
+   "reason": "material",
+   "material": "glass",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B8B3": {
+   "listed": true,
+   "edid": "TH_Thalmor3Helmet",
+   "reason": "material",
+   "material": "glass",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B90A": {
+   "listed": true,
+   "edid": "TH_ComTunicLamellar",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00B90B": {
+   "listed": true,
+   "edid": "TH_ComLamellar",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "sentinel.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00C80E": {
+   "listed": true,
+   "edid": "ArmorEinherjarBoots",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "einherjararmors.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00C80F": {
+   "listed": true,
+   "edid": "ArmorEinherjarCuirass",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "einherjararmors.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00C810": {
+   "listed": true,
+   "edid": "ArmorEinherjarGauntlets",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "einherjararmors.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00C829": {
+   "listed": true,
+   "edid": "ArmorEinherjarHornedHelmet",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "einherjararmors.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00CAA3": {
+   "listed": true,
+   "edid": "ArmorEinherjarPlumedHelmet",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "einherjararmors.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00CAA4": {
+   "listed": true,
+   "edid": "ArmorEinherjarPlatedHelmet",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "einherjararmors.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00CAA6": {
+   "listed": true,
+   "edid": "ArmorEinherjarPlatedCuirass",
+   "reason": "material",
+   "material": "nordic",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "einherjararmors.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE00D81B": {
+   "listed": true,
+   "edid": "Xtudo_TitusMedeOpenHelmet",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0xFE00D81D": {
+   "listed": true,
+   "edid": "Xtudo_TitusMedeBoots",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0xFE00D81F": {
+   "listed": true,
+   "edid": "Xtudo_TitusMedeCuirass",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0xFE00D820": {
+   "listed": true,
+   "edid": "Xtudo_TitusMedeHelmet",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0xFE00D837": {
+   "listed": true,
+   "edid": "Xtudo_TitusMedeGloves",
+   "reason": "material",
+   "material": "ebony",
+   "adeptRecipe": true,
+   "type": "ARMO",
+   "plugin": "titus mede i's armor - my version by xtudo.esp",
+   "staff": false,
+   "note": "",
+   "intent": "ebony",
+   "evidence": "keyword armormaterialebony"
+  },
+  "0xFE01389A": {
+   "listed": true,
+   "edid": "DungeonStriderHood",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "redgarb.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE01389B": {
+   "listed": true,
+   "edid": "DungeonStriderLoweredHood",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "redgarb.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE01389C": {
+   "listed": true,
+   "edid": "DungeonStriderMask",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "redgarb.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE01389D": {
+   "listed": true,
+   "edid": "DungeonStriderTurban",
+   "reason": "rank",
+   "rank": "Expert",
+   "factionGear": false,
+   "type": "ARMO",
+   "plugin": "redgarb.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  },
+  "0xFE0138EF": {
+   "listed": true,
+   "edid": "NWAlikr_Helmet_L",
+   "reason": "material",
+   "material": "scaled",
+   "adeptRecipe": false,
+   "type": "ARMO",
+   "plugin": "redgarb.esp",
+   "staff": false,
+   "note": "",
+   "intent": null,
+   "evidence": ""
+  }
+ },
+ "spells": {
+  "0x00012FCC": {
+   "edid": "Healing",
+   "kind": "spell"
+  },
+  "0x00012FCD": {
+   "edid": "Flames",
+   "kind": "spell"
+  },
+  "0x00012FD0": {
+   "edid": "Firebolt",
+   "kind": "spell"
+  },
+  "0x00012FD2": {
+   "edid": "HealOther",
+   "kind": "spell"
+  },
+  "0x00013018": {
+   "edid": "WardLesser",
+   "kind": "spell"
+  },
+  "0x0001C789": {
+   "edid": "Fireball",
+   "kind": "spell"
+  },
+  "0x000204C3": {
+   "edid": "ConjureFlameAtronach",
+   "kind": "spell"
+  },
+  "0x000204C4": {
+   "edid": "ConjureFrostAtronach",
+   "kind": "spell"
+  },
+  "0x000204C5": {
+   "edid": "ConjureStormAtronach",
+   "kind": "spell"
+  },
+  "0x00021143": {
+   "edid": "Clairvoyance",
+   "kind": "spell"
+  },
+  "0x000211EB": {
+   "edid": "BoundSword",
+   "kind": "spell"
+  },
+  "0x000211EC": {
+   "edid": "BoundBattleAxe",
+   "kind": "spell"
+  },
+  "0x000211ED": {
+   "edid": "BoundBow",
+   "kind": "spell"
+  },
+  "0x000211EE": {
+   "edid": "DetectLife",
+   "kind": "spell"
+  },
+  "0x000211EF": {
+   "edid": "DetectDead",
+   "kind": "spell"
+  },
+  "0x000211F0": {
+   "edid": "WardGreater",
+   "kind": "spell"
+  },
+  "0x000211F1": {
+   "edid": "WardSteadfast",
+   "kind": "spell"
+  },
+  "0x00027EB6": {
+   "edid": "Invisibility",
+   "kind": "spell"
+  },
+  "0x0002B96B": {
+   "edid": "Frostbite",
+   "kind": "spell"
+  },
+  "0x0002B96C": {
+   "edid": "IceSpike",
+   "kind": "spell"
+  },
+  "0x0002DD29": {
+   "edid": "LightningBolt",
+   "kind": "spell"
+  },
+  "0x0002DD2A": {
+   "edid": "Sparks",
+   "kind": "spell"
+  },
+  "0x0002F3B8": {
+   "edid": "FastHealing",
+   "kind": "spell"
+  },
+  "0x00035D7F": {
+   "edid": "WallOfFlames",
+   "kind": "spell"
+  },
+  "0x00035D80": {
+   "edid": "WallOfFrost",
+   "kind": "spell"
+  },
+  "0x00035D81": {
+   "edid": "WallOfStorms",
+   "kind": "spell"
+  },
+  "0x0003AE9F": {
+   "edid": "flameCloak",
+   "kind": "spell"
+  },
+  "0x0003AEA2": {
+   "edid": "FrostCloak",
+   "kind": "spell"
+  },
+  "0x0003AEA3": {
+   "edid": "LightningCloak",
+   "kind": "spell"
+  },
+  "0x00043323": {
+   "edid": "Magelight",
+   "kind": "spell"
+  },
+  "0x00043324": {
+   "edid": "Candlelight",
+   "kind": "spell"
+  },
+  "0x00045F9C": {
+   "edid": "IceStorm",
+   "kind": "spell"
+  },
+  "0x00045F9D": {
+   "edid": "ChainLightning",
+   "kind": "spell"
+  },
+  "0x0004B146": {
+   "edid": "TurnLesserUndead",
+   "kind": "spell"
+  },
+  "0x0004D3F2": {
+   "edid": "HealingHands",
+   "kind": "spell"
+  },
+  "0x0004D3F8": {
+   "edid": "RepelLesserUndead",
+   "kind": "spell"
+  },
+  "0x0004DBA4": {
+   "edid": "SoulTrap",
+   "kind": "spell"
+  },
+  "0x0004DEE8": {
+   "edid": "Courage",
+   "kind": "spell"
+  },
+  "0x0004DEE9": {
+   "edid": "Calm",
+   "kind": "spell"
+  },
+  "0x0004DEEA": {
+   "edid": "Fear",
+   "kind": "spell"
+  },
+  "0x0004DEEB": {
+   "edid": "Fury",
+   "kind": "spell"
+  },
+  "0x0004DEEC": {
+   "edid": "Rally",
+   "kind": "spell"
+  },
+  "0x0004DEED": {
+   "edid": "Pacify",
+   "kind": "spell"
+  },
+  "0x0004DEEE": {
+   "edid": "Frenzy",
+   "kind": "spell"
+  },
+  "0x0004DEEF": {
+   "edid": "Rout",
+   "kind": "spell"
+  },
+  "0x00051B16": {
+   "edid": "Ironflesh",
+   "kind": "spell"
+  },
+  "0x0005312D": {
+   "edid": "CircleOfProtection",
+   "kind": "spell"
+  },
+  "0x0005AD5C": {
+   "edid": "Oakflesh",
+   "kind": "spell"
+  },
+  "0x0005D175": {
+   "edid": "Waterbreathing",
+   "kind": "spell"
+  },
+  "0x0005DB90": {
+   "edid": "FireRune",
+   "kind": "spell"
+  },
+  "0x0005DD5D": {
+   "edid": "TurnUndead",
+   "kind": "spell"
+  },
+  "0x0005DD5E": {
+   "edid": "TurnGreaterUndead",
+   "kind": "spell"
+  },
+  "0x0005DD60": {
+   "edid": "RepelUndead",
+   "kind": "spell"
+  },
+  "0x000640B6": {
+   "edid": "ConjureFamiliar",
+   "kind": "spell"
+  },
+  "0x0006796F": {
+   "edid": "FrostRune",
+   "kind": "spell"
+  },
+  "0x00067970": {
+   "edid": "ShockRune",
+   "kind": "spell"
+  },
+  "0x0006F952": {
+   "edid": "ExpelDaedra",
+   "kind": "spell"
+  },
+  "0x0007A82B": {
+   "edid": "FireStorm",
+   "kind": "spell"
+  },
+  "0x0007E5D5": {
+   "edid": "FlameThrall",
+   "kind": "spell"
+  },
+  "0x0007E5D6": {
+   "edid": "FrostThrall",
+   "kind": "spell"
+  },
+  "0x0007E5D7": {
+   "edid": "StormThrall",
+   "kind": "spell"
+  },
+  "0x0007E8DB": {
+   "edid": "Harmony",
+   "kind": "spell"
+  },
+  "0x0007E8DD": {
+   "edid": "CallToArms",
+   "kind": "spell"
+  },
+  "0x0007E8DE": {
+   "edid": "Hysteria",
+   "kind": "spell"
+  },
+  "0x0007E8E4": {
+   "edid": "Blizzard",
+   "kind": "spell"
+  },
+  "0x0007E8E5": {
+   "edid": "LightningStorm",
+   "kind": "spell"
+  },
+  "0x0008F3EB": {
+   "edid": "Muffle",
+   "kind": "spell"
+  },
+  "0x000AB23D": {
+   "edid": "dunTrevasSpectralArrow",
+   "kind": "spell"
+  },
+  "0x000B62EE": {
+   "edid": "GrandHealing",
+   "kind": "spell"
+  },
+  "0x000B62EF": {
+   "edid": "CloseWounds",
+   "kind": "spell"
+  },
+  "0x000DA746": {
+   "edid": "dunLabyrinthianSpellReward",
+   "kind": "spell"
+  },
+  "0x00109111": {
+   "edid": "TransmuteOreMineral",
+   "kind": "spell"
+  },
+  "0x0010F7EC": {
+   "edid": "IcySpear",
+   "kind": "spell"
+  },
+  "0x0010F7ED": {
+   "edid": "Incinerate",
+   "kind": "spell"
+  },
+  "0x0010F7EE": {
+   "edid": "Thunderbolt",
+   "kind": "spell"
+  },
+  "0x020038B5": {
+   "edid": "DLC1StendarrsAura",
+   "kind": "spell"
+  },
+  "0x020038B6": {
+   "edid": "DLC1VampiresBane",
+   "kind": "spell"
+  },
+  "0x02003F52": {
+   "edid": "DLC1SunFire",
+   "kind": "spell"
+  },
+  "0x020045B3": {
+   "edid": "DLC1ConjureWrathman",
+   "kind": "spell"
+  },
+  "0x020045B8": {
+   "edid": "DLC1ConjureMistman",
+   "kind": "spell"
+  },
+  "0x0200E8D2": {
+   "edid": "DLC1NecromanticHealing",
+   "kind": "spell"
+  },
+  "0x0401772D": {
+   "edid": "DLC2WhirlwindCloak",
+   "kind": "spell"
+  },
+  "0x040177B7": {
+   "edid": "DLC2FrenzyRune",
+   "kind": "spell"
+  },
+  "0x0401CE06": {
+   "edid": "DLC2BoundDagger",
+   "kind": "spell"
+  },
+  "0x0401D74B": {
+   "edid": "DLC2PoisonRune",
+   "kind": "spell"
+  },
+  "0x04033C66": {
+   "edid": "DLC2ConjureSeeker",
+   "kind": "spell"
+  },
+  "0x0600086F": {
+   "edid": "ccBGSSSE025_ConjureGoldenSaintArcher",
+   "kind": "spell"
+  },
+  "0x060008CB": {
+   "edid": "ccBGSSSE025_ConjureGoldenSaintWarrior",
+   "kind": "spell"
+  },
+  "0x101261D3": {
+   "edid": "WBWRLightBeamSpell01",
+   "kind": "spell"
+  },
+  "0x1014F197": {
+   "edid": "WBWRLightBeamSpell02",
+   "kind": "spell"
+  },
+  "0x101E12FF": {
+   "edid": "WBWRLightBeamSpell03",
+   "kind": "spell"
+  }
+ }
+}

@@ -1,0 +1,604 @@
+{
+ "createdAt": "2026-09-28T05:29:14.946Z",
+ "databaseName": "skymp",
+ "list": {
+  "file": "C:\\Users\\Administrator\\Desktop\\alduinak\\deploy\\mongodb\\forbidden-items.json",
+  "sha256": "3c3871ddaa62bca553b9b22ecc519be577ef406fc4bab90463770ca9fb824eb7",
+  "replacedPlugin": null,
+  "factionGear": false
+ },
+ "holders": [
+  {
+   "kind": "character",
+   "who": "11 \"Fixture A\" (profile 69)",
+   "formDesc": "11",
+   "removed": [
+    {
+     "baseId": "0x0200D099",
+     "edid": "DLC1BoltDwarven",
+     "count": 41,
+     "reason": "material"
+    },
+    {
+     "baseId": "0x0003B97C",
+     "edid": "JewelryRingSilver",
+     "count": 5,
+     "reason": "jewelry"
+    },
+    {
+     "baseId": "0xFE00B88F",
+     "edid": "TH_Ebony2Cuirass",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00B88E",
+     "edid": "TH_Ebony2Boots",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00B890",
+     "edid": "TH_Ebony2Gauntlets",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00B891",
+     "edid": "TH_Ebony2Helmet",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00B892",
+     "edid": "TH_Ebony2Shield",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00C80E",
+     "edid": "ArmorEinherjarBoots",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00CAA6",
+     "edid": "ArmorEinherjarPlatedCuirass",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00C810",
+     "edid": "ArmorEinherjarGauntlets",
+     "count": 1,
+     "reason": "material"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 12,
+   "clearedSlots": []
+  },
+  {
+   "kind": "container",
+   "who": "c0cee:Skyrim.esm (845:Skyrim.esm) of Fixture A (profile 69)",
+   "formDesc": "c0cee:Skyrim.esm",
+   "removed": [
+    {
+     "baseId": "0xFE00C80F",
+     "edid": "ArmorEinherjarCuirass",
+     "count": 25,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00C80E",
+     "edid": "ArmorEinherjarBoots",
+     "count": 46,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00CAA6",
+     "edid": "ArmorEinherjarPlatedCuirass",
+     "count": 21,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00C810",
+     "edid": "ArmorEinherjarGauntlets",
+     "count": 21,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00C829",
+     "edid": "ArmorEinherjarHornedHelmet",
+     "count": 10,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00CAA4",
+     "edid": "ArmorEinherjarPlatedHelmet",
+     "count": 20,
+     "reason": "material"
+    },
+    {
+     "baseId": "0xFE00CAA3",
+     "edid": "ArmorEinherjarPlumedHelmet",
+     "count": 20,
+     "reason": "material"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 0,
+   "clearedSlots": []
+  },
+  {
+   "kind": "container",
+   "who": "c0cd4:Skyrim.esm (97f51:Skyrim.esm) of Fixture A (profile 69)",
+   "formDesc": "c0cd4:Skyrim.esm",
+   "removed": [
+    {
+     "baseId": "0x000877AB",
+     "edid": "JewelryRingSilverGarnet",
+     "count": 2,
+     "reason": "jewelry"
+    },
+    {
+     "baseId": "0x0003B97C",
+     "edid": "JewelryRingSilver",
+     "count": 7,
+     "reason": "jewelry"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 0,
+   "clearedSlots": []
+  },
+  {
+   "kind": "character",
+   "who": "29a \"Fixture B\" (profile 131)",
+   "formDesc": "29a",
+   "removed": [
+    {
+     "baseId": "0x0003B97C",
+     "edid": "JewelryRingSilver",
+     "count": 1,
+     "reason": "jewelry"
+    },
+    {
+     "baseId": "0x000B83CB",
+     "edid": "ArmorFalmerCuirass",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0x000139BB",
+     "edid": "OrcishArrow",
+     "count": 3,
+     "reason": "material"
+    },
+    {
+     "baseId": "0x000B83CD",
+     "edid": "ArmorFalmerBoots",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0x0001398D",
+     "edid": "OrcishBow",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0x000B83CF",
+     "edid": "ArmorFalmerGauntlets",
+     "count": 1,
+     "reason": "material"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 6,
+   "clearedSlots": []
+  },
+  {
+   "kind": "character",
+   "who": "14 \"Fixture C\" (profile 39)",
+   "formDesc": "14",
+   "removed": [
+    {
+     "baseId": "0x0010D678",
+     "edid": "EnchClothesRobesMageDestruction05",
+     "count": 1,
+     "reason": "enchanted"
+    },
+    {
+     "baseId": "0x000166FF",
+     "edid": "ClothesCirclet05",
+     "count": 1,
+     "reason": "jewelry"
+    }
+   ],
+   "spells": [
+    {
+     "id": "0x00012FCC",
+     "edid": "Healing",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00012FCD",
+     "edid": "Flames",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00012FD0",
+     "edid": "Firebolt",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00012FD2",
+     "edid": "HealOther",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00013018",
+     "edid": "WardLesser",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0001C789",
+     "edid": "Fireball",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00021143",
+     "edid": "Clairvoyance",
+     "kind": "spell"
+    },
+    {
+     "id": "0x000211F0",
+     "edid": "WardGreater",
+     "kind": "spell"
+    },
+    {
+     "id": "0x000211F1",
+     "edid": "WardSteadfast",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00027EB6",
+     "edid": "Invisibility",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0002B96B",
+     "edid": "Frostbite",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0002B96C",
+     "edid": "IceSpike",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0002DD29",
+     "edid": "LightningBolt",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0002DD2A",
+     "edid": "Sparks",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0002F3B8",
+     "edid": "FastHealing",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00035D7F",
+     "edid": "WallOfFlames",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00035D80",
+     "edid": "WallOfFrost",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00035D81",
+     "edid": "WallOfStorms",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0003AE9F",
+     "edid": "flameCloak",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0003AEA2",
+     "edid": "FrostCloak",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0003AEA3",
+     "edid": "LightningCloak",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00043323",
+     "edid": "Magelight",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00045F9C",
+     "edid": "IceStorm",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00045F9D",
+     "edid": "ChainLightning",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0004B146",
+     "edid": "TurnLesserUndead",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0004D3F2",
+     "edid": "HealingHands",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0004D3F8",
+     "edid": "RepelLesserUndead",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0005312D",
+     "edid": "CircleOfProtection",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0005DB90",
+     "edid": "FireRune",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0005DD5D",
+     "edid": "TurnUndead",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0005DD5E",
+     "edid": "TurnGreaterUndead",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0005DD60",
+     "edid": "RepelUndead",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0006796F",
+     "edid": "FrostRune",
+     "kind": "spell"
+    },
+    {
+     "id": "0x00067970",
+     "edid": "ShockRune",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0007A82B",
+     "edid": "FireStorm",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0007E8E4",
+     "edid": "Blizzard",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0007E8E5",
+     "edid": "LightningStorm",
+     "kind": "spell"
+    },
+    {
+     "id": "0x000B62EE",
+     "edid": "GrandHealing",
+     "kind": "spell"
+    },
+    {
+     "id": "0x000B62EF",
+     "edid": "CloseWounds",
+     "kind": "spell"
+    },
+    {
+     "id": "0x000DA746",
+     "edid": "dunLabyrinthianSpellReward",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0010F7EC",
+     "edid": "IcySpear",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0010F7ED",
+     "edid": "Incinerate",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0010F7EE",
+     "edid": "Thunderbolt",
+     "kind": "spell"
+    },
+    {
+     "id": "0x020038B5",
+     "edid": "DLC1StendarrsAura",
+     "kind": "spell"
+    },
+    {
+     "id": "0x020038B6",
+     "edid": "DLC1VampiresBane",
+     "kind": "spell"
+    },
+    {
+     "id": "0x02003F52",
+     "edid": "DLC1SunFire",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0200E8D2",
+     "edid": "DLC1NecromanticHealing",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0401772D",
+     "edid": "DLC2WhirlwindCloak",
+     "kind": "spell"
+    },
+    {
+     "id": "0x0401D74B",
+     "edid": "DLC2PoisonRune",
+     "kind": "spell"
+    },
+    {
+     "id": "0x101261D3",
+     "edid": "WBWRLightBeamSpell01",
+     "kind": "spell"
+    },
+    {
+     "id": "0x1014F197",
+     "edid": "WBWRLightBeamSpell02",
+     "kind": "spell"
+    },
+    {
+     "id": "0x101E12FF",
+     "edid": "WBWRLightBeamSpell03",
+     "kind": "spell"
+    }
+   ],
+   "equipmentDumpEntries": 2,
+   "clearedSlots": [
+    "leftSpell",
+    "rightSpell"
+   ]
+  },
+  {
+   "kind": "container",
+   "who": "c4bd5:Skyrim.esm (6b303:Skyrim.esm) of Fixture E (profile 23)",
+   "formDesc": "c4bd5:Skyrim.esm",
+   "removed": [
+    {
+     "baseId": "0x000139AD",
+     "edid": "EbonyBow",
+     "count": 1,
+     "reason": "material"
+    },
+    {
+     "baseId": "0x000139BF",
+     "edid": "EbonyArrow",
+     "count": 1,
+     "reason": "material"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 0,
+   "clearedSlots": []
+  },
+  {
+   "kind": "container",
+   "who": "b36b:The Great City of Solitude.esp (97f68:Skyrim.esm) of Fixture F (profile 7)",
+   "formDesc": "b36b:The Great City of Solitude.esp",
+   "removed": [
+    {
+     "baseId": "0x000B83CB",
+     "edid": "ArmorFalmerCuirass",
+     "count": 1,
+     "reason": "material"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 0,
+   "clearedSlots": []
+  },
+  {
+   "kind": "character",
+   "who": "75d \"Fixture D\" (profile 116)",
+   "formDesc": "75d",
+   "removed": [
+    {
+     "baseId": "0xFE01389B",
+     "edid": "DungeonStriderLoweredHood",
+     "count": 1,
+     "reason": "rank"
+    },
+    {
+     "baseId": "0x0003B97C",
+     "edid": "JewelryRingSilver",
+     "count": 1,
+     "reason": "jewelry"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 2,
+   "clearedSlots": []
+  },
+  {
+   "kind": "character",
+   "who": "d03 \"Fixture D\" (profile 116)",
+   "formDesc": "d03",
+   "removed": [
+    {
+     "baseId": "0x0003B97C",
+     "edid": "JewelryRingSilver",
+     "count": 1,
+     "reason": "jewelry"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 1,
+   "clearedSlots": []
+  },
+  {
+   "kind": "character",
+   "who": "f00d \"Fixture Enchanter\" (profile 900)",
+   "formDesc": "f00d",
+   "removed": [
+    {
+     "baseId": "0x00012EB7",
+     "edid": "",
+     "count": 1,
+     "reason": "enchanted entry"
+    },
+    {
+     "baseId": "0x00012EB7",
+     "edid": "",
+     "count": 2,
+     "reason": "enchanted entry"
+    },
+    {
+     "baseId": "0x0003B97C",
+     "edid": "JewelryRingSilver",
+     "count": 3,
+     "reason": "jewelry"
+    },
+    {
+     "baseId": "0x0A000800",
+     "edid": "MissingThing",
+     "count": 1,
+     "reason": "rank"
+    },
+    {
+     "baseId": "0x0001397D",
+     "edid": "EbonySword",
+     "count": 2,
+     "reason": "material"
+    }
+   ],
+   "spells": [],
+   "equipmentDumpEntries": 1,
+   "clearedSlots": []
+  }
+ ]
+}

@@ -4,13 +4,11 @@
 
 const fs = require('fs')
 const path = require('path')
-const crypto = require('crypto')
+const S = require('./strip-common')
 
-const SM = path.join(__dirname, '..', '..', 'server-manager', 'src')
-const config = require(path.join(SM, 'config'))
-const formIds = require(path.join(SM, 'formIds'))
-const modsync = require(path.join(SM, 'modsync'))
-const { gameServerBlocker } = require(path.join(SM, 'serviceCheck'))
+const formIds = require(path.join(S.SM, 'formIds'))
+const { gameServerBlocker } = require(path.join(S.SM, 'serviceCheck'))
+const { Refusal, plural, hex, sha256, stamp, writeNew, findTargets, planDoc, nameOf, canonical, BACKUP_ROOT, INFO_FILE, DOCS_FILE } = S
 
 const USAGE = [
   'usage: node deploy/mongodb/strip-inventories.js [mode] [flags]',
@@ -26,146 +24,14 @@ const USAGE = [
   'the list comes from: python deploy/mongodb/forbidden-items.py --plugin <staged AlduinakAdditions.esp>',
 ].join('\n')
 
-const CF = 'changeForms'
 const LIST_FILE = path.join(__dirname, 'forbidden-items.json')
-const BACKUP_ROOT = process.env.ALDUINAK_WIPE_BACKUP_ROOT || 'C:\\Users\\Administrator\\Desktop\\alduinak-overnight-2026-09-11'
-const INFO_FILE = 'strip-backup.json'
-const DOCS_FILE = 'changeforms.ejson'
-const HOUSING_PROP = 'private.housing'
-const SPELL_SLOTS = ['leftSpell', 'rightSpell', 'voiceSpell', 'instantSpell']
 const TOP = 25
 
-class Refusal extends Error {}
-class UsageError extends Error {}
-
 let settings = null
-let purge = null
 let BSON = null
 
-function plural(n, one, many) { return `${n} ${n === 1 ? one : many}` }
-function hex(n) { return '0x' + (n >>> 0).toString(16).toUpperCase().padStart(8, '0') }
-function sha256(text) { return crypto.createHash('sha256').update(text).digest('hex') }
-function arr(v) { return Array.isArray(v) ? v : [] }
-
-function stamp() {
-  const d = new Date()
-  const p = n => String(n).padStart(2, '0')
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
-}
-
-function loadSettings() {
-  let s
-  try { ({ settings: s } = modsync.readSettingsFile(config.paths.serverSettings)) }
-  catch (err) { throw new Refusal(`cannot read ${config.paths.serverSettings}: ${err.code || err.message}`) }
-  if (s.databaseDriver !== 'mongodb') throw new Refusal(`databaseDriver is "${s.databaseDriver}", this script only handles mongodb`)
-  if (!s.databaseUri || !s.databaseName) throw new Refusal('server-settings.json needs databaseUri and databaseName')
-  return s
-}
-
-// The driver ships with server-manager, so it loads only after npm install there
-function requireDriver() {
-  try {
-    purge = require(path.join(SM, 'mongoPurge'))
-    BSON = require(require.resolve('mongodb', { paths: [SM] })).BSON
-  } catch (err) {
-    if (err.code === 'MODULE_NOT_FOUND' && /'mongodb'/.test(err.message)) throw new Refusal('mongodb driver not found: run npm install in server-manager (or set NODE_PATH to its node_modules)')
-    throw err
-  }
-}
-
-// The list is only valid for the load order it was computed against
-function loadList(file, factionGear) {
-  let list
-  try { list = JSON.parse(fs.readFileSync(file, 'utf8')) }
-  catch (err) { throw new Refusal(`cannot read ${file} (${err.code || 'not valid JSON'}): run deploy/mongodb/forbidden-items.py first`) }
-  const live = arr(settings.loadOrder).map(n => modsync.basename(n).toLowerCase())
-  const theirs = arr(list.loadOrder).map(n => String(n).toLowerCase())
-  if (live.join('|') !== theirs.join('|')) throw new Refusal(`${file} was computed for another load order, run forbidden-items.py again`)
-  const slots = formIds.computeSlots(list.plugins.map(p => p.name), Object.fromEntries(list.plugins.map(p => [p.name, p.light])))
-  const items = new Map(list.items.filter(i => factionGear || !i.factionGear).map(i => [i.globalId >>> 0, i]))
-  const spells = new Map(list.spells.map(s => [s.globalId >>> 0, s]))
-  return { file, sha: sha256(fs.readFileSync(file)), factionGear, slots, items, spells, replacedPlugin: list.replacedPlugin }
-}
-
-async function withCol(fn) {
-  const { client, col } = await purge.openChangeForms(settings)
-  try { return await fn(col) } finally { await client.close().catch(() => {}) }
-}
-
-function housingOf(doc) {
-  const rec = doc.dynamicFields && doc.dynamicFields[HOUSING_PROP]
-  return rec && typeof rec === 'object' && formIds.num(rec.owner) > 0 ? rec : null
-}
-
-// Players, and containers of a live housing claim (the claimed ref itself and its listed containers)
-async function findTargets(col, list, withContainers) {
-  const players = []
-  const claims = []
-  const owned = new Map()
-  for await (const doc of col.find({}, { promoteValues: false })) {
-    if (purge.isPlayer(doc)) players.push(doc)
-    else if (withContainers) {
-      const rec = housingOf(doc)
-      if (!rec) continue
-      claims.push(doc)
-      const owner = `${rec.ownerName || '?'} (profile ${formIds.num(rec.owner)})`
-      owned.set(doc.formDesc, owner)
-      for (const id of arr(rec.containers)) {
-        const desc = formIds.descOf(id, list.slots)
-        if (desc) owned.set(desc, owner)
-      }
-    }
-  }
-  const containers = []
-  if (withContainers && owned.size) {
-    for await (const doc of col.find({ formDesc: { $in: [...owned.keys()] } }, { promoteValues: false })) {
-      if (!purge.isPlayer(doc) && arr(doc.inv && doc.inv.entries).length) containers.push({ doc, owner: owned.get(doc.formDesc) })
-    }
-  }
-  return { players, containers, claims: claims.length }
-}
-
-function entryReason(e, list) {
-  const item = list.items.get(formIds.num(e.baseId) >>> 0)
-  if (item) return item
-  if (e.enchantmentId !== undefined && e.enchantmentId !== null) return { reason: 'enchanted entry', edid: '' }
-  return null
-}
-
-// What the strip changes in one document; null when nothing
-function planDoc(doc, list) {
-  const removed = []
-  const keep = arr(doc.inv && doc.inv.entries).filter(e => {
-    const hit = entryReason(e, list)
-    if (hit) removed.push({ baseId: formIds.num(e.baseId) >>> 0, count: formIds.num(e.count) || 1, reason: hit.reason, edid: hit.edid || e.name || '' })
-    return !hit
-  })
-  const eq = doc.equipmentDump
-  const eqEntries = arr(eq && eq.inv && eq.inv.entries)
-  const eqKeep = eqEntries.filter(e => !entryReason(e, list))
-  const spells = []
-  const spellKeep = arr(doc.learnedSpells).filter(id => {
-    const s = list.spells.get(formIds.num(id) >>> 0)
-    if (s) spells.push({ id: formIds.num(id) >>> 0, edid: s.edid, kind: s.kind })
-    return !s
-  })
-  const gone = new Set(spells.map(s => s.id))
-  const slots = eq ? SPELL_SLOTS.filter(k => {
-    const v = formIds.num(eq[k]) >>> 0
-    return v && (gone.has(v) || list.items.has(v))
-  }) : []
-  if (!removed.length && !spells.length && eqKeep.length === eqEntries.length && !slots.length) return null
-  const set = {}
-  if (removed.length) set['inv.entries'] = keep
-  if (eqKeep.length !== eqEntries.length) set['equipmentDump.inv.entries'] = eqKeep
-  if (spells.length) set.learnedSpells = spellKeep
-  for (const k of slots) set[`equipmentDump.${k}`] = new BSON.Int32(0)
-  return { removed, spells, unequipped: eqEntries.length - eqKeep.length, slots, set }
-}
-
-function nameOf(doc) {
-  return doc.appearanceDump && typeof doc.appearanceDump.name === 'string' ? doc.appearanceDump.name : ''
-}
+function withCol(fn) { return S.withCol(settings, fn) }
+function readBackup(dir) { return S.readBackup(dir, settings) }
 
 async function buildPlan(col, list, withContainers) {
   const t = await findTargets(col, list, withContainers)
@@ -247,11 +113,6 @@ function reportOf(plan, list, sum) {
   }
 }
 
-function writeNew(file, text) {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, text, { flag: 'wx' })
-}
-
 // ── Modes ────────────────────────────────────────────────────────────────────
 
 async function planMode(flags, list) {
@@ -278,22 +139,6 @@ async function backupMode(flags, list) {
     console.log(`backed up ${plural(docs.length, 'changeForm', 'changeForms')} to ${dir}`)
   })
 }
-
-function readBackup(dir) {
-  let info
-  let text
-  try {
-    info = JSON.parse(fs.readFileSync(path.join(dir, INFO_FILE), 'utf8'))
-    text = fs.readFileSync(path.join(dir, DOCS_FILE), 'utf8')
-  } catch (err) { throw new Refusal(`${dir} is not a strip backup (${err.code || 'not valid JSON'})`) }
-  if (sha256(text) !== info.docsSha256) throw new Refusal(`${DOCS_FILE} in ${dir} does not match its checksum`)
-  if (info.databaseName !== settings.databaseName) throw new Refusal(`the backup is of database ${info.databaseName}, not ${settings.databaseName}`)
-  const docs = BSON.EJSON.parse(text, { relaxed: false })
-  if (docs.length !== info.count) throw new Refusal(`the backup holds ${docs.length} documents, its info says ${info.count}`)
-  return { info, docs }
-}
-
-function canonical(doc) { return BSON.EJSON.stringify(doc, { relaxed: false }) }
 
 async function applyMode(flags, list) {
   const dir = path.resolve(flags.backup)
@@ -347,47 +192,28 @@ async function restoreMode(flags) {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
-function parseArgs(argv) {
-  const mode = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'plan'
-  const rest = mode === argv[0] ? argv.slice(1) : argv
-  const flags = { apply: false, noContainers: false, factionGear: false, out: null, backup: null, list: null, report: null }
-  const bools = { '--apply': 'apply', '--no-containers': 'noContainers', '--faction-gear': 'factionGear' }
-  const valued = { '--out': 'out', '--backup': 'backup', '--list': 'list', '--report': 'report' }
-  for (let i = 0; i < rest.length; i++) {
-    const a = rest[i]
-    if (bools[a]) flags[bools[a]] = true
-    else if (valued[a]) {
-      const v = rest[++i]
-      if (!v || v.startsWith('--')) throw new UsageError(`${a} needs a value`)
-      flags[valued[a]] = v
-    } else throw new UsageError(`unknown argument ${a}`)
-  }
-  const allowed = {
+const ARGS = {
+  defaultMode: 'plan',
+  bools: { '--apply': 'apply', '--no-containers': 'noContainers', '--faction-gear': 'factionGear' },
+  valued: { '--out': 'out', '--backup': 'backup', '--list': 'list', '--report': 'report' },
+  allowed: {
     plan: ['list', 'report', 'noContainers', 'factionGear'],
     backup: ['out', 'list', 'noContainers', 'factionGear'],
     apply: ['backup', 'apply', 'list', 'noContainers', 'factionGear'],
     restore: ['backup', 'apply'],
-  }
-  if (!allowed[mode]) throw new UsageError(`unknown mode ${mode}`)
-  for (const [key, v] of Object.entries(flags)) if (v && !allowed[mode].includes(key)) throw new UsageError(`${key} does not apply to ${mode}`)
-  if ((mode === 'apply' || mode === 'restore') && !flags.backup) throw new UsageError(`${mode} needs --backup <dir>`)
-  return { mode, flags }
+  },
+  required: { apply: ['--backup'], restore: ['--backup'] },
 }
 
 async function main() {
   const argv = process.argv.slice(2)
   if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return }
-  const { mode, flags } = parseArgs(argv)
-  settings = loadSettings()
-  requireDriver()
+  const { mode, flags } = S.parseArgs(argv, ARGS)
+  settings = S.loadSettings()
+  BSON = S.requireDriver().BSON
   if (mode === 'restore') return restoreMode(flags)
-  const list = loadList(path.resolve(flags.list || LIST_FILE), flags.factionGear)
+  const list = S.loadList(path.resolve(flags.list || LIST_FILE), flags.factionGear, settings)
   await { plan: planMode, backup: backupMode, apply: applyMode }[mode](flags, list)
 }
 
-main().catch(err => {
-  const text = purge ? purge.sanitize(err, settings) : String(err && err.message ? err.message : err)
-  if (err instanceof UsageError) console.error(`${text}\n\n${USAGE}`)
-  else console.error(`\n${err instanceof Refusal ? 'REFUSED' : 'FAILED'}: ${text}`)
-  process.exitCode = 1
-})
+S.runCli(main, USAGE)

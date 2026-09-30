@@ -75,6 +75,16 @@ class LoadOrder:
         light, i = slot
         return (0xFE000000 | (i << 12) | (key[1] & 0xFFF)) if light else ((i << 24) | key[1])
 
+    def key_of(self, gid):
+        light = gid >> 24 == 0xFE
+        i = (gid >> 12) & 0xFFF if light else gid >> 24
+        names = self.light if light else self.full
+        return (names[i], gid & (0xFFF if light else 0xFFFFFF)) if i < len(names) else None
+
+    def keywords(self, kw, r, masters, n):
+        kwda = sub(r, 'KWDA') or b''
+        return {kw.get(self.ref(kwda[i:i + 4], masters, n), '').lower() for i in range(0, len(kwda) - 3, 4)}
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -145,8 +155,7 @@ def main():
             continue
         if t not in ('ARMO', 'WEAP', 'AMMO'):
             continue
-        kwda = sub(r, 'KWDA') or b''
-        kws = {kw.get(lo.ref(kwda[i:i + 4], m, n), '').lower() for i in range(0, len(kwda) - 3, 4)}
+        kws = lo.keywords(kw, r, m, n)
         rank = best.get(key)
         craftable = rank is not None and rank <= MAX_RANK
         e = edid(r)
