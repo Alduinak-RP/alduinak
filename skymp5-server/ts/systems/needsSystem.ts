@@ -19,6 +19,8 @@ type Mp = any;
 // cannot pay is refused; a craft is refused before the native craft runs and the client's local craft is undone by resending its inventory,
 // and the craft that leaves the bar short of another closes the menu. Eating never costs fatigue. The bar maps onto Survival's exhaustion
 // scale as (1 - fatigue) * 960.
+// Modifier sources (addModifierSource, RacialSystem first) multiply a character's hunger drain and every fatigue cost, together with the
+// drink and flower discounts.
 // Warmed by drink: a cook or alchemist (Novice or better) who drinks an alcohol pays needsAlcoholDiscount less fatigue for the crafts priced
 // by their own rank for needsAlcoholMinutes; another drink refreshes the timer and never stacks. An alcohol is an ALCH drunk with the
 // ITMPotionUse sound that carries a detrimental stamina or magicka rate effect (every vanilla ale, mead, wine, brandy, flin, sujamma, shein
@@ -152,7 +154,20 @@ interface NeedsRecord {
   drinkUntil: number;
 }
 
+// A system that scales a character's needs; NeedsSystem multiplies the factors of every registered source
+export interface NeedsModifierSource {
+  // Names the factor in the [needs] lines, such as "race"
+  label: string;
+  hungerDrainMult?(actorId: number): number;
+  fatigueCostMult?(actorId: number): number;
+  // The factors in force, for the boot line
+  describe?(): string;
+}
+
+type ModifierMethod = "hungerDrainMult" | "fatigueCostMult";
+
 interface Online {
+  actorId: number;
   userId: number;
   rec: NeedsRecord;
   // Last state sent to the client, so the minute tick only sends changes
@@ -250,6 +265,7 @@ export class NeedsSystem implements System {
     const foodLine = Object.entries(foodHunger).map(([edid, v]) => `${edid.replace(FOOD_EFFECT_PREFIX, "")} ${v}`).join(", ");
     const drinkLine = this.alcoholDiscount > 0 && this.alcoholMs > 0 ? `a drink saves ${ALCOHOL_PROFESSIONS.join(" and ")}s ${pct(this.alcoholDiscount)}% on their own crafts for ${this.alcoholMs / 60000} min` : "drinks discount nothing";
     this.log(`[needs] ready, hunger ${this.drainPerHour}/h online${this.hungerOffline ? " and offline" : ""}, stages at ${this.stages.join("/")}, food hunger ${foodLine}, other effects from the records (${PROBE_EFFECT} record ${probe || "none"}); fatigue refills 100% per online hour and ${tenth(this.fatigueOfflinePerMs * 3600000)}% per offline hour, costs by rank: gathering ${FATIGUE_COST.gather.map(tenth).join("/")}%, crafting ${FATIGUE_COST.craft.map(tenth).join("/")}%, kills ${FATIGUE_COST.fight.map(tenth).join("/")}%, spells free, ${drinkLine}, exhaustion stages at ${this.fatigueStages.join("/")} of ${this.exhaustionMax}; attribute penalties ${this.penalties ? "on" : "off"}`);
+    this.log(`[needs] modifier sources: ${this.sources.length ? this.sources.map((src) => `${src.label} (${src.describe?.() || "no factors"})`).join("; ") : "none"}`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
@@ -399,12 +415,14 @@ export class NeedsSystem implements System {
     const entry = this.online.get(actorId);
     if (!entry || !this.mastery.holdsInputs(ctx, actorId, recipeId)) return true;
     const priced = this.mastery.craftCost(ctx, actorId, recipeId);
-    const cost = this.costOf("craft", priced.rank, priced.half) * this.drinkMultiplier(ctx, actorId, entry, priced.rank);
+    const drink = this.drinkMultiplier(ctx, actorId, entry, priced.rank);
+    const cost = this.costOf(actorId, "craft", priced.rank, priced.half) * drink;
     if (!this.affords(entry, cost)) {
       this.enqueue(ctx, { kind: "refused", actorId, cost });
       return false;
     }
     entry.rec.fatigue = clamp(entry.rec.fatigue - cost, 0, 1);
+    this.log(`[needs] ${hex(actorId)} craft ${hex(recipeId)} r${priced.rank}${priced.half ? " half" : ""}${drink !== 1 ? `, drink x${drink}` : ""}: -${tenth(cost)}%, fatigue ${pct(entry.rec.fatigue)}%${this.costNote(actorId)}`);
     // Closing now keeps the next click from making a craft the server would undo
     this.enqueue(ctx, this.affords(entry, cost) ? { kind: "changed", actorId } : { kind: "spent", actorId, cost });
     return true;
@@ -418,7 +436,7 @@ export class NeedsSystem implements System {
     if (!benches.length) return false;
     const cost = Math.min(...benches.map((k) => {
       const rank = this.mastery.craftRank(ctx, actorId, k);
-      return this.costOf("craft", rank, this.mastery.halfCostBench(k)) * this.drinkMultiplier(ctx, actorId, entry, rank);
+      return this.costOf(actorId, "craft", rank, this.mastery.halfCostBench(k)) * this.drinkMultiplier(ctx, actorId, entry, rank);
     }));
     if (this.affords(entry, cost)) return false;
     this.enqueue(ctx, { kind: "tired", actorId, cost });
@@ -430,7 +448,7 @@ export class NeedsSystem implements System {
     const entry = this.online.get(casterId);
     const info = spellInfo(ctx.svr as Mp, spellId);
     if (!entry || !this.enabled || info.type !== SpellType.Spell) return true;
-    const perCast = this.costOf("magic", this.mastery.rankOf(ctx, casterId, "mage"));
+    const perCast = this.costOf(casterId, "magic", this.mastery.rankOf(ctx, casterId, "mage"));
     if (info.castType !== CastType.Concentration) {
       if (this.affords(entry, perCast)) return true;
       this.enqueue(ctx, { kind: "tiredCast", actorId: casterId, cost: perCast });
@@ -458,7 +476,7 @@ export class NeedsSystem implements System {
     const info = spellInfo(ctx.svr as Mp, spellId);
     if (!entry || !this.enabled || info.type !== SpellType.Spell || info.castType === CastType.Concentration) return;
     this.catchUp(entry);
-    entry.rec.fatigue = clamp(entry.rec.fatigue - this.costOf("magic", this.mastery.rankOf(ctx, casterId, "mage")), 0, 1);
+    entry.rec.fatigue = clamp(entry.rec.fatigue - this.costOf(casterId, "magic", this.mastery.rankOf(ctx, casterId, "mage")), 0, 1);
     this.enqueue(ctx, { kind: "changed", actorId: casterId });
   }
 
@@ -480,7 +498,7 @@ export class NeedsSystem implements System {
     const profession = this.animalKeyword && this.mastery.actorHasKeyword(ctx, victimId, this.animalKeyword) ? "hunter" : "warrior";
     const payers = Array.from(attackers).filter((id) => this.online.has(id));
     for (const actorId of payers) {
-      this.spend(ctx, actorId, this.costOf("fight", this.mastery.rankOf(ctx, actorId, profession)) / payers.length, "kill");
+      this.spend(ctx, actorId, this.costOf(actorId, "fight", this.mastery.rankOf(ctx, actorId, profession)) / payers.length, "kill");
     }
   }
 
@@ -585,11 +603,13 @@ export class NeedsSystem implements System {
     const rec = stored || { v: 2, hunger: this.hungerStart, fatigue: 1, at: now, stageSpell: 0, fatigueSpell: 0, wellFed: false, drinkUntil: 0 };
     const savedAgo = stored ? formatWait(now - stored.at) : "never";
     const before = rec.fatigue;
-    if (stored) this.advance(rec, now, false);
+    const hunger = this.modifier(actorId, "hungerDrainMult");
+    const fatigue = this.modifier(actorId, "fatigueCostMult");
+    if (stored) this.advance(rec, now, false, true, hunger.mult);
     if (rec.fatigue > before) this.log(`[needs] ${hex(actorId)} rested offline ${savedAgo}: fatigue ${pct(before)}% -> ${pct(rec.fatigue)}%`);
-    this.online.set(actorId, { userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, assignedAt: now, resyncAt: 0, swappedSinceAssign: false, pendingSince: 0 });
+    this.online.set(actorId, { actorId, userId, rec, sent: "", syncStageAt: now + LOGIN_SYNC_DELAY_MS, assignedAt: now, resyncAt: 0, swappedSinceAssign: false, pendingSince: 0 });
     this.write(ctx, actorId, rec);
-    this.log(`[needs] ${hex(actorId)} online: hunger ${Math.round(rec.hunger)} (${HUNGER_STAGE_NAMES[this.hungerStage(rec)]}), fatigue ${pct(rec.fatigue)}% (${FATIGUE_STAGE_NAMES[this.fatigueStage(rec)]}), saved ${savedAgo}${stored ? " ago" : ""}, abilities ${hex(rec.stageSpell)}/${hex(rec.fatigueSpell)}`);
+    this.log(`[needs] ${hex(actorId)} online: hunger ${Math.round(rec.hunger)} (${HUNGER_STAGE_NAMES[this.hungerStage(rec)]}), fatigue ${pct(rec.fatigue)}% (${FATIGUE_STAGE_NAMES[this.fatigueStage(rec)]}), saved ${savedAgo}${stored ? " ago" : ""}, abilities ${hex(rec.stageSpell)}/${hex(rec.fatigueSpell)}${hunger.note ? `, hunger drain ${hunger.note}` : ""}${fatigue.note ? `, fatigue costs ${fatigue.note}` : ""}`);
     this.sendState(ctx, actorId, false);
   }
 
@@ -639,20 +659,45 @@ export class NeedsSystem implements System {
   }
 
   private fatigueOn = true;
+  private sources: NeedsModifierSource[] = [];
 
-  private costOf(effort: Effort, rank: number, half = false): number {
-    return this.fatigueOn ? fatigueCost(effort, rank, half) : 0;
+  addModifierSource(src: NeedsModifierSource): void {
+    this.sources.push(src);
+  }
+
+  // Product of every source's factor for the character and the note naming those in force; a factor that is not finite or not positive counts as 1
+  private modifier(actorId: number, method: ModifierMethod): { mult: number; note: string } {
+    let mult = 1;
+    const notes: string[] = [];
+    for (const src of this.sources) {
+      let f = 1;
+      try { f = Number(src[method]?.(actorId) ?? 1); } catch { f = 1; }
+      if (!Number.isFinite(f) || f <= 0 || f === 1) continue;
+      mult *= f;
+      notes.push(`${src.label} x${Math.round(f * 1000) / 1000}`);
+    }
+    return { mult, note: notes.join(", ") };
+  }
+
+  // ", race x0.75" for a cost line, "" when no source changes the character's costs
+  private costNote(actorId: number): string {
+    const note = this.modifier(actorId, "fatigueCostMult").note;
+    return note ? `, ${note}` : "";
+  }
+
+  private costOf(actorId: number, effort: Effort, rank: number, half = false): number {
+    return this.fatigueOn ? fatigueCost(effort, rank, half) * this.modifier(actorId, "fatigueCostMult").mult : 0;
   }
 
   // Whether the bar can pay for one action of this effort at the rank, times multiplier; an offline character or needs switched off are never refused
   canPay(actorId: number, effort: Effort, rank: number, half = false, multiplier = 1): boolean {
     const entry = this.online.get(actorId);
-    return !entry || !this.enabled || this.affords(entry, this.costOf(effort, rank, half) * multiplier);
+    return !entry || !this.enabled || this.affords(entry, this.costOf(actorId, effort, rank, half) * multiplier);
   }
 
   // Takes one action of this effort at the rank, times multiplier, off the bar; what names the work for the log
   pay(ctx: SystemContext, actorId: number, effort: Effort, rank: number, what: string, half = false, multiplier = 1): void {
-    this.spend(ctx, actorId, this.costOf(effort, rank, half) * multiplier, what);
+    this.spend(ctx, actorId, this.costOf(actorId, effort, rank, half) * multiplier, what);
   }
 
   private affords(entry: Online, cost: number): boolean {
@@ -665,7 +710,7 @@ export class NeedsSystem implements System {
     if (!entry || !this.enabled || cost <= 0) return;
     this.catchUp(entry);
     entry.rec.fatigue = clamp(entry.rec.fatigue - cost, 0, 1);
-    this.log(`[needs] ${hex(actorId)} ${what}: -${Math.round(cost * 1000) / 10}%, fatigue ${pct(entry.rec.fatigue)}%`);
+    this.log(`[needs] ${hex(actorId)} ${what}: -${tenth(cost)}%, fatigue ${pct(entry.rec.fatigue)}%${this.costNote(actorId)}`);
     this.write(ctx, actorId, entry.rec);
     this.syncStages(ctx, actorId, entry);
     this.sendState(ctx, actorId, false);
@@ -719,7 +764,7 @@ export class NeedsSystem implements System {
       this.sendState(ctx, q.actorId, false);
       return;
     }
-    this.log(`[needs] ${STOP_LOG[q.kind]} for ${hex(q.actorId)}: fatigue ${pct(entry.rec.fatigue)}%, needs ${pct(q.cost)}%`);
+    this.log(`[needs] ${STOP_LOG[q.kind]} for ${hex(q.actorId)}: fatigue ${pct(entry.rec.fatigue)}%, needs ${pct(q.cost)}%${this.costNote(q.actorId)}`);
     if (q.kind === "refused") {
       // Closed first: the resent inventory undoes the recipe the vanilla menu already made locally
       this.sendState(ctx, q.actorId, true);
@@ -753,12 +798,12 @@ export class NeedsSystem implements System {
 
   // Hunger waits while a pending creation holds it
   private catchUp(entry: Online, now = Date.now()): void {
-    this.advance(entry.rec, now, true, entry.pendingSince <= 0);
+    this.advance(entry.rec, now, true, entry.pendingSince <= 0, this.modifier(entry.actorId, "hungerDrainMult").mult);
   }
 
-  private advance(rec: NeedsRecord, now: number, online: boolean, hunger = true): void {
+  private advance(rec: NeedsRecord, now: number, online: boolean, hunger = true, hungerMult = 1): void {
     const ms = Math.max(0, now - rec.at);
-    if (hunger && (online || this.hungerOffline)) rec.hunger = clamp(rec.hunger + this.drainPerHour * ms / 3600000, 0, HUNGER_MAX);
+    if (hunger && (online || this.hungerOffline)) rec.hunger = clamp(rec.hunger + this.drainPerHour * hungerMult * ms / 3600000, 0, HUNGER_MAX);
     rec.fatigue = clamp(rec.fatigue + (online ? REGEN_PER_MS : this.fatigueOfflinePerMs) * ms, 0, 1);
     if (rec.hunger >= this.stages[0]) rec.wellFed = false;
     rec.at = Math.max(rec.at, now);
