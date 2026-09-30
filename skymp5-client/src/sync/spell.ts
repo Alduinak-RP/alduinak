@@ -1,5 +1,6 @@
-import { Actor, ActorBase, Game, Race, Spell, printConsole } from 'skyrimPlatform';
+import { Actor, ActorBase, Game, Race, Spell, Utility, printConsole } from 'skyrimPlatform';
 import { BLOCKED_POWER_IDS } from '../services/services/magicSyncService';
+import { refreshMovement } from './actorvalues';
 
 // Listed spells stay, removing and re-adding one in the same frame would dispel and recast it
 export const removeUnlistedSpells = (actor: Actor, spellsIds: Array<number>) => {
@@ -133,6 +134,15 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
     actor,
     currentSpells.map((spell) => spell.getFormID()).filter((id) => !BLOCKED_POWER_IDS.has(id)),
   );
+
+  // The race speed ability's SpeedMult counts only once its effects have started and the movement speed is re-read
+  const actorId = actor.getFormID();
+  Utility.wait(2).then(() => {
+    const ac = Actor.from(Game.getFormEx(actorId));
+    if (ac) {
+      refreshMovement(ac);
+    }
+  });
 };
 
 // Base race with whether each of its spells' first effect is active, the added spell count and WaterBreathing, for the platform log

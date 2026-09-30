@@ -161,10 +161,56 @@ def check_race(ck, spec, spells, weapons, src, flags, data, out, q):
     keep = set(spec.get('keepSpells', []))
     removable = lambda s: spells.get(s, ('', -1))[1] in types and spells[s][0] not in keep or spells.get(s, ('',))[0] in p.get('removeSpells', [])
     before, after = id_list(src, data, 'SPLO'), id_list(out, q.data(), 'SPLO')
-    if any(s not in before for s in after):
-        return f'spells added: {[spells.get(s, s) for s in after if s not in before]}'
+    added = [spells.get(s, (s,))[0] for s in after if s not in before]
+    speed = [s for s, races in spec.get('speed', {}).get('spells', {}).items() if race in races]
+    if added != speed:
+        return f'spells added: {added}, the speed section adds {speed}'
     wrong = [spells.get(s, s) for s in before if (s in after) == removable(s)]
     return f'spells kept or removed against the spec: {wrong}' if wrong else None
+
+
+def effects_of(pl, data):
+    # [effect key, magnitude, [(function, param 1, comparison value, operator and flags, run on)]] per effect of a spell
+    out = []
+    for t, v in parse_subs(data):
+        if t == 'EFID':
+            out.append([pl.key(struct.unpack('<I', v)[0]), None, []])
+        elif t == 'EFIT' and out:
+            out[-1][1] = struct.unpack_from('<f', v)[0]
+        elif t == 'CTDA' and out:
+            out[-1][2].append((struct.unpack_from('<H', v, 8)[0], struct.unpack_from('<I', v, 12)[0], struct.unpack_from('<f', v, 4)[0], v[0], struct.unpack_from('<I', v, 20)[0]))
+    return out
+
+
+def check_speed(speed, out, ro, races):
+    # Each speed spell gives each sex the SpeedMult that brings SpeedMult / 100 x the race height to the target, and its races hand it out
+    problems, own = [], {(t, edid(r)): (k, r) for (t, k), r in ro.items() if k[0] == out.name.lower()}
+    heights = {edid(r): struct.unpack_from('<2f', dict(r.subs())['DATA'], 16) for (t, k), r in ro.items() if t == 'RACE'}
+    for spell, names in speed['spells'].items():
+        if ('SPEL', spell) not in own:
+            problems.append(f'SPEL {spell}: missing')
+            continue
+        key, rec = own[('SPEL', spell)]
+        pairs = {heights.get(n) for n in names}
+        if None in pairs or len(pairs) != 1:
+            problems.append(f'SPEL {spell}: races {names} lack an override or differ in height')
+            continue
+        male, female = pairs.pop()
+        want = [(None, male)] if male == female else [(0, male), (1, female)]
+        effects = effects_of(out, rec.data())
+        if len(effects) != len(want):
+            problems.append(f'SPEL {spell}: {len(effects)} effects for heights {male}/{female}')
+            continue
+        for (mgef, magnitude, conds), (sex, height) in zip(effects, want):
+            data = dict(ro[('MGEF', mgef)].subs())['DATA'] if ('MGEF', mgef) in ro else b''
+            if len(data) < 72 or struct.unpack_from('<Ii', data, 64) != (0, 30) or not struct.unpack_from('<I', data)[0] & 2:
+                problems.append(f'SPEL {spell}: effect {show(mgef)} is not a recovering SpeedMult value modifier')
+            if conds != ([] if sex is None else [(70, sex, 1.0, 0, 0)]):
+                problems.append(f'SPEL {spell}: conditions {conds} for sex {sex}')
+            if abs((1 + magnitude / 100) * height - speed['target']) > 1e-5:
+                problems.append(f'SPEL {spell}: SpeedMult +{magnitude} at height {height} gives {(1 + magnitude / 100) * height}, not {speed["target"]}')
+        problems.extend(f'RACE {n}: does not hand out {spell}' for n in names if key not in races.get(n, []))
+    return problems
 
 
 def main():
@@ -455,6 +501,9 @@ def main():
         left = [spells[s][0] for s in races.get(race, []) if s in spells and spells[s][1] in types and spells[s][0] not in rs.get('keepSpells', [])]
         if race not in races or left:
             problems.append(f'RACE {race}: {"not found" if race not in races else f"still hands out {left}"}')
+    if 'speed' in rs:
+        problems.extend(check_speed(rs['speed'], out, ro, races))
+        checked['race speed spells checked'] += len(rs['speed']['spells'])
     for k in disable_refs:
         final = ro.get(('REFR', k)) or ro.get(('ACHR', k)) or ro.get(('PHZD', k))
         flags = final.flags if final is not None else (winners.get(('REFR', k)) or winners.get(('PHZD', k)) or (None, 0))[1]

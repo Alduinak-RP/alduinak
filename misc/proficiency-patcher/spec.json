@@ -404,7 +404,19 @@
   "AldMasteryPerk_AldPerk_LegendaryFarmer": "0x0412B0",
   "AldKeyword_FineClothing": "0x0412B1",
   "AldKeyword_NobleClothing": "0x0412B2",
-  "AldLootDwarvenScrapPiece": "0x0412B9"
+  "AldLootDwarvenScrapPiece": "0x0412B9",
+  "AldRaceSpeedEffect": "0x041324",
+  "AldRaceSpeed_Nord": "0x041325",
+  "AldRaceSpeed_Breton": "0x041326",
+  "AldRaceSpeed_Imperial": "0x041327",
+  "AldRaceSpeed_Redguard": "0x041328",
+  "AldRaceSpeed_HighElf": "0x041329",
+  "AldRaceSpeed_DarkElf": "0x04132A",
+  "AldRaceSpeed_WoodElf": "0x04132B",
+  "AldRaceSpeed_WoodElfVampire": "0x04132C",
+  "AldRaceSpeed_Orc": "0x04132D",
+  "AldRaceSpeed_Argonian": "0x04132E",
+  "AldRaceSpeed_Khajiit": "0x04132F"
  },
  "woodcraftingBench": {
   "edid": "AldWoodcraftingBench",
@@ -8406,7 +8418,7 @@
   ]
  },
  "races": {
-  "comment": "The playable races and their vampire forms lose every racial power the game hands a character (greater powers and the vampires' Hunter's Sight); only Khajiit Night Eye stays. passives sets what the owner's list changes (starting attributes, unarmed damage read from a weapon at run time, abilities removed), descriptions is the race menu text, spells the magnitudes of a racial ability. Dunmer, Nord and Redguard already match the list; Argonians drop to the common unarmed damage of 4, and Khajiit lose the client-only claws ability so their unarmed damage is the race's alone.",
+  "comment": "The playable races and their vampire forms lose every racial power the game hands a character (greater powers and the vampires' Hunter's Sight); only Khajiit Night Eye stays. passives sets what the owner's list changes (starting attributes, unarmed damage read from a weapon at run time, abilities removed), descriptions is the race menu text, spells the magnitudes of a racial ability. Dunmer, Nord and Redguard already match the list; Argonians drop to the common unarmed damage of 4, and Khajiit lose the client-only claws ability so their unarmed damage is the race's alone. speed gives every race of spells a hidden ability (Equal Racial Speed, retargeted): movement speed is SpeedMult / 100 x the race height, so each sex gets the SpeedMult of target / height, from the heights the race wins with at run time, two effects under GetIsSex when the sexes differ in height; races sharing a spell must share their heights (the Wood Elf vampire does not).",
   "races": [
    "NordRace",
    "NordRaceVampire",
@@ -8511,7 +8523,55 @@
      "AbResistDisease": 25
     }
    }
-  ]
+  ],
+  "speed": {
+   "target": 1.2,
+   "effect": "AldRaceSpeedEffect",
+   "spells": {
+    "AldRaceSpeed_Nord": [
+     "NordRace",
+     "NordRaceVampire"
+    ],
+    "AldRaceSpeed_Breton": [
+     "BretonRace",
+     "BretonRaceVampire"
+    ],
+    "AldRaceSpeed_Imperial": [
+     "ImperialRace",
+     "ImperialRaceVampire"
+    ],
+    "AldRaceSpeed_Redguard": [
+     "RedguardRace",
+     "RedguardRaceVampire"
+    ],
+    "AldRaceSpeed_HighElf": [
+     "HighElfRace",
+     "HighElfRaceVampire"
+    ],
+    "AldRaceSpeed_DarkElf": [
+     "DarkElfRace",
+     "DarkElfRaceVampire"
+    ],
+    "AldRaceSpeed_WoodElf": [
+     "WoodElfRace"
+    ],
+    "AldRaceSpeed_WoodElfVampire": [
+     "WoodElfRaceVampire"
+    ],
+    "AldRaceSpeed_Orc": [
+     "OrcRace",
+     "OrcRaceVampire"
+    ],
+    "AldRaceSpeed_Argonian": [
+     "ArgonianRace",
+     "ArgonianRaceVampire"
+    ],
+    "AldRaceSpeed_Khajiit": [
+     "KhajiitRace",
+     "KhajiitRaceVampire"
+    ]
+   }
+  }
  },
  "headParts": [
   {

@@ -322,17 +322,7 @@ static class Steps
             {
                 var edid = c.MarkerEdid(profId, rank);
                 var spell = c.OwnOrNew(c.Mod.Spells, edid);
-                spell.Name = $"{label}: {rank}";
-                spell.Type = SpellType.Ability;
-                spell.CastType = CastType.ConstantEffect;
-                spell.TargetType = TargetType.Self;
-                spell.CastDuration = 0;
-                spell.ChargeTime = 0;
-                spell.BaseCost = 0;
-                spell.Flags = SpellDataFlag.ManualCostCalc;
-                spell.EquipmentType.Clear();
-                spell.Effects.Clear();
-                spell.Description = $"Rank of {rank} in the craft of the {label}.";
+                ConfigureAbility(spell, $"{label}: {rank}", $"Rank of {rank} in the craft of the {label}.");
 
                 var rankSpec = abilities?[profId]?[rank]?.AsObject();
                 if (rankSpec == null) continue;
@@ -360,11 +350,7 @@ static class Steps
                 var stamina = rankSpec["stamina"]?.GetValue<float>() ?? 0;
                 if (stamina > 0)
                 {
-                    var mgef = c.OwnOrNew(c.Mod.MagicEffects, "AldMasteryFortifyStamina");
-                    ConfigureMgef(mgef, "Fortify Stamina", "Stamina is increased by <mag> points.");
-                    mgef.Archetype = new MagicEffectArchetype { Type = MagicEffectArchetype.TypeEnum.ValueModifier, ActorValue = ActorValue.Stamina };
-                    mgef.Flags = (mgef.Flags & ~MagicEffect.Flag.NoMagnitude) | MagicEffect.Flag.Recover;
-                    mgef.PerkToApply.SetToNull();
+                    var mgef = ValueModifier(c, "AldMasteryFortifyStamina", "Fortify Stamina", "Stamina is increased by <mag> points.", ActorValue.Stamina);
                     spell.Effects.Add(new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = stamina, Area = 0, Duration = 0 } });
                 }
             }
@@ -414,6 +400,32 @@ static class Steps
         mgef.BaseCost = 0;
         mgef.Flags = MagicEffect.Flag.HideInUI | MagicEffect.Flag.NoHitEvent | MagicEffect.Flag.NoDuration | MagicEffect.Flag.NoArea | MagicEffect.Flag.NoMagnitude;
         mgef.Conditions.Clear();
+    }
+
+    // A hidden constant effect that adds its magnitude to an actor value while it lasts
+    static MagicEffect ValueModifier(PatchContext c, string edid, string name, string description, ActorValue av)
+    {
+        var mgef = c.OwnOrNew(c.Mod.MagicEffects, edid);
+        ConfigureMgef(mgef, name, description);
+        mgef.Archetype = new MagicEffectArchetype { Type = MagicEffectArchetype.TypeEnum.ValueModifier, ActorValue = av };
+        mgef.Flags = (mgef.Flags & ~MagicEffect.Flag.NoMagnitude) | MagicEffect.Flag.Recover;
+        mgef.PerkToApply.SetToNull();
+        return mgef;
+    }
+
+    static void ConfigureAbility(Spell spell, string name, string description)
+    {
+        spell.Name = name;
+        spell.Type = SpellType.Ability;
+        spell.CastType = CastType.ConstantEffect;
+        spell.TargetType = TargetType.Self;
+        spell.CastDuration = 0;
+        spell.ChargeTime = 0;
+        spell.BaseCost = 0;
+        spell.Flags = SpellDataFlag.ManualCostCalc;
+        spell.EquipmentType.Clear();
+        spell.Effects.Clear();
+        spell.Description = description;
     }
 
     // ---- woodcrafting bench: a new bench from the Hearthfire carpenter's workbench, and the existing ones tagged ---
@@ -1618,6 +1630,35 @@ static class Steps
             var spell = c.Override(c.Mod.Spells, c.Winning<ISpellGetter>(s["spell"]!.GetValue<string>()));
             foreach (var (effect, magnitude) in s["effects"]!.AsObject())
                 SetMagnitude(c, spell.Effects, c.KeyOf<IMagicEffectGetter>(effect), magnitude!.GetValue<float>(), $"Race ability {spell.EditorID}");
+        }
+        // Movement speed scales with height, so each sex gets the SpeedMult that brings SpeedMult / 100 x height to the target
+        if (spec["speed"] is not JsonObject speed) return;
+        var target = speed["target"]!.GetValue<double>();
+        var mgef = ValueModifier(c, speed["effect"]!.GetValue<string>(), "Racial Speed", "Movement speed is increased by <mag>%.", ActorValue.SpeedMult);
+        foreach (var (edid, list) in speed["spells"]!.AsObject())
+        {
+            var races = Edids(c, list).Select(c.Winning<IRaceGetter>).ToList();
+            var heights = races.Select(r => (r.Height.Male, r.Height.Female)).Distinct().ToList();
+            if (heights.Count != 1) { c.Error($"{edid}: {string.Join(", ", races.Select(r => $"{r.EditorID} {r.Height.Male}/{r.Height.Female}"))} differ in height"); continue; }
+            var (male, female) = heights[0];
+            var spell = c.OwnOrNew(c.Mod.Spells, edid);
+            ConfigureAbility(spell, "Racial Speed", "Every race moves at the same speed, whatever its height.");
+            var bySex = male == female ? [(null, male)] : new (MaleFemaleGender?, float)[] { (MaleFemaleGender.Male, male), (MaleFemaleGender.Female, female) };
+            foreach (var (sex, height) in bySex)
+            {
+                var effect = new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = (float)(target / height * 100 - 100), Area = 0, Duration = 0 } };
+                if (sex is MaleFemaleGender s)
+                    effect.Conditions.Add(new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 1f, Data = new GetIsSexConditionData { RunOnType = Condition.RunOnType.Subject, MaleFemaleGender = s } });
+                spell.Effects.Add(effect);
+            }
+            foreach (var winning in races)
+            {
+                var race = c.Override(c.Mod.Races, winning);
+                race.ActorEffect ??= [];
+                if (!race.ActorEffect.Any(x => x.FormKey == spell.FormKey)) race.ActorEffect.Add(spell.ToLink<ISpellRecordGetter>());
+            }
+            c.Note($"Race speed {edid} ({string.Join(", ", races.Select(r => r.EditorID))}): " +
+                   string.Join(", ", bySex.Zip(spell.Effects, (x, e) => $"{x.Item1?.ToString() ?? "both sexes"} height {x.Item2} SpeedMult +{e.Data!.Magnitude:0.####}")));
         }
     }
 

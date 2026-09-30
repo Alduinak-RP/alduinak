@@ -24,6 +24,12 @@ export const getActorValues = (ac: Actor): ActorValues => {
   return resultActorValue;
 }
 
+// Any CarryWeight change makes the engine re-check encumbrance and re-read the movement speed
+export const refreshMovement = (ac: Pick<Actor, "modActorValue">): void => {
+  ac.modActorValue("CarryWeight", 1);
+  ac.modActorValue("CarryWeight", -1);
+};
+
 export const getMaximumActorValue = (ac: Actor, avName: string): number => {
   const currentPercentage = ac.getActorValuePercentage(avName);
   return currentPercentage === 0 ?

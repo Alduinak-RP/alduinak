@@ -5,6 +5,7 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { adminGhostAlpha, setAdminGhostShader } from "../../view/adminGhostLook";
+import { refreshMovement } from "../../sync/actorvalues";
 
 const LOOK_REAPPLY_MS = 2000;
 const SHADER_REPLAY_DELAY_MS = 1000;
@@ -117,9 +118,7 @@ export class AdminModeService extends ClientListener {
     } else {
       return;
     }
-    // Any CarryWeight change makes the engine re-read the movement speed
-    player.modActorValue("CarryWeight", 1);
-    player.modActorValue("CarryWeight", -1);
+    refreshMovement(player);
   }
 
   // Takes a boolean only, so nothing a player types can reach a console command through here

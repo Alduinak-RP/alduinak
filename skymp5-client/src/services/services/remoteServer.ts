@@ -21,7 +21,7 @@ import * as messages from '../../messages';
 import { ObjectReferenceEx } from '../../extensions/objectReferenceEx';
 import { IdManager } from '../../lib/idManager';
 import { nameof } from '../../lib/nameof';
-import { setActorValuePercentage } from '../../sync/actorvalues';
+import { refreshMovement, setActorValuePercentage } from '../../sync/actorvalues';
 import { applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '../../sync/equipment';
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
@@ -195,9 +195,7 @@ on('update', () => {
   const player = Game.getPlayer()!;
   if (encumbranceRefreshPending) {
     encumbranceRefreshPending = false;
-    // Any CarryWeight change makes the engine re-check encumbrance
-    player.modActorValue("CarryWeight", 1);
-    player.modActorValue("CarryWeight", -1);
+    refreshMovement(player);
   }
   // Snapshots sent before the server saw a quick run of consumes would re-add them
   if (Date.now() < pcInvHoldUntil) {
