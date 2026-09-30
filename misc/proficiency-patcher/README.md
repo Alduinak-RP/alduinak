@@ -55,6 +55,11 @@ python misc/proficiency-patcher/patch.py --plugin <copy of the live AlduinakAddi
   new record named in `formIds` takes that id wherever it is made, and an unpinned one steps over pinned ids; the
   r15 record diff is what caught the shift. The crafting tab keywords are created in the order the tabs are first
   used, so a new tab would push every later one: it pins its id in `craftingCategories.formIds`.
+- `reservedFormIds` lists `[first, last]` blocks of local ids held for records a later release pins there (today
+  `0x041331..0x0413DF`, the r27 racial, survival and rebalance blocks). An unpinned new record steps over them, the
+  written header's next object id points past the last one (a Creation Kit save of the plugin then starts at
+  `0x0413E0`, not inside a block), and `verify_r13.py` accepts a new record pinned inside a block below the input's
+  next object id. Raise the block, and the "next free" id above, when a release reserves more.
 - `disableActors` copies about 2,650 cell and 27 worldspace records from their winners at run time and masters
   the city mods whose actors it disables. Rerun it whenever a plugin before `AlduinakAdditions.esp` changes
   (a city mod update, a new `DynDOLOD.esm`), or the plugin reverts those cells to the old copy.

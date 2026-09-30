@@ -89,15 +89,20 @@ if (report.Errors.Count > 0)
 
 Directory.CreateDirectory(opts.Out);
 var outPath = Path.Combine(opts.Out, pluginName);
+// A Creation Kit save takes the header's next id, so it points past every reserved block
+var ownIds = mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == pluginKey).Select(r => r.FormKey.ID).ToList();
+var iterated = ownIds.Count > 0 ? ownIds.Max() + 1 : 0u;
+var pastReserved = PatchContext.ReservedBlocks(spec).Select(b => b.Last + 1).DefaultIfEmpty(0u).Max();
+if (pastReserved > iterated) mod.ModHeader.Stats.NextFormID = pastReserved;
 mod.WriteToBinary(outPath, new BinaryWriteParameters
 {
     MastersListContent = MastersListContentOption.Iterate,
     MastersListOrdering = new MastersListOrderingByLoadOrder(env.LoadOrder.ListedOrder.Select(l => l.ModKey)),
     ModKey = ModKeyOption.NoCheck,
     RecordCount = RecordCountOption.Iterate,
-    NextFormID = NextFormIDOption.Iterate,
+    NextFormID = pastReserved > iterated ? NextFormIDOption.NoCheck : NextFormIDOption.Iterate,
 });
-Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes)");
+Console.WriteLine($"wrote {outPath} ({new FileInfo(outPath).Length} bytes), next form id {Math.Max(iterated, pastReserved):X}{(pastReserved > iterated ? $" (past the reserved blocks, own records end at {iterated - 1:X})" : "")}");
 if (spec["craftingCategories"] is JsonObject cat && categories != null)
 {
     var dir = Path.Combine(opts.Out, "CraftingCategories");
@@ -234,13 +239,22 @@ class PatchContext
     public T OwnOrNew<T>(IGroup<T> group, string edid, Action<T>? init = null, uint? formId = null) where T : class, IMajorRecord =>
         OwnOrNew(edid, () => (formId ?? PinnedId(edid)) is uint id ? AddAt(group, edid, id) : AddNext(group, edid), init);
 
-    // The next free id, stepping over the ids pinned records already hold
+    // The next free id, stepping over the ids pinned records already hold and the spec's reserved blocks
     T AddNext<T>(IGroup<T> group, string edid) where T : class, IMajorRecord
     {
         var taken = Mod.EnumerateMajorRecords().Where(r => r.FormKey.ModKey == Key).Select(r => r.FormKey.ID).ToHashSet();
-        while (taken.Contains(Mod.ModHeader.Stats.NextFormID)) Mod.ModHeader.Stats.NextFormID++;
+        var reserved = ReservedBlocks(Spec);
+        bool Held(uint id) => taken.Contains(id) || reserved.Any(b => b.First <= id && id <= b.Last);
+        while (Held(Mod.ModHeader.Stats.NextFormID)) Mod.ModHeader.Stats.NextFormID++;
         return group.AddNew(edid);
     }
+
+    // spec reservedFormIds: [first, last] local id blocks held for records a later release pins there
+    public static List<(uint First, uint Last)> ReservedBlocks(JsonObject spec) =>
+        (spec["reservedFormIds"] as JsonArray ?? new JsonArray())
+            .Select(n => n!.AsArray())
+            .Select(p => (Convert.ToUInt32(p[0]!.GetValue<string>(), 16), Convert.ToUInt32(p[1]!.GetValue<string>(), 16)))
+            .ToList();
 
     // spec formIds: the local id a new own record takes, so records added later never shift the ones before them
     uint? PinnedId(string edid) => Spec["formIds"]?[edid] is JsonNode pin ? Convert.ToUInt32(pin.GetValue<string>(), 16) : null;

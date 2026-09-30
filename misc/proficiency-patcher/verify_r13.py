@@ -413,13 +413,19 @@ def main():
     ro, dup = index(out)
     problems.extend(f'{t} {show(k)} appears twice' for t, k in dup)
 
-    # Nothing is dropped, own records keep their local ids, and new ones take ids past the input's next object id
+    # Nothing is dropped, own records keep their local ids, and new ones take ids past the input's next object id or in a reserved block
     for (t, k), r in ri.items():
         if k[0] == me and (edid(ro[(t, k)]) if (t, k) in ro else None) not in (edid(r), 'AldProf_' + edid(r)[len('AldMastery_'):] if t == 'SPEL' and edid(r).startswith('AldMastery_') else None):
             problems.append(f'own {t} {show(k)} {edid(r)} lost its local id')
         elif (t, k) not in ro:
             problems.append(f'{t} {show(k)} {edid(r)} was dropped')
-    problems.extend(f'new own {t} {show(k)} reuses an id below {inp.next_id:#x}' for t, k in ro if k[0] == me and (t, k) not in ri and k[1] < inp.next_id)
+    reserved = [(int(a, 16), int(b, 16)) for a, b in spec.get('reservedFormIds', [])]
+    problems.extend(f'new own {t} {show(k)} reuses an id below {inp.next_id:#x}' for t, k in ro
+                    if k[0] == me and (t, k) not in ri and k[1] < inp.next_id and not any(a <= k[1] <= b for a, b in reserved))
+    reserved_end = max((b for _, b in reserved), default=-1)
+    if out.next_id <= reserved_end:
+        problems.append(f'HEDR next object id {out.next_id:#x} is inside or before the reserved blocks ending {reserved_end:#x}')
+    log.append(f'reserved blocks {", ".join(f"{a:#x}..{b:#x}" for a, b in reserved) or "none"}; header next object id {inp.next_id:#x} -> {out.next_id:#x}')
 
     # Winners before the plugin: the records the output overrides and every actor's state; every record key feeds the form id check
     known = {here << 24 | k[1] for _, k in list(ri) + list(ro) if k[0] == me}

@@ -333,6 +333,12 @@
    "description": "The legendary farmer's craft."
   }
  ],
+ "reservedFormIds": [
+  [
+   "0x041331",
+   "0x0413DF"
+  ]
+ ],
  "formIds": {
   "AldProf_Alchemist_Legendary": "0x04126D",
   "AldProf_Blacksmith_Legendary": "0x04126E",
