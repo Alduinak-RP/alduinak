@@ -3024,7 +3024,6 @@
     "MCERecipeClothesRobesMageApprentice",
     "MCERecipeClothesRobesMageAdept",
     "MCERecipeClothesRobesMageExpert",
-    "MCERecipeClothesRobesMageMaster",
     "MCERecipeClothesRobesMageNoviceHood",
     "MCERecipeClothesRobesMageApprenticeHood",
     "MCERecipeClothesRobesMageAdeptHood",
@@ -3074,6 +3073,7 @@
     "0RecipeArmorKhajiitRobesWater_Clothes"
    ],
    "Expert": [
+    "MCERecipeClothesRobesMageMaster",
     "MCERecipeClothesFineClothes01",
     "MCERecipeClothesFineClothes01Variant",
     "MCERecipeClothesFineClothes02",
@@ -3438,7 +3438,7 @@
    {
     "edid": "RecipeArmorevgsmptoothlocksatchelarmor",
     "name": "Toothlock Satchel",
-    "tier": "Expert",
+    "tier": "Master",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3449,7 +3449,7 @@
    {
     "edid": "RecipeArmorevgsmptoothlocksatchelDARKarmor",
     "name": "Toothlock Satchel",
-    "tier": "Expert",
+    "tier": "Master",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3460,7 +3460,7 @@
    {
     "edid": "RecipeArmorevgsmppatchworksatchelarmor",
     "name": "Patchwork Satchel",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 4,
@@ -3470,7 +3470,7 @@
    {
     "edid": "RecipeArmorevgsmppatchworksatchelDARKarmor",
     "name": "Patchwork Satchel",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 4,
@@ -3491,7 +3491,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedsatchelDARKarmor",
     "name": "Reinforced Satchel (black)",
-    "tier": "Master",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3598,31 +3598,31 @@
    {
     "edid": "RecipeArmorevgsmpbasicpouchLarmor",
     "name": "Tied Linen Pouch (Left)",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack"
    },
    {
     "edid": "RecipeArmorevgsmpbasicpouchLDARKarmor",
     "name": "Tied Linen Pouch (Left)",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack"
    },
    {
     "edid": "RecipeArmorevgsmpbasicpouchRarmor",
     "name": "Tied Linen Pouch (Right)",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack"
    },
    {
     "edid": "RecipeArmorevgsmpbasicpouchRDARKarmor",
     "name": "Tied Linen Pouch (Right)",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingTanningRack"
    },
    {
     "edid": "RecipeArmorevgsmpsturdypouchLarmor",
     "name": "Sturdy Pouch (Left)",
-    "tier": "Adept",
+    "tier": "Master",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3633,7 +3633,7 @@
    {
     "edid": "RecipeArmorevgsmpsturdypouchLDARKarmor",
     "name": "Sturdy Pouch (Left)",
-    "tier": "Adept",
+    "tier": "Master",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3644,7 +3644,7 @@
    {
     "edid": "RecipeArmorevgsmpsturdypouchRarmor",
     "name": "Sturdy Pouch (Right)",
-    "tier": "Adept",
+    "tier": "Master",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3655,7 +3655,7 @@
    {
     "edid": "RecipeArmorevgsmpsturdypouchRDARKarmor",
     "name": "Sturdy Pouch (Right)",
-    "tier": "Adept",
+    "tier": "Master",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 2,
@@ -3738,7 +3738,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpackarmor",
     "name": "Reinforced Backpack",
-    "tier": "Adept",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3749,7 +3749,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpackDARKarmor",
     "name": "Reinforced Backpack",
-    "tier": "Adept",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3760,7 +3760,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpackLTHarmor",
     "name": "Reinforced Backpack",
-    "tier": "Adept",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3771,7 +3771,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpackLIGHTarmor",
     "name": "Reinforced Backpack",
-    "tier": "Adept",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "LeatherStrips": 3,
@@ -3782,7 +3782,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpacklanternarmor",
     "name": "Reinforced Backpack & Lantern",
-    "tier": "Adept",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 5,
@@ -3795,7 +3795,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpacklanternDARKarmor",
     "name": "Reinforced Backpack & Lantern",
-    "tier": "Adept",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 5,
@@ -3808,7 +3808,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpacklanternLTHarmor",
     "name": "Reinforced Backpack & Lantern",
-    "tier": "Adept",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 5,
@@ -3821,7 +3821,7 @@
    {
     "edid": "RecipeArmorevgsmpreinforcedbackpacklanternLIGHTarmor",
     "name": "Reinforced Backpack & Lantern",
-    "tier": "Adept",
+    "tier": "Expert",
     "bench": "CraftingTanningRack",
     "items": {
      "Leather01": 5,
@@ -9400,20 +9400,33 @@
      "Fine Raiment",
      "FineRaiment",
      "Fine Clothes",
-     "Wedding"
+     "Wedding",
+     "MCERecipeClothesRobesMageMaster"
     ],
     "tier": "Expert",
     "profession": "tailor"
    },
    {
-    "name": "Adept backpacks",
+    "name": "Expert bags",
     "benches": [
      "CraftingTanningRack"
     ],
     "match": [
-     "evgsmpreinforcedbackpack"
+     "evgsmpreinforcedbackpack",
+     "evgsmpreinforcedsatchel"
     ],
-    "tier": "Adept",
+    "tier": "Expert",
+    "profession": "tailor"
+   },
+   {
+    "name": "Master pouches",
+    "benches": [
+     "CraftingTanningRack"
+    ],
+    "match": [
+     "evgsmpsturdypouch"
+    ],
+    "tier": "Master",
     "profession": "tailor"
    },
    {
