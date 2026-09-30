@@ -1,7 +1,8 @@
 """Rule tests for the rebalance settings generator: python misc/combat-settings/test_generate.py
 
 The dump test replays the 2026-09-29 research dump (COMBAT_ITEMS, default the combat plan's items folder) and expects
-the coverage sim.py published; it is skipped when the dump is absent.
+the coverage sim.py published, less the 32 audit records whose only recipe the patcher parks (sim.py counted them); it
+is skipped when the dump is absent.
 """
 import itertools
 import json
@@ -96,6 +97,15 @@ class Resolution(unittest.TestCase):
         self.assertEqual(run(armors=[a], cobjs=[r]).final_row('ARMO', a)[0], 'Hide')
         self.assertEqual(run(armors=[a], cobjs=[r], retier=True).final_row('ARMO', a), ('Studded', 'keyword'))
 
+    def test_parked_recipe_is_not_audited(self):
+        a = armo('DLC2ArmorBonemoldCuirass', keywords='DLC2ArmorMaterialBonemoldHeavy', atype='Heavy')
+        parked = cobj('DLC2ArmorBonemoldCuirass', gates=('Blacksmith Novice',), bench='MothNest1')
+        cls = run(armors=[a], cobjs=[parked])
+        self.assertEqual(cls.final_row('ARMO', a), ('Bonemold', 'keyword'))
+        self.assertEqual(C.parked_benches(), {'MothNest1'})
+        live = cobj('DLC2ArmorBonemoldCuirass', gates=('Blacksmith Novice',))
+        self.assertEqual(run(armors=[a], cobjs=[parked, live]).final_row('ARMO', a), ('Iron', 'audit'))
+
     def test_closed_helmet_is_not_audited(self):
         a = armo('ModScaledHelmet_CLS', slots='30:Head 31:Hair', keywords='ArmorMaterialScaled', atype='Light')
         cls = run(armors=[a], cobjs=[cobj('ModScaledHelmet_CLS', gates=('Blacksmith Novice',))])
@@ -117,6 +127,20 @@ class Numbers(unittest.TestCase):
 
     def test_hp_tables_cover_every_row(self):
         self.assertEqual(G.hp_problems(DESIGN), [])
+
+    def test_creature_variants_take_the_creature_dt_and_the_rest_are_listed(self):
+        race = lambda desc, dmg, playable=False: dict(desc=desc, unarmed_damage=dmg, playable=playable)  # noqa: E731
+        edids = [e for c in DESIGN['npc']['creatures'].values() for e in [c['race']] + c.get('variants', [])]
+        races = {e: race(f'{i + 1:x}:Test.esm', 5) for i, e in enumerate(edids)}
+        races.update(ChaurusRace=race('131eb:Skyrim.esm', 20), NordRace=race('13746:Skyrim.esm', 4, True), DraugrRace=race('d53:Skyrim.esm', 1))
+        ndt, rows, unmapped, problems = G.natural_dt(DESIGN, races)
+        self.assertEqual((ndt[races['TrollRace']['desc']], ndt[races['DLC1TrollRaceArmored']['desc']]), (2.0, 2.0))
+        self.assertEqual({ndt[races[e]['desc']] for e in ('DragonRace', 'DLC2DragonBlackRace', 'UndeadDragonRace', 'DLC1UndeadDragonRace')}, {6.0})
+        self.assertNotIn(races['SkeeverWhiteRace']['desc'], ndt)
+        self.assertEqual(unmapped, [['ChaurusRace', '131eb:Skyrim.esm', 20], ['DraugrRace', 'd53:Skyrim.esm', 1]])
+        self.assertEqual(problems, [])
+        del races['SabreCatSnowyRace']
+        self.assertEqual(G.natural_dt(DESIGN, races)[3], ['creature SabreCat: no RACE SabreCatSnowyRace in the load order'])
 
     def test_claw_overrides_are_checked(self):
         bad = json.loads(json.dumps(DESIGN))
@@ -179,9 +203,9 @@ class ResearchDump(unittest.TestCase):
         self.assertEqual(dict(ac), {'keyword': 4662, 'clothing/jewelry (DT 0)': 1413, 'override': 87, 'fallback': 85,
                                     'fallback(IA multi)': 14, 'AldCatMat': 4})
         self.assertEqual(wfb, [])
-        self.assertEqual(len(cls.audit), 250)
+        self.assertEqual(len(cls.audit), 218)
         tv = sorted(v['sig'] for v in cls.variants.values() if cls.playable(v['rec']))
-        self.assertEqual((tv.count('WEAP'), tv.count('ARMO')), (31, 271))
+        self.assertEqual((tv.count('WEAP'), tv.count('ARMO')), (31, 187))
         ores = [cls.A[C.rid(a)]['row'] for a in cls.armors if cls.playable(a)]
         self.assertEqual((ores.count('Orcish'), ores.count('Dwarven')), (137, 179))
         slow = [w for w in cls.weapons if cls.playable(w) and not w['template'] and cls.W[C.rid(w)]['kind'] in ('weapon', 'bow')

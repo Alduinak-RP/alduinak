@@ -45,7 +45,7 @@
   ]
  },
  "order": [
-  "blocked: a player on a player -> 0; an NPC on a player -> the unblocked post-DT damage x npcBlockedDamageShare (the top-level server setting of r28 G10, not part of this block), or x durability.effect.brokenBlockPass when larger for a broken shield or weapon; a blocked hit stays flagged blocked (no poison, no disease); dummy / staff rows -> 0 (the hit is ignored)",
+  "blocked: a player on a player -> 0 with an intact shield or weapon, a broken shield (or a parry with a broken weapon) lets durability.effect.brokenBlockPass x the unblocked post-DT damage through (durability design 3.2.4); an NPC on a player -> the unblocked post-DT damage x npcBlockedDamageShare (the top-level server setting of r28 G10, not part of this block), or x durability.effect.brokenBlockPass when larger for a broken shield or weapon; a blocked hit stays flagged blocked in every case (no poison, no disease); dummy / staff rows -> 0 (the hit is ignored)",
   "base damage: weapons[row].base x weaponTypes[type].dmgMult (override > keyword > AldCatMat > fallback)",
   "tempering x(1 + 0.015 q)",
   "validated dagger sneak -> crit; bash x0.30 and never crits",
@@ -2055,21 +2055,32 @@
     "hp": 15,
     "damage": 5,
     "dt": 0.0,
-    "race": "SkeeverRace"
+    "race": "SkeeverRace",
+    "variants": [
+     "SkeeverWhiteRace"
+    ]
    },
    "Wolf": {
     "label": "Wolf",
     "hp": 12,
     "damage": 5,
     "dt": 0.0,
-    "race": "WolfRace"
+    "race": "WolfRace",
+    "variants": [
+     "C06WolfSpiritRace"
+    ]
    },
    "Mudcrab": {
     "label": "Mudcrab",
     "hp": 25,
     "damage": 5,
     "dt": 3.0,
-    "race": "MudcrabRace"
+    "race": "MudcrabRace",
+    "variants": [
+     "DLC2MudcrabSolstheimRace",
+     "ccBGSSSE001_MudcrabRaceFrenzied",
+     "ccBGSSSE001_MudcrabRaceFlamingPot"
+    ]
    },
    "FrostbiteSpider": {
     "label": "Frostbite spider",
@@ -2097,7 +2108,14 @@
     "hp": 125,
     "damage": 25,
     "dt": 2.0,
-    "race": "SprigganRace"
+    "race": "SprigganRace",
+    "variants": [
+     "SprigganMatronRace",
+     "SprigganEarthMotherRace",
+     "DLC2SprigganBurntRace",
+     "ccBGSSSE025_CorruptedSprigganRaceDementia",
+     "ccBGSSSE025_CorruptedSprigganRaceMania"
+    ]
    },
    "Hagraven": {
     "label": "Hagraven",
@@ -2111,7 +2129,13 @@
     "hp": 500,
     "damage": 25,
     "dt": 6.0,
-    "race": "DragonRace"
+    "race": "DragonRace",
+    "variants": [
+     "DragonBlackRace",
+     "DLC2DragonBlackRace",
+     "UndeadDragonRace",
+     "DLC1UndeadDragonRace"
+    ]
    },
    "BrownBear": {
     "label": "Brown bear",
@@ -2125,7 +2149,11 @@
     "hp": 100,
     "damage": 35,
     "dt": 1.0,
-    "race": "SabreCatRace"
+    "race": "SabreCatRace",
+    "variants": [
+     "SabreCatSnowyRace",
+     "DLC1SabreCatGlowRace"
+    ]
    },
    "BlackBear": {
     "label": "Black bear",
@@ -2139,7 +2167,10 @@
     "hp": 150,
     "damage": 35,
     "dt": 2.0,
-    "race": "TrollRace"
+    "race": "TrollRace",
+    "variants": [
+     "DLC1TrollRaceArmored"
+    ]
    },
    "SnowBear": {
     "label": "Snow bear",
@@ -2167,14 +2198,21 @@
     "hp": 250,
     "damage": 60,
     "dt": 2.5,
-    "race": "GiantRace"
+    "race": "GiantRace",
+    "variants": [
+     "DLC2GhostFrostGiantRace",
+     "C00GiantOutsideWhiterunRace"
+    ]
    },
    "FrostTroll": {
     "label": "Frost troll",
     "hp": 250,
     "damage": 65,
     "dt": 3.0,
-    "race": "TrollFrostRace"
+    "race": "TrollFrostRace",
+    "variants": [
+     "DLC1TrollFrostRaceArmored"
+    ]
    },
    "Mammoth": {
     "label": "Mammoth",
@@ -2188,7 +2226,10 @@
     "hp": 400,
     "damage": 100,
     "dt": 8.0,
-    "race": "DwarvenCenturionRace"
+    "race": "DwarvenCenturionRace",
+    "variants": [
+     "DLC1LD_ForgemasterRace"
+    ]
    }
   },
   "creatureDamageSource": "RACE.unarmedDamage of the non-playable race (the creatures table copies it for the sim and the calculator)",
@@ -2255,7 +2296,8 @@
      ]
     ]
    }
-  }
+  },
+  "creatureVariantsNote": "variants: sibling RACE records of the same creature that take its DT (plan correction of the r27a review); an armored troll keeps the plain troll's DT until the owner gives it more. Every other non-playable race with unarmed damage has no natural DT, and report.md lists them for the owner"
  },
  "keywordMap": {
   "order": [

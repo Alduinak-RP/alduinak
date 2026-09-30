@@ -3,13 +3,18 @@
 It runs on the record dicts of loadorder.py or on the 2026-09-29 research dump (items/*.json); both carry edid,
 keywords, template, anim_type, speed, biped_slots, armor_type, ar, weight and non_playable. Rows, types and numbers
 come from design.json. Resolution order: form-id override (regex rules on the record or any template it inherits
-from, then the recipe-rank audit), specific then generic keyword, AldCatMat_*, fallback.
+from, then the recipe-rank audit), specific then generic keyword, AldCatMat_*, fallback. The audit counts only recipes
+in play: one the patcher parks on its out-of-play bench keyword (spec.json uncraftable.bench, tailoring.disabledBench)
+is loot-only.
 """
+import json
+import os
 import re
 
 RANK = {'Tool': 0, 'Free': 0, 'Novice': 1, 'Adept': 2, 'Expert': 3, 'Master': 4, 'Legendary': 5}
 RANK_NAME = {0: 'Free', 1: 'Novice', 2: 'Adept', 3: 'Expert', 4: 'Master', 5: 'Legendary'}
 TEMPER_BENCHES = ('CraftingSmithingArmorTable', 'CraftingSmithingSharpeningWheel')
+PATCHER_SPEC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'proficiency-patcher', 'spec.json')
 PROF_GATE = re.compile(r'AldProf_(\w+?)_(Novice|Adept|Expert|Master|Legendary)\b')
 MELEE_TYPE = {'OneHandDagger': 'dagger', 'OneHandSword': 'sword', 'OneHandAxe': 'waraxe', 'OneHandMace': 'mace',
               'TwoHandSword': 'greatsword'}
@@ -45,9 +50,17 @@ def round_half_up(x):
     return int(x + 0.5)
 
 
+def parked_benches(spec_path=PATCHER_SPEC):
+    """The bench keywords the patcher parks recipes on to take them out of play (MothNest1 today)."""
+    with open(spec_path, encoding='utf-8') as f:
+        spec = json.load(f)
+    return {b for b in ((spec.get('uncraftable') or {}).get('bench'), (spec.get('tailoring') or {}).get('disabledBench')) if b}
+
+
 class Classifier:
-    def __init__(self, design, weapons, armors, cobjs, assume_retier=False):
+    def __init__(self, design, weapons, armors, cobjs, assume_retier=False, parked=None):
         self.D = design
+        self.parked = parked_benches() if parked is None else set(parked)
         K = design['keywordMap']
         self.K = K
         self.ow = [(re.compile(p), m, note) for p, m, note in K['overridesWeapons']]
@@ -67,10 +80,10 @@ class Classifier:
 
     # ------------------------------------------------------------ recipes
     def _recipe_ranks(self):
-        """created edid -> lowest AldProf rank among its crafting (not temper) recipes."""
+        """created edid -> lowest AldProf rank among its crafting (not temper, not parked) recipes."""
         ranks = {}
         for c in self.cobjs:
-            if c['bench'] in TEMPER_BENCHES:
+            if c['bench'] in TEMPER_BENCHES or c['bench'] in self.parked:
                 continue
             conds = c['conditions'] if isinstance(c['conditions'], list) else [c['conditions'] or '']
             found = PROF_GATE.findall(' '.join(map(str, conds)))

@@ -87,13 +87,20 @@ def race_override(D, races, cls=None):
 
 
 def natural_dt(D, races):
-    out, rows = {}, []
+    """Each design creature's DT for its race and every variant race; report rows, the unmapped creature races and problems."""
+    out, rows, problems, mapped = {}, [], [], set()
     for k, c in D['npc']['creatures'].items():
-        r = (races or {}).get(c['race'])
-        rows.append([k, c['race'], r['desc'] if r else 'missing', c['damage'], r['unarmed_damage'] if r else '-', c['dt']])
-        if r and c['dt']:
-            out[r['desc']] = c['dt']
-    return out, rows
+        for i, edid in enumerate([c['race']] + c.get('variants', [])):
+            mapped.add(edid)
+            r = (races or {}).get(edid)
+            rows.append([k if not i else f'{k} (variant)', edid, r['desc'] if r else 'missing', c['damage'], r['unarmed_damage'] if r else '-', c['dt']])
+            if races is not None and not r:
+                problems.append(f'creature {k}: no RACE {edid} in the load order')
+            if r and c['dt']:
+                out[r['desc']] = c['dt']
+    unmapped = sorted(([e, r['desc'], r['unarmed_damage']] for e, r in (races or {}).items()
+                       if e not in mapped and not r.get('playable') and (r.get('unarmed_damage') or 0) > 0), key=lambda x: (-x[2], x[0]))
+    return out, rows, unmapped, problems
 
 
 def fallback_materials(cls, lo_ingredients):
@@ -174,7 +181,8 @@ def settings_block(D, cls, races, lo_ingredients, enable, source=''):
     problems = hp_problems(D)
     claws, p = race_override(D, races, cls)
     problems += p
-    ndt, ndt_rows = natural_dt(D, races)
+    ndt, ndt_rows, ndt_unmapped, p = natural_dt(D, races)
+    problems += p
     fmat, fmat_rows, p = fallback_materials(cls, lo_ingredients)
     problems += p
     overrides, ocounts = overrides_map(cls)
@@ -227,7 +235,7 @@ def settings_block(D, cls, races, lo_ingredients, enable, source=''):
         'blockStamina': numeric(D['blockStamina'], ('perArmorWeight', 'weightCap')),
         'durability': dur,
     }
-    return block, dict(problems=problems, ocounts=ocounts, ndt_rows=ndt_rows, fmat_rows=fmat_rows)
+    return block, dict(problems=problems, ocounts=ocounts, ndt_rows=ndt_rows, ndt_unmapped=ndt_unmapped, fmat_rows=fmat_rows)
 
 
 # ------------------------------------------------------------------ plugin lists (PL-r27b)
@@ -363,15 +371,19 @@ def report(D, cls, meta, info=None, lists=None, checks=None):
           f'Armor base records with AR on the fallback row (logged once each by the server): {len(afb)}: {"; ".join(afb)}.\n',
           f'## Recipe-rank audit\n\n{len(cls.audit)} craftable base records sit on a row above their recipe rank and get an '
           f'override to the reference row of that rank; {tv["WEAP"]} WEAP and {tv["ARMO"]} ARMO playable template variants '
-          f'inherit it.\n', md(['kind', 'row', 'row tier', 'recipe rank', 'capped to', 'records', 'examples'], audit_table(cls))]
+          f'inherit it. A recipe parked on {", ".join(sorted(cls.parked)) or "no bench"} (the patcher\'s uncraftable and tailoring '
+          f'parking, out of play) does not count, so a loot-only record keeps its row.\n', md(['kind', 'row', 'row tier', 'recipe rank', 'capped to', 'records', 'examples'], audit_table(cls))]
     if info:
         oc = info['ocounts']
         rows = [[s, h, p, n] for (s, h, p), n in sorted(oc.items())]
         L_.append('## Overrides in the settings block\n\nNon-playable records (NPC gear) are included, so the server resolves them too.\n')
         L_.append(md(['type', 'source', 'records', 'count'], rows))
-        L_.append('## Creature natural DT (npc.naturalDT)\n\nThe design table by creature, its RACE, the RACE unarmed damage the '
-                  'server uses, and the DT written (only non-zero values are written).\n')
+        L_.append('## Creature natural DT (npc.naturalDT)\n\nThe design table by creature, its RACE and the variant races that take '
+                  'its DT, the RACE unarmed damage the server uses, and the DT written (only non-zero values are written).\n')
         L_.append(md(['creature', 'race', 'desc', 'design damage', 'RACE unarmed damage', 'DT'], info['ndt_rows']))
+        L_.append('Non-playable races with unarmed damage and no creature entry, so natural DT 0 (humanoids wear their DT as gear; a '
+                  'creature among them needs an owner decision: add it to a creature\'s variants in design.json or leave it at 0): '
+                  f"{len(info['ndt_unmapped'])}.\n\n" + md(['race', 'desc', 'RACE unarmed damage'], info['ndt_unmapped']))
         L_.append('## Durability repair fallback materials (durability.repair.fallbackMaterial)\n\nFor items without a temper '
                   'recipe; per kind and row, the ingredient most temper recipes of that row use.\n')
         L_.append(md(['kind', 'row', 'material', 'desc', 'evidence'], info['fmat_rows']))
@@ -416,7 +428,7 @@ def summary(block, lists, info):
             f"{block['critDTMult']}, power x{block['powerMult']}, bash x{block['bashMult']}, cap {block['playerHitCap']}, shield "
             f"{block['shieldShare']}, temper {block['tempering']['weaponPerStep']}/{block['tempering']['armorPerStep']}, snap "
             f"{block['healthSnap']}; overrides {len(block['overrides'])} (rules {rules}, audit {audit}, template variants {var}); "
-            f"claws {claws}; natural DT {len(block['npc']['naturalDT'])} races; durability HP weapons {len(dur['weaponHP'])}, bows "
+            f"claws {claws}; natural DT {len(block['npc']['naturalDT'])} races ({len(info['ndt_unmapped'])} other creature races at 0); durability HP weapons {len(dur['weaponHP'])}, bows "
             f"{len(dur['bowHP'])}, crossbows {len(dur['crossbowHP'])}, armor sets {len(dur['armorSetHP'])}, shield share "
             f"{dur['shieldHPShare']}, fallback materials {sum(len(v) for v in dur['repair']['fallbackMaterial'].values())}; plugin lists "
             f"tooltips {len(lists['tooltips']['weapons'])} WEAP / {len(lists['tooltips']['armor'])} ARMO, weights {len(lists['weights'])}, "

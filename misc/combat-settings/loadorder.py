@@ -21,6 +21,8 @@ BIPED = {0: 'Head', 1: 'Hair', 2: 'Body', 3: 'Hands', 4: 'Forearms', 5: 'Amulet'
          9: 'Shield', 10: 'Tail', 11: 'LongHair', 12: 'Circlet', 13: 'Ears'}
 HAS_SPELL = 264
 RACE_UNARMED_DAMAGE = 96
+# RACE DATA flags, bit 0 Playable
+RACE_FLAGS = 32
 
 
 def read_bytes(path, limit=-1):
@@ -284,7 +286,8 @@ def races(lo):
     for key, r, pi in lo.by_type.get('RACE', []):
         d = r.sub('DATA') or b''
         out[r.edid()] = dict(common(lo, key, r, pi), unarmed_damage=round(struct.unpack_from('<f', d, RACE_UNARMED_DAMAGE)[0], 4)
-                             if len(d) >= RACE_UNARMED_DAMAGE + 4 else None)
+                             if len(d) >= RACE_UNARMED_DAMAGE + 4 else None,
+                             playable=bool(struct.unpack_from('<I', d, RACE_FLAGS)[0] & 1) if len(d) >= RACE_FLAGS + 4 else False)
     return out
 
 
