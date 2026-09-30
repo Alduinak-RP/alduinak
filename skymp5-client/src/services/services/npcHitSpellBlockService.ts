@@ -33,6 +33,10 @@ const FALMER_POISON_EFFECT = 0x109d7c;
 const HIT_SPELLS_BY_EFFECT = new Map<number, number[]>([[FALMER_POISON_EFFECT, [0x109d7b, 0x109d7e, 0x109d7f, 0x109d80, 0x109d81]]]);
 const DAWNGUARD_FALMER_POISON = { id: 0x015cad, plugin: "Dawnguard.esm" };
 
+interface NativeDispel {
+  dispelSpellFrom?: (actorFormId: number, spellFormId: number, casterFormId: number) => void;
+}
+
 interface Landed {
   spellIds: number[];
   at: number;
@@ -40,7 +44,8 @@ interface Landed {
   source: string;
   // IsBlocking and facing when the spell landed, the verdict when no weapon hit pairs with it
   blockingPose: boolean;
-  verdict: "pending" | "kept" | "dispelled";
+  // Spared: blocked, but dispelSpell would also take another NPC's unblocked copy still running
+  verdict: "pending" | "kept" | "dispelled" | "spared";
 }
 
 interface Swing {
@@ -53,6 +58,7 @@ interface Swing {
 // so a blocked swing still poisons; a hit from a copy this client does not host is a replayed swing whose real hit the host reports.
 // Both are dispelled here and the health floored to the value before the effect, keyed to NPC aggressors and Contact-delivery poison effects only.
 // The server names every Falmer swing it resolves as blocked (npcHitPoisonBlocked), and that verdict dispels the landing too.
+// SkyrimPlatform's dispelSpellFrom takes only that NPC's copy; without it dispelSpell takes every caster's, so a landing is spared while another NPC's unblocked copy runs.
 export class NpcHitSpellBlockService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -115,8 +121,8 @@ export class NpcHitSpellBlockService extends ClientListener {
       verdict: "pending",
     };
     this.landed.set(aggressorId, entry);
-    if (sameLanding && previous.verdict === "kept") {
-      entry.verdict = "kept";
+    if (sameLanding && (previous.verdict === "kept" || previous.verdict === "spared")) {
+      entry.verdict = previous.verdict;
       return;
     }
     // A later report of a dispelled landing dispels again, the effect may not have been listed at the first try
@@ -160,10 +166,9 @@ export class NpcHitSpellBlockService extends ClientListener {
       if (entry.verdict !== "dispelled") this.dispel(aggressorId, entry, `server blocked, ${entry.source}`);
       return;
     }
-    // No landing seen from it: a Falmer poison still on the player is its, unless another Falmer's unblocked hit poisoned the player too
+    // No landing seen from it: a Falmer poison still on the player may be its
     const effect = MagicEffect.from(Game.getFormEx(FALMER_POISON_EFFECT));
-    const keptElsewhere = Array.from(this.landed.values()).some((other) => other.verdict === "kept");
-    if (!effect || keptElsewhere || !player.hasMagicEffect(effect)) {
+    if (!effect || !player.hasMagicEffect(effect)) {
       this.logThrottled(`server-${aggressorId}`, `server blocked a hit of ${aggressorId.toString(16)}, no poison of it to dispel`);
       return;
     }
@@ -173,20 +178,28 @@ export class NpcHitSpellBlockService extends ClientListener {
   }
 
   private dispel(aggressorId: number, entry: Landed, reason: string): void {
-    entry.verdict = "dispelled";
     const spells = entry.spellIds.map((id) => Spell.from(Game.getFormEx(id))).filter((spell): spell is Spell => !!spell);
+    const byCaster = (this.sp as unknown as NativeDispel).dispelSpellFrom;
+    const running = byCaster ? 0 : this.runningPoisonOf(aggressorId, entry);
+    if (running) {
+      entry.verdict = "spared";
+      this.logThrottled(`spared-${aggressorId}`, `left ${this.spellList(entry)} from ${aggressorId.toString(16)} (${reason}), dispelSpell would also take the unblocked poison of ${running.toString(16)}`);
+      return;
+    }
+    entry.verdict = "dispelled";
+    const remove = (player: Actor, list: Spell[]) => list.forEach((spell) => byCaster ? byCaster(player.getFormID(), spell.getFormID(), aggressorId) : player.dispelSpell(spell));
     this.controller.once("update", () => {
       const player = this.livePlayer();
       if (!player) return;
-      spells.forEach((spell) => player.dispelSpell(spell));
-      // A dispel that ran before the engine listed the effect misses it, so the next frame looks again
+      remove(player, spells);
+      // A dispel that ran before the engine listed the effect misses it, so the next frame looks again; another caster's copy keeps the effect listed
       this.controller.once("update", () => {
         const player = this.livePlayer();
         if (!player) return;
-        const missed = spells.filter((spell) => this.poisonEffects(spell).some((effect) => player.hasMagicEffect(effect)));
-        missed.forEach((spell) => player.dispelSpell(spell));
+        const missed = byCaster ? [] : spells.filter((spell) => this.poisonEffects(spell).some((effect) => player.hasMagicEffect(effect)));
+        remove(player, byCaster ? spells : missed);
         // Only the poison's own first tick is undone, damage the server sent in the same frame stays
-        const tick = Math.max(0, ...spells.map((spell) => this.healthTick(spell)));
+        const tick = Math.max(0, ...spells.map((spell) => this.poisonMax(spell, (i) => spell.getNthEffectMagnitude(i))));
         const after = player.getActorValuePercentage("health");
         const maxHealth = getMaximumActorValue(player, "health") || 1;
         const restored = after < entry.healthBefore && entry.healthBefore - after <= tick / maxHealth + 0.001;
@@ -214,13 +227,25 @@ export class NpcHitSpellBlockService extends ClientListener {
     return effects;
   }
 
-  private healthTick(spell: Spell): number {
-    let tick = 0;
+  private poisonMax(spell: Spell, value: (effectIndex: number) => number): number {
+    let res = 0;
     for (let i = 0; i < spell.getNumEffects(); i++) {
       const effect = spell.getNthEffectMagicEffect(i);
-      if (effect && this.isPoisonHitEffect(effect)) tick = Math.max(tick, spell.getNthEffectMagnitude(i));
+      if (effect && this.isPoisonHitEffect(effect)) res = Math.max(res, value(i));
     }
-    return tick;
+    return res;
+  }
+
+  // Another NPC's kept landing of a shared spell whose poison still runs
+  private runningPoisonOf(aggressorId: number, entry: Landed): number {
+    const now = Date.now();
+    let running = 0;
+    this.landed.forEach((other, id) => {
+      if (running || id === aggressorId || other.verdict !== "kept" || !other.spellIds.some((s) => entry.spellIds.includes(s))) return;
+      const seconds = Math.max(0, ...other.spellIds.map((s) => Spell.from(Game.getFormEx(s))).map((spell) => spell ? this.poisonMax(spell, (i) => spell.getNthEffectDuration(i)) : 0));
+      if (now - other.at < seconds * 1000) running = id;
+    });
+    return running;
   }
 
   private isPoisonHitSpell(spell: Spell): boolean {

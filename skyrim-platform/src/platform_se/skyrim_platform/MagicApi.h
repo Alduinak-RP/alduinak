@@ -11,6 +11,7 @@ Napi::Value GetAnimationVariablesFromActor(const Napi::CallbackInfo& info);
 Napi::Value ApplyAnimationVariablesToActor(const Napi::CallbackInfo& info);
 
 Napi::Value DispelPotionEffects(const Napi::CallbackInfo& info);
+Napi::Value DispelSpellFrom(const Napi::CallbackInfo& info);
 Napi::Value AgePotionEffects(const Napi::CallbackInfo& info);
 Napi::Value ReapplyWornEnchantments(const Napi::CallbackInfo& info);
 

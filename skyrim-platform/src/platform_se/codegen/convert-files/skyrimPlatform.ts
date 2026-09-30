@@ -1642,6 +1642,7 @@ export declare function interruptCast(actorCasterFormId: number, castingSource: 
 export declare function getAnimationVariablesFromActor(actorFormId: number): ActorAnimationVariables;
 export declare function applyAnimationVariablesToActor(actorFormId: number, animationVariables: ActorAnimationVariables): boolean;
 export declare function dispelPotionEffects(actorFormId: number, potionFormId: number): void;
+export declare function dispelSpellFrom(actorFormId: number, spellFormId: number, casterFormId: number): void;
 export declare function agePotionEffects(actorFormId: number, potionFormId: number, seconds: number): void;
 export declare function reapplyWornEnchantments(actorFormId: number): void;
 export declare function removeSpellFromList(ownerFormId: number, spellFormId: number): void;

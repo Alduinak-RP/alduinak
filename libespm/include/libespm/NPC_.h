@@ -79,6 +79,7 @@ public:
     uint32_t baseTemplate = 0;
     uint16_t templateDataFlags = 0;
     uint32_t deathItem = 0;
+    std::vector<uint32_t> perks;
   };
 
   Data GetData(CompressedFieldsCache& compressedFieldsCache) const noexcept;

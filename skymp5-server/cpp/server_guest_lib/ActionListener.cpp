@@ -3,6 +3,7 @@
 #include "ConditionsEvaluator.h"
 #include "ConsoleCommands.h"
 #include "CropRegeneration.h"
+#include "EvaluateTemplate.h"
 #include "Exceptions.h"
 #include "GetBaseActorValues.h"
 #include "HitData.h"
@@ -2355,49 +2356,123 @@ void ActionListener::UpdateWardChannel(uint32_t casterId,
 }
 
 namespace {
-// Every NPC carrying a combat hit poison perk (crFalmerPoison01-05, DLC1crFalmerPoison06) is FalmerRace
-constexpr uint32_t kFalmerRace = 0x131f4;
-// The strongest of those poisons, DLC1crFalmerPoisonedWeapon06: 12 health a second for 4 s
-constexpr float kBlockedHitPoisonHealth = 48.f;
-// That poison's 4 s, the client's 2 s ChangeValues throttle and the report's travel
-constexpr auto kBlockedHitGuard = std::chrono::seconds(7);
+// Combat hit poison perks and the spell each puts on a weapon hit: crFalmerPoison01-05 (FalmerRace, Frozen Falmer), DLC1crFalmerPoison06
+const std::pair<FormDesc, FormDesc> kHitPoisonPerks[] = {
+  { { 0x109d7a, "Skyrim.esm" }, { 0x109d7b, "Skyrim.esm" } },
+  { { 0x109d82, "Skyrim.esm" }, { 0x109d7e, "Skyrim.esm" } },
+  { { 0x109d83, "Skyrim.esm" }, { 0x109d7f, "Skyrim.esm" } },
+  { { 0x109d84, "Skyrim.esm" }, { 0x109d80, "Skyrim.esm" } },
+  { { 0x109d85, "Skyrim.esm" }, { 0x109d81, "Skyrim.esm" } },
+  { { 0x15cae, "Dawnguard.esm" }, { 0x15cad, "Dawnguard.esm" } },
+};
+// The client's 2 s ChangeValues throttle and the report's travel
+constexpr auto kPoisonReportDelay = std::chrono::seconds(3);
 
-bool CarriesHitPoison(const MpActor& actor)
+struct HitPoison
 {
-  if (actor.GetProfileId() >= 0) {
-    return false;
+  // Health the whole poison takes over its run
+  float health = 0.f;
+  std::chrono::milliseconds duration{ 0 };
+};
+
+// From the perk list the NPC's engine uses: its own, or its template's when it inherits the spell list
+std::optional<HitPoison> FindHitPoison(const MpActor& actor)
+{
+  WorldState* worldState = actor.GetParent();
+  if (actor.GetProfileId() >= 0 || !worldState || !worldState->HasEspm()) {
+    return std::nullopt;
   }
-  try {
-    return actor.GetRaceId() == kFalmerRace;
-  } catch (const std::exception&) {
-    return false;
+  const auto perks = EvaluateTemplateNoThrow<espm::NPC_::UseSpelllist>(
+    worldState, actor.GetBaseId(), actor.GetTemplateChain(),
+    [](const auto& lookup, const auto& npcData) {
+      std::vector<uint32_t> res;
+      for (uint32_t perk : npcData.perks) {
+        res.push_back(lookup.ToGlobalId(perk));
+      }
+      return res;
+    },
+    nullptr);
+  if (!perks) {
+    return std::nullopt;
   }
+  for (uint32_t perkId : *perks) {
+    const auto entry = std::find_if(
+      std::begin(kHitPoisonPerks), std::end(kHitPoisonPerks),
+      [&](const auto& row) {
+        try {
+          return row.first.ToFormId(worldState->espmFiles) == perkId;
+        } catch (const std::exception&) {
+          return false;
+        }
+      });
+    if (entry == std::end(kHitPoisonPerks)) {
+      continue;
+    }
+    const auto spell = espm::Convert<espm::SPEL>(
+      worldState->GetEspm()
+        .GetBrowser()
+        .LookupById(entry->second.ToFormId(worldState->espmFiles))
+        .rec);
+    if (!spell) {
+      return std::nullopt;
+    }
+    HitPoison res;
+    for (const auto& effect :
+         spell->GetData(worldState->GetEspmCache()).effects) {
+      if (!effect.effectItem) {
+        continue;
+      }
+      const uint32_t seconds = (std::max)(effect.effectItem->duration, 1u);
+      res.health += effect.effectItem->magnitude * static_cast<float>(seconds);
+      res.duration =
+        (std::max)(res.duration, std::chrono::milliseconds(seconds * 1000));
+    }
+    return res.health > 0.f ? std::optional(res) : std::nullopt;
+  }
+  return std::nullopt;
 }
 }
 
-// A blocked Falmer swing opens the guard, an unblocked one closes it since its poison lands and the report cannot tell the two apart
+// A blocked poison swing opens the guard, an unblocked one closes it and keeps it shut while its poison is reported, since the report cannot tell the two apart
 void ActionListener::TrackNpcHitPoison(const MpActor& aggressor,
                                        MpActor& target, bool blocked)
 {
-  if (target.GetProfileId() < 0 || !CarriesHitPoison(aggressor)) {
+  if (target.GetProfileId() < 0) {
     return;
   }
-  if (!blocked) {
-    if (blockedHitGuards.erase(target.GetFormId())) {
-      spdlog::info("OnWeaponHit - {:x} poison guard closed, unblocked hit of "
-                   "{:x}",
-                   target.GetFormId(), aggressor.GetFormId());
-    }
+  const auto poison = FindHitPoison(aggressor);
+  if (!poison) {
     return;
   }
   const auto now = std::chrono::steady_clock::now();
-  std::erase_if(blockedHitGuards, [&](const auto& entry) {
-    return now - entry.second.at > kBlockedHitGuard;
-  });
-  auto& guard = blockedHitGuards[target.GetFormId()];
-  guard.at = now;
-  guard.aggressorId = aggressor.GetFormId();
-  guard.budget = kBlockedHitPoisonHealth;
+  const auto reportedUntil = now + poison->duration + kPoisonReportDelay;
+  const uint32_t targetId = target.GetFormId();
+  if (!blocked) {
+    auto& until = unblockedPoisonUntil[targetId];
+    until = (std::max)(until, reportedUntil);
+    if (blockedHitGuards.erase(targetId)) {
+      spdlog::info("OnWeaponHit - {:x} poison guard closed, unblocked hit of "
+                   "{:x}",
+                   targetId, aggressor.GetFormId());
+    }
+    return;
+  }
+  std::erase_if(blockedHitGuards,
+                [&](const auto& entry) { return now > entry.second.until; });
+  std::erase_if(unblockedPoisonUntil,
+                [&](const auto& entry) { return now > entry.second; });
+  if (unblockedPoisonUntil.count(targetId)) {
+    spdlog::info("OnWeaponHit - {:x} poison guard not opened for a blocked "
+                 "hit of {:x}, an unblocked hit's poison is still reported",
+                 targetId, aggressor.GetFormId());
+  } else {
+    auto& guard = blockedHitGuards[targetId];
+    guard.at = now;
+    guard.until = reportedUntil;
+    guard.aggressorId = aggressor.GetFormId();
+    guard.poisonHealth = poison->health;
+    guard.budget = poison->health;
+  }
 
   // The victim's client dispels the poison its own engine applied through the block
   CustomPacketMessage message;
@@ -2420,8 +2495,9 @@ float ActionListener::GuardReportedHealth(const MpActor& actor, float current,
     return reported;
   }
   auto& guard = it->second;
-  const auto elapsed = std::chrono::steady_clock::now() - guard.at;
-  if (elapsed > kBlockedHitGuard || guard.budget <= 0.f) {
+  const auto now = std::chrono::steady_clock::now();
+  const auto elapsed = now - guard.at;
+  if (now > guard.until || guard.budget <= 0.f) {
     blockedHitGuards.erase(it);
     return reported;
   }
@@ -2439,7 +2515,7 @@ float ActionListener::GuardReportedHealth(const MpActor& actor, float current,
       "hit of {:x} {} ms ago, {} of {} poison health refused",
       actor.GetFormId(), current, reported, allowed, guard.aggressorId,
       std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(),
-      refused, kBlockedHitPoisonHealth);
+      refused, guard.poisonHealth);
   }
   return allowed;
 }

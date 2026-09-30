@@ -447,6 +447,32 @@ Napi::Value MagicApi::DispelPotionEffects(const Napi::CallbackInfo& info)
   return info.Env().Undefined();
 }
 
+// Only the copies one caster put on, where dispelSpell takes every caster's
+Napi::Value MagicApi::DispelSpellFrom(const Napi::CallbackInfo& info)
+{
+  const auto actorFormId = NapiHelper::ExtractUInt32(info[0], "actorFormId");
+  const auto spellFormId = NapiHelper::ExtractUInt32(info[1], "spellFormId");
+  const auto casterFormId =
+    NapiHelper::ExtractUInt32(info[2], "casterFormId");
+
+  g_nativeCallRequirements.gameThrQ->AddTask(
+    [actorFormId, spellFormId, casterFormId](Viet::Void) {
+      auto* actor = RE::TESForm::LookupByID<RE::Actor>(actorFormId);
+      auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormId);
+      if (!actor || !spell) {
+        return;
+      }
+      for (auto* activeEffect : GetLiveEffects(*actor, *spell)) {
+        const auto caster = activeEffect->GetCasterActor();
+        if (caster && caster->GetFormID() == casterFormId) {
+          activeEffect->Dispel(true);
+        }
+      }
+    });
+
+  return info.Env().Undefined();
+}
+
 Napi::Value MagicApi::AgePotionEffects(const Napi::CallbackInfo& info)
 {
   const auto actorFormId = NapiHelper::ExtractUInt32(info[0], "actorFormId");
@@ -552,6 +578,9 @@ void MagicApi::Register(Napi::Env env, Napi::Object& exports)
   exports.Set("dispelPotionEffects",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(DispelPotionEffects)));
+  exports.Set("dispelSpellFrom",
+              Napi::Function::New(
+                env, NapiHelper::WrapCppExceptions(DispelSpellFrom)));
   exports.Set("agePotionEffects",
               Napi::Function::New(
                 env, NapiHelper::WrapCppExceptions(AgePotionEffects)));

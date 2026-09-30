@@ -46,6 +46,8 @@ NPC_::Data NPC_::GetData(
         result.baseTemplate = (*reinterpret_cast<const uint32_t*>(data));
       } else if (!std::memcmp(type, "INAM", 4)) {
         result.deathItem = (*reinterpret_cast<const uint32_t*>(data));
+      } else if (!std::memcmp(type, "PRKR", 4) && dataSize >= 4) {
+        result.perks.push_back(*reinterpret_cast<const uint32_t*>(data));
       }
     },
     compressedFieldsCache);

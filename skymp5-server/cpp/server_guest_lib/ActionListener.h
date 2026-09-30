@@ -126,7 +126,10 @@ private:
   struct BlockedHitGuard
   {
     std::chrono::steady_clock::time_point at;
+    // The blocked poison's run plus the report's delay
+    std::chrono::steady_clock::time_point until;
     uint32_t aggressorId = 0;
+    float poisonHealth = 0.f;
     // Health points of reported loss still to refuse
     float budget = 0.f;
     bool logged = false;
@@ -171,6 +174,9 @@ private:
   std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
     paralyzedUntil;
   std::unordered_map<uint32_t, BlockedHitGuard> blockedHitGuards;
+  // Until when a player's reports can still carry an unblocked hit's poison
+  std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
+    unblockedPoisonUntil;
 
   // TODO: inverse dependency
   std::shared_ptr<CraftService> craftService;
