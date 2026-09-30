@@ -438,6 +438,7 @@ function charFromCf(cf) {
     fallen: fallenOf(cf),
     profession: (df['private.mastery'] && df['private.mastery'].profession) || '',
     professionHours: (df['private.mastery'] && Number(df['private.mastery'].points)) || 0,
+    crafts: craftsOf(df),
     attrBonus: { health: 0, magicka: 0, stamina: 0, ...(df['private.attrBonus'] || {}) },
     roles: Array.isArray(df['private.discordRoles']) ? df['private.discordRoles'].map(String) : [],
     worldOrCell: cf.worldOrCellDesc,
@@ -699,6 +700,18 @@ const PROFESSIONS = ['alchemist', 'blacksmith', 'cook', 'farmer', 'hunter', 'mag
 const RANK_HOURS = [40, 100, 180, 6000]
 const MASTERY_VERSION = 2
 const ATTR_LIMIT = 1000   // adminSystem.ts attrSet bounds
+// masterySystem.ts slots: the primary in private.mastery, the sub-slots in private.masterySlots
+const CRAFT_SLOTS = [['Primary', null], ['Secondary', 'secondary'], ['Tertiary', 'tertiary']]
+
+// Every craft slot of a character with its profession ('' when empty), hours and rank, read-only apart from the primary
+function craftsOf(df) {
+  const subs = df['private.masterySlots'] || {}
+  return CRAFT_SLOTS.map(([name, key]) => {
+    const r = key ? subs[key] : df['private.mastery']
+    const profession = r && PROFESSIONS.includes(r.profession) ? r.profession : ''
+    return { name, profession, hours: profession ? Number(r.points) || 0 : 0, rank: profession ? Number(r.rank) || 0 : 0 }
+  })
+}
 
 function intIn(v, lo, hi, label) {
   const n = Number(v)
@@ -711,6 +724,8 @@ function applyMastery(cf, df, { profession, hours }) {
   const prof = profession ? String(profession) : null
   if (prof && !PROFESSIONS.includes(prof)) throw new Error(`profession: unknown ${prof}`)
   const rec = { profession: null, points: 0, lastPointAt: 0, rank: 0, granted: [], spellTier: 0, ...(df['private.mastery'] || {}) }
+  const sub = prof && prof !== rec.profession ? craftsOf(df).slice(1).find(c => c.profession === prof) : null
+  if (sub) throw new Error(`profession: ${prof} is this character's ${sub.name.toLowerCase()} craft; reset that slot in game or from the admin panel first`)
   if (rec.profession !== prof || rec.v !== MASTERY_VERSION) {
     const drop = new Set((rec.granted || []).map(Number))
     if (Array.isArray(cf.learnedSpells)) cf.learnedSpells = cf.learnedSpells.filter(id => !drop.has(Number(id)))
