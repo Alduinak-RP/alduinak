@@ -84,18 +84,21 @@ Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
 ## Strongbox
 
 Every board has a strongbox: a real container (`CONT`) the server places with
-`PlaceAtMe` the first time a fee is paid there. Its anchor is the visible
+`PlaceAtMe` at every start, right after the world DB has loaded, for each
+board that has none yet. Its anchor is the visible
 board (`12cb`, the second reference of the board's cluster in `BOARDS`), so
 it sits at that board's foot in the city worldspace; the canonical ref is the
 invisible primitive, which floats about 105-155 units above the visible board
 and to one side of it, where a strongbox would hang in the air and catch the
 crosshair meant for the board (the server cannot move a placed non-actor, so
 the base should be small or flat). The posting fees pile
-up in it. Its base is `bountyBoardStashBase` (default `10aad2:Skyrim.esm`, the
-vanilla strongbox, a CONT with no base items); a base that is not a CONT is
-logged at startup and the fee is then simply destroyed, as before. The base
-must carry no items of its own, because the engine re-adds base items when a
-container is emptied.
+up in it. Its base is `bountyBoardStashBase` (default `10aad2:Skyrim.esm`,
+`TreasStrongBox`, the vanilla strongbox); a base that is not a CONT is
+logged at startup and the fee is then simply destroyed, as before. The base's
+own loot (the strongbox has five leveled entries) never lands in it: placing
+it sets an empty inventory, and a reloot adds nothing while `emptyContainers`
+is on (the default). With `emptyContainers` off, or the base listed in
+`containerLootBaseIds`, an emptied strongbox would refill with loot.
 
 Only the ranks that manage the hold's property may open it: staff, or a
 membership in the board's hold whose rank has the `housing` flag (by default
@@ -112,18 +115,28 @@ property-menu branch, and the server, once the player is within
 strongbox for the player through Papyrus `ObjectReference.Activate`, the
 engine's own container path (it records the occupant, so takes and puts pass
 the occupant check) and the client opens the vanilla ContainerMenu (with the
-chat settings' interact hold on, releasing X closes it by tapping Tab). The
-strongbox is placed on a first manage as well, so a board nobody has paid at
-yet still has one. Because it sits in the city worldspace, a walled city's
+chat settings' interact hold on, releasing X closes it by tapping Tab). A
+board whose strongbox could not be placed at startup gets it on the next paid
+post or manage. Because it sits in the city worldspace, a walled city's
 Tamriel twin answers "Open the strongbox from the board inside the city."
 (the engine refuses an activation across worldspaces). X on a board by anyone
 else gets the "steward or jarl" notice instead of the Personal Menu.
 
-The strongbox id is stored as `stash` on the board record and re-checked on
-every use (a stale id whose base is no longer a CONT is replaced), and the
-strongboxes of the previous run are guarded again once the world DB has
-loaded. Boards outside the table (patch plugins) get one too, under their own
-record, but `canManage` knows only the nine hold capitals, so only staff can
+The strongbox id is stored as `stash` on the board record and re-checked at
+every start and on every use. A stale id (the form is gone or no longer a
+CONT) gets a new strongbox. A strongbox of another base than
+`bountyBoardStashBase` is swapped: a new one is placed, takes the old one's
+contents and is stored on the record, and only then is the old one emptied
+and deleted (Papyrus `Delete`, so its changeform is skipped on the next load);
+the game server log reads `[bounty] placed the <board> board strongbox <new>
+in place of <old> (<old base>), contents moved`. This is what turned the ghost-remains
+piles (`c674b:Skyrim.esm`, `defaultGhostCorpse`, the ectoplasm mesh
+`AshPileGhostDark01.nif`) of the old default into strongboxes: until R7 the
+swap waited for the next paid post or manage at that board, so boards nobody
+posted at kept the ectoplasm. Changing `bountyBoardStashBase` swaps every
+board at the next start the same way. Boards outside the table (patch
+plugins) get one too, under their own record, on their first paid post or
+manage, but `canManage` knows only the nine hold capitals, so only staff can
 open those.
 
 ## Persistence and expiry

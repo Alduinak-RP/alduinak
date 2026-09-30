@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson, titledName } from "./playerText";
-import { GOLD_BASE_ID, addGold, baseIdOf, baseTypeOf } from "./actorUtil";
+import { GOLD_BASE_ID, addGold, baseIdOf, baseTypeOf, destroyRef } from "./actorUtil";
 import { containerDesc, placeAtMe } from "./npcPlacement";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -17,9 +17,10 @@ type Mp = any;
 // worldspace, one in Tamriel for the exterior view); both resolve to one
 // canonical reference so they always show the same notices.
 //
-// Each board keeps a strongbox, a container placed at the visible board the
-// first time it is needed; the posting fees pile up in it and only the ranks
-// that manage the hold's property (canManage) may open it.
+// Each board keeps a strongbox, a container placed at the visible board once
+// the world DB has loaded (one of another base is swapped then, contents
+// included); the posting fees pile up in it and only the ranks that manage
+// the hold's property (canManage) may open it.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -60,7 +61,7 @@ const DEFAULT_EXPIRY_DAYS = 7;
 const DEFAULT_MAX_NOTES = 40;
 const DEFAULT_MAX_TEXT_LEN = 500;
 const DEFAULT_MAX_DISTANCE = 512;
-// The vanilla ash pile: a CONT with no base items and a flat mesh at the board's foot
+// TreasStrongBox, the vanilla strongbox
 const DEFAULT_STASH_BASE = "10aad2:Skyrim.esm";
 const NOT_MANAGER_NOTICE = "Only the hold's steward or jarl may open the board's strongbox.";
 
@@ -167,14 +168,11 @@ export class BountyBoardSystem implements System {
     }
 
     this.installActivationHook(ctx);
-    // Placed forms exist only once the world DB has loaded; the strongboxes of the previous run are guarded from then on
+    // Placed forms exist only once the world DB has loaded; every board then gets a strongbox of the configured base, guarded from then on
     ctx.gm.once(WORLD_LOADED_EVENT, () => {
       this.worldLoaded = true;
       this.swapMisfiledNotes(ctx);
-      for (const primary of this.primaries()) {
-        const rec = this.read(ctx, primary);
-        if (rec?.stash && this.isStash(ctx, rec.stash)) this.stashes.set(rec.stash, primary);
-      }
+      for (const primary of this.primaries()) this.stashOf(ctx, primary, this.read(ctx, primary) || emptyRecord());
     });
     // A character switch mid-connection voids the session, same as trade.
     ctx.gm.on("userAssignActor", (userId: number) => {
@@ -555,7 +553,7 @@ export class BountyBoardSystem implements System {
     this.appendLog(`${describeActor(ctx.svr, actorId)} opened the ${board.name} board strongbox`);
   }
 
-  // The board's strongbox, placed on first use at the foot of the visible board; 0 when none can be had
+  // The board's strongbox at the foot of the visible board; one of another base hands its contents over and is deleted; 0 when none can be had
   private stashOf(ctx: SystemContext, primary: number, rec: BoardRecord): number {
     const mp = ctx.svr as Mp;
     const old = rec.stash && this.isStash(ctx, rec.stash) ? rec.stash : 0;
@@ -564,24 +562,37 @@ export class BountyBoardSystem implements System {
       return old;
     }
     if (!this.worldLoaded || !this.stashDesc) return 0;
+    const name = this.boardNameOf(primary);
     let stash = 0;
     try {
       stash = placeAtMe(mp, this.stashAnchors.get(primary) || primary, this.stashDesc) >>> 0;
-      // A strongbox of an older base hands its fees over and goes away
       mp.set(stash, "inventory", old ? mp.get(old, "inventory") : { entries: [] });
-      if (old) {
-        mp.set(old, "inventory", { entries: [] });
-        mp.set(old, "isDisabled", true);
-        this.stashes.delete(old);
-      }
     } catch (e) {
-      this.log(`[bounty] could not place the ${this.boardNameOf(primary)} board strongbox: ${e}`);
+      this.log(`[bounty] could not place the ${name} board strongbox: ${e}`);
+      try { if (stash) destroyRef(mp, stash); } catch { /* already gone */ }
+      return 0;
+    }
+    // Stored before the old one is emptied, so a failed write loses nothing
+    if (!this.write(ctx, primary, { ...rec, stash })) {
+      try { destroyRef(mp, stash); } catch { /* already gone */ }
       return 0;
     }
     rec.stash = stash;
-    if (!this.write(ctx, primary, rec)) return 0;
     this.stashes.set(stash, primary);
-    this.log(`[bounty] placed the ${this.boardNameOf(primary)} board strongbox ${stash.toString(16)}`);
+    if (!old) {
+      this.log(`[bounty] placed the ${name} board strongbox ${stash.toString(16)}`);
+      return stash;
+    }
+    this.stashes.delete(old);
+    let oldBase = "";
+    try {
+      oldBase = String(mp.get(old, "baseDesc"));
+      mp.set(old, "inventory", { entries: [] });
+      destroyRef(mp, old);
+    } catch (e) {
+      this.log(`[bounty] could not remove the ${name} board's old strongbox ${old.toString(16)}: ${e}`);
+    }
+    this.log(`[bounty] placed the ${name} board strongbox ${stash.toString(16)} in place of ${old.toString(16)} (${oldBase}), contents moved`);
     return stash;
   }
 
