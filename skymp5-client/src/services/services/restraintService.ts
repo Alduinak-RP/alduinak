@@ -7,7 +7,7 @@ import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement } from "../../sync/movement";
 import { setCarrierClone } from "../../sync/movementApply";
-import { isInSitPose, needsEmptyHands, setRefrCollision } from "../../sync/animation";
+import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, isInSitPose, needsEmptyHands, setRefrCollision } from "../../sync/animation";
 import { CarryPose, DEFAULT_CARRY_POSE, describeCarryNodes, finiteOr, holdOnCarrier, makeHoldState, readCarryPose, restartHold } from "../../sync/carryHold";
 import { isPlayerCharacterId } from "./playerActionService";
 import { MountService } from "./mountService";
@@ -47,6 +47,14 @@ const LOCK_POSE_CHECK_S = 1.5;
 const LOCK_POSE_LOG_MS = 60000;
 // Master graph variable set while an idle plays
 const IDLE_PLAYING_VAR = "bIdlePlaying";
+// An action lock's pose waits at most this long for the player to stand, sheathe and turn to third person
+const LOCK_PREP_MAX_MS = SHEATHE_MAX_POLLS * SHEATHE_POLL_S * 1000;
+// A lock pose the graph refused is sent again after this long, at most this many times per lock
+const LOCK_POSE_RETRY_MS = 500;
+const LOCK_POSE_MAX_RESENDS = 3;
+// The first-person camera a lock left comes back this long after its exit
+const LOCK_CAMERA_RESTORE_S = 1;
+const FIRST_PERSON_CAMERA = 0;
 
 const CARRIER_COLLISION_REFRESH_MS = 1000;
 // A lifted body can read as falling, so a carried idle pose is re-sent when no idle plays this long after it was sent instead of after a landing
@@ -74,6 +82,7 @@ interface CarryStats {
 interface ActionLock {
   anim: string;
   exitAnim: string;
+  since: number;
   until: number;
 }
 
@@ -140,12 +149,17 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   - standForPair (PairedIdleService, a finish off with standUp): the kneel is
  *     left for the length of the pair while the controls stay locked; a victim
  *     who survives it kneels again shortly after pairEnded, or when it lapses.
- *   - actionLock: plays anim (hands emptied first when its copies would sheathe)
- *     and holds the player still without fighting, sneaking or activation for
- *     the seconds, then plays exitAnim. Going down or dying ends it early,
- *     every other pose wins over it, and a mounted or swimming player or one
- *     another pose already holds ignores it. A pose with no idle playing
- *     1.5 s after it was sent is logged (once a minute) to the Platform log.
+ *   - actionLock: plays anim and holds the player still without fighting,
+ *     sneaking or activation for the seconds, then plays exitAnim. The pose
+ *     waits (up to 3 s) until the player has stood up from a sneak, sheathed a
+ *     weapon (when its copies would sheathe) and turned to third person, since
+ *     the graph refuses an idle in any of those and a first-person camera
+ *     shows none; a first-person camera comes back 1 s after the exit. A pose
+ *     the graph refuses is sent again, up to 3 times. Going down or dying ends
+ *     it early, every other pose wins over it, and a mounted or swimming
+ *     player or one another pose already holds ignores it. A wait is logged to
+ *     the Platform log, and a pose with no idle playing 1.5 s after it was
+ *     sent too (once a minute).
  *   - stagger: plays staggerStart with the magnitude on the player, whose
  *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a
@@ -172,7 +186,7 @@ export class RestraintService extends ClientListener {
         }
       },
       leave: (ctx) => {
-        if (this.lock && ctx.animEventName === this.lock.anim) this.lockPoseAccepted = ctx.animationSucceeded;
+        if (this.lock && ctx.animEventName === this.lock.anim) this.onLockPoseSent(ctx.animationSucceeded);
       },
     }, 0x14, 0x14);
 
@@ -356,7 +370,11 @@ export class RestraintService extends ClientListener {
     const player = this.sp.Game.getPlayer();
     if (!player) return;
     if (seconds > 0 && (player.isDead() || player.isOnMount() || player.isSwimming() || this.boundHands || this.carried || this.carrying || this.downed)) return;
-    this.lock = seconds > 0 ? { anim, exitAnim, until: Date.now() + seconds * 1000 } : null;
+    const now = Date.now();
+    this.lock = seconds > 0 ? { anim, exitAnim, since: now, until: now + seconds * 1000 } : null;
+    this.lockBlockedMs = 0;
+    this.lockPoseResends = 0;
+    this.lockWaits.clear();
     this.applyStateNow();
   }
 
@@ -564,14 +582,14 @@ export class RestraintService extends ClientListener {
     const desiredPose = this.carried ? this.carriedAnim : this.paired && (this.downed || this.executionPose) ? OFFSET_STOP_ANIM
       : this.downed ? BLEEDOUT_ANIM_START : this.executionPose ? this.executionPose
       : this.boundHands ? this.captiveAnim : this.lock ? this.lock.anim : OFFSET_STOP_ANIM;
-    if (desiredPose === this.lock?.anim && needsEmptyHands(desiredPose) && player.isWeaponDrawn()) {
-      // The tick poses once the sheathe has settled
-      player.sheatheWeapon();
+    if (this.lock && desiredPose === this.lock.anim && desiredPose !== this.appliedPose && !this.lockPoseReady(player, this.lock)) {
+      // The tick poses once the player stands sheathed in third person
       this.poseDirty = true;
       this.nextPoseReapplyMs = Date.now() + SHEATHE_SETTLE_MS;
     } else if (desiredPose !== this.appliedPose) {
       this.setPose(player, desiredPose);
     }
+    this.restoreLockCamera();
     this.applyDownedGhost(player);
 
     // Recompute the control lock each time. Argument order:
@@ -649,9 +667,13 @@ export class RestraintService extends ClientListener {
     });
   }
 
-  // Diagnostic for a work pose that shows nothing: whether the graph took the event and an idle still plays
+  // Diagnostic for a work pose that shows nothing: what it waited for, whether the graph took the event and an idle still plays
   private checkLockPose(anim: string): void {
     this.lockPoseAccepted = false;
+    if (this.lock && this.lockWaits.size) {
+      logToPlatformLog(this, `action lock pose ${anim} sent ${Date.now() - this.lock.since} ms after the lock, waited for ${Array.from(this.lockWaits).join(", ")}`);
+      this.lockWaits.clear();
+    }
     this.sp.Utility.wait(LOCK_POSE_CHECK_S).then(() => {
       this.controller.once("update", () => {
         const player = this.sp.Game.getPlayer();
@@ -659,7 +681,57 @@ export class RestraintService extends ClientListener {
         if (!player || this.lock?.anim !== anim || now - this.lastLockPoseLogMs < LOCK_POSE_LOG_MS) return;
         if (player.getAnimationVariableBool(IDLE_PLAYING_VAR)) return;
         this.lastLockPoseLogMs = now;
-        logToPlatformLog(this, `action lock pose ${anim}: graph accepted ${this.lockPoseAccepted}, no idle playing ${LOCK_POSE_CHECK_S} s later, weapon drawn ${player.isWeaponDrawn()}`);
+        logToPlatformLog(this, `action lock pose ${anim}: graph accepted ${this.lockPoseAccepted} after ${this.lockPoseResends} re-send(s), no idle playing ${LOCK_POSE_CHECK_S} s later, ` +
+          `weapon drawn ${player.isWeaponDrawn()}, sneaking ${player.isSneaking()}, camera ${this.sp.Game.getCameraState()}`);
+      });
+    });
+  }
+
+  // A sneaking or drawn graph refuses an idle and a first-person camera shows none, so those go first and the pose waits out the sheathe's blend
+  private lockPoseReady(player: Actor, lock: ActionLock): boolean {
+    const now = Date.now();
+    const waits: string[] = [];
+    // The lock's disabled sneak controls stand the player up
+    if (player.isSneaking()) waits.push("the stand-up");
+    if (this.sp.Game.getCameraState() === FIRST_PERSON_CAMERA) {
+      this.sp.Game.forceThirdPerson();
+      this.lockCameraRestore = true;
+      waits.push("third person");
+    }
+    if (needsEmptyHands(lock.anim) && player.isWeaponDrawn()) {
+      player.sheatheWeapon();
+      waits.push("the sheathe");
+    }
+    waits.forEach((w) => this.lockWaits.add(w));
+    if (waits.length) this.lockBlockedMs = now;
+    if (now - lock.since >= LOCK_PREP_MAX_MS) {
+      if (waits.length) this.lockWaits.add("the time limit");
+      return true;
+    }
+    return !waits.length && now - this.lockBlockedMs >= SHEATHE_SETTLE_MS;
+  }
+
+  // A refused pose is sent again shortly, a few times per lock
+  private onLockPoseSent(accepted: boolean): void {
+    this.lockPoseAccepted = accepted;
+    if (accepted || this.lockPoseResends >= LOCK_POSE_MAX_RESENDS) return;
+    this.lockPoseResends++;
+    this.poseDirty = true;
+    this.nextPoseReapplyMs = Date.now() + LOCK_POSE_RETRY_MS;
+  }
+
+  // Once no pose holds the player, the first-person camera a lock turned away from comes back after the exit has played
+  private restoreLockCamera(): void {
+    if (this.downed || this.carried) this.lockCameraRestore = false;
+    if (!this.lockCameraRestore || this.isPoseLocked || this.cameraRestoreQueued) return;
+    this.cameraRestoreQueued = true;
+    this.sp.Utility.wait(LOCK_CAMERA_RESTORE_S).then(() => {
+      this.controller.once("update", () => {
+        this.cameraRestoreQueued = false;
+        const player = this.sp.Game.getPlayer();
+        if (!player || !this.lockCameraRestore || this.isPoseLocked) return;
+        this.lockCameraRestore = false;
+        if (!player.isDead() && player.getSitState() === 0 && !player.isOnMount()) this.sp.Game.forceFirstPerson();
       });
     });
   }
@@ -779,6 +851,13 @@ export class RestraintService extends ClientListener {
   private lock: ActionLock | null = null;
   private lockPoseAccepted = false;
   private lastLockPoseLogMs = 0;
+  // Last time the lock's pose had to wait, and what it waited for since it was last sent
+  private lockBlockedMs = 0;
+  private lockWaits = new Set<string>();
+  private lockPoseResends = 0;
+  // Set when a lock turned a first-person camera to third person
+  private lockCameraRestore = false;
+  private cameraRestoreQueued = false;
   private stillControlsApplied = false;
   // The bleedout's camera and menu lock, which a disable call with false never lifts
   private downedControlsApplied = false;

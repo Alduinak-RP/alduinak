@@ -569,9 +569,17 @@ their native activation. The skinner kneels over it for 5 seconds with
 send, which plays the same kneel clips (`IdleKneelEnter.hkx`, `IdleKneelIdle.hkx`)
 as the `IdleSearchBody` idle. That idle's own event, `IdleKneeling`, goes to a
 state that leaves on `IdleStop` and showed nothing on a player; its editor id is
-no behaviour event at all. A work pose that has no idle playing 1.5 s after it
-was sent is logged to the client's Platform log (`action lock pose ...`), once a
-minute. Then the skinner gets the pelt the
+no behaviour event at all. The client (`RestraintService`) sends the kneel only
+once the skinner has stood up from a sneak, sheathed a drawn weapon (the knife
+or bow of the kill) and turned to third person, waiting at most 3 s, because
+the graph refuses an idle while sneaking or in a sheathe and a first-person
+camera shows none (the emote wheel empties the hands and forces third person
+for the same reason); a first-person camera comes back 1 s after the exit, and
+a kneel the graph refuses is sent again up to 3 times. Only a kneel the graph
+took reaches other players, through the animation sync. The client's Platform
+log names a wait (`action lock pose ... waited for ...`) and a work pose that
+has no idle playing 1.5 s after it was sent (`action lock pose ...: graph
+accepted ...`, once a minute). Then the skinner gets the pelt the
 body's editor ids map to (`DEFAULT_PELT_MAP`, `huntingPeltMap` override): the
 body's own NPC_ editor id is tried first, then the race that supplies its traits
 (a Use Traits template's placeholder race is skipped), then its template NPC_s, and
@@ -595,8 +603,7 @@ and gives only its meat; players and companions are never skinned (no
 `ActorTypeAnimal`). A skinner who walks off,
 dies or logs out before the 5 seconds leaves the body skinnable. A hunter without
 the knife is told "A hunting knife would take its pelt." and the body opens.
-Non-hunters just search. The kneel needs only the server build; the Platform
-log line comes with the next client build.
+Non-hunters just search. The kneel's wait and re-send come with the client build.
 
 ---
 
