@@ -275,7 +275,9 @@ better pays `gatheringAlchemistFloraDiscount` (50%) less again for alchemy flora
 **Steadied by drink.** A cook or alchemist of Novice or better, in any profession slot, who drinks an alcohol pays
 `needsAlcoholDiscount` (25%) less fatigue for the crafts their cook or alchemist rank prices (the cooking pot and oven
 for a cook, the alchemy lab for an alchemist, shared recipes) for `needsAlcoholMinutes` (10); a craft another
-profession prices (a Blacksmith primary's smithing, say) pays in full. Another drink refreshes the timer and never
+profession prices (a Blacksmith primary's smithing, say) pays in full, and so does the check that keeps a too-tired
+character out of a bench menu: it prices the bench by the slot that works it, so a Cook Adept beside a Blacksmith Adept
+opens a forge only with a full forge craft's fatigue. Another drink refreshes the timer and never
 stacks, and the discount multiplies the half cost of those benches. Anyone else gets the drink's hunger only. The drink
 does nothing against the cold. An alcohol is an ALCH drunk
 with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate effect: every vanilla ale, mead, wine,

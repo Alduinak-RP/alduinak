@@ -423,7 +423,7 @@ export class NeedsSystem implements System {
     const entry = this.online.get(actorId);
     if (!entry || !this.mastery.holdsInputs(ctx, actorId, recipeId)) return true;
     const priced: CraftPrice = this.mastery.craftCost(ctx, actorId, recipeId);
-    const drink = this.drinkMultiplier(ctx, actorId, entry, priced.rank, priced.profession);
+    const drink = this.drinkMultiplier(entry, priced.rank, priced.profession);
     const cost = this.costOf(actorId, "craft", priced.rank, priced.half) * drink;
     if (!this.affords(entry, cost)) {
       this.enqueue(ctx, { kind: "refused", actorId, cost });
@@ -443,8 +443,8 @@ export class NeedsSystem implements System {
     const benches = Array.from(this.mastery.stationKeywords(ctx, refrId)).filter((k) => this.mastery.isCraftBench(k));
     if (!benches.length) return false;
     const cost = Math.min(...benches.map((k) => {
-      const rank = this.mastery.craftRank(ctx, actorId, k);
-      return this.costOf(actorId, "craft", rank, this.mastery.halfCostBench(k)) * this.drinkMultiplier(ctx, actorId, entry, rank);
+      const slot = this.mastery.craftSlot(ctx, actorId, k);
+      return this.costOf(actorId, "craft", slot.rank, this.mastery.halfCostBench(k)) * this.drinkMultiplier(entry, slot.rank, slot.profession);
     }));
     if (this.affords(entry, cost)) return false;
     this.enqueue(ctx, { kind: "tired", actorId, cost });
@@ -548,14 +548,10 @@ export class NeedsSystem implements System {
     return true;
   }
 
-  // The share of a craft's cost a steadied character pays when their cook or alchemist rank priced it; 1 for everything else.
-  // Without the pricing profession, the cook or alchemist rank equal to the price's stands for it
-  private drinkMultiplier(ctx: SystemContext, actorId: number, entry: Online, rank: number, pricedBy?: string | null): number {
+  // The share of a craft's cost a steadied character pays when their cook or alchemist slot priced it; 1 for everything else
+  private drinkMultiplier(entry: Online, rank: number, pricedBy: string | null): number {
     if (rank <= FREE || !entry.rec.drinkUntil || Date.now() >= entry.rec.drinkUntil) return 1;
-    const alcoholCraft = pricedBy !== undefined
-      ? !!pricedBy && ALCOHOL_PROFESSIONS.indexOf(pricedBy) !== -1
-      : ALCOHOL_PROFESSIONS.some((p) => this.mastery.rankOf(ctx, actorId, p) === rank);
-    return alcoholCraft ? 1 - this.alcoholDiscount : 1;
+    return pricedBy && ALCOHOL_PROFESSIONS.indexOf(pricedBy) !== -1 ? 1 - this.alcoholDiscount : 1;
   }
 
   private edidOf(mp: Mp, baseId: number): string {

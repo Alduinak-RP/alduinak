@@ -62,6 +62,7 @@ const mastery = {
   stationKeywords: () => new Set([BENCH]),
   isCraftBench: (k) => k === BENCH,
   craftRank: () => 1,
+  craftSlot: () => ({ rank: 1, profession: 'blacksmith' }),
   halfCostBench: () => false,
   rankOf: () => 1,
   rankIn: () => 1,
@@ -97,12 +98,13 @@ const setup = (sources = [raceSource], professions = mastery) => {
   return { sys, ctx, mp, logs, priced, events, fatigue, setFatigue }
 }
 
-// Ranks by profession for the drink tests; craftCost names the pricing profession unless named is false
+// Ranks by profession for the drink tests; craftCost and the bench's craftSlot name the pricing profession unless named is false
 const professionsOf = (ranks, price, named = true) => ({
   ...mastery,
   rankOf: (_ctx, _id, p) => ranks[p] ?? 0,
   rankIn: (_ctx, _id, ps) => Math.max(0, ...ps.map((p) => ranks[p] ?? 0)),
-  craftCost: () => (named ? { ...price } : { rank: price.rank, half: price.half }),
+  craftCost: () => (named ? { ...price } : { rank: price.rank, half: price.half, profession: null }),
+  craftSlot: () => ({ rank: price.rank, profession: named ? price.profession : null }),
 })
 
 const FOOD = 0x6400
@@ -304,13 +306,13 @@ async function main() {
     assert.deepEqual(t.events, [[NEEDS_STAGE_EVENT, NORD, 1, 3], [NEEDS_STAGE_EVENT, ALTMER, 1, 1], [NEEDS_STAGE_EVENT, ORC, 1, 1]])
   })
 
-  await test('a drink steadies a cook in any slot, and discounts only the crafts a cook or alchemist rank priced', async () => {
+  await test('a drink steadies a cook in any slot, and discounts only the crafts a cook or alchemist slot priced', async () => {
     const ranks = { blacksmith: 4, cook: 1 }
     const cases = [
       [{ rank: 4, half: false, profession: 'blacksmith' }, true, 1],
       [{ rank: 1, half: false, profession: 'cook' }, true, 0.75],
       [{ rank: 4, half: false }, false, 1],
-      [{ rank: 1, half: false }, false, 0.75],
+      [{ rank: 1, half: false }, false, 1],
     ]
     for (const [price, named, share] of cases) {
       const t = setup([], professionsOf(ranks, price, named))
@@ -331,6 +333,19 @@ async function main() {
     await tick()
     assert.deepEqual(t.mp.packets.filter((p) => p.customPacketType === 'masteryNotice').map((p) => p.text),
       ['The drink steadies your hands: your Cook and Alchemist work costs 25% less fatigue for 10 minutes.', 'The drink keeps your hands steady for another 10 minutes.'])
+  })
+
+  await test('the bench check gives the drink discount only at a bench a cook or alchemist slot prices, never through an equal rank of another craft', async () => {
+    const ranks = { blacksmith: 2, cook: 2 }
+    const full = fatigueCost('craft', 2)
+    for (const [profession, tired] of [['blacksmith', true], ['cook', false]]) {
+      const t = setup([], professionsOf(ranks, { rank: 2, half: false, profession }))
+      stock(t.sys)
+      t.sys.eat(t.ctx, NORD, ALE)
+      await tick()
+      t.setFatigue(NORD, full * 0.9)
+      assert.equal(t.sys.tooTiredForBench(t.ctx, 0x1234, NORD), tired, `${profession} bench with a cook Adept beside a blacksmith Adept`)
+    }
   })
 
   await test('a character with no cook or alchemist rank in any slot is not steadied', async () => {
