@@ -762,6 +762,21 @@ $admin-row-gutter: 16px;
     flex: 0 0 180px;
   }
 
+  // Cold field, disease and stage pickers of the survival row
+  &__survival-cold {
+    flex: 0 0 72px;
+    min-width: 0;
+    text-align: center;
+  }
+
+  &__survival-disease {
+    flex: 1 1 auto;
+  }
+
+  &__survival-stage {
+    flex: 0 0 170px;
+  }
+
   // Scale SkyrimButton's default 30px type down to fit the compact 32px-tall buttons.
   &__actions,
   &__form--debug,

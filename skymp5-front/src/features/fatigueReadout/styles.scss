@@ -1,7 +1,10 @@
-// Fatigue left, a single line above the vanilla magicka bar (bottom left). Never interactive.
+// Fatigue left, cold and sickness, stacked above the vanilla magicka bar (bottom left). Never interactive.
 
 $gold: #c8b48a;
 $text: #e8e0d0;
+$frost: #a9cde6;
+$frost-severe: #d8ecfb;
+$sick: #b9c48a;
 
 .fatigueReadout {
   position: fixed;
@@ -9,8 +12,10 @@ $text: #e8e0d0;
   bottom: 9.5%;
   z-index: 20;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: 40%;
   pointer-events: none;
   font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
   font-size: 16px;
@@ -18,7 +23,14 @@ $text: #e8e0d0;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   opacity: 0.85;
 
+  &__line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
   &__label {
+    flex: 0 0 auto;
     color: $text;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -30,5 +42,18 @@ $text: #e8e0d0;
 
   &__stage {
     color: $gold;
+  }
+
+  &__cold {
+    color: $frost;
+
+    &--severe {
+      color: $frost-severe;
+      font-weight: bold;
+    }
+  }
+
+  &__sick {
+    color: $sick;
   }
 }
