@@ -636,10 +636,17 @@ nothing moves on to the same kneel played through the engine's idle path
 (`Actor.PlayIdle` with Skyrim.esm `IdleKneelingEnter` `000E8E52`), then to the
 bleedout kneel (`bleedOutStart`, checked by `IsBleedingOut`, left with
 `bleedOutStop`), a wildcard of the root graph that plays with a weapon out. A
-pose that stops playing before the lock ends is sent again, twice at most. Only
-a kneel the graph took reaches other players, through the animation sync
-(`bleedOutStart` always does). The client's Platform log has one line per
-attempt (`action lock pose <anim>, attempt <n> of <m>: graph accepted ...`),
+pose that stops playing before the lock ends is sent again, twice at most. A
+player who already kneels (the emote wheel's Kneel) when the lock starts keeps
+that kneel: the graph refuses an idle to itself, so a refused kneel with
+`bAnimationDriven` true before and after, and `IdleKneelingEnter` the last
+idle the graph took, counts as playing. Only a kneel the graph took reaches
+other players, through the animation sync (`bleedOutStart` always does); the
+kneel played through `Actor.PlayIdle` never reaches the sync's send hook, so
+the client relays it by hand once it is seen playing. The client's Platform log has one line per
+attempt (`action lock pose <anim>, attempt <n> of <m>: graph accepted ...`,
+ending in `playing, already in the pose before the send` or `playing, relayed
+to other players` for those two cases),
 per wait (`action lock pose ... waited for ...`), per stop (`action lock pose
 ... stopped playing ...`, with the last event the graph took) and one summary
 per lock (`action lock summary: ...`). Then the skinner gets the pelt the

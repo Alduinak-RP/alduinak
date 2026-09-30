@@ -11,6 +11,7 @@ import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, isInSitPose, needsEmptyHands, setRef
 import { CarryPose, DEFAULT_CARRY_POSE, describeCarryNodes, describeHold, finiteOr, holdOnCarrier, makeHoldState, readCarryPose, releaseHold, restartHold } from "../../sync/carryHold";
 import { isPlayerCharacterId } from "./playerActionService";
 import { MountService } from "./mountService";
+import { SendInputsService } from "./sendInputsService";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 
 // Vanilla behaviour-graph "offset" overlay events (no ESP required), cleared with OffsetStop.
@@ -199,9 +200,10 @@ const describeAttempt = (lock: ActionLock): string => {
  *     shows none; a first-person camera comes back 1 s after the exit. Each
  *     attempt is checked 0.5 s after it was sent (the graph's answer and the
  *     graph variable the pose sets); one that shows nothing moves on to the
- *     kneel through the engine's idle path (Skyrim.esm IdleKneelingEnter),
- *     then to the bleedout kneel, which the root graph takes in any state. A
- *     pose that stops playing before the lock ends is sent again, twice at
+ *     kneel through the engine's idle path (Skyrim.esm IdleKneelingEnter,
+ *     relayed to the copies by hand), then to the bleedout kneel, which the
+ *     root graph takes in any state. A player already in the pose (the emote
+ *     kneel) keeps it. A pose that stops playing before the lock ends is sent again, twice at
  *     most. Going down or dying ends it early, every other pose wins over it,
  *     and a mounted or swimming player or one another pose already holds
  *     ignores it. Every attempt, wait and stop is logged to the Platform log.
@@ -231,6 +233,7 @@ export class RestraintService extends ClientListener {
         }
       },
       leave: (ctx) => {
+        if (ctx.animationSucceeded && isStateIdle(ctx.animEventName)) this.lastStateIdle = ctx.animEventName.toLowerCase();
         if (!this.lock) return;
         if (ctx.animEventName.toLowerCase() === this.lockPose.toLowerCase()) this.lock.accepted = ctx.animationSucceeded;
         else if (ctx.animationSucceeded) this.lock.lastEvent = ctx.animEventName;
@@ -764,14 +767,22 @@ export class RestraintService extends ClientListener {
     const playingVar = playingVarOf(this.lockPose);
     const varValue = player.getAnimationVariableBool(playingVar);
     // Some poses report a refusal while they play, so a variable that only now turned true is proof enough
-    lock.playing = varValue && (!lock.varBefore || lock.accepted || lock.idleResult);
+    const proven = !lock.varBefore || lock.accepted || lock.idleResult;
+    // The graph refuses an idle to itself, so a player already in it (the emote kneel) holds the pose
+    const alreadyIn = !proven && this.lastStateIdle === this.lockPose.toLowerCase() && player.getSitState() === 0;
+    lock.playing = varValue && (proven || alreadyIn);
     if (lock.playing && !lock.playedAtMs) {
-      lock.playedAs = describeAttempt(lock);
+      lock.playedAs = `${describeAttempt(lock)}${alreadyIn ? " (already in the pose)" : ""}`;
       lock.playedAtMs = Date.now();
     }
+    const viaIdle = !!lock.attempts[lock.attempt].idleFormId;
+    // An idle played through Actor.playIdle never reaches the send hook, so the animation sync is told here
+    const relayed = lock.playing && viaIdle;
+    if (relayed) this.controller.lookupListener(SendInputsService).relayPlayerAnimEvent(this.lockPose);
     const hasNext = lock.attempt + 1 < lock.attempts.length;
-    const idle = lock.attempts[lock.attempt].idleFormId ? `, playIdle returned ${lock.idleResult}` : "";
-    const next = lock.playing ? "playing" : hasNext ? `trying ${lock.attempts[lock.attempt + 1].anim} next` : "no fallback left";
+    const idle = viaIdle ? `, playIdle returned ${lock.idleResult}` : "";
+    const next = lock.playing ? `playing${alreadyIn ? ", already in the pose before the send" : ""}${relayed ? ", relayed to other players" : ""}`
+      : hasNext ? `trying ${lock.attempts[lock.attempt + 1].anim} next` : "no fallback left";
     logToPlatformLog(this, `action lock pose ${describeAttempt(lock)}: graph accepted ${lock.accepted}${idle}, ${playingVar} ${lock.varBefore} before and ${varValue} ${LOCK_POSE_VERIFY_S} s later, ${next}; ${this.describePlayer(player)}`);
     if (lock.playing || !hasNext) return;
     const previous = this.lockPose;
@@ -976,6 +987,8 @@ export class RestraintService extends ClientListener {
   private lock: ActionLock | null = null;
   // Tells a stale attempt check from the current one
   private lockPoseToken = 0;
+  // Lowercase name of the last state idle the player's graph took (an emote kneel among them)
+  private lastStateIdle = "";
   // When the lock's pose first found nothing to wait for (-1 while it waits), and what it waited for since it was last sent
   private lockBlockedMs = 0;
   private lockWaits = new Set<string>();
