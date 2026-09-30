@@ -19,7 +19,7 @@ const S = require('../strip-common')
 const R = require('../restore-stripped-items')
 const formIds = require(path.join(S.SM, 'formIds'))
 const { BSON } = S.requireDriver()
-const { EJSON, Int32, Long, ObjectId } = BSON
+const { EJSON, Int32, Long, Double, ObjectId } = BSON
 
 const INTENT = path.join(FIX, 'strip-intent.json')
 const intent = JSON.parse(fs.readFileSync(INTENT, 'utf8'))
@@ -293,6 +293,39 @@ async function main() {
   doc(w2, 'f00d').inv.entries = doc(w2, 'f00d').inv.entries.filter(e => id(e) !== IRON || !e.enchantmentId)
   r = await plan(w2)
   assert.equal(r.given('f00d', IRON), 0)
+
+  // --skip-changed rolls back the others and keeps the apply record for the changed one, which stays settled; the rest come back in the next plan
+  const fresh = world()
+  await R.run(['restore', '--backup', path.join(ROOT, 'b3'), '--apply', '--skip-changed'], { open: s.open, blocker: async () => null, log: quiet })
+  for (const d of s.store) if (d.formDesc !== '29a') assert.equal(EJSON.stringify(d.inv), EJSON.stringify(doc(fresh, d.formDesc).inv), d.formDesc)
+  assert.equal(total(doc(s.store, '29a'), NEW), 1)
+  assert.ok(fs.existsSync(path.join(ROOT, 'b3', 'restore-applied.json')))
+  r = await plan(s.store)
+  for (const h of p.holders) assert.deepEqual(r.h(h.formDesc).give, h.formDesc === '29a' ? [] : h.give, h.who)
+  await assert.rejects(R.run(['restore', '--backup', path.join(ROOT, 'b3'), '--apply'], { open: s.open, blocker: async () => null, log: quiet }), refused(/--skip-changed/))
+  fs.rmSync(ROOT, { recursive: true })
+
+  // A re-save that only reorders entries or changes number types does not block the rollback
+  s = stub(world())
+  await R.run(['backup', '--out', path.join(ROOT, 'b4'), '--intent', INTENT], { open: s.open, log: quiet })
+  await R.run(['apply', '--backup', path.join(ROOT, 'b4'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet })
+  const resaved = doc(s.store, '11').inv.entries.reverse()
+  resaved[0].count = new Double(formIds.num(resaved[0].count))
+  await R.run(['restore', '--backup', path.join(ROOT, 'b4'), '--apply'], { open: s.open, blocker: async () => null, log: quiet })
+  for (const d of s.store) assert.equal(EJSON.stringify(d.inv), EJSON.stringify(doc(world(), d.formDesc).inv), d.formDesc)
+  fs.rmSync(ROOT, { recursive: true })
+
+  // An apply that stopped part way, finished by a second backup and apply: the first rolls back alone, and what it gave comes back in the next plan
+  s = stub(world(), { failAt: 3 })
+  await R.run(['backup', '--out', path.join(ROOT, 'first'), '--intent', INTENT], { open: s.open, log: quiet })
+  await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'first'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet }), /stopped part way/)
+  const firstIds = new Set(s.writes.map(x => String(x.filter._id)))
+  await R.run(['backup', '--out', path.join(ROOT, 'second'), '--intent', INTENT], { open: s.open, log: quiet })
+  await R.run(['apply', '--backup', path.join(ROOT, 'second'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet })
+  assert.equal((await plan(s.store)).rep.totals.giveItems, 0)
+  await R.run(['restore', '--backup', path.join(ROOT, 'first'), '--apply'], { open: s.open, blocker: async () => null, log: quiet })
+  r = await plan(s.store)
+  for (const h of p.holders) assert.deepEqual(r.h(h.formDesc).give, firstIds.has(h.id) ? h.give : [], h.who)
   fs.rmSync(ROOT, { recursive: true })
 
   // An apply that stops part way can still be rolled back: written documents go back, the rest are left alone

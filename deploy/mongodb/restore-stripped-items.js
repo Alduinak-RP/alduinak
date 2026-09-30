@@ -20,8 +20,8 @@ const USAGE = [
   '          dump every changeForm the apply would change',
   '  apply   --backup <dir> [--apply]',
   '          a dry run unless --apply; refuses unless the game server is stopped and the backup matches the live documents',
-  '  restore --backup <dir> [--apply]',
-  '          roll an apply back to the backed up inventories; a dry run unless --apply',
+  '  restore --backup <dir> [--apply] [--skip-changed]',
+  '          roll an apply back to the backed up inventories; a dry run unless --apply; --skip-changed leaves the documents changed since as they are',
   'all but restore also take [--strip <strip backup dir>] [--intent <strip-intent.json>] [--strip-plan <strip-inventories-plan-*.json>]',
   "  [--also-keep '0x...,0x...'] (keep these removed base ids removed too) [--also-give '0x...,0x...'] (return these although the intent keeps them; never spells)",
   '  ids are hex with 0x; quote a list in PowerShell, and give each flag once',
@@ -90,13 +90,13 @@ function loadStripPlan(file, info) {
   return { file: chosen, holders: new Map(arr(r.holders).map(h => [h.formDesc, h])) }
 }
 
-// The last event per document in an apply's write log (writing, wrote, not written, rolled back); null when the apply never started writing
+// The last event per document in an apply's write log (writing, wrote, not written, rolling back, rolled back); null when the apply never started writing
 function readLog(dir) {
   const file = path.join(dir, LOG_FILE)
   if (!fs.existsSync(file)) return null
   const last = new Map()
   for (const l of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const m = /^(writing|wrote|not written|rolled back) (\S+)$/.exec(l.trim())
+    const m = /^(writing|wrote|not written|rolling back|rolled back) (\S+)$/.exec(l.trim())
     if (m) last.set(m[2], m[1])
   }
   return last
@@ -126,7 +126,7 @@ function earlierApplies(stripSha) {
 
 const NO_EARLIER = { byDoc: new Map(), summaries: [] }
 
-// The base ids each earlier apply settled per document it reached; a document it was writing when it stopped is judged by its inventory now
+// The base ids each earlier apply settled per document it reached; a document it or its rollback was writing when it stopped is judged by its inventory now
 function resolveEarlier(records, live, settings) {
   const byDoc = new Map()
   const summaries = []
@@ -138,7 +138,7 @@ function resolveEarlier(records, live, settings) {
       if (d.write) {
         sum.writes++
         const ev = log ? log.get(d.id) : 'writing'
-        if (ev === 'writing') {
+        if (ev === 'writing' || ev === 'rolling back') {
           pre = pre || new Map(S.readBackup(dir, settings, INFO_FILE).docs.map(x => [String(x._id), x]))
           const now = live.get(d.id)
           const items = now && itemsSha(now.inv && now.inv.entries)
@@ -339,7 +339,7 @@ function giveRow(row, ctx) {
     if (back) row.back.push({ ...w.base, count: back, current: w.current, byEarlierRestore: w.done ? back : 0, elsewhere: w.elsewhere })
     if (w.want) row.give.push({ ...w.base, count: w.want, variants: giveEntries(next, w.g, w.want, ctx.BSON) })
   }
-  row.decided = row.wants.map(w => w.base.baseId)
+  row.decided = row.wants.filter(w => !w.done).map(w => w.base.baseId)
   delete row.wants
   if (row.give.length) row.set = { 'inv.entries': next }
   return row
@@ -607,38 +607,49 @@ async function applyMode(flags, ctx, env) {
   }, env.open)
 }
 
-// Puts the backed up inventories back where they still hold exactly what the apply wrote; ones it never reached are left alone
+// Puts the backed up inventories back where they still hold what the apply wrote (in any entry order and number types); ones it never wrote are left alone
 async function rollbackMode(flags, env) {
   const dir = restoreDir(flags.backup)
   const { docs } = S.readBackup(dir, env.settings, INFO_FILE)
   const recFile = path.join(dir, APPLIED_FILE)
   if (!fs.existsSync(recFile)) throw new Refusal(`${dir} has no ${APPLIED_FILE}: it was never applied (or was rolled back already)`)
   const rec = new Map(arr(readJson(recFile, 'apply record').docs).map(d => [d.id, d]))
+  const log = readLog(dir)
   const blocker = flags.apply ? await env.blocker() : null
   if (blocker) throw new Refusal(blocker)
   await S.withCol(env.settings, async col => {
     const live = new Map()
     for await (const doc of col.find({ _id: { $in: docs.map(d => d._id) } }, { promoteValues: false })) live.set(String(doc._id), doc)
-    const problems = []
+    const changed = []
     const undo = []
     for (const d of docs) {
-      const now = live.get(String(d._id))
-      const r = rec.get(String(d._id))
-      const entries = now && canonical(arr(now.inv && now.inv.entries))
-      if (!now) problems.push(`${d.formDesc} no longer exists`)
-      else if (r && sha256(entries) === r.entriesSha256) undo.push({ d, now })
-      else if (entries !== canonical(arr(d.inv && d.inv.entries))) problems.push(`${d.formDesc}${r ? ` ${r.who}` : ''}: its inventory changed since the apply`)
+      const id = String(d._id)
+      const r = rec.get(id)
+      if (!r || !r.write || !['writing', 'wrote', 'rolling back'].includes(log ? log.get(id) : 'writing')) continue
+      const now = live.get(id)
+      const items = now && itemsSha(now.inv && now.inv.entries)
+      if (items === r.itemsSha256) undo.push({ id, d, now })
+      else if (!now || items !== itemsSha(d.inv && d.inv.entries)) changed.push(`${d.formDesc} ${r.who}: ${now ? 'its inventory changed since the apply' : 'the document no longer exists'}`)
     }
-    env.log(`${plural(undo.length, 'document', 'documents')} of ${docs.length} in ${dir} hold what the apply wrote`)
-    if (problems.length) throw new Refusal(`rolling back would lose changes made after the apply:\n  ${problems.slice(0, 20).join('\n  ')}`)
+    env.log(`${plural(undo.length, 'document', 'documents')} of ${docs.length} in ${dir} hold what the apply wrote${changed.length ? `, ${changed.length} changed since` : ''}`)
+    if (changed.length && !flags.skipChanged) throw new Refusal(`rolling back would lose changes made after the apply:\n  ${changed.slice(0, 20).join('\n  ')}\n--skip-changed rolls back the others and leaves these as they are, keeping what the apply gave`)
+    if (changed.length) env.log(`left as they are, keeping what the apply gave:\n  ${changed.join('\n  ')}`)
     if (!flags.apply) { env.log('[dry run] re-run with --apply to put the backed up inventories back'); return }
-    for (const { d, now } of undo) {
+    if (!log) for (const r of rec.values()) if (r.write) appendLog(dir, 'writing', r.id)
+    for (const { id, d, now } of undo) {
+      appendLog(dir, 'rolling back', id)
       const res = await col.updateOne(unchanged(now), { $set: { 'inv.entries': arr(d.inv && d.inv.entries) } })
-      if (res.matchedCount !== 1) throw new Error(`${d.formDesc} changed after it was read, nothing written to it; stopped part way`)
+      if (res.matchedCount !== 1) {
+        appendLog(dir, 'wrote', id)
+        throw new Error(`${d.formDesc} changed after it was read, nothing written to it; stopped part way`)
+      }
+      appendLog(dir, 'rolled back', id)
     }
-    fs.renameSync(recFile, path.join(dir, ROLLED_BACK_FILE))
-    if (fs.existsSync(path.join(dir, LOG_FILE))) fs.renameSync(path.join(dir, LOG_FILE), path.join(dir, ROLLED_BACK_LOG))
-    env.log(`rolled back ${plural(undo.length, 'document', 'documents')}`)
+    if (!changed.length) {
+      fs.renameSync(recFile, path.join(dir, ROLLED_BACK_FILE))
+      if (fs.existsSync(path.join(dir, LOG_FILE))) fs.renameSync(path.join(dir, LOG_FILE), path.join(dir, ROLLED_BACK_LOG))
+    }
+    env.log(`rolled back ${plural(undo.length, 'document', 'documents')}${changed.length ? `; the apply record stays for the ${changed.length} left as they are` : ''}`)
   }, env.open)
 }
 
@@ -647,14 +658,14 @@ async function rollbackMode(flags, env) {
 const INPUTS = ['strip', 'intent', 'stripPlan', 'alsoKeep', 'alsoGive', 'perDocument']
 const ARGS = {
   defaultMode: 'plan',
-  bools: { '--apply': 'apply', '--per-document': 'perDocument' },
+  bools: { '--apply': 'apply', '--per-document': 'perDocument', '--skip-changed': 'skipChanged' },
   valued: { '--out': 'out', '--backup': 'backup', '--report': 'report', '--strip': 'strip', '--intent': 'intent', '--strip-plan': 'stripPlan', '--also-keep': 'alsoKeep', '--also-give': 'alsoGive' },
   allowed: {
     preview: ['report', ...INPUTS],
     plan: ['report', ...INPUTS],
     backup: ['out', ...INPUTS],
     apply: ['backup', 'apply', ...INPUTS],
-    restore: ['backup', 'apply'],
+    restore: ['backup', 'apply', 'skipChanged'],
   },
   required: { apply: ['--backup'], restore: ['--backup'] },
 }

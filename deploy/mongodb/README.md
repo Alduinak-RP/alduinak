@@ -91,8 +91,13 @@ is a dry run; it refuses if a document changed since the backup (take the
 backup again into `rollback-2` and use that name from there on). The last
 `plan` is the check: "comes back: 0 items".
 
-To undo the apply before anyone plays (it refuses once an inventory changed
-since the apply), dry run first, then:
+To undo the apply, do it before the game server is started again: the
+rollback puts back only documents that still hold what the apply wrote
+(entry order and number types may differ) and refuses as a whole once any of
+them gained or lost an item, which the first login or save can do. With
+`--skip-changed` it rolls back the others and leaves the changed ones as
+they are, keeping what the apply gave (they stay settled; the ones rolled
+back come back in the next `plan`). Dry run first, then:
 
 ```
 node deploy/mongodb/restore-stripped-items.js restore --backup C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\rollback-1
