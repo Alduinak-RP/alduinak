@@ -49,6 +49,12 @@ RE::BSTArray<RE::TintMask*> Clone(const RE::BSTArray<RE::TintMask*>& original)
   }
   return res;
 }
+
+::TintMask* CreateTintMask()
+{
+  auto mask = RE::malloc<::TintMask>();
+  return mask ? ::new (mask) ::TintMask : nullptr;
+}
 }
 
 class FunctionArguments : public RE::BSScript::IFunctionArguments
@@ -279,11 +285,11 @@ static RE::TESNPC* CloneNpc(uint32_t npcId, AiPackagesMode aiPackagesMode)
   }
 
   auto sourceFaceData = npc_->faceData;
-  npc_->faceData = new RE::TESNPC::FaceData;
+  npc_->faceData = RE::malloc<RE::TESNPC::FaceData>();
   if (!npc_->faceData) {
     return nullptr;
   }
-  *npc_->faceData = *sourceFaceData;
+  ::new (npc_->faceData) RE::TESNPC::FaceData(*sourceFaceData);
 
   return npc;
 }
@@ -448,12 +454,9 @@ void TESModPlatform::ResizeHeadpartsArray(IVM* vm, StackID stackId,
     npc->headParts = nullptr;
     npc->numHeadParts = 0;
   } else {
-    npc->headParts = new RE::BGSHeadPart*[newSize];
-    npc->numHeadParts = newSize;
-
-    for (int8_t i = 0; i < npc->numHeadParts; ++i) {
-      npc->headParts[i] = nullptr;
-    }
+    // The old array is kept since CloneNpc copies the source NPC's pointer
+    npc->headParts = RE::calloc<RE::BGSHeadPart*>(newSize);
+    npc->numHeadParts = npc->headParts ? newSize : 0;
   }
 }
 
@@ -473,7 +476,7 @@ void TESModPlatform::ResizeTintsArray(IVM* vm, StackID stackId,
 
   pc->GetTintList()->resize(newSize);
   for (auto& mask : *pc->GetTintList()) {
-    mask = (RE::TintMask*)new ::TintMask;
+    mask = (RE::TintMask*)CreateTintMask();
   }
 }
 
@@ -511,7 +514,7 @@ void TESModPlatform::PushTintMask(RE::BSScript::IVirtualMachine* vm,
                                   RE::Actor* targetActor, int32_t type,
                                   uint32_t argb, RE::BSFixedString texturePath)
 {
-  auto newTm = RE::malloc<::TintMask>();
+  auto newTm = CreateTintMask();
   if (!newTm)
     return;
 
