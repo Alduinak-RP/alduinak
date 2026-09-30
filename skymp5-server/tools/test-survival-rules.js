@@ -1,6 +1,7 @@
 'use strict'
 
-// SurvivalSystem rules against a mock server: settings, body rules on and off, raw meat food poisoning, expiry, cure and shrines: node tools/test-survival-rules.js
+// SurvivalSystem rules against a mock server: settings, body rules on and off, raw meat food poisoning, expiry, cure, shrines, cold, afflictions,
+// diseases, contagion and the admin event: node tools/test-survival-rules.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -19,6 +20,7 @@ const load = (file) => {
 const { SurvivalSystem } = load('survivalSystem.ts')
 const { LOGIN_SYNC_DELAY_MS, RESYNC_DELAY_MS } = load('stageAbilities.ts')
 const C = load('survivalClimate.ts')
+const D = load('survivalDiseases.ts')
 
 const HOUR = 3600000
 const T0 = 2e12
@@ -127,6 +129,24 @@ const COLD_RECORDS = [
 ]
 for (const [id, rec] of COLD_RECORDS) RECORDS.set(id, rec)
 
+// The plugin's AldDisease_<Id>1..3 at their pinned ids, in catalog order from 0x041341
+const DISEASE_IDS = new Map()
+Object.values(D.defaultDiseases()).forEach((d, i) => d.spells.forEach((edid, s) => {
+  const id = 0x41341 + i * 3 + s
+  DISEASE_IDS.set(edid, id)
+  RECORDS.set(id, spell(edid, 1))
+}))
+const sick = (edid) => DISEASE_IDS.get(edid)
+const SKEEVER_RACE = 0x13200
+const WOLF_RACE = 0x13201
+const WEREWOLF_RACE = 0xcdd84
+const SKEEVER = 0xff00c000
+const WOLF = 0xff00c001
+const WEREWOLF = 0xff00c002
+const DOG = 0xff00c003
+const IRON_SWORD = 0x12eb7
+for (const [id, rec] of [[SKEEVER_RACE, record('RACE', 'SkeeverRace')], [WOLF_RACE, record('RACE', 'WolfRace')], [WEREWOLF_RACE, record('RACE', 'WerewolfBeastRace')], [IRON_SWORD, record('WEAP', 'IronSword')]]) RECORDS.set(id, rec)
+
 const desc = (id) => `${(id >>> 0).toString(16)}:Test.esp`
 
 // Each actor: user, race, learned spells; every Papyrus spell call and packet recorded
@@ -178,7 +198,7 @@ const RACES = { NordRace: false, RedguardRace: false, KhajiitRace: true }
 const COLD_MULT = { NordRace: 0, KhajiitRace: 1.25 }
 
 // A configured system with every record resolved, its hooks on a mock server; actors are added with join
-const setup = (settings = { survivalEnabled: true }, cold = false) => {
+const setup = (settings = { survivalEnabled: true }, cold = false, plugin = true) => {
   const logs = []
   const mp = makeMp()
   const racial = {
@@ -207,6 +227,8 @@ const setup = (settings = { survivalEnabled: true }, cold = false) => {
     sys.coldCells = new Set([CAVE])
     sys.heatInteriors.set(INN, [[100, 100, 0]])
   }
+  if (plugin) for (const d of Object.values(sys.dis.diseases)) sys.diseaseSpells.set(d.id, d.spells.map((edid) => DISEASE_IDS.get(edid) || 0))
+  sys.mp = mp
   const ctx = { svr: mp, gm: { on: () => {}, emit: () => {} } }
   if (sys.enabled) sys.installHooks(ctx)
   let nextUser = 1
@@ -228,7 +250,10 @@ const setup = (settings = { survivalEnabled: true }, cold = false) => {
   const states = (actorId) => mp.packets.filter(([u, p]) => u === mp.users.get(actorId) && p.customPacketType === 'survivalState').map(([, p]) => p)
   const put = (actorId, place, pos = [0, 0, 0]) => { mp.set(actorId, 'place', place); mp.set(actorId, 'pos', pos) }
   const wear = (actorId, ...bases) => mp.set(actorId, 'equipment', { inv: { entries: bases.map((baseId) => ({ baseId, count: 1, worn: true })) } })
-  return { sys, mp, ctx, logs, problems, join, update, notices, rec, states, put, wear, weather }
+  // A creature of the race hits the target with the source (unarmed when omitted)
+  const creature = (id, raceId) => { mp.set(id, 'appearance', { raceId }); mp.set(id, 'profileId', -1) }
+  const hitBy = (target, aggressor, source = 0x1f4, blocked = false) => mp['onPapyrusEvent:OnHit'](target, { type: 'form', desc: desc(aggressor) }, { type: 'espm', desc: desc(source) }, null, false, false, false, blocked)
+  return { sys, mp, ctx, logs, problems, join, update, notices, rec, states, put, wear, weather, creature, hitBy }
 }
 
 let nextActor = 0xff000100
@@ -1005,6 +1030,312 @@ async function main() {
     await off.update()
     assert.deepEqual(off.logs, [`[survival] ${e.toString(16)} body rules off: respawn 100% (already), abilities removed: Survival_AfflictionWeakened`])
     assert.deepEqual(off.rec(e).afflictions, {})
+  })
+
+  const mmdd = (ms) => { const d = new Date(ms); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hhmm(ms)}` }
+  const x = (id) => id.toString(16)
+  const held = (id, stage, nextAt, extra = {}) => ({ id, stage, nextAt, since: T0, from: 'admin', spell: desc(sick(`AldDisease_${id[0].toUpperCase()}${id.slice(1)}${stage}`)), ...extra })
+
+  await test('diseases: the catalog, carriers and stages follow survival.md 2.3; bad settings fall back and are named', () => {
+    const cfg = D.parseDiseaseSettings({}, [])
+    const defs = Object.values(cfg.diseases)
+    assert.equal(defs.length, 27)
+    assert.equal(defs.filter((d) => d.contagious).length, 19)
+    assert.deepEqual([cfg.enabled, cfg.stageHours, cfg.max, cfg.exclude, cfg.contagion], [true, [84, 84], 4, ['werewolf'], { chance: 0.05, range: 300, checkSeconds: 60, cooldownMinutes: 30 }])
+    assert.deepEqual(cfg.diseases.boneBreakFever.spells, ['AldDisease_BoneBreakFever1', 'AldDisease_BoneBreakFever2', 'AldDisease_BoneBreakFever3'])
+    assert.deepEqual(cfg.carriers.skeever, { chance: 0.1, diseases: ['ataxia', 'bloodLung', 'feebleLimb', 'redRage', 'shakes', 'witlessPox'] })
+    assert.deepEqual(['SkeeverWhiteRace', 'WolfRace', 'WerewolfBeastRace', 'SabreCatSnowyRace', 'DLC2AshHopperRace', 'NordRace', ''].map((r) => D.carrierOf(r, cfg.carriers, cfg.exclude)), ['skeever', 'wolf', '', 'sabrecat', 'ashhopper', '', ''])
+    assert.equal(D.pickDisease(['a', 'b', 'c'], ['a'], 0.99), 'c')
+    assert.equal(D.pickDisease(['a'], ['a'], 0), '')
+    assert.ok(Math.abs(D.resistedChance(0.1, 75) - 0.025) < 1e-12)
+    assert.equal(D.resistedChance(0.1, 100), 0)
+    assert.deepEqual(D.stageAt(1, T0 + HOUR, T0, [84, 84]), { stage: 1, nextAt: T0 + HOUR })
+    assert.deepEqual(D.stageAt(1, T0, T0, [84, 84]), { stage: 2, nextAt: T0 + 84 * HOUR })
+    assert.deepEqual(D.stageAt(1, T0, T0 + 200 * HOUR, [84, 84]), { stage: 3, nextAt: 0 })
+    assert.deepEqual(D.stageAt(3, 0, T0 + 1e9, [84, 84]), { stage: 3, nextAt: 0 })
+    assert.deepEqual([D.nextStageAt(2, T0, [84, 12]), D.nextStageAt(3, T0, [84, 12])], [T0 + 12 * HOUR, 0])
+    assert.equal(D.diseaseFactor(cfg.diseases, [{ id: 'collywobbles', stage: 2 }, { id: 'ataxia', stage: 3 }], 'hunger'), 1.5)
+    assert.equal(D.diseaseFactor(cfg.diseases, [{ id: 'gutworm', stage: 3 }, { id: 'brownRot', stage: 1 }], 'food'), 0.25)
+    assert.equal(D.diseaseFactor(cfg.diseases, [], 'cold'), 1)
+    const problems = []
+    const odd = D.parseDiseaseSettings({ survivalDiseases: { chills: false, rockjoint: { name: 'Stonejoint', stageHours: [1, 2], cure: 'x' }, plague: {} }, survivalDiseaseCarriers: { skeever: false, Spider: { chance: 0.2, diseases: ['ataxia', 'chills'] }, troll: { chance: 3 } }, survivalMaxDiseases: 0, survivalContagionChance: 2, survivalDiseaseStageHours: [1] }, problems)
+    assert.equal(odd.diseases.chills, undefined)
+    assert.deepEqual([odd.diseases.rockjoint.name, odd.diseases.rockjoint.stageHours, odd.diseases.ataxia.stageHours], ['Stonejoint', [1, 2], [84, 84]])
+    assert.equal(odd.carriers.skeever, undefined)
+    assert.deepEqual(odd.carriers.spider, { chance: 0.2, diseases: ['ataxia'] })
+    assert.deepEqual(odd.carriers.icewraith.diseases, [])
+    assert.deepEqual(odd.carriers.troll, { chance: 0.06, diseases: ['gutworm'] })
+    assert.deepEqual([odd.max, odd.contagion.chance], [4, 0.05])
+    assert.deepEqual(problems, [
+      'survivalDiseaseStageHours [1] is not 2 hours above 0, the default is used',
+      'survivalDiseases.rockjoint.cure "x" is not usable, ignored',
+      'survivalDiseases.plague is no catalog disease, ignored',
+      'survivalDiseaseCarriers.Spider names chills, no disease in force, left out',
+      'survivalDiseaseCarriers.troll {"chance":3} is not { chance 0 to 1, diseases [ids] } or false, ignored',
+      'survivalMaxDiseases 0 is out of range, the default is used',
+      'survivalContagionChance 2 is out of range, the default is used',
+    ])
+  })
+
+  await test('diseases: a carrier creature\'s hit rolls its chance times disease resistance once and gives one disease the character lacks', async () => {
+    const t = setup()
+    const [n, r] = [actor(), actor()]
+    t.join(n, NORD_RACE)
+    t.join(r, REDGUARD_RACE)
+    t.creature(SKEEVER, SKEEVER_RACE)
+    later()
+    await t.update()
+    t.logs.length = 0
+    t.mp.calls.length = 0
+    const a1 = sick('AldDisease_Ataxia1')
+    Math.random = () => 0
+    t.hitBy(n, SKEEVER)
+    await tick()
+    assert.deepEqual(t.logs, [`[survival] ${x(n)} hit by SkeeverRace ff00c000: skeever 10% x (1 - disease resist 0%) = 10%, roll 0.000, caught ataxia (AldDisease_Ataxia1), stage 2 at ${mmdd(clock.now + 84 * HOUR)}`])
+    assert.deepEqual(t.mp.calls, [`${x(n)} +${x(a1)}`])
+    assert.deepEqual(t.rec(n).diseases, [{ id: 'ataxia', stage: 1, nextAt: clock.now + 84 * HOUR, since: clock.now, from: 'skeever SkeeverRace', spell: desc(a1) }])
+    assert.equal(t.notices(n).pop(), 'You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming days. A Cure Disease potion or a healing potion cures it.')
+    assert.deepEqual(t.states(n).pop().diseases, [{ name: 'Ataxia', stage: 1 }])
+    t.hitBy(n, SKEEVER, IRON_SWORD)
+    await tick()
+    assert.deepEqual(t.rec(n).diseases.map((d) => d.id), ['ataxia', 'bloodLung'], 'the next success picks a disease not held')
+    t.logs.length = 0
+    Math.random = () => 0.07
+    t.hitBy(r, SKEEVER)
+    await tick()
+    assert.deepEqual(t.logs, [`[survival] ${x(r)} hit by SkeeverRace ff00c000: skeever 10% x (1 - disease resist 50%) = 5%, roll 0.070, spared`])
+    t.logs.length = 0
+    Math.random = () => 0
+    t.creature(DOG, WOLF_RACE)
+    t.mp.set(DOG, 'private.pet', { owner: n })
+    t.creature(WEREWOLF, WEREWOLF_RACE)
+    t.hitBy(r, SKEEVER, 0x1f4, true)
+    t.hitBy(r, SKEEVER, FROSTBITE)
+    t.hitBy(r, n)
+    t.hitBy(r, DOG)
+    t.hitBy(r, WEREWOLF)
+    await tick()
+    assert.deepEqual([t.logs, t.rec(r).diseases], [[], []], 'a blocked hit, a spell, a player, a pet and a werewolf carry nothing')
+    const u = setup({ survivalEnabled: true, survivalMaxDiseases: 1 })
+    const w = actor()
+    u.join(w, NORD_RACE)
+    u.creature(WOLF, WOLF_RACE)
+    later()
+    await u.update()
+    u.hitBy(w, WOLF)
+    await tick()
+    u.logs.length = 0
+    u.hitBy(w, WOLF)
+    await tick()
+    assert.deepEqual(u.logs, [`[survival] ${x(w)} hit by WolfRace ff00c001: wolf 10% x (1 - disease resist 0%) = 10%, roll 0.000, helljoint refused: already sick with 1 (survivalMaxDiseases 1)`])
+  })
+
+  await test('diseases: stages worsen by wall clock at the minute tick and for the time offline; stage 3 stays until cured', async () => {
+    const t = setup()
+    const [a, b] = [actor(), actor()]
+    const [r1, r2, r3] = [1, 2, 3].map((s) => sick(`AldDisease_Rockjoint${s}`))
+    const start = clock.now
+    t.join(a, NORD_RACE, coldRecord(55, { diseases: [held('rockjoint', 1, start + HOUR)] }))
+    t.join(b, NORD_RACE, coldRecord(55, { diseases: [held('rockjoint', 1, start - 200 * HOUR)] }))
+    t.mp.learned(a).add(r1)
+    t.mp.learned(b).add(r1)
+    later()
+    await t.update()
+    assert.ok(t.logs.some((l) => l.startsWith(`[survival] ${x(a)} body:`) && l.includes(`no food poisoning, rockjoint 1 (stage 2 at ${mmdd(start + HOUR)}); cold 55`)), t.logs.join('\n'))
+    assert.ok(t.logs.includes(`[survival] ${x(b)} rockjoint worsened 1 -> 3 (AldDisease_Rockjoint3, due ${mmdd(start - 200 * HOUR)}), stays until cured`), t.logs.join('\n'))
+    assert.ok(t.logs.some((l) => l.startsWith(`[survival] ${x(b)} body:`) && l.includes('rockjoint 3 (until cured)')), t.logs.join('\n'))
+    assert.deepEqual(t.mp.calls.filter((c) => c === `${x(b)} -${x(r1)}` || c === `${x(b)} +${x(r3)}`), [`${x(b)} -${x(r1)}`, `${x(b)} +${x(r3)}`])
+    assert.equal(t.rec(b).diseases[0].nextAt, 0)
+    t.logs.length = 0
+    t.mp.calls.length = 0
+    later(HOUR)
+    await t.update()
+    assert.deepEqual(t.mp.calls.filter((c) => c.startsWith(x(a))), [`${x(a)} -${x(r1)}`, `${x(a)} +${x(r2)}`])
+    assert.ok(t.logs.includes(`[survival] ${x(a)} rockjoint worsened 1 -> 2 (AldDisease_Rockjoint2, due ${mmdd(start + HOUR)}), stage 3 at ${mmdd(start + 85 * HOUR)}`), t.logs.join('\n'))
+    assert.equal(t.notices(a).pop(), 'Your Rockjoint has worsened to its advanced stage. A Cure Disease potion or a healing potion cures it.')
+    assert.deepEqual(t.states(a).pop().diseases, [{ name: 'Rockjoint', stage: 2 }])
+    t.mp.calls.length = 0
+    later(1000 * HOUR)
+    await t.update()
+    assert.deepEqual(t.mp.calls.filter((c) => c.startsWith(x(b))), [], 'stage 3 stays')
+    assert.equal(t.rec(a).diseases[0].stage, 3)
+  })
+
+  await test('diseases: a Cure Disease or healing potion, the admin reset, survival off and diseases off take them', async () => {
+    const t = setup()
+    const [a, b, c] = [actor(), actor(), actor()]
+    const r2 = sick('AldDisease_Rockjoint2')
+    for (const id of [a, b, c]) {
+      t.join(id, NORD_RACE, coldRecord(55, { diseases: [held('rockjoint', 2, clock.now + HOUR)] }))
+      t.mp.learned(id).add(r2)
+    }
+    later()
+    await t.update()
+    t.logs.length = 0
+    t.mp.calls.length = 0
+    t.mp.onEatItem(a, CURE)
+    t.mp.onEatItem(b, HEAL50)
+    await tick()
+    assert.deepEqual(t.logs, [
+      `[survival] ${x(a)} cured by CureDisease (Cure Disease): AldDisease_Rockjoint2, the native cure took every Disease spell`,
+      `[survival] ${x(b)} cured by RestoreHealth02 (restores 50 health): AldDisease_Rockjoint2`,
+    ])
+    assert.deepEqual(t.mp.calls, [`${x(a)} -${x(r2)}`, `${x(b)} -${x(r2)}`])
+    assert.deepEqual([t.rec(a).diseases, t.rec(b).diseases, t.states(a).pop().diseases], [[], [], []])
+    t.logs.length = 0
+    assert.equal(t.sys.resetBy(t.ctx, c, 'Admin'), true)
+    assert.deepEqual([t.logs, t.rec(c).diseases], [[`[survival] ${x(c)} reset by Admin, removed AldDisease_Rockjoint2`], []])
+    const off = setup({})
+    const d = actor()
+    off.join(d, NORD_RACE, coldRecord(55, { diseases: [held('rockjoint', 2, clock.now + HOUR)] }))
+    off.mp.learned(d).add(r2)
+    later()
+    await off.update()
+    assert.deepEqual(off.logs, [`[survival] ${x(d)} body rules off: respawn 100% (already), abilities removed: AldDisease_Rockjoint2`])
+    assert.deepEqual(off.rec(d).diseases, [])
+    const u = setup({ survivalEnabled: true, survivalDiseasesEnabled: false })
+    const e = actor()
+    u.join(e, NORD_RACE, coldRecord(55, { diseases: [held('rockjoint', 2, clock.now + HOUR)] }))
+    u.creature(SKEEVER, SKEEVER_RACE)
+    later()
+    await u.update()
+    assert.ok(u.logs[0].includes('removed AldDisease_Rockjoint2, no food poisoning; cold 55'), u.logs[0])
+    Math.random = () => 0
+    u.hitBy(e, SKEEVER)
+    await tick()
+    assert.deepEqual(u.rec(e).diseases, [], 'no disease is caught while diseases are off')
+  })
+
+  await test('diseases: Collywobbles, Gutworm and Brown Rot scale the needs and Chills the cold gain; a record not followed yet counts at its stored stages', async () => {
+    const t = setup({ survivalEnabled: true, survivalNightHours: [0, 24] }, true)
+    const a = actor()
+    const list = [held('collywobbles', 2, clock.now + HOUR), held('gutworm', 3, 0), held('brownRot', 1, clock.now + HOUR), held('chills', 2, clock.now + HOUR)]
+    t.join(a, REDGUARD_RACE, coldRecord(55, { diseases: list }))
+    t.put(a, TAMRIEL)
+    assert.deepEqual([t.sys.hungerDrainMult(a), t.sys.foodHungerMult(a), t.sys.fatigueRegenMult(a)], [1.5, 0.25, 0.75])
+    const b = actor()
+    t.mp.set(b, 'private.survival', coldRecord(55, { diseases: [list[0]] }))
+    assert.equal(t.sys.hungerDrainMult(b), 1.5, 'read from the record before survival follows the character')
+    later()
+    await t.update()
+    later(10 * 60000)
+    await t.update()
+    const bare = C.coldRatePerSec(16, 0, 1, t.sys.cold) * 600
+    assert.ok(Math.abs(t.rec(a).cold - (55 + bare * 1.5)) < 1e-6, String(t.rec(a).cold))
+    assert.match(t.sys.describe(), /^diseases Brown Rot fatigue refill x0\.75\/0\.5\/0\.25, Gutworm food x0\.75\/0\.5\/0\.25, Chills cold gain x1\.25\/1\.5\/1\.75, Collywobbles hunger drain x1\.25\/1\.5\/1\.75 by stage/)
+    assert.equal(setup({}).sys.hungerDrainMult(a), 1, 'nothing while survival is off')
+  })
+
+  await test('contagion: a sick player exposes players in range once per disease and pair per cooldown; far, hidden and non-contagious are spared', async () => {
+    const t = setup({ survivalEnabled: true, survivalContagionChance: 1 })
+    const [a, b, c, d] = [actor(), actor(), actor(), actor()]
+    t.join(a, NORD_RACE, coldRecord(55, { diseases: [held('collywobbles', 1, clock.now + HOUR), held('witbane', 1, clock.now + HOUR)] }))
+    for (const id of [b, c, d]) t.join(id, NORD_RACE)
+    t.put(a, INN, [0, 0, 0])
+    t.put(b, INN, [200, 0, 0])
+    t.put(c, INN, [1000, 0, 0])
+    t.put(d, INN, [0, 200, 0])
+    t.mp.set(d, 'ff_adminModes', { god: true })
+    Math.random = () => 0.5
+    later()
+    await t.update()
+    assert.deepEqual(t.logs.filter((l) => l.includes('contagion')), [`[survival] contagion ${x(a)} -> ${x(b)}: collywobbles 100% x (1 - disease resist 0%) = 100%, roll 0.500, caught collywobbles (AldDisease_Collywobbles1), stage 2 at ${mmdd(clock.now + 84 * HOUR)}`])
+    assert.equal(t.notices(b).pop(), 'You have caught Collywobbles from someone near you: you hunger faster and your stamina recovers more slowly. It worsens over the coming days. A Cure Disease potion or a healing potion cures it.')
+    assert.deepEqual(t.rec(b).diseases.map((dd) => [dd.id, dd.from]), [['collywobbles', `contagion ${x(a)}`]])
+    assert.deepEqual([t.rec(c).diseases, t.rec(d).diseases], [[], []])
+    const u = setup({ survivalEnabled: true })
+    const [e, f] = [actor(), actor()]
+    u.join(e, NORD_RACE, coldRecord(55, { diseases: [held('collywobbles', 3, 0)] }))
+    u.join(f, NORD_RACE)
+    u.put(e, INN, [0, 0, 0])
+    u.put(f, INN, [100, 0, 0])
+    later()
+    await u.update()
+    later(60000)
+    await u.update()
+    later(29 * 60000)
+    await u.update()
+    const rolls = u.logs.filter((l) => l.startsWith('[survival] contagion'))
+    assert.equal(rolls.length, 2, rolls.join('\n'))
+    assert.equal(rolls[0], `[survival] contagion ${x(e)} -> ${x(f)}: collywobbles 5% x (1 - disease resist 0%) = 5%, roll 0.500, spared`)
+  })
+
+  await test('admin: the survival event gives, stages and cures diseases, sets cold, reads the state and lists the catalog', async () => {
+    const t = setup()
+    const a = actor()
+    assert.deepEqual(t.sys.adminRequest(t.ctx, a, 'profile 1', { op: 'summary' }), { ok: false, text: 'survival has not settled on this character yet (just logged in or still in creation)' })
+    t.join(a, NORD_RACE)
+    later()
+    await t.update()
+    const h = x(a)
+    const cat = t.sys.adminRequest(t.ctx, 0, 'profile 1', { op: 'catalog' }).catalog
+    assert.deepEqual([cat.diseases.length, cat.diseases[0], cat.coldMax, cat.coldStages], [27, { id: 'ataxia', name: 'Ataxia', contagious: true }, 1000, [50, 120, 300, 500, 800]])
+    t.logs.length = 0
+    t.mp.calls.length = 0
+    const [r2, r3] = [2, 3].map((s) => x(sick(`AldDisease_Rockjoint${s}`)))
+    const give = t.sys.adminRequest(t.ctx, a, 'profile 1', { op: 'giveDisease', disease: 'rockjoint', stage: 2 })
+    assert.deepEqual([give.ok, give.text, give.summary.diseases], [true, 'now has Rockjoint (advanced)', [{ id: 'rockjoint', name: 'Rockjoint', stage: 2, nextAt: clock.now + 84 * HOUR }]])
+    assert.deepEqual(t.logs, [`[survival] ${h} given rockjoint stage 2 by profile 1, stage 3 at ${mmdd(clock.now + 84 * HOUR)}`])
+    assert.deepEqual(t.mp.calls, [`${h} +${r2}`])
+    assert.equal(t.notices(a).pop(), 'You have caught Rockjoint (advanced): your melee attacks are weaker. A Cure Disease potion or a healing potion cures it.')
+    assert.equal(t.sys.adminRequest(t.ctx, a, 'profile 1', { op: 'giveDisease', disease: 'Rockjoint', stage: '3' }).text, 'now has Rockjoint (severe)')
+    assert.deepEqual(t.mp.calls.slice(-2), [`${h} -${r2}`, `${h} +${r3}`])
+    assert.equal(t.logs.pop(), `[survival] ${h} given rockjoint stage 3 by profile 1 (held, stage set), stays until cured`)
+    assert.equal(t.sys.adminRequest(t.ctx, a, 'p', { op: 'giveDisease', disease: 'Bone Break Fever' }).text, 'now has Bone Break Fever')
+    assert.deepEqual(t.sys.adminRequest(t.ctx, a, 'p', { op: 'giveDisease', disease: 'plague' }), { ok: false, text: "no disease called 'plague'" })
+    assert.equal(t.sys.adminRequest(t.ctx, a, 'p', { op: 'giveDisease', disease: 'ataxia', stage: 4 }).text, 'the stage must be 1 to 3')
+    const cold = t.sys.adminRequest(t.ctx, a, 'profile 1', { op: 'setCold', cold: 600 })
+    assert.deepEqual([cold.ok, cold.text, cold.summary.cold, cold.summary.stage], [true, 'cold 55 -> 600 (Freezing)', 600, 'Freezing'])
+    assert.ok(t.logs.includes(`[survival] ${h} cold set by profile 1: cold 55 -> 600`), t.logs.join('\n'))
+    assert.equal(t.sys.adminRequest(t.ctx, a, 'p', { op: 'setCold', cold: 'warm' }).text, 'cold must be a number from 0 to 1000')
+    assert.equal(t.sys.adminRequest(t.ctx, a, 'p', { op: 'summary' }).text, `cold 600 (Freezing); area not known yet; Rockjoint (severe), Bone Break Fever (worse at ${mmdd(clock.now + 84 * HOUR)})`)
+    assert.deepEqual(t.sys.adminRequest(t.ctx, a, 'p', { op: 'cure', disease: 'witbane' }), { ok: false, text: 'does not have Witbane' })
+    assert.equal(t.sys.adminRequest(t.ctx, a, 'profile 1', { op: 'cure', disease: 'rockjoint' }).text, 'cured AldDisease_Rockjoint3')
+    const all = t.sys.adminRequest(t.ctx, a, 'profile 1', { op: 'cure' })
+    assert.deepEqual([all.text, all.summary.diseases], ['cured AldDisease_BoneBreakFever1', []])
+    assert.equal(t.logs.pop(), `[survival] ${h} cured by profile 1 (admin): AldDisease_BoneBreakFever1`)
+    assert.equal(t.sys.adminRequest(t.ctx, a, 'p', { op: 'cure' }).text, 'had no sickness')
+    assert.equal(t.sys.adminRequest(t.ctx, a, 'p', { op: 'dance' }).text, "unknown survival request 'dance'")
+    const off = setup({ survivalEnabled: true, survivalDiseasesEnabled: false, survivalColdEnabled: false })
+    const b = actor()
+    off.join(b, NORD_RACE)
+    later()
+    await off.update()
+    assert.deepEqual(off.sys.adminRequest(off.ctx, b, 'p', { op: 'giveDisease', disease: 'ataxia' }), { ok: false, text: 'diseases are switched off (survivalDiseasesEnabled false)' })
+    assert.equal(off.sys.adminRequest(off.ctx, b, 'p', { op: 'setCold', cold: 5 }).text, 'cold is switched off (survivalColdEnabled false)')
+    assert.deepEqual(off.sys.adminRequest(off.ctx, 0, 'p', { op: 'catalog' }).catalog.diseases, [])
+  })
+
+  await test('diseases: one given inside the login window is replayed with its other stages cleared; without the plugin nothing is given', async () => {
+    const t = setup()
+    const a = actor()
+    const user = t.join(a, NORD_RACE)
+    later()
+    await t.update()
+    t.sys.adminRequest(t.ctx, a, 'p', { op: 'giveDisease', disease: 'ataxia', stage: 2 })
+    t.mp.calls.length = 0
+    t.sys.customPacket(user, 'weatherRequest', {}, t.ctx)
+    later(RESYNC_DELAY_MS)
+    await t.update()
+    const [s1, s2, s3] = [1, 2, 3].map((s) => x(sick(`AldDisease_Ataxia${s}`)))
+    const h = x(a)
+    assert.deepEqual(t.mp.calls.slice(-6), [`${h} +${s1}`, `${h} -${s1}`, `${h} +${s3}`, `${h} -${s3}`, `${h} -${s2}`, `${h} +${s2}`])
+    const u = setup(undefined, false, false)
+    const b = actor()
+    u.join(b, NORD_RACE)
+    u.creature(SKEEVER, SKEEVER_RACE)
+    later()
+    await u.update()
+    u.logs.length = 0
+    Math.random = () => 0
+    u.hitBy(b, SKEEVER)
+    await tick()
+    assert.deepEqual([u.logs, u.rec(b).diseases], [[], []])
+    assert.equal(u.sys.diseaseLine(), '[survival] diseases: 0 of 27 in the plugin (the AldDisease_* spells come with plugin r27a), none is given')
+    assert.equal(u.sys.adminRequest(u.ctx, b, 'p', { op: 'giveDisease', disease: 'ataxia' }).text, 'Ataxia is not in the plugin yet')
+    const full = t.sys.diseaseLine()
+    assert.ok(full.startsWith('[survival] diseases: 27 of 27 in the plugin (19 contagious); stage 2 after 84 h and stage 3 after 84 h more, offline included, stage 3 stays until cured; at most 4 at once; carriers by race editor id, longest fragment first, never werewolf: skeever 10% ataxia/bloodLung/feebleLimb/redRage/shakes/witlessPox, wolf 10% rockjoint/helljoint, '), full)
+    assert.ok(full.endsWith('contagion 5% x (1 - disease resist) per disease and pair every 30 min within 300 units, checked every 60 s, players only, never in creation, dead or with god/ghost/invis; server factors Brown Rot fatigue refill x0.75/0.5/0.25, Gutworm food x0.75/0.5/0.25, Chills cold gain x1.25/1.5/1.75, Collywobbles hunger drain x1.25/1.5/1.75'), full)
   })
 
   Date.now = realNow
