@@ -362,6 +362,7 @@ function render(title, rows, t, meta) {
   L.push(`intent ${meta.intent} (list ${meta.listSha256.slice(0, 12)})`)
   L.push(`strip plan report ${meta.stripPlan}: the strip rule reproduces it for ${meta.reproduced} of ${rows.length} documents`)
   L.push(meta.poolByProfile ? 'returns count per document and across each profile (its characters and claimed containers)' : 'returns count per document only (--per-document)')
+  L.push(`earlier applies are looked for in ${meta.restoreRoot}`)
   for (const r of meta.earlier) L.push(`an earlier restore was applied ${r.createdAt} (${r.dir}); what it gave counts as already back`)
   if (meta.alsoKeep.length || meta.alsoGive.length) L.push(`--also-keep ${meta.alsoKeep.join(',') || '-'}  --also-give ${meta.alsoGive.join(',') || '-'}`)
   L.push('', 'TOTALS')
@@ -410,7 +411,7 @@ function metaOf(ctx, settings, rows) {
   return {
     databaseName: settings.databaseName, strip: ctx.dir, stripCreatedAt: ctx.strip.info.createdAt, stripDocsSha256: ctx.strip.info.docsSha256,
     listSha256: ctx.strip.info.listSha256, intent: ctx.intent.file, intentSha256: ctx.intent.sha, stripPlan: ctx.stripPlan.file,
-    reproduced: rows.filter(r => !r.problems.length).length, earlier: ctx.earlier.records,
+    reproduced: rows.filter(r => !r.problems.length).length, restoreRoot: path.resolve(RESTORE_ROOT), earlier: ctx.earlier.records,
     alsoKeep: [...ctx.keep].map(hex), alsoGive: [...ctx.give].map(hex), poolByProfile: ctx.pool, decisions: decisionsOf(rows, ctx),
   }
 }
@@ -466,9 +467,15 @@ function infoMatches(info, ctx) {
   if (!same(info.alsoKeep, [...ctx.keep].map(hex)) || !same(info.alsoGive, [...ctx.give].map(hex))) throw new Refusal(`the backup was taken with --also-keep ${info.alsoKeep.join(',') || '(none)'} --also-give ${info.alsoGive.join(',') || '(none)'}, pass the same`)
 }
 
+// Apply records are looked up only in the folders directly under RESTORE_ROOT
+function restoreDir(given) {
+  const dir = path.resolve(given)
+  if (path.dirname(dir).toLowerCase() !== path.resolve(RESTORE_ROOT).toLowerCase()) throw new Refusal(`${dir} is not directly under ${RESTORE_ROOT}: keep restore backups there and apply or roll them back from there, so later runs find their apply records`)
+  return dir
+}
+
 async function backupMode(flags, ctx, env) {
-  const dir = path.resolve(flags.out || path.join(RESTORE_ROOT, `rollback-${stamp()}`))
-  if (path.dirname(dir).toLowerCase() !== path.resolve(RESTORE_ROOT).toLowerCase()) throw new Refusal(`keep the backup directly under ${RESTORE_ROOT} (or set ALDUINAK_RESTORE_ROOT), so later runs find its apply record`)
+  const dir = restoreDir(flags.out || path.join(RESTORE_ROOT, `rollback-${stamp()}`))
   if (fs.existsSync(dir) && fs.readdirSync(dir).length) throw new Refusal(`${dir} is not empty`)
   await S.withCol(env.settings, async col => {
     const rows = (await liveRows(col, ctx)).filter(r => r.set)
@@ -484,7 +491,7 @@ async function backupMode(flags, ctx, env) {
 }
 
 async function applyMode(flags, ctx, env) {
-  const dir = path.resolve(flags.backup)
+  const dir = restoreDir(flags.backup)
   const { info, docs } = S.readBackup(dir, env.settings, INFO_FILE)
   infoMatches(info, ctx)
   if (fs.existsSync(path.join(dir, APPLIED_FILE))) throw new Refusal(`${dir} was already applied, take a new backup`)
@@ -530,7 +537,7 @@ async function applyMode(flags, ctx, env) {
 
 // Puts the backed up inventories back where they still hold exactly what the apply wrote; ones it never reached are left alone
 async function rollbackMode(flags, env) {
-  const dir = path.resolve(flags.backup)
+  const dir = restoreDir(flags.backup)
   const { docs } = S.readBackup(dir, env.settings, INFO_FILE)
   const recFile = path.join(dir, APPLIED_FILE)
   if (!fs.existsSync(recFile)) throw new Refusal(`${dir} has no ${APPLIED_FILE}: it was never applied (or was rolled back already)`)

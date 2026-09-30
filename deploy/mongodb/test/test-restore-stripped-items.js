@@ -353,6 +353,13 @@ async function main() {
   await assert.rejects(R.run(['preview', '--report', path.join(TMP, 'x2.json'), '--intent', bad], { log: quiet }), refused(/load order changed/))
   await assert.rejects(R.run(['plan', '--also-keep', 'ebony'], { log: quiet }), err => err instanceof S.UsageError)
   await assert.rejects(R.run(['backup', '--out', path.join(TMP, 'elsewhere'), '--intent', INTENT], { open: stub(world()).open, log: quiet }), refused(/directly under/))
+  // A copy of a backup outside the root is neither applied nor rolled back, so its apply record cannot hide from later runs
+  s = stub(world())
+  await R.run(['backup', '--out', path.join(ROOT, 'orig'), '--intent', INTENT], { open: s.open, log: quiet })
+  fs.cpSync(path.join(ROOT, 'orig'), path.join(TMP, 'copy'), { recursive: true })
+  await assert.rejects(R.run(['apply', '--backup', path.join(TMP, 'copy'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet }), refused(/directly under/))
+  await assert.rejects(R.run(['restore', '--backup', path.join(TMP, 'copy'), '--apply'], { open: s.open, blocker: async () => null, log: quiet }), refused(/directly under/))
+  assert.equal(s.writes.length, 0)
 
   fs.rmSync(TMP, { recursive: true, force: true })
   console.log('restore-stripped-items: all tests passed')
