@@ -17,7 +17,7 @@ declare const window: any;
 // Personal Menu: the interact key (default X) on nothing opens it through PlayerActionService, with Admin, Faction, Skills and Debug tabs.
 // Faction, Skills and Debug show at once; the Admin tab appears only when the server answers adminMenuRequest (Discord roles / profile ids) and each sub-tab follows its server cap.
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
-// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), the Item Spawner (adminAction itemSearch / itemSpawn) and Weather (adminAction weatherList / weatherSet / weatherClear); the Skills tab embeds the mastery menu.
+// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), the Item Spawner (adminAction itemSearch / itemSpawn), Weather (adminAction weatherList / weatherSet / weatherClear) and Polymorph (adminAction raceList / polymorph / polymorphRevert, applied by PolymorphService); the Skills tab embeds the mastery menu.
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
@@ -83,6 +83,9 @@ const events = {
   weatherList: "admin::weatherlist",
   weatherSet: "admin::weatherset",
   weatherClear: "admin::weatherclear",
+  polymorphList: "admin::polymorphlist",
+  polymorph: "admin::polymorph",
+  polymorphRevert: "admin::polymorphrevert",
 };
 
 // Per-zone buttons -> adminAction; the target is the zone name
@@ -94,8 +97,8 @@ const ZONE_ACTIONS: Record<string, string> = {
   [events.npcDeactivate]: "npcZoneDeactivate",
 };
 
-// Actions that move the admin; their success reply closes the menu
-const SELF_TELEPORTS = ["teleportTo", "teleportLoc", "npcZoneTp", "jobTp"];
+// Actions that move or transform the admin; their success reply closes the menu
+const SELF_ACTIONS = ["teleportTo", "teleportLoc", "npcZoneTp", "jobTp", "polymorph", "polymorphRevert"];
 
 interface DebugServer {
   name: string;
@@ -143,7 +146,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, weather: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, weather: null, races: null, events };
 
 function hex(id: number): string {
   return id ? id.toString(16) : "";
@@ -175,6 +178,21 @@ function parseItems(content: Record<string, unknown>) {
     rows: rows
       .filter((r) => r && typeof r === "object")
       .map((r: any) => ({ desc: str(r.desc), name: str(r.name), edid: str(r.edid), type: str(r.type), plugin: str(r.plugin) })),
+  };
+}
+
+// The server's adminRaces reply, reduced to the strings and flags the Polymorph tab renders
+function parseRaces(content: Record<string, unknown>) {
+  const rows = Array.isArray(content["races"]) ? content["races"] : [];
+  const active = Array.isArray(content["active"]) ? content["active"] : [];
+  return {
+    ready: content["ready"] === true,
+    rows: rows
+      .filter((r) => r && typeof r === "object")
+      .map((r: any) => ({ d: str(r.d), n: str(r.n), e: str(r.e), g: str(r.g), r: str(r.r), m: r.m === true, f: r.f === true })),
+    active: active
+      .filter((x) => x && typeof x === "object")
+      .map((x: any) => ({ a: str(x.a), n: str(x.n), race: str(x.race), by: Number(x.by) || 0 })),
   };
 }
 
@@ -256,6 +274,7 @@ export class AdminMenuService extends ClientListener {
         faction: panelData.faction,
         jobs: panelData.jobs,
         weather: panelData.weather,
+        races: panelData.races,
         events,
       };
       if (panelData.debug) panelData.debug.target = this.shownTarget();
@@ -263,6 +282,8 @@ export class AdminMenuService extends ClientListener {
       // The Pets sub-tab needs the grantable bases; only a server that resolves caps knows the action
       if (panelData.caps.npcs === true) sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "petBases" });
       if (panelData.caps.weather === true) this.requestWeather();
+      // A Polymorph tab remembered from the last open shows without a tab click, so the list is asked for until it arrived built
+      if (panelData.caps.polymorph === true && !(panelData.races && panelData.races.ready)) sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "raceList" });
     } else if (content["customPacketType"] === "masteryMenu") {
       if (!this.menuOpen) return;
       panelData.skills = parseMasteryMenu(content);
@@ -272,6 +293,9 @@ export class AdminMenuService extends ClientListener {
       this.pushData();
     } else if (content["customPacketType"] === "adminItems") {
       panelData.items = parseItems(content);
+      this.pushData();
+    } else if (content["customPacketType"] === "adminRaces") {
+      panelData.races = parseRaces(content);
       this.pushData();
     } else if (content["customPacketType"] === "debugInfo") {
       // Natives throw in the packet-handler context; only data is stored here and the update loop reads the game
@@ -325,7 +349,7 @@ export class AdminMenuService extends ClientListener {
       this.pushData();
     } else if (content["customPacketType"] === "adminActionResult") {
       notifyNextUpdate(this.controller, this.sp, String(content["text"] ?? ""));
-      if (content["ok"] === true && this.menuOpen && SELF_TELEPORTS.includes(String(content["action"] ?? ""))) this.closeMenu();
+      if (content["ok"] === true && this.menuOpen && SELF_ACTIONS.includes(String(content["action"] ?? ""))) this.closeMenu();
       // The Add form keeps its values until the server accepted them
       if (content["action"] === "npcZoneAdd") {
         panelData.npcZoneResult = { ok: content["ok"] === true, at: Date.now() };
@@ -344,6 +368,7 @@ export class AdminMenuService extends ClientListener {
     panelData.petBases = null;
     panelData.jobs = null;
     panelData.weather = null;
+    panelData.races = null;
   }
 
   // The catalog is about a hundred rows, so it is only asked for until the first reply carried it
@@ -654,6 +679,16 @@ export class AdminMenuService extends ClientListener {
     }
     if (kind === events.weatherClear) {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "weatherClear", region: str(e.arguments[1]) });
+      return;
+    }
+    if (kind === events.polymorphList) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "raceList" });
+      return;
+    }
+    if (kind === events.polymorph || kind === events.polymorphRevert) {
+      // target "" is the admin's own character; the server pushes adminRaces after every change
+      const action = kind === events.polymorph ? "polymorph" : "polymorphRevert";
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action, target: str(e.arguments[1]), race: str(e.arguments[2]) });
       return;
     }
     if (kind === events.jobSave) {

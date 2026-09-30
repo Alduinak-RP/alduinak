@@ -66,6 +66,7 @@ import { SearchService } from "./services/services/searchService";
 import { VoiceService } from "./services/services/voiceService";
 import { AdminMenuService } from "./services/services/adminMenuService";
 import { AdminModeService } from "./services/services/adminModeService";
+import { PolymorphService } from "./services/services/polymorphService";
 import { AfterlifeLookService } from "./services/services/afterlifeLookService";
 import { ChatService } from "./services/services/chatService";
 import { FactionService } from "./services/services/factionService";
@@ -184,6 +185,7 @@ const main = () => {
       new FurnitureAnimationsService(sp, controller),
       new AdminMenuService(sp, controller),
       new AdminModeService(sp, controller),
+      new PolymorphService(sp, controller),
       new AfterlifeLookService(sp, controller),
       new FactionService(sp, controller),
       new TradeService(sp, controller),
