@@ -15,6 +15,8 @@ const SYSTEM_MAIN_STATE = 0;
 const SYSTEM_LIST_HOLDER = `${SYSTEM_PAGE}.CategoryList_mc`;
 // A Shared.CenteredScrollingList, which shows and steps through only the entries its filterer matches
 const SYSTEM_LIST = `${SYSTEM_LIST_HOLDER}.List_mc`;
+// BSScrollingList's own array behind its entryList getter
+const SYSTEM_ENTRIES = `${SYSTEM_LIST}.EntriesA`;
 // Text keys of the System entries to drop; $MOD MANAGER reads CREATIONS
 const HIDDEN_SYSTEM_ENTRIES = ["$QUICKSAVE", "$SAVE", "$LOAD", "$INSTALLED CONTENT", "$MOD MANAGER", "$MOD CONFIGURATION", "$HELP"];
 // hudmenu.swf's movie; SkyUI's widget manager puts its widgets in WidgetContainer beside it
@@ -35,11 +37,18 @@ interface JournalState {
   // SystemTab._x from before it was centred, set once the other clips are hidden
   systemTabX?: number;
   onSystem: boolean;
-  entryCount: number;
+  // Entry texts joined, as of the last trim
+  entrySignature?: string;
   // entryList indices of the filtered out entries
   hiddenEntries: number[];
   listHidden: boolean;
+  reachChecked: boolean;
+  reachMisses: number;
   failed: boolean;
+}
+
+interface NativeMenuList {
+  hideMenuListEntries?: (menuName: string, entriesPath: string, texts: string[]) => string[] | null;
 }
 
 // Trims the vanilla menus the browser menus replace, through the menus' own ActionScript
@@ -48,7 +57,7 @@ export class VanillaMenuService extends ClientListener {
     super();
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.Journal) {
-        this.journal = { misses: 0, settle: 0, switches: 0, onSystem: false, entryCount: -1, hiddenEntries: [], listHidden: false, failed: false };
+        this.journal = { misses: 0, settle: 0, switches: 0, onSystem: false, hiddenEntries: [], listHidden: false, reachChecked: false, reachMisses: 0, failed: false };
         // menuOpen runs as a task after this update's handler, so the first pass is not left to the next update
         this.trimJournal(this.journal);
       }
@@ -147,31 +156,79 @@ export class VanillaMenuService extends ClientListener {
 
   // Filtered entries keep their indices, so the page's IDX_ members and SetSaveDisabled still line up
   private trimSystemEntries(j: JournalState): void {
-    const ui = this.sp.Ui;
-    const count = ui.getInt(Menu.Journal, `${SYSTEM_LIST}.entryList.length`);
-    if (count === j.entryCount) {
+    const { texts, via } = this.hideSystemEntries();
+    if (!texts) return this.failJournal(j, `${SYSTEM_ENTRIES} is not an array`);
+    const signature = texts.join("|");
+    if (signature === j.entrySignature) {
       this.setSystemListShown(j, true);
       this.keepSystemSelectionShown(j);
+      this.checkSystemReach(j, texts.length);
       return;
     }
     this.setSystemListShown(j, false);
-    const texts: string[] = [];
+    if (!texts.some(Boolean)) return this.failJournal(j, `${SYSTEM_ENTRIES} unreadable (${texts.length} entries)`);
     j.hiddenEntries = [];
+    texts.forEach((text, i) => {
+      if (HIDDEN_SYSTEM_ENTRIES.includes(text)) j.hiddenEntries.push(i);
+    });
+    // Up from the top entry would focus the hidden tab row, from which Down selects entryList[scrollPosition]
+    this.sp.Ui.setBool(Menu.Journal, `${SYSTEM_LIST}.bAllowUpToTabs`, false);
+    this.redrawSystemList(j);
+    j.entrySignature = signature;
+    j.reachChecked = false;
+    j.reachMisses = 0;
+    const kept = texts.filter((text) => !HIDDEN_SYSTEM_ENTRIES.includes(text));
+    const dropped = texts.filter((text) => HIDDEN_SYSTEM_ENTRIES.includes(text));
+    this.logOnce(`system:${signature}`, `System page keeps ${kept.join(", ")}, hid ${dropped.join(", ")} (${via})`);
+  }
+
+  // SkyrimPlatform writes filterFlag on the entry objects through GFxValue; an older SkyrimPlatformImpl.dll leaves SKSE's UI paths
+  private hideSystemEntries(): { texts: string[] | null; via: string } {
+    const native = (this.sp as unknown as NativeMenuList).hideMenuListEntries;
+    if (native) {
+      try {
+        const texts = native(Menu.Journal, SYSTEM_ENTRIES, HIDDEN_SYSTEM_ENTRIES);
+        if (texts) this.probePapyrusPaths(texts.length);
+        return { texts, via: "native" };
+      } catch (e) {
+        this.logOnce("system:native-error", `hideMenuListEntries failed (${e}), hiding System entries through Papyrus paths`);
+      }
+    } else {
+      this.logOnce("system:native-missing", "hideMenuListEntries missing (SkyrimPlatformImpl.dll older than r26), hiding System entries through Papyrus paths");
+    }
+    const ui = this.sp.Ui;
+    const texts: string[] = [];
+    const count = ui.getInt(Menu.Journal, `${SYSTEM_LIST}.entryList.length`);
     for (let i = 0; i < count; i++) {
       const entry = `${SYSTEM_LIST}.entryList.${i}`;
       const text = ui.getString(Menu.Journal, `${entry}.text`);
       texts.push(text);
-      if (!HIDDEN_SYSTEM_ENTRIES.includes(text)) continue;
       // ListFilterer.EntryMatchesFilter fails an entry whose filterFlag has no bit of its filter
-      ui.setInt(Menu.Journal, `${entry}.filterFlag`, 0);
-      j.hiddenEntries.push(i);
+      if (HIDDEN_SYSTEM_ENTRIES.includes(text)) ui.setInt(Menu.Journal, `${entry}.filterFlag`, 0);
     }
-    if (!texts.some(Boolean)) return this.failJournal(j, `${SYSTEM_LIST}.entryList unreadable (${count} entries)`);
-    this.redrawSystemList(j);
-    j.entryCount = count;
-    const kept = texts.filter((text) => !HIDDEN_SYSTEM_ENTRIES.includes(text));
-    const dropped = texts.filter((text) => HIDDEN_SYSTEM_ENTRIES.includes(text));
-    this.logOnce(`system:${texts.join()}`, `System page keeps ${kept.join(", ")}, hid ${dropped.join(", ")}`);
+    return { texts, via: "Papyrus paths" };
+  }
+
+  // Once a session: whether SKSE's UI natives read and write the entry objects through entryList paths
+  private probePapyrusPaths(count: number): void {
+    if (this.logged.has("system:probe")) return;
+    const ui = this.sp.Ui;
+    const read = ui.getInt(Menu.Journal, `${SYSTEM_LIST}.entryList.length`);
+    const probe = `${SYSTEM_LIST}.entryList.0.aldProbe`;
+    ui.setInt(Menu.Journal, probe, 1);
+    const wrote = ui.getInt(Menu.Journal, probe);
+    this.logOnce("system:probe", `Papyrus paths through entryList read ${read} of ${count} entries, a member written to entry 0 reads back ${wrote}`);
+  }
+
+  // CalculateMaxScrollPosition counts only the entries the filterer lets through
+  private checkSystemReach(j: JournalState, total: number): void {
+    if (j.reachChecked) return;
+    const reach = this.sp.Ui.getInt(Menu.Journal, `${SYSTEM_LIST}.iMaxScrollPosition`) + 1;
+    const expected = total - j.hiddenEntries.length;
+    if (reach !== expected && ++j.reachMisses <= MAX_PATH_MISSES) return;
+    j.reachChecked = true;
+    const verdict = reach === expected ? "" : `, expected ${expected}: the hidden entries still show`;
+    this.logOnce(`system:reach:${reach}/${total}`, `System list reaches ${reach} of ${total} entries${verdict}`);
   }
 
   // Returning from the tab row selects entryList index scrollPosition, a hidden entry while Settings is centred at 0

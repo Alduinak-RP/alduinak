@@ -135,27 +135,46 @@ line to `skyrim-platform.log`.
 - **System page**: lists Settings, Controls and Quit (and anything else the
   engine adds that is not dropped). Quicksave, Save, Load, Installed Content,
   Creations (`$MOD MANAGER`), Mod Configuration and Help get `filterFlag = 0`
-  on their entry objects in `...SystemFader.Page_mc.CategoryList_mc.List_mc`,
-  a `Shared.CenteredScrollingList` whose `ListFilterer` then neither draws
-  them nor lets the keys, mouse wheel or pointer land on them, and the list's
-  `InvalidateData` redraws it with `bRecenterSelection` set (on PC it
-  otherwise keeps the selection on Quicksave at index 0, and no entry is
-  drawn highlighted). Should the selection land on a dropped entry or on none
-  outside the tab row later (Up to the tab row and Down again selects
-  `entryList[scrollPosition]`), the next update recentres it the same way.
-  The entries stay in `entryList`, so
+  on their entry objects in the `EntriesA` array of
+  `...SystemFader.Page_mc.CategoryList_mc.List_mc`, a
+  `Shared.CenteredScrollingList` whose `ListFilterer` then neither draws them
+  nor lets the keys, mouse wheel or pointer land on them
+  (`CalculateMaxScrollPosition`, `UpdateList` and the next/previous match all
+  go through `EntryMatchesFilter`). The write goes through SkyrimPlatform's
+  `hideMenuListEntries(menu, arrayPath, texts)` (`MenuListApi.cpp`), which
+  reads the array with `GFxMovie::GetVariable` on the clip member and sets the
+  member on each entry object with `GFxValue::SetMember`. The first version
+  (r22) wrote it with SKSE's `UI.SetInt` on
+  `...List_mc.entryList.<i>.filterFlag`, a path through the `entryList`
+  getter and an array index to a member the entry does not have yet; the
+  entries stayed on screen in game. With an older `SkyrimPlatformImpl.dll`
+  the service still falls back to that path and logs
+  `hideMenuListEntries missing`. The list's `InvalidateData` redraws it with
+  `bRecenterSelection` set (on PC it otherwise keeps the selection on
+  Quicksave at index 0, and no entry is drawn highlighted), and
+  `bAllowUpToTabs` is cleared, so Up on the top entry no longer focuses the
+  hidden tab row (Down from there would select `entryList[scrollPosition]`, a
+  dropped entry). Should the selection still land on a dropped entry, the
+  next update recentres it the same way. The entries stay in `entryList`, so
   `SystemPage.UpdateIndices`, its `IDX_*` members and the engine's
   `SetSaveDisabled` still line up with them (splicing them out would make
-  Settings run Quicksave). The page adds Installed Content and Creations when
-  it first starts, so the list is kept at `_alpha` 0 until a pass finds its
-  entry count unchanged; a later change of count trims it again. While
-  unseen the list also takes no input: `bDisableInput` is set at once and a
+  Settings run Quicksave, and `SetSaveDisabled` would get `undefined` for
+  the dropped ones). The page adds Installed Content and Creations when it
+  first starts, so the list is kept at `_alpha` 0 until a pass finds its
+  entries unchanged; a later change trims it again. While unseen the list
+  also takes no input: `bDisableInput` is set at once and a
   `setInteractive(false)` is queued after the service's own invokes (the
   page's `startPage`, run by a queued `ShiftTab`, makes the list interactive
   again), so Enter, Right, a gamepad A or a click in the first frames cannot
   run Quicksave or open Load on entries the player cannot see.
   `setInteractive(true)` gives input back once it shows, when the page is in
   `MAIN_STATE` (in its other states the page keeps the list disabled itself).
+  Log lines, once a session each: `System page keeps $SETTINGS, $CONTROLS,
+  $QUIT, hid ... (native)`, then `System list reaches 3 of N entries` read
+  from the list's `iMaxScrollPosition` (a mismatch adds `the hidden entries
+  still show`), and `Papyrus paths through entryList read X of N entries, a
+  member written to entry 0 reads back Y`, which shows whether SKSE's UI
+  natives reach the entry objects at all.
 - **Skills menu (StatsMenu)**: vanilla. The Tween menu (Tab) offers Skills
   on Up and the Quick Stats key (`/` by default) opens it; the service only
   logs `Skills menu (StatsMenu) opened` the first time it shows. The Personal

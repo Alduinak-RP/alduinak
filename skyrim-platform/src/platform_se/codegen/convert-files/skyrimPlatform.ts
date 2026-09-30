@@ -1647,6 +1647,8 @@ export declare function agePotionEffects(actorFormId: number, potionFormId: numb
 export declare function reapplyWornEnchantments(actorFormId: number): void;
 export declare function removeSpellFromList(ownerFormId: number, spellFormId: number): void;
 
+export declare function hideMenuListEntries(menuName: string, entriesPath: string, texts: string[]): string[] | null;
+
 export declare function setCollision(refrFormId: number, collision: boolean): void;
 
 export declare function mountActor(rider: Actor | number, mount: Actor | number): boolean;
