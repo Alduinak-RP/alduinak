@@ -318,7 +318,7 @@ def main():
     over_qust = {form_key(q['quest']): q['dropScripts'] for q in over.get('quests', [])}
     over_glob = {form_key(g['global']): g['value'] for g in over.get('globals', [])}
     over_move = {form_key(m['ref']): (m['pos'], m.get('scale')) for m in over.get('moves', [])}
-    over_flags = {form_key(f['ref']): (int(f.get('clear', '0'), 16), int(f.get('set', '0'), 16)) for f in over.get('flags', [])}
+    over_flags = {form_key(f.get('ref') or f['item']): (int(f.get('clear', '0'), 16), int(f.get('set', '0'), 16)) for f in over.get('flags', [])}
     over_refs = {r['ref']: r['scale'] for r in over.get('refs', [])}
     over_food = {form_key(f['item']): (effects.get(f['from']), effects.get(f['hunger'])) for f in over.get('foods', [])}
     for (t, k), q in ro.items():
@@ -435,13 +435,13 @@ def main():
             if why or not moved or q.flags & ~COMPRESSED != flags & ~COMPRESSED or cell != where:
                 problems.append(f'{label}: not {src.name}\'s reference with only the position set to {pos}{"" if scale is None else f" and the scale to {scale}"} ({why or now.hex()}, cell {cell} -> {where})')
             checked['references moved to their overridden position'] += 1
-        elif t in PLACED and k in over_flags:
+        elif (t in PLACED or t == 'ARMO') and k in over_flags:
             src, flags, data, cell = ref
             clear, set_ = over_flags[k]
             why = ck.compare(t, src, flags, data, out, q.data())
             if why or q.flags & ~COMPRESSED != ((flags & ~clear) | set_) & ~COMPRESSED or cell != where:
-                problems.append(f'{label}: not {src.name}\'s reference with only flags {clear:#x} cleared and {set_:#x} set ({why or f"flags {flags:#x} -> {q.flags:#x}"}, cell {cell} -> {where})')
-            checked['references overridden for their flags'] += 1
+                problems.append(f'{label}: not {src.name}\'s record with only flags {clear:#x} cleared and {set_:#x} set ({why or f"flags {flags:#x} -> {q.flags:#x}"}, cell {cell} -> {where})')
+            checked[f'{"references" if t in PLACED else "armour"} overridden for their flags'] += 1
         elif t in PLACED and k in disable_refs:
             src, flags, data, cell = ref
             parent = enable_parent(src, data)

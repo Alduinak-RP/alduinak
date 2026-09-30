@@ -1537,11 +1537,21 @@ static class Steps
             MoveReference(c, mv, "overrides");
         foreach (var f in Entries(o["flags"]))
         {
+            var clear = Convert.ToInt32(f["clear"]?.GetValue<string>() ?? "0", 16);
+            var set = Convert.ToInt32(f["set"]?.GetValue<string>() ?? "0", 16);
+            if (f["item"] != null)
+            {
+                var itemKey = FormKey.Factory(f["item"]!.GetValue<string>());
+                if (!cache.TryResolveContext<IArmor, IArmorGetter>(itemKey, out var item)) { c.Error($"overrides: armour {itemKey} not found"); continue; }
+                var was = item.Record.MajorRecordFlagsRaw;
+                if (((was & ~clear) | set) == was) { c.Note($"Override {c.EdidOf(itemKey)} ({itemKey}): flags already {was:X}"); continue; }
+                item.GetOrAddAsOverride(c.Mod).MajorRecordFlagsRaw = (was & ~clear) | set;
+                c.Note($"Override {c.EdidOf(itemKey)} ({itemKey}, from {item.ModKey}): flags {was:X} -> {(was & ~clear) | set:X}");
+                continue;
+            }
             var key = FormKey.Factory(f["ref"]!.GetValue<string>());
             var contexts = cache.ResolveAllContexts<IPlaced, IPlacedGetter>(key).ToList();
             if (contexts.Count == 0) { c.Error($"overrides: reference {key} not found"); continue; }
-            var clear = Convert.ToInt32(f["clear"]?.GetValue<string>() ?? "0", 16);
-            var set = Convert.ToInt32(f["set"]?.GetValue<string>() ?? "0", 16);
             var from = contexts[0].Record.MajorRecordFlagsRaw;
             if (((from & ~clear) | set) == from) { c.Note($"Override {key}: flags already {from:X}"); continue; }
             var rec = contexts[0].GetOrAddAsOverride(c.Mod);

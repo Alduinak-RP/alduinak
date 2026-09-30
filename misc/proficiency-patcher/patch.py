@@ -123,7 +123,8 @@ def spec_overrides(spec):
     keyed |= {('QUST', q['quest'].split(':', 1)[1].lower(), int(q['quest'].split(':', 1)[0], 16)) for q in o.get('quests', [])}
     keyed |= {('GLOB', g['global'].split(':', 1)[1].lower(), int(g['global'].split(':', 1)[0], 16)) for g in o.get('globals', [])}
     keyed |= {('REFR', m['ref'].split(':', 1)[1].lower(), int(m['ref'].split(':', 1)[0], 16)) for m in o.get('moves', [])}
-    keyed |= {(t, f['ref'].split(':', 1)[1].lower(), int(f['ref'].split(':', 1)[0], 16)) for f in o.get('flags', []) for t in ('REFR', 'PHZD')}
+    keyed |= {(t, f['ref'].split(':', 1)[1].lower(), int(f['ref'].split(':', 1)[0], 16)) for f in o.get('flags', []) if 'ref' in f for t in ('REFR', 'PHZD')}
+    keyed |= {('ARMO', f['item'].split(':', 1)[1].lower(), int(f['item'].split(':', 1)[0], 16)) for f in o.get('flags', []) if 'item' in f}
     own = {('REFR', 'self', r['ref']) for r in o.get('refs', [])}
     return lambda k, rec: (k[0], k[1].lower(), k[2]) in refs or (k[0], k[1].lower(), k[2]) in keyed or k in own \
         or (k[0] == 'ENCH' and edid(rec).lower() in enchs) or (k[0], edid(rec).lower()) in named
