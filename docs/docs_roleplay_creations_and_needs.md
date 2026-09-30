@@ -256,9 +256,10 @@ takes real effort costs more of it (0.9.6 values; actions per full bar in bracke
 
 Half cost: flora (plants that are not crops), refining (the smelter, the tanning rack and thread), cooking, alchemy and
 skinning. Rabbits, pheasants and salmon hanging on racks cost nothing. Spells cost nothing. A shared recipe (smelting,
-tanning, charcoal) gives every profession that shares it both its rank discount and its hours. An alchemist of Novice or
-better pays `gatheringAlchemistFloraDiscount` (50%) less again for alchemy flora, flora that hands over an ingredient
-(flowers, mushrooms, herbs, berries, eggs): 1% a flower at Novice.
+tanning, charcoal) gives every profession that shares it both its rank discount and its hours. An alchemist pays a
+farmer's price for flora at the same rank and the Free price for crops. `gatheringAlchemistFloraDiscount` (default 0,
+off) takes that share off again for an alchemist of Novice or better on alchemy flora, flora that hands over an
+ingredient (flowers, mushrooms, herbs, berries, eggs, nirnroot).
 
 **Warmed by drink.** A cook or alchemist of Novice or better who drinks an alcohol pays `needsAlcoholDiscount` (25%)
 less fatigue for the crafts priced by their own rank (the cooking pot and oven for a cook, the alchemy lab for an
@@ -271,7 +272,7 @@ work costs 25% less fatigue for 10 minutes." and the server logs `[needs] <id> d
 until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so the warmth survives a relog.
 
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
-  (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
+  (farmer or alchemist; a crop is priced by the farmer rank alone). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
   A crop needs a hoe and takes 5 s of hoeing (`IdleHoe`); flora takes a 2 s kneel. The charge line names the plant
   and its class: `[needs] <id> harvest <editor id> flora|crop r<rank>: -N%, fatigue F%` (Nirnroot, wild, crimson and
   planted, is flora: no hoe). A plant is charged only once the native harvest handed it over; one that gave nothing costs nothing

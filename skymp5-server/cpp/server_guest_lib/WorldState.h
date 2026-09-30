@@ -261,6 +261,9 @@ public:
   bool enableConsoleCommandsForAll = false;
   float regenerationMultiplier = 1.f;
 
+  // Share of an NPC's weapon hit that still lands through a player's block
+  float npcBlockedDamageShare = 0.2f;
+
   bool disableVanillaScriptsInExterior = true;
 
   // Vanilla scripts exterior refs keep despite disableVanillaScriptsInExterior

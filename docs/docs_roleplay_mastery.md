@@ -554,15 +554,21 @@ Tree fruit, mushrooms, flowers and nirnroot (the wild `TreeFloraNirnroot01`, the
 crimson `TreeFloraNirnrootRed01` and Hearthfire's `BYOHHouseIngrdNirnroot01`
 planter) need nothing, kneel 2 seconds and cost half the fatigue. Fish and hanging
 clutter never kneel. Picking credits farmer and alchemist hours and costs a
-gathering action of fatigue by the better of those ranks. An alchemist (Novice
-or better) pays half of that again for alchemy flora, a plant that is not a
-crop and hands over an ingredient: flowers, mushrooms, herbs, berries, eggs,
-pearls, barnacles, nirnroot and the Hearthfire herb planters, not the food
-plants (apples, vegetables, cheese, fish, meat) or crops
-(`gatheringAlchemistFloraDiscount`, 0.5). A Novice alchemist's flower costs 1%
-of the bar where a Novice farmer's costs 2.1% and a Free picker's 4.2%; the
-charge line reads `[needs] <id> harvest <plant> flora r<rank>, alchemist -50%:
--N%, fatigue F%`.
+gathering action of fatigue. Flora is priced by the farmer or alchemist rank,
+so an alchemist pays what a farmer of the same rank pays for a flower (2.1% at
+Novice and Adept, 1.4% from Expert, where a Free picker pays 4.2%). A crop is
+priced by the farmer rank alone: an alchemist of any rank pays the Free crop
+price, 8.3%, and the charge line reads `[needs] <id> harvest <plant> crop r0,
+alchemist r<rank> pays the Free crop price: -8.3%, fatigue F%`. The alchemist's
+yield still follows their rank on both.
+
+`gatheringAlchemistFloraDiscount` (default 0, off) takes that share off again
+for an alchemist (Novice or better) on alchemy flora, a plant that is not a crop
+and hands over an ingredient: flowers, mushrooms, herbs, berries, eggs, pearls,
+barnacles, nirnroot and the Hearthfire herb planters, not the food plants
+(apples, vegetables, cheese, fish, meat) or crops. Set to 0.5, a Novice
+alchemist's flower costs 1% and the charge line reads `[needs] <id> harvest
+<plant> flora r<rank>, alchemist -50%: -N%, fatigue F%`.
 
 The plant itself comes from the native harvest. The fatigue, the kneel and the
 Adept and Master extra follow only once the plant reads harvested (Papyrus

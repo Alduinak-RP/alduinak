@@ -1046,6 +1046,25 @@ Named damage rules, each a multiplier applied when its conditions hold. Conditio
 }
 ```
 
+## npcBlockedDamageShare
+
+Share of an NPC's weapon hit that still lands when a player blocks it (a raised weapon or shield facing the NPC, a
+shield against arrows). A number from 0 to 1, default `0.2`: a player's block is 80% effective against NPCs. `0`
+restores full blocks. A player's hit on a blocking player stays fully blocked, and NPCs blocking are unchanged. The
+leaked part is the unblocked damage (armor, power attack and the multiplier formulas included) times the share; the
+hit still counts as blocked, so the Falmer hit spell poison does not land through it. Wards are not affected. Read by
+the native server at boot, which logs `npcBlockedDamageShare is <share>: ...`; each such hit logs `OnWeaponHit -
+<player> blocked npc <npc> with <weapon>, <landed> of <unblocked> damage lands (npcBlockedDamageShare <share>)`. See
+`docs/docs_onhit_and_damage.md`, Blocked hits.
+
+```json5
+{
+  // ...
+  "npcBlockedDamageShare": 0.2
+  // ...
+}
+```
+
 ## Hunger and fatigue
 
 All optional; see `docs/docs_roleplay_creations_and_needs.md` for the system. Hunger uses Survival Mode's scale, 0 (full) to 1000, and

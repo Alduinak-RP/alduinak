@@ -2241,8 +2241,30 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
 
   TrackNpcHitPoison(*aggressor, targetActor, hitData.isHitBlocked);
 
-  float damage = partOne.CalculateDamage(*aggressor, targetActor, hitData);
+  // A player's block lets npcBlockedDamageShare of an NPC's hit through, a player's hit stays fully blocked
+  const bool playerBlocked =
+    hitData.isHitBlocked && targetActor.GetProfileId() >= 0;
+  const bool npcAggressor = aggressor->GetProfileId() < 0;
+  const float blockedShare = playerBlocked && npcAggressor
+    ? partOne.worldState.npcBlockedDamageShare
+    : 0.f;
+  // The formula zeroes a blocked hit, so a leaking one is priced unblocked
+  HitData formulaHitData = hitData;
+  formulaHitData.isHitBlocked = hitData.isHitBlocked && blockedShare <= 0.f;
+  float damage =
+    partOne.CalculateDamage(*aggressor, targetActor, formulaHitData);
   damage = damage < 0.f ? 0.f : damage;
+  if (blockedShare > 0.f) {
+    spdlog::info("OnWeaponHit - {:x} blocked npc {:x} with {:x}, {} of {} "
+                 "damage lands (npcBlockedDamageShare {})",
+                 targetActor.GetFormId(), aggressor->GetFormId(),
+                 hitData.source, damage * blockedShare, damage, blockedShare);
+    damage *= blockedShare;
+  } else if (playerBlocked) {
+    spdlog::info("OnWeaponHit - {:x} blocked {} {:x} with {:x}, fully blocked",
+                 targetActor.GetFormId(), npcAggressor ? "npc" : "player",
+                 aggressor->GetFormId(), hitData.source);
+  }
   // A block stops the blade, not the poison on it; a bash never carries it
   const auto poisoned = hitData.isBashAttack
     ? std::nullopt

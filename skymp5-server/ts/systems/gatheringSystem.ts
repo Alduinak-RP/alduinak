@@ -25,7 +25,7 @@ type Mp = any;
 //   gatheringProduceContainers   { "<container editor id or hex id>": minutes to grow back } replacing DEFAULT_PRODUCE, {} turns it off
 //   gatheringProduceYield        { "<container>": { "<item editor id or hex id>": count } } handed over instead of the record's own contents
 //   gatheringPickMinutes         how long a picked nirnroot or critter stays empty, default 30
-//   gatheringAlchemistFloraDiscount  share of an alchemy flora harvest's fatigue an alchemist saves, default 0.5, 0 turns it off
+//   gatheringAlchemistFloraDiscount  share of an alchemy flora harvest's fatigue an alchemist saves on top of the rank price, default 0 (off)
 //
 // A swing of the axe, every ore off a vein and every harvest cost one gathering action of the fatigue bar by the rank in
 // woodworker, miner, or farmer and alchemist (NeedsSystem), and a bar that cannot pay for one more turns the station away. A chopper keeps swinging, a yield every swing, until the bar cannot pay for the next.
@@ -43,7 +43,8 @@ type Mp = any;
 // A plant is handed over by the native harvest, and the fatigue, the kneel and any extra yield follow only once the ref reads harvested,
 // so a plant the native side refuses or already holds harvested costs nothing. Hearthfire planters (BYOHHouseFlora*, BYOHHouseIngrd*,
 // the mead barrel) hand over a non-playable token whose BYOHHiddenObjectScript would swap it for the produce; the server makes that swap.
-// An alchemist of Novice or better pays gatheringAlchemistFloraDiscount less for alchemy flora, flora whose harvest is an ingredient.
+// Flora costs the rank price of a farmer or an alchemist, a crop the farmer's alone (an alchemist pays a crop's Free price);
+// gatheringAlchemistFloraDiscount, off by default, takes more off alchemy flora (flora whose harvest is an ingredient) for an alchemist.
 // Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
 // rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
 // Catching a bee costs nothing and plays nothing.
@@ -67,7 +68,7 @@ const DEFAULT_VEIN_RESPAWN_MINUTES = 1440;
 // Overrides the record's total on every vein; 0 keeps the record's own
 const DEFAULT_VEIN_TOTAL = 6;
 const DEFAULT_PICK_MINUTES = 30;
-const DEFAULT_ALCHEMIST_FLORA_DISCOUNT = 0.5;
+const DEFAULT_ALCHEMIST_FLORA_DISCOUNT = 0;
 // A fake harvestable gives its item again this long after it was taken
 const FAKE_HARVEST_MS = 20 * 3600000;
 // Kneel of a harvest by farmer rank, Free to Legendary
@@ -97,6 +98,8 @@ const MAX_SESSION_MS = 15 * 60000;
 const DENY_NOTICE_MS = 1000;
 // Picking plants is the work of these professions
 const PICKERS = ["farmer", "alchemist"];
+// Flora is priced by either picker's rank, a crop by the farmer's alone
+const CROP_PRICERS = ["farmer"];
 const CHOP_TIRED = "You are too tired to swing an axe. Rest a while.";
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
@@ -207,7 +210,7 @@ export class GatheringSystem implements System {
     this.installHooks(ctx);
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
-    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop (${CROP_WORDS.join("/")}) and kneels ${FLORA_MS / 1000} s for flora (nirnroot included) except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank, an alchemist pays ${Math.round(this.alchemistFloraDiscount * 100)}% less for alchemy flora`);
+    this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop (${CROP_WORDS.join("/")}) and kneels ${FLORA_MS / 1000} s for flora (nirnroot included) except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank, flora priced by the ${PICKERS.join(" or ")} rank and crops by the ${CROP_PRICERS.join(" or ")} rank, ${this.alchemistFloraDiscount > 0 ? `an alchemist pays ${Math.round(this.alchemistFloraDiscount * 100)}% less again for alchemy flora` : "no extra alchemist flora discount"}`);
   }
 
   // Ore item ids that need a mining rank, from the defaults plus the settings override.
@@ -421,13 +424,14 @@ export class GatheringSystem implements System {
     if (props["crop"] && hoe && !holdsItem(mp, actorId, (baseId) => baseId === hoe)) return this.deny(ctx, actorId, "You need a hoe to harvest this crop.");
     const rank = this.mastery.rankIn(ctx, actorId, PICKERS);
     const flora = !props["crop"];
+    const priceRank = flora ? rank : this.mastery.rankIn(ctx, actorId, CROP_PRICERS);
     const alchemist = flora && !!props["ingredient"] && this.alchemistFloraDiscount > 0 && this.mastery.rankOf(ctx, actorId, "alchemist") > FREE;
     const multiplier = alchemist ? 1 - this.alchemistFloraDiscount : 1;
-    if (!props["free"] && !this.needs.canPay(actorId, "gather", rank, flora, multiplier)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
+    if (!props["free"] && !this.needs.canPay(actorId, "gather", priceRank, flora, multiplier)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
     const kneelMs = props["instant"] ? 0 : flora ? FLORA_MS : CROP_MS;
     const settle = () => {
-      const label = `harvest ${name} ${flora ? "flora" : "crop"} r${rank}${alchemist ? `, alchemist -${Math.round(this.alchemistFloraDiscount * 100)}%` : ""}`;
-      if (!props["free"]) this.needs.pay(ctx, actorId, "gather", rank, label, flora, multiplier);
+      const extra = alchemist ? `, alchemist -${Math.round(this.alchemistFloraDiscount * 100)}%` : priceRank !== rank ? `, alchemist r${rank} pays the Free crop price` : "";
+      if (!props["free"]) this.needs.pay(ctx, actorId, "gather", priceRank, `harvest ${name} ${flora ? "flora" : "crop"} r${priceRank}${extra}`, flora, multiplier);
       if (kneelMs > 0) sendActionLock(mp, actorId, flora ? HARVEST_ANIM : CROP_ANIM, kneelMs / 1000, flora ? undefined : CROP_EXIT_ANIM);
     };
     return () => {

@@ -95,7 +95,8 @@ holds nor learned them), so the server never sees them and its raised-shield rul
 `NpcHitSpellBlockService` therefore dispels a Contact-delivery poison hit spell from an NPC aggressor when the paired
 weapon hit (within 250 ms, in either order) counts as blocked by the server's own rule: the engine flagged it blocked,
 or the player held a block with the aggressor within 1 rad of their facing (with a shield against arrows and bolts),
-which the server zeroes whatever the engine decided. Only a hit that is neither keeps the poison, and when no weapon
+which the server resolves as blocked whatever the engine decided (see Blocked hits below: an NPC's blocked hit lets
+`npcBlockedDamageShare` of its blade through, never its poison). Only a hit that is neither keeps the poison, and when no weapon
 hit pairs with the spell the pose alone decides. The Falmer poison is known by its effect, `crFalmerFFContact`
 (0x109D7C), and a landing is seen through `magicEffectApply`, `effectStart` (the effect is listed on the player by
 then) and the spell's own hit event, whichever come; the dispel looks again one frame later and dispels once more
@@ -144,3 +145,22 @@ another player's damage over time) is refused only while points are left, so at 
 blocked swing (15 to 36 for the Falmer the spawn file uses); damage the server computes (weapon and
 spell hits) never passes through the report and is not affected. Two Falmer poisoning through a block at once can
 exceed the points, and the excess lands.
+
+## Blocked hits
+
+`OnWeaponHit` resolves a weapon hit as blocked when the target holds a block (`IsBlockActive`) with the aggressor
+within 1 rad of its facing, and against an arrow or bolt only with a shield worn; a bash counts as melee. The damage
+formula prices a blocked hit at `kBlockedHitDamageMult` (0), for shields and wards alike. One case differs: when an
+NPC's weapon hit is blocked by a player, `OnWeaponHit` prices it as unblocked through the whole formula chain (armor,
+power attack, sneak and the multiplier formulas) and lets `npcBlockedDamageShare` of it through (server setting,
+default 0.2, from 0 to 1; 0 restores full blocks). So a player's block is 80% effective against NPCs and 100%
+effective against other players, and NPCs blocking are unchanged. The hit stays blocked everywhere else: Papyrus
+`OnHit` gets `abHitBlocked`, `onHitDamageAttempt` is still asked, and the Falmer poison guard and the
+`npcHitPoisonBlocked` packet above treat it as blocked, so the NPC's hit spell poison still does not land through a
+block. A weapon poison on the NPC's blade lands in full through a block, as before. Wards are unchanged: a ward still
+blocks a whole spell hit.
+
+The server logs at boot `npcBlockedDamageShare is <share>: a player's block lets that share of an NPC's weapon hit
+through, a player's hit stays fully blocked`, and for each blocked hit on a player `OnWeaponHit - <player> blocked
+npc <npc> with <weapon>, <landed> of <unblocked> damage lands (npcBlockedDamageShare <share>)` or `OnWeaponHit -
+<player> blocked player|npc <aggressor> with <weapon>, fully blocked` (another player, or any NPC when the share is 0).

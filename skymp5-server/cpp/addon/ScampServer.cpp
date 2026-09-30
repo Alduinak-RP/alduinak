@@ -361,6 +361,23 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       }
     }
 
+    // npcBlockedDamageShare: share of an NPC's weapon hit a player's block lets through, 0 blocks it fully
+    if (auto it = serverSettings.find("npcBlockedDamageShare");
+        it != serverSettings.end()) {
+      if (it->is_number() && it->get<float>() >= 0.f &&
+          it->get<float>() <= 1.f) {
+        partOne->worldState.npcBlockedDamageShare = it->get<float>();
+      } else {
+        spdlog::error("Unexpected value of npcBlockedDamageShare, should be a "
+                      "number from 0 to 1, keeping {}",
+                      partOne->worldState.npcBlockedDamageShare);
+      }
+    }
+    logger->info("npcBlockedDamageShare is {}: a player's block lets that "
+                 "share of an NPC's weapon hit through, a player's hit stays "
+                 "fully blocked",
+                 partOne->worldState.npcBlockedDamageShare);
+
     partOne->worldState.isPapyrusHotReloadEnabled =
       serverSettings.count("isPapyrusHotReloadEnabled") != 0 &&
       serverSettings.at("isPapyrusHotReloadEnabled").get<bool>();
