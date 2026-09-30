@@ -52,8 +52,27 @@ than `masteryPointIntervalMinutes` (default 60) after the last one:
 | Warrior | killing NPCs and creatures |
 | Mage | casting spells (the native `onSpellCast` event) |
 
+**Hour bank.** A craft of the profession made inside an hour that was already counted (a craft or temper that would
+have counted, at a bench of the profession, with the inputs in the bag) banks one hour instead, up to
+`masteryHourBank` (default 2; 0 turns the bank off). Only crafts bank; gathering, kills, casts and skinning come many
+an hour and never do. A banked hour is counted once the character has been **online** for a full
+`masteryPointIntervalMinutes` since the last counted hour, whether that hour came from work or from the bank; time
+logged out does not count, and a counted hour of work restarts that wait, so no hour is ever counted twice in one
+interval. Three crafts at a forge in a few minutes therefore count one hour at once and the other two after 60 and
+120 online minutes, with no further crafting. A craft right after a banked hour is paid refills the bank. The player
+sees "Extra work banked: N hours will be counted, one per hour you stay online." and "Your banked work as a
+Blacksmith is counted: H hours at the craft, 1 hour still banked." The server logs:
+
+- `[mastery] <id> <profession> hour counted by work: <H>h[, N hours still banked]`
+- `[mastery] <id> <profession> hour banked (<N>/<max>), next paid in <M> online min`
+- `[mastery] <id> <profession> hour paid from the bank after 60 online min: <H>h[, N hours still banked]`
+- `[mastery] <id> online with <N> hours banked, next paid in <M> online min` at login
+
+The online time since the last counted hour is saved at logout, at every counted or banked hour and every 5 minutes
+while hours are banked, so a crash loses at most 5 minutes of it. A profession reset empties the bank.
+
 Hours are **per character**: the record `private.mastery`
-`{ v: 2, profession, points, lastPointAt, rank, granted, spellTier }` lives on the
+`{ v: 2, profession, points, lastPointAt, rank, granted, spellTier, resets, bank, onlineMs }` lives on the
 actor form. A record without `v: 2` is migrated at login: its rank is recomputed,
 markers that are not the new ones are removed and the right ones granted. Common
 recipes (editor id `AldRecipeCommon_*`) never count, whatever bench they sit on.

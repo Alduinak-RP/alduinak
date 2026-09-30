@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
 import { spellInfo, SpellType } from "./espmMagic";
@@ -20,6 +20,8 @@ type Mp = any;
 // (gamemode_extensions/62_mastery.js); other systems credit their own work (skinning) through creditWork. Each rank
 // grants a cumulative marker spell AldProf_<Label>_<Rank>; the plugin's recipes condition on it with HasSpell.
 // A mage cannot rise above Adept without having cast an Adept spell, above Expert without an Expert one, and so on.
+// Hour bank: each extra craft of the profession inside a counted hour banks one hour, up to masteryHourBank; a banked hour
+// is counted once the character has been online for a full interval since the last counted hour and no work counted one.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -31,11 +33,12 @@ type Mp = any;
 //     { customPacketType: "masteryNotice", text }
 //     { customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka }
 //
-// Persistence: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets } on the actor.
+// Persistence: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets, bank, onlineMs } on the actor.
 //
 // server-settings.json keys (all optional):
 //   masteryRankHours             [adept, expert, master, legendary] thresholds, default [40, 100, 180, 6000]
 //   masteryPointIntervalMinutes  minimum gap between two hours, default 60
+//   masteryHourBank              hours extra crafts may bank, default 2; 0 turns the bank off
 //   masterySpells                { "<professionId>": [novice, adept, expert, master, legendary] } marker form ids
 //                                overriding the plugin's AldProf_<Label>_<Rank> spells
 //   masteryActivities            { "<professionId>": { craftKeywords, craftStations, activatePrefixes, activateTypes,
@@ -69,6 +72,10 @@ const MAGE_MAGICKA = [100, 125, 150, 175, 200, 500];
 
 const DEFAULT_RANK_HOURS = [40, 100, 180, 6000];
 const DEFAULT_POINT_INTERVAL_MINUTES = 60;
+const DEFAULT_HOUR_BANK = 2;
+const BANK_CHECK_MS = 5000;
+// Online time is saved this often while hours are banked, so a crash loses at most this much of it
+const BANK_SAVE_MS = 5 * 60000;
 const CHOOSE_COOLDOWN_MS = 1000;
 // Admin grants are for testing and corrections, never a bulk import.
 export const MAX_GRANT = 1000;
@@ -301,6 +308,17 @@ interface MasteryRecord {
   spellTier: number;
   // Profession resets the player has used
   resets: number;
+  // Hours banked by extra crafts, waiting to be counted
+  bank: number;
+  // Online time since the last counted hour, up to the last save
+  onlineMs: number;
+}
+
+interface OnlineClock {
+  userId: number;
+  // Epoch ms up to which online time is in the record's onlineMs
+  since: number;
+  savedAt: number;
 }
 
 // What the admin panel shows for one character.
@@ -323,7 +341,8 @@ interface Location {
   pos: number[];
 }
 
-const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0 });
+const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0, bank: 0, onlineMs: 0 });
+const hoursText = (n: number): string => `${n} ${n === 1 ? "hour" : "hours"}`;
 
 export const stringList = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x) : [];
 
@@ -346,6 +365,8 @@ export class MasterySystem implements System {
     if (Number.isInteger(resets) && resets >= 0) this.resetsPerCharacter = resets;
     const interval = Number(all?.["masteryPointIntervalMinutes"]);
     if (Number.isFinite(interval) && interval > 0) this.intervalMs = interval * 60000;
+    const bank = Number(all?.["masteryHourBank"]);
+    if (Number.isInteger(bank) && bank >= 0) this.bankMax = bank;
 
     const spells = all?.["masterySpells"];
     if (spells && typeof spells === "object") {
@@ -362,11 +383,12 @@ export class MasterySystem implements System {
     await this.loadPluginForms(ctx, s.dataDir, s.loadOrder);
 
     const configured = Object.keys(this.spells).length;
-    this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one hour per ${this.intervalMs / 60000} min, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
+    this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one hour per ${this.intervalMs / 60000} min, extra crafts bank up to ${hoursText(this.bankMax)}, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => {
       this.onActorAssigned(ctx, userId, actorId >>> 0);
     });
+    ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
 
     // Events are only queued so every property write and Papyrus call runs outside the native event call stack.
     (globalThis as any).__alduinakMasteryEvent = (kind: string, actorId: number, detail: unknown) => {
@@ -424,6 +446,7 @@ export class MasterySystem implements System {
 
   async updateAsync(ctx: SystemContext): Promise<void> {
     this.flushPendingGrants(ctx);
+    this.payBanks(ctx);
     if (!this.events.length) return;
     const batch = this.events.splice(0, this.events.length);
     for (const ev of batch) {
@@ -437,22 +460,91 @@ export class MasterySystem implements System {
 
   // ── Worked hours ────────────────────────────────────────────────────────────
 
+  // One hour per interval; an extra craft inside a counted hour goes to the bank instead
   private creditActivity(ctx: SystemContext, ev: ActivityEvent): void {
     const rec = this.read(ctx, ev.actorId);
     if (!rec || !rec.profession) return;
     if (ev.kind === "cast" && !this.noteCast(ctx, ev.actorId, rec, ev.detail["spellId"])) return;
     const now = Date.now();
     const elapsed = now - rec.lastPointAt;
-    if (elapsed >= 0 && elapsed < this.intervalMs) return;
+    const counted = elapsed >= 0 && elapsed < this.intervalMs;
+    if (counted && (ev.kind !== "craft" || rec.bank >= this.bankMax)) return;
     const rules = this.rules[rec.profession];
     if (!rules || !this.matches(ctx, rec, rules, ev)) return;
+    if (counted) this.deposit(ctx, ev.actorId, rec, now);
+    else this.countHour(ctx, ev.actorId, rec, now, false);
+  }
 
+  // Points one hour; banked says it came out of the bank
+  private countHour(ctx: SystemContext, actorId: number, rec: MasteryRecord, now: number, banked: boolean): void {
     rec.points += 1;
     rec.lastPointAt = now;
-    this.write(ctx, ev.actorId, rec);
-    const userId = this.userOf(ctx, ev.actorId);
-    this.notice(ctx, userId, `Your work as a ${this.labelOf(rec.profession)} is counted: ${rec.points} ${rec.points === 1 ? "hour" : "hours"} at the craft.`);
-    this.syncRank(ctx, ev.actorId, rec, userId);
+    this.settleClock(actorId, rec, now);
+    rec.onlineMs = 0;
+    this.write(ctx, actorId, rec);
+    const left = rec.bank ? `, ${hoursText(rec.bank)} still banked` : "";
+    this.log(`[mastery] ${hex(actorId)} ${rec.profession} hour ${banked ? `paid from the bank after ${this.intervalMs / 60000} online min` : "counted by work"}: ${rec.points}h${left}`);
+    const userId = this.userOf(ctx, actorId);
+    this.notice(ctx, userId, `Your ${banked ? "banked " : ""}work as a ${this.labelOf(rec.profession || "")} is counted: ${hoursText(rec.points)} at the craft${left}.`);
+    this.syncRank(ctx, actorId, rec, userId);
+  }
+
+  private deposit(ctx: SystemContext, actorId: number, rec: MasteryRecord, now: number): void {
+    rec.bank += 1;
+    this.settleClock(actorId, rec, now);
+    this.write(ctx, actorId, rec);
+    const waitMin = Math.max(1, Math.ceil((this.intervalMs - rec.onlineMs) / 60000));
+    this.log(`[mastery] ${hex(actorId)} ${rec.profession} hour banked (${rec.bank}/${this.bankMax}), next paid in ${waitMin} online min`);
+    this.notice(ctx, this.userOf(ctx, actorId), `Extra work banked: ${hoursText(rec.bank)} will be counted, one per hour you stay online.`);
+  }
+
+  // A banked hour is counted once a full interval of online time has passed since the last counted hour
+  private payBanks(ctx: SystemContext): void {
+    const now = Date.now();
+    if (!this.clocks.size || now - this.lastBankCheck < BANK_CHECK_MS) return;
+    this.lastBankCheck = now;
+    this.clocks.forEach((clock, actorId) => {
+      try {
+        const rec = this.read(ctx, actorId);
+        if (!rec || !rec.profession || rec.bank <= 0) return;
+        if (rec.bank > this.bankMax) rec.bank = this.bankMax;
+        if (rec.onlineMs + now - clock.since < this.intervalMs || now - rec.lastPointAt < this.intervalMs) {
+          if (now - clock.savedAt < BANK_SAVE_MS) return;
+          this.settleClock(actorId, rec, now);
+          this.write(ctx, actorId, rec);
+          return;
+        }
+        rec.bank -= 1;
+        this.countHour(ctx, actorId, rec, now, true);
+      } catch (e) {
+        this.log(`[mastery] bank payout failed for ${hex(actorId)}: ${e}`);
+      }
+    });
+  }
+
+  // Moves the online time since the clock's mark into the record; the caller writes it
+  private settleClock(actorId: number, rec: MasteryRecord, now: number): void {
+    const clock = this.clocks.get(actorId);
+    if (!clock) return;
+    rec.onlineMs += Math.max(0, now - clock.since);
+    clock.since = now;
+    clock.savedAt = now;
+  }
+
+  private goOffline(ctx: SystemContext, actorId: number): void {
+    if (!this.clocks.has(actorId)) return;
+    const rec = this.read(ctx, actorId);
+    if (rec) {
+      this.settleClock(actorId, rec, Date.now());
+      this.write(ctx, actorId, rec);
+    }
+    this.clocks.delete(actorId);
+  }
+
+  disconnect(userId: number, ctx: SystemContext): void {
+    this.clocks.forEach((clock, actorId) => {
+      if (clock.userId === userId) this.goOffline(ctx, actorId);
+    });
   }
 
   // A mage's cast of a real spell; a higher tier than any before may lift the rank cap. False for anything else.
@@ -544,7 +636,7 @@ export class MasterySystem implements System {
     if (!rec || !rec.profession) return false;
     this.revokeSpells(ctx, actorId, rec);
     // Hours belong to the craft, so a fresh choice starts from nothing.
-    Object.assign(rec, { profession: null, points: 0, lastPointAt: 0, rank: FREE, spellTier: 0 });
+    Object.assign(rec, { profession: null, points: 0, lastPointAt: 0, rank: FREE, spellTier: 0, bank: 0, onlineMs: 0 });
     this.write(ctx, actorId, rec);
     const userId = this.userOf(ctx, actorId);
     this.notice(ctx, userId, "Your profession has been set aside. You may choose again.");
@@ -558,7 +650,12 @@ export class MasterySystem implements System {
   // Thresholds can be retuned under a character's feet and older records predate the rank ladder, so rank and markers are settled on login.
   private onActorAssigned(ctx: SystemContext, userId: number, actorId: number): void {
     const mp = ctx.svr as Mp;
+    this.clocks.forEach((clock, otherActor) => {
+      if (clock.userId === userId && otherActor !== actorId) this.goOffline(ctx, otherActor);
+    });
     if (!isPlayerActor(mp, actorId)) return;
+    const now = Date.now();
+    this.clocks.set(actorId, { userId, since: now, savedAt: now });
     const rec = this.read(ctx, actorId);
     if (rec && rec.profession) {
       if (rec.v !== RECORD_VERSION) this.migrate(ctx, actorId, rec);
@@ -566,6 +663,7 @@ export class MasterySystem implements System {
       if (corrected < rec.rank) this.revokeAbove(ctx, actorId, rec, corrected);
       rec.rank = corrected;
       this.write(ctx, actorId, rec);
+      if (rec.bank > 0) this.log(`[mastery] ${hex(actorId)} online with ${hoursText(rec.bank)} banked, next paid in ${Math.max(1, Math.ceil((this.intervalMs - rec.onlineMs) / 60000))} online min`);
     }
     this.sendState(ctx, actorId, userId);
     // Grants, kits and the state again wait out the client's spawn-time spell wipe
@@ -1138,6 +1236,8 @@ export class MasterySystem implements System {
         granted: Array.isArray(r.granted) ? r.granted.map((v) => Number(v) >>> 0).filter((v) => v) : [],
         spellTier: Math.max(0, Math.floor(Number(r.spellTier)) || 0),
         resets: Math.max(0, Math.floor(Number(r.resets)) || 0),
+        bank: Math.max(0, Math.floor(Number(r.bank)) || 0),
+        onlineMs: Math.max(0, Number(r.onlineMs) || 0),
       };
     } catch {
       return null;
@@ -1186,6 +1286,10 @@ export class MasterySystem implements System {
   private kits: Record<string, KitItem[]> = { ...DEFAULT_KITS };
   private kitGold = DEFAULT_KIT_GOLD;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
+  private bankMax = DEFAULT_HOUR_BANK;
+  // Online player characters and the online time not yet in their record
+  private clocks = new Map<number, OnlineClock>();
+  private lastBankCheck = 0;
   private hoe = 0;
   // Profession resets a player may use on one character; masteryResetsPerCharacter overrides
   private resetsPerCharacter = 1;

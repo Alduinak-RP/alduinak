@@ -1074,6 +1074,7 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 |---|---|---|
 | `masteryRankHours` | `[40, 100, 180, 6000]` | Worked hours for Adept, Expert, Master, Legendary; four numbers |
 | `masteryPointIntervalMinutes` | `60` | Minimum gap between two counted hours |
+| `masteryHourBank` | `2` | Hours that extra crafts inside a counted hour may bank; each is counted after another interval of online time with no counted work. `0` turns the bank off |
 | `masterySpells` | plugin markers | `{ "<profession>": [novice, adept, expert, master, legendary] }` form ids; a profession left out uses the plugin's `AldProf_<Label>_<Rank>` spells |
 | `masteryActivities` | see `masterySystem.ts` | What counts as work per profession |
 | `masteryKits` | see `DEFAULT_KITS` in `masterySystem.ts` | `{ "<profession>": [{ baseId, count }] }` kit a character receives with its first profession, same shape as `startingItems`; a profession left out keeps its default, `[]` gives nothing, an unknown key or item is logged at boot |

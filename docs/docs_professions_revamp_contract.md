@@ -38,7 +38,9 @@ the highest minimum skill level of the spell's magic effects: 0 Novice, 25 Appre
 
 Storage stays `private.mastery = { profession, points, lastPointAt, rank, granted[] }` plus `v: 2`; `points` are hours.
 `rank` uses the index above. Characters without `v: 2` are migrated at login: rank recomputed from points, markers
-re-synced. One hour is credited per profession activity when `lastPointAt` is at least 60 minutes old.
+re-synced. One hour is credited per profession activity when `lastPointAt` is at least 60 minutes old. Since 2026-10
+(F9) extra crafts inside a counted hour bank up to `masteryHourBank` (2) hours, kept as `bank` and `onlineMs` in the
+same record and paid one per 60 online minutes (see `docs_roleplay_mastery.md`).
 
 Activities that credit hours: crafting at a station for crafters; gathering (mine, chop, pick, skin) for gatherers;
 killing NPCs (hunter: animals) and casting spells (mage) for fighters.
