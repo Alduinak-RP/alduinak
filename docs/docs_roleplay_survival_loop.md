@@ -299,6 +299,19 @@ behaviour-graph events — no ESP required.**
   carries an appearance otherwise), so no body is left and the victim keeps
   their pack (`failed setting ff_body`). Logged as `[body] <victim> <how> by <killer>: body
   <id> holds N stack(s)`.
+- **No kill cams** (`disableKillCamService.ts`): the engine's kill camera
+  (the slow motion arrow or spell follow cam, and the cinematic cut on a
+  melee killmove) glitched players who got one with a bow, so every client
+  turns it off at startup: INI `bVATSDisable:VATS` true, which drops the
+  VATS camera and its slow motion while paired killmoves still play in real
+  time, and the ranged/magic kill cam odds `fKillCamBaseOdds`,
+  `fKillCamLevelBias`, `fKillCamLevelFactor`, `fKillCamLevelMaxBias` and
+  `iKillCamLevelOffset` at 0 (the settings the "Disabled Ranged and Magic
+  KillCams" mod zeroes). Finish offs, executions and assassinations are
+  `Actor.PlayIdleWithTarget` pairs no odds gate, so they play as before,
+  without the camera cut. One line in `skyrim-platform.log`:
+  `DisableKillCamService: kill cams off: bVATSDisable:VATS false -> true,
+  fKillCamBaseOdds 1 -> 0, ...` with each value before and read back after.
 - **Coming back whole** (`deathService.ts`): a finisher never decapitates,
   an execution does, and a decapitation persists as the actor's
   dismembered-limb extra data, which nothing on the respawn path cleared. So

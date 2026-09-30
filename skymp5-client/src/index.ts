@@ -37,6 +37,7 @@ import { SweetTaffySweetCantDropService } from "./services/services/sweetTaffySw
 import { DisableSkillAdvanceService } from "./services/services/disableSkillAdvanceService";
 import { DisableFastTravelService } from "./services/services/disableFastTravelService";
 import { DisableDifficultySelectionService } from "./services/services/disableDifficultySelectionService";
+import { DisableKillCamService } from "./services/services/disableKillCamService";
 import { WorldCleanerService } from "./services/services/worldCleanerService";
 import { CompanionService } from "./services/services/companionService";
 import { LoadOrderVerificationService } from "./services/services/loadOrderVerificationService";
@@ -148,6 +149,7 @@ const main = () => {
       new DisableSkillAdvanceService(sp, controller),
       new DisableFastTravelService(sp, controller),
       new DisableDifficultySelectionService(sp, controller),
+      new DisableKillCamService(sp, controller),
       new WorldCleanerService(sp, controller),
       new CompanionService(sp, controller),
       new LoadOrderVerificationService(sp, controller),
