@@ -111,7 +111,7 @@ async function plan(docs, extra = []) {
   const rep = JSON.parse(fs.readFileSync(file, 'utf8'))
   const h = formDesc => rep.holders.find(x => x.formDesc === formDesc)
   const given = (formDesc, base) => (h(formDesc).give.find(g => g.baseId === S.hex(base)) || { count: 0 }).count
-  return { rep, h, given, s }
+  return { rep, h, given, s, text: fs.readFileSync(file.replace(/json$/, 'txt'), 'utf8') }
 }
 
 function refused(re) { return err => err instanceof S.Refusal && re.test(err.message) }
@@ -306,6 +306,63 @@ async function main() {
   assert.equal(half.writes.length, 4)
   fs.rmSync(ROOT, { recursive: true })
 
+  // An apply that stops part way settles only the documents it wrote: the next plan gives the others again and says so
+  const full = await plan(world())
+  const cut = stub(world(), { failAt: 3 })
+  await R.run(['backup', '--out', path.join(ROOT, 'cut'), '--intent', INTENT], { open: cut.open, log: quiet })
+  await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'cut'), '--apply', '--intent', INTENT], { open: cut.open, blocker: async () => null, log: quiet }), /stopped part way/)
+  const reached = new Set(cut.writes.map(x => String(x.filter._id)))
+  assert.equal(reached.size, 2)
+  r = await plan(cut.store)
+  for (const h of full.rep.holders) assert.deepEqual(r.h(h.formDesc).give.map(g => [g.baseId, g.count]), reached.has(h.id) ? [] : h.give.map(g => [g.baseId, g.count]), h.who)
+  assert.ok(r.rep.totals.giveItems > 0)
+  assert.match(r.text, /it wrote 2 of \d+ documents, the \d+ it never wrote are planned again/)
+  fs.rmSync(ROOT, { recursive: true })
+
+  // A write whose log line is missing is judged by the inventory: what the apply wrote counts as given, a later change is flagged and still counts
+  s = stub(world())
+  await R.run(['backup', '--out', path.join(ROOT, 'log'), '--intent', INTENT], { open: s.open, log: quiet })
+  await R.run(['apply', '--backup', path.join(ROOT, 'log'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet })
+  const logFile = path.join(ROOT, 'log', 'restore-applied.log')
+  const events = fs.readFileSync(logFile, 'utf8').trim().split(/\r?\n/)
+  assert.ok(events.at(-1).startsWith('wrote '))
+  fs.writeFileSync(logFile, events.slice(0, -1).join('\n') + '\n')
+  r = await plan(s.store)
+  assert.equal(r.rep.totals.giveItems, 0)
+  assert.deepEqual(r.rep.earlier[0].unsure, [])
+  addEntry(s.store.find(d => String(d._id) === events.at(-1).split(' ')[1]), NEW, 1)
+  r = await plan(s.store)
+  assert.equal(r.rep.totals.giveItems, 0)
+  assert.equal(r.rep.earlier[0].unsure.length, 1)
+  assert.match(r.text, /! it stopped while writing .*counted as given/)
+  fs.rmSync(logFile)
+  r = await plan(s.store)
+  assert.equal(r.rep.totals.giveItems, 0)
+  assert.equal(r.rep.earlier[0].written, r.rep.earlier[0].writes)
+  fs.rmSync(ROOT, { recursive: true })
+
+  // What an apply settled stays settled: returns it counted and that were sold since, and a document that needed no write, are not given again; a later --also-give id still comes back
+  const arrows = (await plan(world(), ['--also-give', '0x000139BF'])).rep.holders.reduce((n, h) => n + h.give.filter(g => g.baseId === '0x000139BF').reduce((a, g) => a + g.count, 0), 0)
+  assert.ok(arrows > 0)
+  w = world()
+  addEntry(doc(w, '11'), RING, 2)
+  const back29a = new Set(ph('29a').give.map(g => parseInt(g.baseId, 16) >>> 0))
+  for (const g of ph('29a').give) addEntry(doc(w, '29a'), parseInt(g.baseId, 16), g.count)
+  s = stub(w)
+  await R.run(['backup', '--out', path.join(ROOT, 'settle'), '--intent', INTENT], { open: s.open, log: quiet })
+  await R.run(['apply', '--backup', path.join(ROOT, 'settle'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet })
+  assert.equal(total(doc(s.store, '11'), RING), 5)
+  assert.ok(!s.writes.some(x => String(x.filter._id) === String(doc(w, '29a')._id)))
+  doc(s.store, '11').inv.entries = doc(s.store, '11').inv.entries.filter(e => id(e) !== RING)
+  doc(s.store, '29a').inv.entries = doc(s.store, '29a').inv.entries.filter(e => !back29a.has(id(e)))
+  r = await plan(s.store)
+  assert.equal(r.rep.totals.giveItems, 0)
+  assert.equal(r.h('11').back.find(g => g.baseId === S.hex(RING)).byEarlierRestore, 5)
+  assert.equal(r.h('29a').back.reduce((n, g) => n + g.byEarlierRestore, 0), 7)
+  r = await plan(s.store, ['--also-give', '0x000139BF'])
+  assert.equal(r.rep.totals.giveItems, arrows)
+  fs.rmSync(ROOT, { recursive: true })
+
   // A write between the read and the update is never overwritten: the apply stops there and the rest can be rolled back
   let raced = null
   let gold = 0
@@ -322,6 +379,9 @@ async function main() {
   await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'race'), '--apply', '--intent', INTENT], { open: race.open, blocker: async () => null, log: quiet }), /changed after it was read, nothing written to it; stopped part way/)
   assert.equal(total(race.store.find(x => String(x._id) === raced), 0xF), gold + 999)
   assert.equal(race.writes.length, 1)
+  r = await plan(race.store)
+  assert.ok(r.rep.holders.find(h => h.id === raced).give.length > 0, 'a document the apply could not write is planned again')
+  assert.deepEqual(r.rep.earlier[0].unsure, [])
   fs.rmSync(ROOT, { recursive: true })
 
   // The game server check runs again right before the first write

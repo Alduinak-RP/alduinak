@@ -39,7 +39,14 @@ else back:
   no entry is ever lowered or removed. It also caps each profile at what it
   lost less what its characters and claimed containers hold now, so a return
   moved to a chest or another character counts too (`--per-document` turns
-  that off). A later run also counts what an earlier apply gave.
+  that off).
+- An apply settles every item id it decided for each document it reached,
+  given or already back at the time, and later runs never give that id to
+  that document again (a return it counted and the player sold since stays
+  settled); only an id decided differently later, such as a new
+  `--also-give`, comes back. The apply logs each write
+  (`restore-applied.log` beside its record), so after an apply that stopped
+  part way the next `plan` gives the documents it never wrote and names them.
 - Given items reuse the backup's own entries (enchantment, tempering,
   poison), come back unequipped, and are written with `$set` of
   `inv.entries` only. Learned spells, `equipmentDump` and spell slots are

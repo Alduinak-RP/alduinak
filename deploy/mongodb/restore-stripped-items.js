@@ -34,6 +34,8 @@ const INTENT_FILE = path.join(__dirname, 'strip-intent.json')
 const INFO_FILE = 'restore-backup.json'
 const APPLIED_FILE = 'restore-applied.json'
 const ROLLED_BACK_FILE = 'restore-applied.rolled-back.json'
+const LOG_FILE = 'restore-applied.log'
+const ROLLED_BACK_LOG = 'restore-applied.rolled-back.log'
 const INTENTS = { ebony: 'ebony equipment', 'spell tome': 'spell tomes', 'falmer cuirass': 'Falmer chest armour' }
 const GROUPS = { jewelry: 'jewelry', scroll: 'scrolls', enchanted: 'enchanted gear', staff: 'staves', 'spell tome': 'spell tomes', 'enchanted entry': 'player-enchanted gear' }
 const WORN = ['worn', 'wornLeft']
@@ -88,26 +90,72 @@ function loadStripPlan(file, info) {
   return { file: chosen, holders: new Map(arr(r.holders).map(h => [h.formDesc, h])) }
 }
 
-// Given counts of earlier applies of this strip's restore that were not rolled back: doc id -> base id -> count
+// The last event per document in an apply's write log (writing, wrote, not written, rolled back); null when the apply never started writing
+function readLog(dir) {
+  const file = path.join(dir, LOG_FILE)
+  if (!fs.existsSync(file)) return null
+  const last = new Map()
+  for (const l of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const m = /^(writing|wrote|not written|rolled back) (\S+)$/.exec(l.trim())
+    if (m) last.set(m[2], m[1])
+  }
+  return last
+}
+
+function appendLog(dir, event, id) {
+  const fd = fs.openSync(path.join(dir, LOG_FILE), 'a')
+  try {
+    fs.writeSync(fd, `${event} ${id}\n`)
+    fs.fsyncSync(fd)
+  } finally { fs.closeSync(fd) }
+}
+
+// Apply records of this strip's restore that were not rolled back, with their write logs
 function earlierApplies(stripSha) {
-  const out = { records: [], given: new Map() }
+  const out = []
   if (!fs.existsSync(RESTORE_ROOT)) return out
   for (const d of fs.readdirSync(RESTORE_ROOT)) {
-    const file = path.join(RESTORE_ROOT, d, APPLIED_FILE)
+    const dir = path.join(RESTORE_ROOT, d)
+    const file = path.join(dir, APPLIED_FILE)
     if (!fs.existsSync(file)) continue
     const rec = readJson(file, 'apply record')
-    if (rec.stripDocsSha256 !== stripSha) continue
-    out.records.push({ dir: path.dirname(file), createdAt: rec.createdAt })
-    for (const doc of arr(rec.docs)) {
-      const m = out.given.get(doc.id) || new Map()
-      for (const g of arr(doc.given)) {
-        const id = parseInt(g.baseId, 16) >>> 0
-        m.set(id, (m.get(id) || 0) + g.count)
-      }
-      out.given.set(doc.id, m)
-    }
+    if (rec.stripDocsSha256 === stripSha) out.push({ dir, rec, log: readLog(dir) })
   }
   return out
+}
+
+const NO_EARLIER = { byDoc: new Map(), summaries: [] }
+
+// The base ids each earlier apply settled per document it reached; a document it was writing when it stopped is judged by its inventory now
+function resolveEarlier(records, live, settings) {
+  const byDoc = new Map()
+  const summaries = []
+  for (const { dir, rec, log } of records) {
+    const sum = { dir, createdAt: rec.createdAt, writes: 0, written: 0, unsure: [] }
+    let pre = null
+    for (const d of arr(rec.docs)) {
+      let reached = true
+      if (d.write) {
+        sum.writes++
+        const ev = log ? log.get(d.id) : 'writing'
+        if (ev === 'writing') {
+          pre = pre || new Map(S.readBackup(dir, settings, INFO_FILE).docs.map(x => [String(x._id), x]))
+          const now = live.get(d.id)
+          const items = now && itemsSha(now.inv && now.inv.entries)
+          const before = pre.get(d.id)
+          if (items !== d.itemsSha256 && now && before && items === itemsSha(before.inv && before.inv.entries)) reached = false
+          else if (items !== d.itemsSha256) sum.unsure.push(d.who)
+        } else reached = ev === 'wrote'
+        if (reached) sum.written++
+      }
+      if (!reached) continue
+      const settled = byDoc.get(d.id) || new Set()
+      for (const id of arr(d.settled)) settled.add(parseInt(id, 16) >>> 0)
+      byDoc.set(d.id, settled)
+    }
+    summaries.push(sum)
+  }
+  return { byDoc, summaries }
 }
 
 function loadInputs(flags, settings) {
@@ -122,7 +170,7 @@ function loadInputs(flags, settings) {
   checkRemoved(give, '--also-give', intent.classes)
   const stripPlan = loadStripPlan(flags.stripPlan && path.resolve(flags.stripPlan), strip.info)
   const { purge, BSON } = S.requireDriver()
-  return { dir, strip, intent, stripPlan, keep, give, earlier: earlierApplies(strip.info.docsSha256), isPlayer: purge.isPlayer, BSON, owners: null, profiles: null, pool: !flags.perDocument }
+  return { dir, strip, intent, stripPlan, keep, give, settings, records: earlierApplies(strip.info.docsSha256), earlier: NO_EARLIER, isPlayer: purge.isPlayer, BSON, owners: null, profiles: null, pool: !flags.perDocument }
 }
 
 // ── The restore rule ─────────────────────────────────────────────────────────
@@ -140,6 +188,9 @@ function plain(v) {
   }
   return v
 }
+
+// Blind to entry order and number types, so a re-save that changes only those still matches
+function itemsSha(entries) { return sha256(JSON.stringify(arr(entries).map(e => JSON.stringify(plain(e))).sort())) }
 
 // An entry's identity without its count and worn state: enchantment, tempering, poison, charge, name and the rest
 function variantOf(e) {
@@ -229,7 +280,7 @@ function assess(doc, live, ctx) {
   }
   const backupEntries = arr(doc.inv && doc.inv.entries)
   const liveEntries = live ? arr(live.inv && live.inv.entries) : []
-  const earlier = ctx.earlier.given.get(row.id) || new Map()
+  const settled = ctx.earlier.byDoc.get(row.id) || new Set()
   for (const g of groups.values()) {
     const cls = classes.get(g.baseId)
     const base = { baseId: hex(g.baseId), edid: (cls && cls.edid) || g.edid, group: groupOf(g.reason, cls), removed: g.removed }
@@ -238,9 +289,9 @@ function assess(doc, live, ctx) {
     if (kept) { row.stays.push({ ...base, count: g.removed, why: kept, evidence: cls.evidence || '' }); continue }
     if (row.status !== 'ok') { row.skipped.push({ ...base, count: g.removed, why: row.status }); continue }
     const current = totalOf(liveEntries, g.baseId)
-    const before = earlier.get(g.baseId) || 0
-    const want = Math.max(0, Math.min(g.removed - before, totalOf(backupEntries, g.baseId) - current))
-    row.wants.push({ g, base, current, before, want, elsewhere: 0 })
+    const done = settled.has(g.baseId)
+    const want = done ? 0 : Math.max(0, Math.min(g.removed, totalOf(backupEntries, g.baseId) - current))
+    row.wants.push({ g, base, current, done, want, elsewhere: 0 })
   }
   return row
 }
@@ -285,9 +336,10 @@ function giveRow(row, ctx) {
   const next = row.live ? arr(row.live.inv && row.live.inv.entries).slice() : []
   for (const w of row.wants) {
     const back = w.g.removed - w.want
-    if (back) row.back.push({ ...w.base, count: back, current: w.current, byEarlierRestore: Math.min(w.before, back), elsewhere: w.elsewhere })
+    if (back) row.back.push({ ...w.base, count: back, current: w.current, byEarlierRestore: w.done ? back : 0, elsewhere: w.elsewhere })
     if (w.want) row.give.push({ ...w.base, count: w.want, variants: giveEntries(next, w.g, w.want, ctx.BSON) })
   }
+  row.decided = row.wants.map(w => w.base.baseId)
   delete row.wants
   if (row.give.length) row.set = { 'inv.entries': next }
   return row
@@ -363,7 +415,10 @@ function render(title, rows, t, meta) {
   L.push(`strip plan report ${meta.stripPlan}: the strip rule reproduces it for ${meta.reproduced} of ${rows.length} documents`)
   L.push(meta.poolByProfile ? 'returns count per document and across each profile (its characters and claimed containers)' : 'returns count per document only (--per-document)')
   L.push(`earlier applies are looked for in ${meta.restoreRoot}`)
-  for (const r of meta.earlier) L.push(`an earlier restore was applied ${r.createdAt} (${r.dir}); what it gave counts as already back`)
+  for (const r of meta.earlier) {
+    L.push(`an earlier restore was applied ${r.createdAt} (${r.dir}): it wrote ${r.written} of ${plural(r.writes, 'document', 'documents')}${r.writes > r.written ? `, the ${r.writes - r.written} it never wrote are planned again` : ''}; what it settled is not given again`)
+    for (const who of r.unsure) L.push(`  ! it stopped while writing ${who}, whose inventory changed since: counted as given, check it by hand`)
+  }
   if (meta.alsoKeep.length || meta.alsoGive.length) L.push(`--also-keep ${meta.alsoKeep.join(',') || '-'}  --also-give ${meta.alsoGive.join(',') || '-'}`)
   L.push('', 'TOTALS')
   L.push(`  holders: ${plural(t.characters, 'character', 'characters')} and ${plural(t.containers, 'container', 'containers')}; ${t.receiving} get items back`)
@@ -411,7 +466,7 @@ function metaOf(ctx, settings, rows) {
   return {
     databaseName: settings.databaseName, strip: ctx.dir, stripCreatedAt: ctx.strip.info.createdAt, stripDocsSha256: ctx.strip.info.docsSha256,
     listSha256: ctx.strip.info.listSha256, intent: ctx.intent.file, intentSha256: ctx.intent.sha, stripPlan: ctx.stripPlan.file,
-    reproduced: rows.filter(r => !r.problems.length).length, restoreRoot: path.resolve(RESTORE_ROOT), earlier: ctx.earlier.records,
+    reproduced: rows.filter(r => !r.problems.length).length, restoreRoot: path.resolve(RESTORE_ROOT), earlier: ctx.earlier.summaries,
     alsoKeep: [...ctx.keep].map(hex), alsoGive: [...ctx.give].map(hex), poolByProfile: ctx.pool, decisions: decisionsOf(rows, ctx),
   }
 }
@@ -438,6 +493,7 @@ async function liveRows(col, ctx) {
   const ids = ctx.strip.docs.map(d => d._id)
   const live = new Map()
   for await (const doc of col.find({ _id: { $in: ids } }, { promoteValues: false })) live.set(String(doc._id), doc)
+  ctx.earlier = resolveEarlier(ctx.records, live, ctx.settings)
   const targets = await S.findTargets(col, ctx.intent.list, true)
   ctx.owners = targets.owned
   ctx.profiles = ctx.pool ? profileTotals(targets, ctx.intent.list) : null
@@ -445,7 +501,6 @@ async function liveRows(col, ctx) {
 }
 
 function previewMode(flags, ctx, env) {
-  ctx.earlier = { records: [], given: new Map() }
   const rows = restoreRows(ctx.strip.docs.map(doc => ({ doc, live: stripped(doc, ctx.intent.list) })), ctx)
   writeReport(flags.report, 'preview', rows, ctx, env.settings, env.log)
   env.log('nothing was read from or written to the database')
@@ -522,17 +577,27 @@ async function applyMode(flags, ctx, env) {
     }
     const late = blocker || await env.blocker()
     if (late) throw new Refusal(late)
+    // Every base id decided for a document is settled once the apply reaches it, even where nothing was given
     const record = {
       createdAt: new Date().toISOString(), stripDocsSha256: ctx.strip.info.docsSha256, backup: dir,
-      docs: rows.map(r => ({ id: r.id, formDesc: r.formDesc, who: r.who, entriesSha256: sha256(canonical(r.set['inv.entries'])), given: r.give.map(g => ({ baseId: g.baseId, edid: g.edid, count: g.count })) })),
+      docs: all.filter(r => r.decided && r.decided.length).map(r => ({
+        id: r.id, formDesc: r.formDesc, who: r.who, write: Boolean(r.set),
+        ...(r.set ? { entriesSha256: sha256(canonical(r.set['inv.entries'])), itemsSha256: itemsSha(r.set['inv.entries']) } : {}),
+        given: r.give.map(g => ({ baseId: g.baseId, edid: g.edid, count: g.count })), settled: r.decided,
+      })),
     }
     writeNew(path.join(dir, APPLIED_FILE), JSON.stringify(record, null, 1))
     const undo = `node deploy/mongodb/restore-stripped-items.js restore --backup "${dir}" --apply`
     for (const r of rows) {
+      appendLog(dir, 'writing', r.id)
       const res = await col.updateOne(unchanged(r.live), { $set: r.set }).catch(err => { throw new Error(`${err.message}; stopped part way, roll back with: ${undo}`) })
-      if (res.matchedCount !== 1) throw new Error(`${r.who} changed after it was read, nothing written to it; stopped part way, roll back with: ${undo}`)
+      if (res.matchedCount !== 1) {
+        appendLog(dir, 'not written', r.id)
+        throw new Error(`${r.who} changed after it was read, nothing written to it; stopped part way, roll back with: ${undo}`)
+      }
+      appendLog(dir, 'wrote', r.id)
     }
-    const wrote = new Map(record.docs.map(d => [d.id, d.entriesSha256]))
+    const wrote = new Map(record.docs.filter(d => d.write).map(d => [d.id, d.entriesSha256]))
     const bad = []
     for await (const doc of col.find({ _id: { $in: rows.map(r => r.live._id) } }, { promoteValues: false })) {
       if (sha256(canonical(arr(doc.inv && doc.inv.entries))) !== wrote.get(String(doc._id))) bad.push(doc.formDesc)
@@ -572,6 +637,7 @@ async function rollbackMode(flags, env) {
       if (res.matchedCount !== 1) throw new Error(`${d.formDesc} changed after it was read, nothing written to it; stopped part way`)
     }
     fs.renameSync(recFile, path.join(dir, ROLLED_BACK_FILE))
+    if (fs.existsSync(path.join(dir, LOG_FILE))) fs.renameSync(path.join(dir, LOG_FILE), path.join(dir, ROLLED_BACK_LOG))
     env.log(`rolled back ${plural(undo.length, 'document', 'documents')}`)
   }, env.open)
 }
