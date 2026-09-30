@@ -1,6 +1,7 @@
 'use strict'
 
-// NeedsSystem modifier sources: every fatigue cost path and the hunger drain take the source factors: node tools/test-needs-modifiers.js
+// NeedsSystem modifier sources: every fatigue cost path, the hunger drain, food and the bar's refill take the source factors; the stage
+// event and the drink rule: node tools/test-needs-modifiers.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -16,7 +17,7 @@ const load = (file) => {
   return compiled.exports
 }
 
-const { NeedsSystem, fatigueCost } = load('needsSystem.ts')
+const { NeedsSystem, fatigueCost, NEEDS_STAGE_EVENT } = load('needsSystem.ts')
 const { RacialSystem, parseRacialPassives } = load('racialSystem.ts')
 
 const NORD = 0xff000001
@@ -38,12 +39,14 @@ const SPELL_RECORD = { record: { type: 'SPEL', editorId: 'Flames', fields: [{ ty
 
 const makeMp = () => {
   const props = new Map()
+  const packets = []
   for (const id of [NORD, ALTMER, ORC]) props.set(`${id}:profileId`, 1)
   return {
     props,
+    packets,
     get: (id, key) => props.get(`${id >>> 0}:${key}`),
     set: (id, key, v) => { props.set(`${id >>> 0}:${key}`, v) },
-    sendCustomPacket: () => {},
+    sendCustomPacket: (_userId, text) => { packets.push(JSON.parse(text)) },
     lookupEspmRecordById: (id) => (id === SPELL ? SPELL_RECORD : {}),
     getIdFromDesc: () => 0,
     getDescFromId: (id) => id.toString(16),
@@ -73,13 +76,14 @@ const raceSource = {
   describe: () => 'fatigue AltmerTest x0.75',
 }
 
-// A system with the three characters online, their clocks frozen, and a spy on costOf
-const setup = (sources = [raceSource]) => {
+// A system with the three characters online, their clocks frozen, and a spy on costOf and the stage events
+const setup = (sources = [raceSource], professions = mastery) => {
   const logs = []
-  const sys = new NeedsSystem((line) => logs.push(String(line)), mastery)
+  const sys = new NeedsSystem((line) => logs.push(String(line)), professions)
   for (const src of sources) sys.addModifierSource(src)
   const mp = makeMp()
-  const ctx = { svr: mp, gm: { on: () => {}, emit: () => {} } }
+  const events = []
+  const ctx = { svr: mp, gm: { on: () => {}, emit: (name, ...args) => { events.push([name, ...args]) } } }
   const priced = []
   const costOf = sys.costOf.bind(sys)
   sys.costOf = (actorId, effort, ...rest) => { priced.push([actorId, effort]); return costOf(actorId, effort, ...rest) }
@@ -90,7 +94,27 @@ const setup = (sources = [raceSource]) => {
   logs.length = 0
   const fatigue = (id) => sys.online.get(id).rec.fatigue
   const setFatigue = (id, v) => { sys.online.get(id).rec.fatigue = v }
-  return { sys, ctx, mp, logs, priced, fatigue, setFatigue }
+  return { sys, ctx, mp, logs, priced, events, fatigue, setFatigue }
+}
+
+// Ranks by profession for the drink tests; craftCost names the pricing profession unless named is false
+const professionsOf = (ranks, price, named = true) => ({
+  ...mastery,
+  rankOf: (_ctx, _id, p) => ranks[p] ?? 0,
+  rankIn: (_ctx, _id, ps) => Math.max(0, ...ps.map((p) => ranks[p] ?? 0)),
+  craftCost: () => (named ? { ...price } : { rank: price.rank, half: price.half }),
+})
+
+const FOOD = 0x6400
+const ALE = 0x6401
+const HUNGER_EFFECT = 0x6402
+
+// A food restoring 100 hunger and an ale restoring none, both past the record reads
+const stock = (sys) => {
+  sys.foodCache.set(FOOD, [{ mgefId: HUNGER_EFFECT, amount: 100 }])
+  sys.foodCache.set(ALE, [])
+  sys.alcoholCache.set(FOOD, false)
+  sys.alcoholCache.set(ALE, true)
 }
 
 const near = (actual, expected, what) => assert.ok(Math.abs(actual - expected) < 1e-9, `${what}: ${actual} != ${expected}`)
@@ -230,6 +254,92 @@ async function main() {
     assert.equal(racial.fatigueCostMult(ORC), 1)
     const { problems } = parseRacialPassives({ races: { OrcRace: { fatigueCostMult: 0, coldRateMult: 0 } } })
     assert.deepEqual(problems, ['races.OrcRace.fatigueCostMult 0 is not a positive number, 1 is used'])
+  })
+
+  await test('a food restores its hunger times the food factor, and the eat line names the factor', () => {
+    const gut = { label: 'survival', foodHungerMult: (id) => (id === NORD ? 0.5 : 1) }
+    const t = setup([raceSource, gut])
+    stock(t.sys)
+    for (const id of [NORD, ALTMER]) t.sys.online.get(id).rec.hunger = 400
+    t.sys.eat(t.ctx, NORD, FOOD)
+    t.sys.eat(t.ctx, ALTMER, FOOD)
+    near(t.sys.online.get(NORD).rec.hunger, 350, 'Nord hunger')
+    near(t.sys.online.get(ALTMER).rec.hunger, 300, 'Altmer hunger')
+    assert.deepEqual(t.logs.filter((l) => l.includes(' ate ')), ['[needs] ff000001 ate 6400: hunger -50 of 100, survival x0.5, hunger 350'])
+  })
+
+  await test('the bar refills by the refill factor online and in the offline refill at login', () => {
+    const rot = { label: 'survival', fatigueRegenMult: (id) => (id === ORC ? 0.5 : 1) }
+    const t = setup([raceSource, rot])
+    const now = Date.now()
+    for (const id of [NORD, ORC]) Object.assign(t.sys.online.get(id).rec, { fatigue: 0, at: now - HOUR / 2 })
+    t.sys.catchUp(t.sys.online.get(NORD), now)
+    t.sys.catchUp(t.sys.online.get(ORC), now)
+    near(t.fatigue(NORD), 0.5, 'Nord half an hour online')
+    near(t.fatigue(ORC), 0.25, 'Orc half an hour online at x0.5')
+    t.sys.goOffline(t.ctx, ORC)
+    t.mp.set(ORC, 'private.needs', { hunger: 145, fatigue: 0, at: now - HOUR })
+    t.logs.length = 0
+    t.sys.onActorAssigned(t.ctx, 9, ORC)
+    assert.ok(Math.abs(t.fatigue(ORC) - 0.5) < 0.001, `Orc offline refill ${t.fatigue(ORC)}`)
+    assert.ok(t.logs.some((l) => l.startsWith('[needs] ff000003 rested offline') && l.endsWith('fatigue 0% -> 50%, refill survival x0.5')), t.logs.join('\n'))
+    assert.ok(t.logs.some((l) => l.startsWith('[needs] ff000003 online:') && l.endsWith(', fatigue refill survival x0.5')), t.logs.join('\n'))
+  })
+
+  await test('NEEDS_STAGE_EVENT fires once per stage change and for everyone at the minute tick', async () => {
+    const t = setup()
+    t.mp.getUserActor = (userId) => [NORD, ALTMER, ORC][userId - 1]
+    t.sys.pay(t.ctx, NORD, 'craft', 0, 'craft')
+    t.sys.pay(t.ctx, NORD, 'gather', 1, 'harvest')
+    t.sys.pay(t.ctx, NORD, 'gather', 4, 'harvest')
+    assert.deepEqual(t.events, [[NEEDS_STAGE_EVENT, NORD, 1, 2], [NEEDS_STAGE_EVENT, NORD, 1, 3]])
+    t.events.length = 0
+    const realTimeout = global.setTimeout
+    global.setTimeout = (f) => setImmediate(f)
+    try {
+      await t.sys.updateAsync(t.ctx)
+    } finally {
+      global.setTimeout = realTimeout
+    }
+    assert.deepEqual(t.events, [[NEEDS_STAGE_EVENT, NORD, 1, 3], [NEEDS_STAGE_EVENT, ALTMER, 1, 1], [NEEDS_STAGE_EVENT, ORC, 1, 1]])
+  })
+
+  await test('a drink steadies a cook in any slot, and discounts only the crafts a cook or alchemist rank priced', async () => {
+    const ranks = { blacksmith: 4, cook: 1 }
+    const cases = [
+      [{ rank: 4, half: false, profession: 'blacksmith' }, true, 1],
+      [{ rank: 1, half: false, profession: 'cook' }, true, 0.75],
+      [{ rank: 4, half: false }, false, 1],
+      [{ rank: 1, half: false }, false, 0.75],
+    ]
+    for (const [price, named, share] of cases) {
+      const t = setup([], professionsOf(ranks, price, named))
+      stock(t.sys)
+      t.sys.eat(t.ctx, NORD, ALE)
+      await tick()
+      assert.ok(t.sys.online.get(NORD).rec.drinkUntil > Date.now(), 'steadied')
+      t.sys.chargeCraft(t.ctx, NORD, RECIPE)
+      near(1 - t.fatigue(NORD), fatigueCost('craft', price.rank) * share, `${JSON.stringify(price)} craft`)
+      assert.deepEqual(t.mp.packets.filter((p) => p.customPacketType === 'masteryNotice').map((p) => p.text),
+        ['The drink steadies your hands: your Cook work costs 25% less fatigue for 10 minutes.'])
+      assert.ok(t.logs.some((l) => l.startsWith('[needs] ff000001 drinks 6401: Cook crafts -25% until')), t.logs.join('\n'))
+    }
+    const t = setup([], professionsOf({ cook: 2, alchemist: 1 }, { rank: 2, half: false, profession: 'cook' }))
+    stock(t.sys)
+    t.sys.eat(t.ctx, NORD, ALE)
+    t.sys.eat(t.ctx, NORD, ALE)
+    await tick()
+    assert.deepEqual(t.mp.packets.filter((p) => p.customPacketType === 'masteryNotice').map((p) => p.text),
+      ['The drink steadies your hands: your Cook and Alchemist work costs 25% less fatigue for 10 minutes.', 'The drink keeps your hands steady for another 10 minutes.'])
+  })
+
+  await test('a character with no cook or alchemist rank in any slot is not steadied', async () => {
+    const t = setup([], professionsOf({ blacksmith: 4 }, { rank: 4, half: false, profession: 'blacksmith' }))
+    stock(t.sys)
+    t.sys.eat(t.ctx, NORD, ALE)
+    await tick()
+    assert.equal(t.sys.online.get(NORD).rec.drinkUntil, 0)
+    assert.deepEqual(t.mp.packets.filter((p) => p.customPacketType === 'masteryNotice'), [])
   })
 
   let failed = 0

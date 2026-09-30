@@ -21,9 +21,10 @@ type Mp = any;
 // and the craft that leaves the bar short of another closes the menu. Eating never costs fatigue. The bar maps onto Survival's exhaustion
 // scale as (1 - fatigue) * 960.
 // Modifier sources (addModifierSource, RacialSystem first) multiply a character's hunger drain and every fatigue cost, together with the
-// drink and flower discounts.
-// Warmed by drink: a cook or alchemist (Novice or better) who drinks an alcohol pays needsAlcoholDiscount less fatigue for the crafts priced
-// by their own rank for needsAlcoholMinutes; another drink refreshes the timer and never stacks. An alcohol is an ALCH drunk with the
+// drink and flower discounts, the hunger a food takes off and the rate the bar refills at, online and offline.
+// Every stage change and every minute tick emits NEEDS_STAGE_EVENT.
+// Steadied by drink: a cook or alchemist (Novice or better in any slot) who drinks an alcohol pays needsAlcoholDiscount less fatigue for
+// the crafts their cook or alchemist rank prices, for needsAlcoholMinutes; another drink refreshes the timer and never stacks. An alcohol is an ALCH drunk with the
 // ITMPotionUse sound that carries a detrimental stamina or magicka rate effect (every vanilla ale, mead, wine, brandy, flin, sujamma, shein
 // and matze; not juice, water, milk or skooma), or one needsAlcoholItems names.
 // Each need holds the Survival stage ability of its stage (screen effects stripped by AlduinakCreations.esp) and reduces a
@@ -57,8 +58,8 @@ type Mp = any;
 //   needsExhaustionMax            exhaustion of an empty fatigue bar, default 960 (Survival_ExhaustionNeedMaxValue)
 //   needsAttributePenalties       false sends no max stamina or max magicka penalty, default true
 //   needsSurvivalModeFlag         true sets the client's Survival_ModeToggle (SRVT, esl 0x828) to 1, the global HUDMenu polls each frame to draw the penalty segments, default true
-//   needsAlcoholDiscount          share of the craft cost a warmed cook or alchemist saves, default 0.25; 0 turns the rule off
-//   needsAlcoholMinutes           how long a drink warms, default 10
+//   needsAlcoholDiscount          share of the craft cost a steadied cook or alchemist saves, default 0.25; 0 turns the rule off
+//   needsAlcoholMinutes           how long a drink steadies, default 10
 //   needsAlcoholItems             { "<ALCH editor id or hex id>": true | false } counting an item as alcohol or not, over the record rule
 //   blockStaminaCost              share of max stamina a blocked weapon hit costs the blocker, default 0.10; works with needs off
 //   blockStaminaCostWarrior       what a warrior pays instead, default 0.05
@@ -153,11 +154,22 @@ export interface NeedsModifierSource {
   label: string;
   hungerDrainMult?(actorId: number): number;
   fatigueCostMult?(actorId: number): number;
+  // Share of a food's hunger restore the character gets
+  foodHungerMult?(actorId: number): number;
+  // Rate the fatigue bar refills at, online and offline
+  fatigueRegenMult?(actorId: number): number;
   // The factors in force, for the boot line
   describe?(): string;
 }
 
-type ModifierMethod = "hungerDrainMult" | "fatigueCostMult";
+type ModifierMethod = "hungerDrainMult" | "fatigueCostMult" | "foodHungerMult" | "fatigueRegenMult";
+
+// What MasterySystem.craftCost returns; profession names the one whose rank priced the craft, when it says
+interface CraftPrice {
+  rank: number;
+  half: boolean;
+  profession?: string | null;
+}
 
 interface Online {
   actorId: number;
@@ -165,6 +177,8 @@ interface Online {
   rec: NeedsRecord;
   // Last state sent to the client, so the minute tick only sends changes
   sent: string;
+  // Hunger and fatigue stages last emitted with NEEDS_STAGE_EVENT
+  stageKey: string;
   // Epoch ms the minute tick first saw this character's creation pending, 0 when it is not, -1 once the hold ran out
   pendingSince: number;
 }
@@ -212,6 +226,10 @@ export const attributePenaltyShare = (value: number, stage2Value: number, max: n
 
 // Emitted on SystemContext.gm (actorId, by, done(ok)) by AdminSystem's Reset needs: an online character gets the new-character hunger and fatigue
 export const NEEDS_RESET_EVENT = "needsReset";
+
+// Emitted on SystemContext.gm (actorId, hungerStage, fatigueStage) when either stage of an online character changes and at every minute tick;
+// stages run 0 to 5 as HUNGER_STAGE_NAMES and FATIGUE_STAGE_NAMES
+export const NEEDS_STAGE_EVENT = "needsStage";
 
 export class NeedsSystem implements System {
   systemName = "NeedsSystem";
@@ -404,8 +422,8 @@ export class NeedsSystem implements System {
   private chargeCraft(ctx: SystemContext, actorId: number, recipeId: number): boolean {
     const entry = this.online.get(actorId);
     if (!entry || !this.mastery.holdsInputs(ctx, actorId, recipeId)) return true;
-    const priced = this.mastery.craftCost(ctx, actorId, recipeId);
-    const drink = this.drinkMultiplier(ctx, actorId, entry, priced.rank);
+    const priced: CraftPrice = this.mastery.craftCost(ctx, actorId, recipeId);
+    const drink = this.drinkMultiplier(ctx, actorId, entry, priced.rank, priced.profession);
     const cost = this.costOf(actorId, "craft", priced.rank, priced.half) * drink;
     if (!this.affords(entry, cost)) {
       this.enqueue(ctx, { kind: "refused", actorId, cost });
@@ -492,48 +510,56 @@ export class NeedsSystem implements System {
     }
   }
 
-  // Every hunger effect whose HasKeyword conditions pass restores its amount, as each would run its own script; an alcohol also warms
+  // Every hunger effect whose HasKeyword conditions pass restores its amount, as each would run its own script, times the food factor; an alcohol also steadies
   private eat(ctx: SystemContext, actorId: number, baseId: number): void {
     const entry = this.online.get(actorId);
     if (!entry) return;
     const mp = ctx.svr as Mp;
-    const restore = this.foodEffectsOf(mp, baseId)
+    const full = this.foodEffectsOf(mp, baseId)
       .filter((e) => keywordConditionsPass(mp, e.mgefId, actorId))
       .reduce((sum, e) => sum + e.amount, 0);
-    const warmed = this.isAlcohol(mp, baseId) && this.warmBy(ctx, actorId, entry, baseId);
-    if (!restore && !warmed) return;
+    const food = full ? this.modifier(actorId, "foodHungerMult") : { mult: 1, note: "" };
+    const restore = full * food.mult;
+    const steadied = this.isAlcohol(mp, baseId) && this.warmBy(ctx, actorId, entry, baseId);
+    if (!restore && !steadied) return;
     this.catchUp(entry);
     if (restore) {
       entry.rec.hunger = clamp(entry.rec.hunger - restore, 0, HUNGER_MAX);
       if (entry.rec.hunger <= 0) entry.rec.wellFed = true;
+      if (food.note) this.log(`[needs] ${hex(actorId)} ate ${this.edidOf(mp, baseId)}: hunger -${Math.round(restore)} of ${Math.round(full)}, ${food.note}, hunger ${Math.round(entry.rec.hunger)}`);
     }
     this.enqueue(ctx, { kind: "changed", actorId });
   }
 
-  // A cook or alchemist of Novice or better is warmed for alcoholMs from now; anyone else gets the hunger only
+  // A cook or alchemist of Novice or better in any slot is steadied for alcoholMs from now; anyone else gets the hunger only
   private warmBy(ctx: SystemContext, actorId: number, entry: Online, baseId: number): boolean {
-    if (this.alcoholDiscount <= 0 || this.alcoholMs <= 0) return false;
-    const profession = this.mastery.professionOf(ctx, actorId);
-    if (!profession || ALCOHOL_PROFESSIONS.indexOf(profession) === -1 || this.mastery.rankOf(ctx, actorId, profession) <= FREE) return false;
+    if (this.alcoholDiscount <= 0 || this.alcoholMs <= 0 || this.mastery.rankIn(ctx, actorId, ALCOHOL_PROFESSIONS) <= FREE) return false;
+    const labels = ALCOHOL_PROFESSIONS.filter((p) => this.mastery.rankOf(ctx, actorId, p) > FREE).map((p) => p.charAt(0).toUpperCase() + p.slice(1));
     const now = Date.now();
     const fresh = entry.rec.drinkUntil < now;
     entry.rec.drinkUntil = now + this.alcoholMs;
-    const edid = String(lookup(ctx.svr as Mp, baseId)?.record?.editorId || hex(baseId));
-    const label = profession.charAt(0).toUpperCase() + profession.slice(1);
+    const label = labels.join(" and ");
     const minutes = Math.round(this.alcoholMs / 60000);
-    this.log(`[needs] ${hex(actorId)} drinks ${edid}: ${label} crafts -${pct(this.alcoholDiscount)}% until ${new Date(entry.rec.drinkUntil).toTimeString().slice(0, 5)}`);
+    this.log(`[needs] ${hex(actorId)} drinks ${this.edidOf(ctx.svr as Mp, baseId)}: ${label} crafts -${pct(this.alcoholDiscount)}% until ${new Date(entry.rec.drinkUntil).toTimeString().slice(0, 5)}`);
     // Inside the native eat hook: the packet goes out once it has returned
     setImmediate(() => this.notice(ctx, entry.userId, fresh
-      ? `The drink warms you: your ${label} work costs ${pct(this.alcoholDiscount)}% less fatigue for ${minutes} minutes.`
-      : `The drink keeps you warm for another ${minutes} minutes.`));
+      ? `The drink steadies your hands: your ${label} work costs ${pct(this.alcoholDiscount)}% less fatigue for ${minutes} minutes.`
+      : `The drink keeps your hands steady for another ${minutes} minutes.`));
     return true;
   }
 
-  // The share of a craft's cost a warmed character pays, for work priced by their own rank; 1 for everyone else
-  private drinkMultiplier(ctx: SystemContext, actorId: number, entry: Online, rank: number): number {
+  // The share of a craft's cost a steadied character pays when their cook or alchemist rank priced it; 1 for everything else.
+  // Without the pricing profession, the cook or alchemist rank equal to the price's stands for it
+  private drinkMultiplier(ctx: SystemContext, actorId: number, entry: Online, rank: number, pricedBy?: string | null): number {
     if (rank <= FREE || !entry.rec.drinkUntil || Date.now() >= entry.rec.drinkUntil) return 1;
-    const profession = this.mastery.professionOf(ctx, actorId);
-    return profession && ALCOHOL_PROFESSIONS.indexOf(profession) !== -1 ? 1 - this.alcoholDiscount : 1;
+    const alcoholCraft = pricedBy !== undefined
+      ? !!pricedBy && ALCOHOL_PROFESSIONS.indexOf(pricedBy) !== -1
+      : ALCOHOL_PROFESSIONS.some((p) => this.mastery.rankOf(ctx, actorId, p) === rank);
+    return alcoholCraft ? 1 - this.alcoholDiscount : 1;
+  }
+
+  private edidOf(mp: Mp, baseId: number): string {
+    return String(lookup(mp, baseId)?.record?.editorId || hex(baseId));
   }
 
   // An ALCH drunk with the potion sound that damages a stamina or magicka rate, unless needsAlcoholItems says otherwise; cached
@@ -595,12 +621,13 @@ export class NeedsSystem implements System {
     const before = rec.fatigue;
     const hunger = this.modifier(actorId, "hungerDrainMult");
     const fatigue = this.modifier(actorId, "fatigueCostMult");
-    if (stored) this.advance(rec, now, false, true, hunger.mult);
-    if (rec.fatigue > before) this.log(`[needs] ${hex(actorId)} rested offline ${savedAgo}: fatigue ${pct(before)}% -> ${pct(rec.fatigue)}%`);
-    this.online.set(actorId, { actorId, userId, rec, sent: "", pendingSince: 0 });
+    const regen = this.modifier(actorId, "fatigueRegenMult");
+    if (stored) this.advance(rec, now, false, true, hunger.mult, regen.mult);
+    if (rec.fatigue > before) this.log(`[needs] ${hex(actorId)} rested offline ${savedAgo}: fatigue ${pct(before)}% -> ${pct(rec.fatigue)}%${regen.note ? `, refill ${regen.note}` : ""}`);
+    this.online.set(actorId, { actorId, userId, rec, sent: "", stageKey: "", pendingSince: 0 });
     this.abilities.begin(actorId, now);
     this.write(ctx, actorId, rec);
-    this.log(`[needs] ${hex(actorId)} online: hunger ${Math.round(rec.hunger)} (${HUNGER_STAGE_NAMES[this.hungerStage(rec)]}), fatigue ${pct(rec.fatigue)}% (${FATIGUE_STAGE_NAMES[this.fatigueStage(rec)]}), saved ${savedAgo}${stored ? " ago" : ""}, abilities ${hex(rec.stageSpell)}/${hex(rec.fatigueSpell)}${hunger.note ? `, hunger drain ${hunger.note}` : ""}${fatigue.note ? `, fatigue costs ${fatigue.note}` : ""}`);
+    this.log(`[needs] ${hex(actorId)} online: hunger ${Math.round(rec.hunger)} (${HUNGER_STAGE_NAMES[this.hungerStage(rec)]}), fatigue ${pct(rec.fatigue)}% (${FATIGUE_STAGE_NAMES[this.fatigueStage(rec)]}), saved ${savedAgo}${stored ? " ago" : ""}, abilities ${hex(rec.stageSpell)}/${hex(rec.fatigueSpell)}${hunger.note ? `, hunger drain ${hunger.note}` : ""}${fatigue.note ? `, fatigue costs ${fatigue.note}` : ""}${regen.note ? `, fatigue refill ${regen.note}` : ""}`);
     this.sendState(ctx, actorId, false);
   }
 
@@ -728,6 +755,7 @@ export class NeedsSystem implements System {
           this.trackCreationHold(ctx, actorId, entry, now);
           this.catchUp(entry, now);
           this.write(ctx, actorId, entry.rec);
+          this.noteStages(ctx, actorId, entry, true);
           this.syncStages(ctx, actorId, entry);
           this.sendState(ctx, actorId, false);
         } else if (this.abilities.takeLoginSync(actorId, now)) {
@@ -768,7 +796,7 @@ export class NeedsSystem implements System {
     const now = Date.now();
     if (now - (this.lastNoticeAt.get(entry.userId) || 0) < NOTICE_GAP_MS) return;
     this.lastNoticeAt.set(entry.userId, now);
-    const minutes = Math.max(1, Math.ceil((q.cost - entry.rec.fatigue) / (REGEN_PER_MS * 60000)));
+    const minutes = Math.max(1, Math.ceil((q.cost - entry.rec.fatigue) / (REGEN_PER_MS * this.modifier(q.actorId, "fatigueRegenMult").mult * 60000)));
     this.notice(ctx, entry.userId, `You are too tired to ${q.kind === "tiredCast" ? "cast" : "craft"}: fatigue ${pct(entry.rec.fatigue)}%, this work needs ${pct(q.cost)}%. Rest about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`);
   }
 
@@ -788,13 +816,13 @@ export class NeedsSystem implements System {
 
   // Hunger waits while a pending creation holds it
   private catchUp(entry: Online, now = Date.now()): void {
-    this.advance(entry.rec, now, true, entry.pendingSince <= 0, this.modifier(entry.actorId, "hungerDrainMult").mult);
+    this.advance(entry.rec, now, true, entry.pendingSince <= 0, this.modifier(entry.actorId, "hungerDrainMult").mult, this.modifier(entry.actorId, "fatigueRegenMult").mult);
   }
 
-  private advance(rec: NeedsRecord, now: number, online: boolean, hunger = true, hungerMult = 1): void {
+  private advance(rec: NeedsRecord, now: number, online: boolean, hunger = true, hungerMult = 1, regenMult = 1): void {
     const ms = Math.max(0, now - rec.at);
     if (hunger && (online || this.hungerOffline)) rec.hunger = clamp(rec.hunger + this.drainPerHour * hungerMult * ms / 3600000, 0, HUNGER_MAX);
-    rec.fatigue = clamp(rec.fatigue + (online ? REGEN_PER_MS : this.fatigueOfflinePerMs) * ms, 0, 1);
+    rec.fatigue = clamp(rec.fatigue + (online ? REGEN_PER_MS : this.fatigueOfflinePerMs) * regenMult * ms, 0, 1);
     if (rec.hunger >= this.stages[0]) rec.wellFed = false;
     rec.at = Math.max(rec.at, now);
   }
@@ -841,7 +869,22 @@ export class NeedsSystem implements System {
     return amount;
   }
 
+  // NEEDS_STAGE_EVENT when a stage changed since the last one, or always with force
+  private noteStages(ctx: SystemContext, actorId: number, entry: Online, force: boolean): void {
+    const hunger = this.hungerStage(entry.rec);
+    const fatigue = this.fatigueStage(entry.rec);
+    const key = `${hunger}/${fatigue}`;
+    if (!force && key === entry.stageKey) return;
+    entry.stageKey = key;
+    try {
+      ctx.gm.emit(NEEDS_STAGE_EVENT, actorId, hunger, fatigue);
+    } catch (e) {
+      this.log(`[needs] stage listener failed for ${hex(actorId)}: ${e}`);
+    }
+  }
+
   private syncStages(ctx: SystemContext, actorId: number, entry: Online): void {
+    this.noteStages(ctx, actorId, entry, false);
     if (this.abilities.waiting(actorId)) return;
     const stage = this.hungerStage(entry.rec);
     const fatigueStage = this.fatigueStage(entry.rec);

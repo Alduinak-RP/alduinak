@@ -237,8 +237,19 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
 is logged in, and at `needsFatigueOfflinePerHour` (default 1, the same 100% per hour; 0 turns it off) for the time the
 character was logged out, from its last save to the next login. The offline share is added once at login, the bar stops
 at 100%, and the server logs `[needs] <id> rested offline <time>: fatigue A% -> B%` just before the `online` line (no
-line when the bar was already full). Nothing else speeds it up or slows it down: no bed, no racial or membership
-discount, no free bench. Eating never costs fatigue.
+line when the bar was already full). Nothing speeds it up: no bed, no membership discount, no free bench. Eating never
+costs fatigue.
+
+**Modifier sources.** Systems registered with `NeedsSystem.addModifierSource` scale a character's needs, and every
+factor in force multiplies: the hunger drain (`hungerDrainMult`), every fatigue cost (`fatigueCostMult`), the hunger a
+food takes off (`foodHungerMult`) and the rate the bar refills at, online and in the offline refill
+(`fatigueRegenMult`). RacialSystem is the first source (the `racialPassives` hunger and fatigue factors); SurvivalSystem
+is the second (its diseases, such as Gutworm on food and Brown Rot on the refill). A factor that is not a positive
+number counts as 1. The lines name what is in force: cost lines end `, race x0.75`, the `online` line adds
+`hunger drain race x0.85, fatigue costs race x0.85, fatigue refill survival x0.5`, the offline line adds
+`refill survival x0.5`, and a scaled meal logs `[needs] <id> ate <editor id>: hunger -50 of 100, survival x0.5, hunger N`.
+Every hunger or fatigue stage change of an online character, and every minute tick, emits `needsStage` (actorId, hunger
+stage, fatigue stage) on the gamemode bus for the survival afflictions.
 
 Every action costs a share of the bar by the character's rank **in the profession the action belongs to**; a character
 of another profession or none pays the Free price (`FATIGUE_COST` and `fatigueCost` in `needsSystem.ts`):
@@ -260,15 +271,18 @@ tanning, charcoal) gives every profession that shares it both its rank discount 
 better pays `gatheringAlchemistFloraDiscount` (50%) less again for alchemy flora, flora that hands over an ingredient
 (flowers, mushrooms, herbs, berries, eggs): 1% a flower at Novice.
 
-**Warmed by drink.** A cook or alchemist of Novice or better who drinks an alcohol pays `needsAlcoholDiscount` (25%)
-less fatigue for the crafts priced by their own rank (the cooking pot and oven for a cook, the alchemy lab for an
-alchemist, shared recipes) for `needsAlcoholMinutes` (10); another drink refreshes the timer and never stacks, and the
-discount multiplies the half cost of those benches. Anyone else gets the drink's hunger only. An alcohol is an ALCH drunk
+**Steadied by drink.** A cook or alchemist of Novice or better, in any profession slot, who drinks an alcohol pays
+`needsAlcoholDiscount` (25%) less fatigue for the crafts their cook or alchemist rank prices (the cooking pot and oven
+for a cook, the alchemy lab for an alchemist, shared recipes) for `needsAlcoholMinutes` (10); a craft another
+profession prices (a Blacksmith primary's smithing, say) pays in full. Another drink refreshes the timer and never
+stacks, and the discount multiplies the half cost of those benches. Anyone else gets the drink's hunger only. The drink
+does nothing against the cold. An alcohol is an ALCH drunk
 with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate effect: every vanilla ale, mead, wine,
 brandy, flin, sujamma, shein and matze, the Windhelm and Dawnstar meads and wines; not juice, water, milk or skooma, and
-not Rotgut or Battle-Brew Special unless `needsAlcoholItems` names them. The drinker sees "The drink warms you: your Cook
-work costs 25% less fatigue for 10 minutes." and the server logs `[needs] <id> drinks <editor id>: Cook crafts -25%
-until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so the warmth survives a relog.
+not Rotgut or Battle-Brew Special unless `needsAlcoholItems` names them. The drinker sees "The drink steadies your
+hands: your Cook work costs 25% less fatigue for 10 minutes." ("your Cook and Alchemist work" for both, "The drink keeps
+your hands steady for another 10 minutes." on a refresh) and the server logs `[needs] <id> drinks <editor id>: Cook
+crafts -25% until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so it survives a relog.
 
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
   (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
