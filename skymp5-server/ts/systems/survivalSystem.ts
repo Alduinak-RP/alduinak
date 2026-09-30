@@ -117,7 +117,7 @@ type Mp = any;
 //   survivalDiseasesEnabled       false gives no disease and removes those held at login, default true
 //   survivalDiseases              { "<id>": false | { name, contagious, stageHours } } over the catalog of survivalDiseases.ts
 //   survivalDiseaseCarriers       { "<race editor id fragment>": false | { chance, diseases: [id] } } over the default carriers
-//   survivalDiseaseCarrierExclude race editor id fragments no carrier matches, default ["werewolf"]
+//   survivalDiseaseCarrierExclude race editor id fragments no carrier matches, default ["werewolf", "werebear"]
 //   survivalDiseaseStageHours     real hours from stage 1 to 2 and from 2 to 3, offline included, default [84, 84]
 //   survivalMaxDiseases           diseases a character can hold at once, default 4
 //   survivalContagionChance / survivalContagionRange / survivalContagionCheckSeconds / survivalContagionCooldownMinutes  default 0.05 / 300 / 60 / 30

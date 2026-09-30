@@ -115,7 +115,8 @@ export const DEFAULT_CARRIERS: Record<string, Carrier> = {
 };
 
 const DEFAULTS = {
-  exclude: ["werewolf"],
+  // DLC2WerebearBeastRace would match bear as WerewolfBeastRace matches wolf
+  exclude: ["werewolf", "werebear"],
   stageHours: [84, 84],
   max: 4,
   contagion: { chance: 0.05, range: 300, checkSeconds: 60, cooldownMinutes: 30 },
