@@ -483,6 +483,13 @@
     "nexusId": 63979
   },
   {
+    "name": "Simple Dual Wield and Unarmed Block",
+    "required": true,
+    "enabled": true,
+    "source": "nexus",
+    "nexusId": 35718
+  },
+  {
     "name": "Simple Dual Sheath",
     "required": true,
     "enabled": true,
