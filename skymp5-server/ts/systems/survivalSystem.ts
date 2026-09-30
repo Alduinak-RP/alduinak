@@ -5,7 +5,7 @@ import { espmFieldFormIds } from "./formIdUtil";
 import { ActorValue, SpellType, abilityResist, actorRaceId, fieldData, hasCureDisease, learnedSpells, potionHealing, spellEffects, spellInfo, view } from "./espmMagic";
 import { baseIdOf, chainMpHook, hex, isAlive, isCreationPending, removeSpellFrom, userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
-import { NeedsModifierSource, attributePenaltyShare } from "./needsSystem";
+import { NEEDS_STAGE_EVENT, NeedsModifierSource, attributePenaltyShare } from "./needsSystem";
 import { RacialSystem } from "./racialSystem";
 import { HuntingSystem } from "./huntingSystem";
 import { WeatherSystem } from "./weatherSystem";
@@ -40,6 +40,10 @@ type Mp = any;
 // falls unless the character fought in the last FIGHT_MS. Standing at a heat source (heatSources.ts) warms, frost spells and venom chill,
 // fire spells and hot food warm. The stage ability Survival_ColdStage0..5 follows the stage and the client takes the maximum health
 // penalty from survivalState. Cold falls while logged out and starts over at a respawn.
+// Afflictions, Survival's conditions: at a need's stage 5 (hunger Starving and fatigue Debilitated from NEEDS_STAGE_EVENT, cold Numb) a
+// character not holding its affliction rolls once on reaching it and then every tickMinutes while there: Weakened (hunger, 20% every 15 min),
+// Addled (fatigue, 30% every 30 min), Frostbitten (cold, 16% every 5 min). The affliction ability lasts survivalAfflictionHours of wall
+// clock, offline included, or until cured like food poisoning.
 //
 // Wire protocol - CustomPacket JSON:
 //   Client -> Server: { customPacketType: "survivalRequest" }  state again; it, needsRequest, weatherRequest and gameTimeRequest schedule the login re-send
@@ -52,8 +56,9 @@ type Mp = any;
 //                     { customPacketType: "masteryNotice", text }
 //
 // Persistence: private.survival = { v, at, body: { spells: [desc], respawn }, foodPoisonUntil, foodPoisonSpell: desc, cold, coldSpell: desc,
-// warmBonus, warmUntil } on the character's actor form; spells are stored as "id:Plugin" descs, never raw form ids. Written at stage changes,
-// events, logout and every SAVE_MS while cold moves. private.healthScale (1 - the penalty) only with survivalColdHealthScale.
+// warmBonus, warmUntil, afflictions: { <key>: { until, spell: desc } }, lastRoll: { <key>: epoch ms } } on the character's actor form;
+// spells are stored as "id:Plugin" descs, never raw form ids. Written at stage changes, events, logout and every SAVE_MS while cold moves.
+// private.healthScale (1 - the penalty) only with survivalColdHealthScale.
 //
 // server-settings.json keys (all optional):
 //   survivalEnabled               true runs survival, default false; one of the manager's PROTECTED_SETTINGS, so Migrate settings leaves it
@@ -93,6 +98,9 @@ type Mp = any;
 //   survivalColdMaxHealthPenalty  largest share of maximum health cold takes, default 0.8
 //   survivalColdHealthScale       true also writes private.healthScale for the native health scale, default false
 //   survivalFreezingWaterWorlds   worldspace editor ids whose water always freezes, default ["DLC1HunterHQWorld"]
+//   survivalAfflictions           { weakened, addled, frostbitten: { chance, tickMinutes } | false } over the defaults, or false for none, default
+//                                 { weakened: { 0.2, 15 }, addled: { 0.3, 30 }, frostbitten: { 0.16, 5 } }
+//   survivalAfflictionHours       real hours an affliction lasts, offline included, default 24
 
 const SURVIVAL_PROP = "private.survival";
 const HEALTH_SCALE_PROP = "private.healthScale";
@@ -122,7 +130,16 @@ const DEFAULT_POISON_CHANCE = 0.5;
 const DEFAULT_POISON_HOURS = 24;
 const DEFAULT_CURE_MIN_HEALTH = 25;
 const FOOD_POISONING_SPELL = "Survival_DiseaseFoodPoisoning";
-const AFFLICTION_SPELLS = ["Survival_AfflictionWeakened", "Survival_AfflictionAddled", "Survival_AfflictionFrostbitten"];
+// Survival_AfflictionHungerChance, ...ExhaustionChance and ...ColdChance; the need update intervals at our 1:1 clock
+const AFFLICTION_DEFS = [
+  { key: "weakened", spell: "Survival_AfflictionWeakened", name: "Weakened", worst: "starving", chance: 0.2, tickMinutes: 15, notice: "Starving has weakened you: your one-handed, two-handed and block skills suffer" },
+  { key: "addled", spell: "Survival_AfflictionAddled", name: "Addled", worst: "debilitated", chance: 0.3, tickMinutes: 30, notice: "Exhaustion has addled you: your magicka and stamina recover more slowly" },
+  { key: "frostbitten", spell: "Survival_AfflictionFrostbitten", name: "Frostbitten", worst: "numb", chance: 0.16, tickMinutes: 5, notice: "The cold has frostbitten you: your archery, lockpicking and pickpocketing suffer" },
+];
+const DEFAULT_AFFLICTION_HOURS = 24;
+// Reaching stage 5 again rolls at once, but not sooner than this after the last roll
+const ENTER_ROLL_GAP_MS = 60000;
+const WORST_STAGE = 5;
 const RAW_MEAT_LIST = "Survival_FoodRawMeat";
 const ALTAR_LIST = "Survival_BlessingAltars";
 const COLD_SPELLS = COLD_STAGE_NAMES.map((_, i) => `Survival_ColdStage${i}`);
@@ -157,6 +174,18 @@ interface BodySpell {
   id: number;
 }
 
+interface Affliction {
+  key: string;
+  spell: string;
+  name: string;
+  // The stage 5 name of its need, for the log
+  worst: string;
+  chance: number;
+  tickMs: number;
+  notice: string;
+  id: number;
+}
+
 interface SurvivalRecord {
   v: number;
   at: number;
@@ -172,6 +201,10 @@ interface SurvivalRecord {
   warmBonus: boolean;
   // Epoch ms a hot meal's warmth runs out
   warmUntil: number;
+  // Afflictions held, by key, with the epoch ms they run out and the spell desc granted
+  afflictions: Record<string, { until: number; spell: string }>;
+  // Epoch ms of each affliction's last roll
+  lastRoll: Record<string, number>;
 }
 
 interface Place {
@@ -218,6 +251,8 @@ interface Online {
   engineSeen: string;
   healthScale: number;
   killed: boolean;
+  // Whether each affliction's need was at stage 5 at its last check, unknown until the first one
+  atWorst: Record<string, boolean>;
 }
 
 interface ArmorInfo {
@@ -229,7 +264,8 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
 const pct = (v: number): string => `${Math.round(v * 1000) / 10}%`;
 const round = (v: number): number => Math.round(v * 100) / 100;
 const clock = (ms: number): string => new Date(ms).toTimeString().slice(0, 5);
-const emptyRecord = (cold: number): SurvivalRecord => ({ v: 1, at: Date.now(), body: { spells: [], respawn: 1 }, foodPoisonUntil: 0, foodPoisonSpell: "", cold, coldSpell: "", warmBonus: false, warmUntil: 0 });
+const emptyRecord = (cold: number): SurvivalRecord => ({ v: 1, at: Date.now(), body: { spells: [], respawn: 1 }, foodPoisonUntil: 0, foodPoisonSpell: "", cold, coldSpell: "", warmBonus: false, warmUntil: 0, afflictions: {}, lastRoll: {} });
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 export class SurvivalSystem implements System, NeedsModifierSource {
   systemName = "SurvivalSystem";
@@ -251,11 +287,12 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const counts = await this.resolveForms(ctx, extraMeat, s.dataDir, s.loadOrder, problems);
     ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.onCreationFinished(actorId >>> 0));
     ctx.gm.on(SURVIVAL_RESET_EVENT, (actorId: number, by: string, done?: (ok: boolean) => void) => done?.(this.resetBy(ctx, actorId >>> 0, by)));
+    ctx.gm.on(NEEDS_STAGE_EVENT, (actorId: number, hunger: number, fatigue: number) => this.onNeedsStage(ctx, actorId >>> 0, hunger, fatigue));
     this.installHooks(ctx);
     const heat = this.buildHeatIndex(ctx.svr as Mp);
     const bodyLine = this.body.map((b) => `${b.label} ${!b.name ? "off" : b.id ? `${b.name} (${hex(b.id)})` : `${b.name} not in the load order, skipped`}`).join(", ");
     const cureLine = this.cureMode === "cureDiseaseOrHealth" ? `Cure Disease potions and potions restoring ${this.cureMinHealth}+ health (those also remove every Disease spell)` : "Cure Disease potions only";
-    this.log(`[survival] ready: body rules respawn health ${pct(this.respawnHealth)}, ${bodyLine}; raw meat ${this.rawMeat.size} foods (${counts.list} ${RAW_MEAT_LIST}, ${counts.hunting} hunting, ${counts.extra} extra), food poisoning ${pct(this.poisonChance)} x (1 - disease resist) for ${this.poisonMs / HOUR_MS} h ${this.foodPoison ? `(${hex(this.foodPoison)})` : "(spell not in the load order, never given)"}, races safe from raw meat per racialPassives rawMeatSafe; cure by ${cureLine}, clearing food poisoning and ${this.afflictions.length} affliction abilities; shrines ${this.altars.size} altar bases, no cure, a notice at most once a minute`);
+    this.log(`[survival] ready: body rules respawn health ${pct(this.respawnHealth)}, ${bodyLine}; raw meat ${this.rawMeat.size} foods (${counts.list} ${RAW_MEAT_LIST}, ${counts.hunting} hunting, ${counts.extra} extra), food poisoning ${pct(this.poisonChance)} x (1 - disease resist) for ${this.poisonMs / HOUR_MS} h ${this.foodPoison ? `(${hex(this.foodPoison)})` : "(spell not in the load order, never given)"}, races safe from raw meat per racialPassives rawMeatSafe; cure by ${cureLine}, clearing food poisoning and ${this.afflictions.filter((a) => a.id).length} affliction abilities; shrines ${this.altars.size} altar bases, no cure, a notice at most once a minute; afflictions ${this.afflictionLine()}`);
     this.log(this.coldLine(heat));
     if (problems.length) this.log(`[survival] settings ignored: ${problems.join("; ")}`);
   }
@@ -289,14 +326,41 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (extra !== undefined && !(Array.isArray(extra) && extra.every((x) => typeof x === "string"))) problems.push("survivalRawMeatExtra is not a list of strings, none are added");
     const extraMeat = Array.isArray(extra) ? extra.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()) : [];
     this.cold = parseColdSettings(all, problems);
+    this.afflictionMs = num("survivalAfflictionHours", DEFAULT_AFFLICTION_HOURS, (v) => v > 0) * HOUR_MS;
+    this.afflictions = this.parseAfflictions(all["survivalAfflictions"], problems);
     return { problems, extraMeat };
+  }
+
+  // survivalAfflictions over the defaults: false switches one or all off
+  private parseAfflictions(raw: unknown, problems: string[]): Affliction[] {
+    if (raw !== undefined && raw !== false && !isObject(raw)) problems.push(`survivalAfflictions ${JSON.stringify(raw)} is not an object or false, the defaults are used`);
+    return AFFLICTION_DEFS.map((d) => {
+      const v = raw === false ? false : isObject(raw) ? raw[d.key] : undefined;
+      let chance = d.chance;
+      let tickMinutes = d.tickMinutes;
+      if (v === false) chance = 0;
+      else if (isObject(v)) {
+        if (typeof v.chance === "number" && v.chance >= 0 && v.chance <= 1) chance = v.chance;
+        else if (v.chance !== undefined) problems.push(`survivalAfflictions.${d.key}.chance ${JSON.stringify(v.chance)} is not between 0 and 1, ${chance} is used`);
+        if (typeof v.tickMinutes === "number" && v.tickMinutes > 0) tickMinutes = v.tickMinutes;
+        else if (v.tickMinutes !== undefined) problems.push(`survivalAfflictions.${d.key}.tickMinutes ${JSON.stringify(v.tickMinutes)} is not above 0, ${tickMinutes} is used`);
+      } else if (v !== undefined) {
+        problems.push(`survivalAfflictions.${d.key} ${JSON.stringify(v)} is not an object or false, the default is used`);
+      }
+      return { key: d.key, spell: d.spell, name: d.name, worst: d.worst, chance, tickMs: tickMinutes * 60000, notice: d.notice, id: 0 };
+    });
+  }
+
+  private afflictionLine(): string {
+    const list = this.afflictions.map((a) => `${a.key} ${!a.id ? `(${a.spell} not in the load order, never given)` : a.chance > 0 ? `${pct(a.chance)} when ${a.worst}, rolled on reaching it and every ${a.tickMs / 60000} min (${hex(a.id)})` : "off"}`);
+    return `${list.join(", ")}; each lasts ${this.afflictionMs / HOUR_MS} h, offline included, or until cured`;
   }
 
   // Body spells, food poisoning, afflictions, raw meat, altars and the cold records; returns the raw meat counts by source
   private async resolveForms(ctx: SystemContext, extraMeat: string[], dataDir: string, loadOrder: string[], problems: string[]): Promise<{ list: number; hunting: number; extra: number }> {
     const mp = ctx.svr as Mp;
     const coldNames = [...COLD_SPELLS, ...Object.values(COLD_LISTS), ...Object.values(COLD_KEYWORDS), ...Object.values(COLD_EFFECTS)];
-    const names = [...this.body.map((b) => b.name).filter((n) => n && isEditorId(n)), FOOD_POISONING_SPELL, ...AFFLICTION_SPELLS, RAW_MEAT_LIST, ALTAR_LIST, ...extraMeat.filter(isEditorId), ...coldNames];
+    const names = [...this.body.map((b) => b.name).filter((n) => n && isEditorId(n)), FOOD_POISONING_SPELL, ...AFFLICTION_DEFS.map((d) => d.spell), RAW_MEAT_LIST, ALTAR_LIST, ...extraMeat.filter(isEditorId), ...coldNames];
     const scan = await resolveEditorIds(names, dataDir, loadOrder, this.log, ["SPEL", "FLST", "ALCH", "INGR", "KYWD", "MGEF"]);
     const idOf = (name: string): number => {
       try {
@@ -312,7 +376,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const listOf = (name: string): Set<number> => new Set(espmFieldFormIds(lookup(idOf(name)), "LNAM"));
     for (const b of this.body) b.id = b.name ? idOf(b.name) : 0;
     this.foodPoison = idOf(FOOD_POISONING_SPELL);
-    this.afflictions = AFFLICTION_SPELLS.map(idOf).filter((id) => id);
+    for (const a of this.afflictions) a.id = idOf(a.spell);
     const listed = espmFieldFormIds(lookup(idOf(RAW_MEAT_LIST)), "LNAM");
     const hunted = this.hunting.rawMeatIds();
     const extra = extraMeat.map(idOf);
@@ -328,7 +392,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.ash = listOf(COLD_LISTS.ash);
     this.keywords = { warm: idOf(COLD_KEYWORDS.warm), cold: idOf(COLD_KEYWORDS.cold), bodyAndHead: idOf(COLD_KEYWORDS.bodyAndHead), frost: idOf(COLD_KEYWORDS.frost), fire: idOf(COLD_KEYWORDS.fire) };
     this.coldEffects = { restoreCold: idOf(COLD_EFFECTS.restoreCold), warmth: idOf(COLD_EFFECTS.warmth) };
-    const missing = [FOOD_POISONING_SPELL, ...AFFLICTION_SPELLS, RAW_MEAT_LIST, ALTAR_LIST, ...coldNames].filter((n) => !idOf(n));
+    const missing = [FOOD_POISONING_SPELL, ...AFFLICTION_DEFS.map((d) => d.spell), RAW_MEAT_LIST, ALTAR_LIST, ...coldNames].filter((n) => !idOf(n));
     if (missing.length) this.log(`[survival] not in the load order, ignored: ${missing.join(", ")}`);
     return { list: listed.length, hunting: hunted.length, extra: extra.filter((id) => id).length };
   }
@@ -490,13 +554,13 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (!this.isPlayerCharacter(mp, actorId)) return;
     const stored = this.read(mp, actorId);
     // Off: only a character with something to undo is followed
-    if (!this.enabled && !(stored && (stored.body.spells.length || stored.body.respawn < 1 || stored.foodPoisonUntil || stored.coldSpell)) && !this.scaled(mp, actorId)) return;
+    if (!this.enabled && !(stored && (stored.body.spells.length || stored.body.respawn < 1 || stored.foodPoisonUntil || stored.coldSpell || Object.keys(stored.afflictions).length)) && !this.scaled(mp, actorId)) return;
     const rec = stored || emptyRecord(this.cold.start);
     const now = Date.now();
     const entry: Online = {
       actorId, userId, rec, bodyDue: !isCreationPending(mp, actorId), revoked: [], coldAt: 0, heatAt: 0, heatPos: null, nearHeat: false, heatFrom: -1,
       swimming: false, flameCloak: false, inFreezingWater: false, reportAt: 0, fightAt: 0, area: "", areaWhy: "", freezingArea: false, level: 0, levelParts: [],
-      temperature: 0, warmth: 0, gear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false,
+      temperature: 0, warmth: 0, gear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false, atWorst: {},
     };
     if (stored && this.enabled && this.cold.enabled && rec.cold > this.cold.start) {
       const hours = Math.max(0, now - stored.at) / HOUR_MS;
@@ -612,9 +676,15 @@ export class SurvivalSystem implements System, NeedsModifierSource {
         else if (!b.id) parts.push(`${b.label} ${b.name} not in the plugin yet, skipped`);
         else parts.push(`${b.label} ${this.edidOf(mp, b.id)} ${this.abilities.grant(mp, actorId, b.id, b.label) ? "granted" : "held"}`);
       }
-    } else if (rec.foodPoisonUntil) {
-      this.clearFoodPoisoning(mp, actorId, entry);
-      removed.push(FOOD_POISONING_SPELL);
+    } else {
+      if (rec.foodPoisonUntil) {
+        this.clearFoodPoisoning(mp, actorId, entry);
+        removed.push(FOOD_POISONING_SPELL);
+      }
+      for (const a of this.afflictions) {
+        const id = this.dropAffliction(mp, entry, a);
+        if (id) removed.push(this.edidOf(mp, id));
+      }
     }
     const heldCold = this.idOfDesc(mp, rec.coldSpell);
     if (rec.coldSpell && !(this.enabled && this.cold.enabled && this.cold.stageAbilities)) {
@@ -633,8 +703,9 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       return;
     }
     const poisoned = rec.foodPoisonUntil ? `food poisoning until ${clock(rec.foodPoisonUntil)}` : "no food poisoning";
+    const afflicted = this.afflictions.filter((a) => rec.afflictions[a.key]).map((a) => `, ${a.key} until ${clock(rec.afflictions[a.key].until)}`).join("");
     const cold = this.startCold(ctx, actorId, entry, now);
-    this.log(`[survival] ${hex(actorId)} body: ${parts.join(", ")}, respawn health ${pct(respawn)}${respawnChanged ? " (set)" : ""}${removed.length ? `, removed ${removed.join(", ")}` : ""}, ${poisoned}; ${cold}`);
+    this.log(`[survival] ${hex(actorId)} body: ${parts.join(", ")}, respawn health ${pct(respawn)}${respawnChanged ? " (set)" : ""}${removed.length ? `, removed ${removed.join(", ")}` : ""}, ${poisoned}${afflicted}; ${cold}`);
   }
 
   // True when the stored share changed; magicka and stamina keep theirs
@@ -645,15 +716,76 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     return true;
   }
 
-  // Food poisoning past its time is removed, offline time included
+  // Food poisoning and afflictions past their time are removed, offline time included
   private expire(ctx: SystemContext, actorId: number, entry: Online, now: number): void {
-    const until = entry.rec.foodPoisonUntil;
-    if (!until || now < until) return;
     const mp = ctx.svr as Mp;
-    this.clearFoodPoisoning(mp, actorId, entry);
+    const lines: string[] = [];
+    const until = entry.rec.foodPoisonUntil;
+    if (until && now >= until) {
+      this.clearFoodPoisoning(mp, actorId, entry);
+      lines.push(`food poisoning ran out at ${clock(until)}`);
+      this.notice(mp, actorId, "Your stomach settles: the food poisoning has passed.");
+    }
+    for (const a of this.afflictions) {
+      const held = entry.rec.afflictions[a.key];
+      if (!held || now < held.until) continue;
+      this.dropAffliction(mp, entry, a);
+      lines.push(`${a.key} ran out at ${clock(held.until)}`);
+      this.notice(mp, actorId, `You recover: you are no longer ${a.key}.`);
+    }
+    if (!lines.length) return;
     this.save(mp, entry);
-    this.log(`[survival] ${hex(actorId)} food poisoning ran out at ${clock(until)}`);
-    this.notice(mp, actorId, "Your stomach settles: the food poisoning has passed.");
+    for (const line of lines) this.log(`[survival] ${hex(actorId)} ${line}`);
+    if (entry.coldAt) this.sendState(mp, entry, false);
+  }
+
+  // Removes a held affliction's ability and record; returns the spell removed, 0 when none was held
+  private dropAffliction(mp: Mp, entry: Online, a: Affliction): number {
+    const held = entry.rec.afflictions[a.key];
+    if (!held) return 0;
+    const id = this.idOfDesc(mp, held.spell) || a.id;
+    if (id && this.abilities.swap(mp, entry.actorId, id, 0, a.key)) entry.revoked.push(id);
+    delete entry.rec.afflictions[a.key];
+    return id;
+  }
+
+  // NEEDS_STAGE_EVENT: Weakened at hunger stage 5, Addled at fatigue stage 5
+  private onNeedsStage(ctx: SystemContext, actorId: number, hunger: number, fatigue: number): void {
+    const entry = this.online.get(actorId);
+    if (!entry || !entry.coldAt) return;
+    setImmediate(() => {
+      if (this.online.get(actorId) !== entry) return;
+      const mp = ctx.svr as Mp;
+      const now = Date.now();
+      this.rollAffliction(mp, entry, "weakened", Number(hunger) >= WORST_STAGE, now);
+      this.rollAffliction(mp, entry, "addled", Number(fatigue) >= WORST_STAGE, now);
+    });
+  }
+
+  // Survival's affliction roll: on reaching the need's stage 5 (not within ENTER_ROLL_GAP_MS of the last roll) and every tickMinutes there,
+  // never while the affliction is held, in creation, dead or where cold does not run (the realms)
+  private rollAffliction(mp: Mp, entry: Online, key: string, atWorst: boolean, now: number): void {
+    const a = this.afflictions.find((x) => x.key === key);
+    const was = entry.atWorst[key];
+    entry.atWorst[key] = atWorst;
+    const rec = entry.rec;
+    if (!a || !atWorst || !a.id || a.chance <= 0 || rec.afflictions[key] || entry.area === "none" || isCreationPending(mp, entry.actorId) || !isAlive(mp, entry.actorId)) return;
+    const last = rec.lastRoll[key] || 0;
+    if (now - last < (was === false ? ENTER_ROLL_GAP_MS : a.tickMs)) return;
+    rec.lastRoll[key] = now;
+    const roll = Math.random();
+    const what = `[survival] ${hex(entry.actorId)} ${a.worst}: ${key} ${pct(a.chance)}, roll ${roll.toFixed(3)}`;
+    if (roll >= a.chance) {
+      this.log(`${what}, spared`);
+      return;
+    }
+    this.abilities.grant(mp, entry.actorId, a.id, a.key);
+    rec.afflictions[key] = { until: now + this.afflictionMs, spell: this.descOf(mp, a.id) };
+    this.save(mp, entry);
+    const hours = Math.round(this.afflictionMs / HOUR_MS * 10) / 10;
+    this.log(`${what}, ${key} for ${hours} h until ${clock(rec.afflictions[key].until)}`);
+    this.notice(mp, entry.actorId, `${a.notice} for ${hours} hours. ${this.cureHint()}`);
+    this.sendState(mp, entry, false);
   }
 
   private clearFoodPoisoning(mp: Mp, actorId: number, entry: Online): void {
@@ -716,15 +848,22 @@ export class SurvivalSystem implements System, NeedsModifierSource {
         this.log(`[survival] ${hex(actorId)} could not remove ${hex(id)}: ${e}`);
       }
     };
+    for (const a of this.afflictions) {
+      const id = this.dropAffliction(mp, entry, a);
+      if (!id) continue;
+      done.add(id);
+      cured.push(this.edidOf(mp, id));
+    }
     for (const id of learnedSpells(mp, actorId)) {
       if (done.has(id)) continue;
-      if (this.afflictions.indexOf(id) !== -1 || (kind === "health" && spellInfo(mp, id).type === SpellType.Disease)) drop(id);
+      if (this.afflictions.some((a) => a.id === id) || (kind === "health" && spellInfo(mp, id).type === SpellType.Disease)) drop(id);
     }
     if (!cured.length && kind === "health") return;
     this.save(mp, entry);
     const how = kind === "cureDisease" ? "Cure Disease" : `restores ${Math.round(potionHealing(mp, potionId))} health`;
     this.log(`[survival] ${hex(actorId)} cured by ${this.edidOf(mp, potionId)} (${how}): ${cured.join(", ") || "nothing survival tracks"}${kind === "cureDisease" ? ", the native cure took every Disease spell" : ""}`);
     if (cured.length) this.notice(mp, actorId, "The potion cures your sickness.");
+    if (entry.coldAt) this.sendState(mp, entry, false);
   }
 
   private shrineNotice(ctx: SystemContext, actorId: number, shrineId: number): void {
@@ -746,7 +885,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (!entry) return false;
     const mp = ctx.svr as Mp;
     if (entry.rec.foodPoisonUntil) this.clearFoodPoisoning(mp, actorId, entry);
-    Object.assign(entry.rec, { cold: this.cold.start, warmBonus: false, warmUntil: 0 });
+    for (const a of this.afflictions) this.dropAffliction(mp, entry, a);
+    Object.assign(entry.rec, { cold: this.cold.start, warmBonus: false, warmUntil: 0, lastRoll: {} });
     this.save(mp, entry);
     entry.bodyDue = true;
     this.log(`[survival] ${hex(actorId)} reset by ${by}`);
@@ -789,6 +929,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       }
       entry.temperature = temperatureLevelOf(before, cold, entry.level, entry.nearHeat, entry.area as AreaClass, this.cold.caps);
       if (cold !== before) this.setCold(mp, actorId, entry, cold, "");
+      this.rollAffliction(mp, entry, "frostbitten", this.stageOf(entry) >= WORST_STAGE, now);
       if (now - entry.savedAt >= SAVE_MS && Math.abs(rec.cold - entry.savedCold) >= 1) this.save(mp, entry);
     }
     this.sendState(mp, entry, force);
@@ -1053,7 +1194,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       temperatureLevel: on ? entry.temperature : 0,
       warmth: on ? Math.round(entry.warmth) : 0,
       freezingArea: entry.freezingArea,
-      afflictions: [] as string[],
+      afflictions: this.afflictions.filter((a) => entry.rec.afflictions[a.key]).map((a) => a.name),
       diseases: [] as Array<{ name: string; stage: number }>,
     };
     if (this.cold.healthScale) this.setHealthScale(mp, entry, 1 - penalty);
@@ -1087,6 +1228,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   private groupsOf(mp: Mp, entry: Online): AbilityGroup[] {
     const held = new Set(entry.rec.body.spells.map((d) => this.idOfDesc(mp, d)));
     if (entry.rec.foodPoisonUntil) held.add(this.idOfDesc(mp, entry.rec.foodPoisonSpell) || this.foodPoison);
+    for (const a of this.afflictions) if (entry.rec.afflictions[a.key]) held.add(this.idOfDesc(mp, entry.rec.afflictions[a.key].spell) || a.id);
     const coldSpells = this.coldSpells.filter((id) => id);
     const ids = new Set([...this.body.map((b) => b.id), ...entry.revoked, ...held]);
     ids.delete(0);
@@ -1138,6 +1280,13 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       const spells = Array.isArray(raw.body?.spells) ? raw.body.spells.filter((d: unknown): d is string => typeof d === "string" && !!d) : [];
       const respawn = Number(raw.body?.respawn);
       const cold = Number(raw.cold);
+      const afflictions: Record<string, { until: number; spell: string }> = {};
+      const lastRoll: Record<string, number> = {};
+      for (const { key } of AFFLICTION_DEFS) {
+        const held = raw.afflictions?.[key];
+        if (held && Number(held.until) > 0 && typeof held.spell === "string") afflictions[key] = { until: Number(held.until), spell: held.spell };
+        if (Number(raw.lastRoll?.[key]) > 0) lastRoll[key] = Number(raw.lastRoll[key]);
+      }
       return {
         v: 1,
         at: Number(raw.at) || Date.now(),
@@ -1148,6 +1297,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
         coldSpell: typeof raw.coldSpell === "string" ? raw.coldSpell : "",
         warmBonus: raw.warmBonus === true,
         warmUntil: Math.max(0, Number(raw.warmUntil) || 0),
+        afflictions,
+        lastRoll,
       };
     } catch {
       return null;
@@ -1173,7 +1324,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   private cureMinHealth = DEFAULT_CURE_MIN_HEALTH;
   private body: BodySpell[] = [];
   private foodPoison = 0;
-  private afflictions: number[] = [];
+  private afflictions: Affliction[] = [];
+  private afflictionMs = DEFAULT_AFFLICTION_HOURS * HOUR_MS;
   private rawMeat = new Set<number>();
   private altars = new Set<number>();
   private cold: ColdConfig = parseColdSettings({}, []);
