@@ -174,8 +174,11 @@ multiclassing off: the primary then works exactly as before. The Test value:
   7 of 20 h to Novice"), tags each held craft 1st, 2nd or 3rd, offers "Take up as your secondary craft" for the next
   empty slot and follows the viewed craft's slot on the rank ladder, greying the ranks above its cap ("Primary craft
   only", "Primary or secondary"). Refusals: "Choose your primary craft first." (out of order), "You already follow
-  the Tailor." (held in any slot), "Your secondary craft is already the Tailor." (taken), "This server offers no such
-  craft slot." (not configured), and while creation is pending "Finish creating your character before you choose a
+  the Tailor." (held in any slot), "Your secondary craft, the Tailor, is kept for when this server offers a secondary
+  craft again, so you cannot take it up now." (held by a stored slot that `masterySlots` no longer configures, logged
+  `[mastery] <id> tailor refused as primary craft: the secondary slot keeps it while this server has no such slot`),
+  "Your secondary craft is already the Tailor." (taken), "This server offers no such craft slot." (not configured),
+  and while creation is pending "Finish creating your character before you choose a
   craft.". No pair of crafts is forbidden. The intro page reads "Use [key] to open your personal menu to pick your
   professions: a primary craft, then a secondary (up to Adept) and a tertiary (up to Novice)." with multiclassing on.
 - **The cap.** A slot climbs by hours to its cap and no further; a capped slot earns no more hours. Legendary is the
@@ -207,8 +210,9 @@ multiclassing off: the primary then works exactly as before. The Test value:
   sub-slots alone, and a sub-slot never moves up into an empty primary; the next pick fills the first empty slot.
 - **Mage.** A mage sub-slot's casts count, and the primary's `spellTier` rule still stops any mage slot above Adept
   without an Adept spell. The mage slot of Novice or better writes base magicka as in `professionState`.
-- **Login.** Each login settles every slot against the current `masterySlots`: a sub-slot holding the primary's or
-  the other sub-slot's craft is dropped (the lower slot keeps it), ranks are recomputed both ways, markers above a
+- **Login.** Each login settles every slot against the current `masterySlots`: a configured sub-slot holding the
+  primary's or the other sub-slot's craft is dropped (the lower slot keeps it; a stored slot no longer configured is
+  kept as it is), ranks are recomputed both ways, markers above a
   rank are revoked at once and missing ones granted after the login delay, and the markers of a slot no longer
   configured are revoked with its record kept. So one entry turns multiclassing off without losing anything, and
   restoring the key grants the markers again at the following login. Old server code never reads

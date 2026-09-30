@@ -806,11 +806,11 @@ export class MasterySystem implements System {
     this.log(`[mastery] ${hex(actorId)} migrated to the rank ladder: ${rec.profession} ${rec.points}h`);
   }
 
-  // After the primary: a sub-slot whose craft a lower slot follows is dropped, ranks follow the slots in force, and markers no sub-slot in force holds go
+  // After the primary: a sub-slot in force whose craft a lower slot follows is dropped (one out of force is kept), ranks follow the slots in force, and markers no sub-slot in force holds go
   private settleSubs(ctx: SystemContext, actorId: number, char: Character): void {
     const subs = char.subs!;
     const before = JSON.stringify(subs);
-    for (const index of duplicateSlots(this.professionsOf(char))) {
+    for (const index of duplicateSlots(this.professionsOf(char).slice(0, this.slots.length))) {
       const key = subKeyOf(index);
       const rec = key ? subs[key] : null;
       if (!key || !rec) continue;
@@ -885,6 +885,10 @@ export class MasterySystem implements System {
     const char = this.load(ctx, actorId, true) || this.emptyCharacter();
     const refusal = chooseRefusal(this.professionsOf(char), this.slots.length, professionId, slotIndex);
     if (refusal) {
+      const holder = this.professionsOf(char).indexOf(professionId);
+      if (refusal === "held" && holder >= this.slots.length) {
+        this.log(`[mastery] ${hex(actorId)} ${professionId} refused as ${this.slotNameOf(slotIndex)} craft: the ${this.slotNameOf(holder)} slot keeps it while this server has no such slot`);
+      }
       this.notice(ctx, userId, this.refusalText(char, refusal, slotIndex, professionId));
       return;
     }
@@ -921,8 +925,12 @@ export class MasterySystem implements System {
         const held = this.labelOf(this.slotAt(char, slotIndex)?.rec.profession || "");
         return slotIndex === 0 ? `You have already given yourself to the ${held}.` : `Your ${this.slotNameOf(slotIndex)} craft is already the ${held}.`;
       }
-      case "held":
-        return `You already follow the ${this.labelOf(professionId)}.`;
+      case "held": {
+        const holder = this.professionsOf(char).indexOf(professionId);
+        if (holder < this.slots.length) return `You already follow the ${this.labelOf(professionId)}.`;
+        const name = this.slotNameOf(holder);
+        return `Your ${name} craft, the ${this.labelOf(professionId)}, is kept for when this server offers a ${name} craft again, so you cannot take it up now.`;
+      }
       case "out-of-order":
         return `Choose your ${this.slotNameOf(nextEmptySlot(this.professionsOf(char), this.slots.length))} craft first.`;
       default:

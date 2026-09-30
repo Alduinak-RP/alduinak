@@ -334,6 +334,33 @@ test('login drops a duplicate sub-slot without stripping the primary, and multic
   assert.ok(t.mp.spells.has(SPELLS.tailor[0]), 'turning it back on re-grants the markers')
 })
 
+test('with a sub-slot out of force its craft cannot be picked, and the login keeps its record, so restoring the slots loses nothing', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.choose('tailor', 1)
+  t.sys.grantPoints(t.ctx, ACTOR, 45, 1)
+  t.sys.slots = parseSlots(undefined, RANK_HOURS).slots
+  t.login()
+  t.reset('blacksmith')
+  assert.equal(t.sys.summaryOf(t.ctx, ACTOR).profession, null)
+  t.choose('tailor', 0)
+  assert.equal(t.sys.summaryOf(t.ctx, ACTOR).profession, null, 'the pick is refused')
+  assert.equal(t.notices().pop(), 'Your secondary craft, the Tailor, is kept for when this server offers a secondary craft again, so you cannot take it up now.')
+  assert.ok(t.lines.some((l) => /tailor refused as primary craft: the secondary slot keeps it while this server has no such slot/.test(l)))
+  const stored = t.subs()
+  stored.tertiary = { profession: 'cook', points: 5, lastPointAt: 0, rank: 0, bank: 0, onlineMs: 0 }
+  t.mp.props.set(`${ACTOR}:private.masterySlots`, stored)
+  t.choose('cook', 0)
+  assert.equal(t.sys.summaryOf(t.ctx, ACTOR).profession, null, 'a tertiary kept out of force holds its craft too')
+  t.login()
+  assert.equal(t.subs().secondary.points, 45, 'the out-of-force record is kept at login')
+  assert.equal(t.subs().tertiary.profession, 'cook')
+  t.sys.slots = parseSlots(THREE, RANK_HOURS).slots
+  t.login()
+  assert.equal(t.subs().secondary.profession, 'tailor')
+  assert.equal(t.sys.rankOf(t.ctx, ACTOR, 'tailor') > 0, true, 'restoring the slots brings the 45 h craft back')
+})
+
 let failed = 0
 for (const [ok, name, err] of results) {
   console.log(`${ok ? 'pass' : 'FAIL'}  ${name}`)

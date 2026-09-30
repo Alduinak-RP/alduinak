@@ -192,8 +192,10 @@ test('slots fill in order: primary, then secondary, then tertiary', () => {
   for (const [held, profession, slot, expected] of refusals) {
     assert.equal(slots.chooseRefusal(held, 3, profession, slot), expected, `${JSON.stringify(held)} ${profession} -> ${slot}`)
   }
-  // With multiclassing off a kept sub-slot record does not block the primary; the login settle drops the duplicate later
-  assert.equal(slots.chooseRefusal([null, 'tailor', null], 1, 'tailor', 0), null)
+  // With multiclassing off or fewer slots, a kept sub-slot record still holds its craft, so turning it off loses nothing
+  assert.equal(slots.chooseRefusal([null, 'tailor', null], 1, 'tailor', 0), 'held')
+  assert.equal(slots.chooseRefusal(['blacksmith', null, 'miner'], 2, 'miner', 1), 'held')
+  assert.equal(slots.chooseRefusal([null, 'tailor', null], 1, 'cook', 0), null)
 })
 
 test('duplicate professions keep the lower slot', () => {

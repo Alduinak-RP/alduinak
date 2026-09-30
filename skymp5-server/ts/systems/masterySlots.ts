@@ -141,11 +141,11 @@ export function nextEmptySlot(professions: Array<string | null>, slotCount: numb
   return -1;
 }
 
-// Why a pick is refused, null when allowed; slots beyond slotCount neither take picks nor block them
+// Why a pick is refused, null when allowed; a stored slot beyond slotCount takes no pick but still holds its craft
 export function chooseRefusal(professions: Array<string | null>, slotCount: number, profession: string, slot: number): ChooseRefusal | null {
   if (!Number.isInteger(slot) || slot < 0 || slot >= slotCount) return "not-configured";
   if (professions[slot]) return "taken";
-  if (professions.slice(0, slotCount).indexOf(profession) !== -1) return "held";
+  if (professions.indexOf(profession) !== -1) return "held";
   return slot === nextEmptySlot(professions, slotCount) ? null : "out-of-order";
 }
 
