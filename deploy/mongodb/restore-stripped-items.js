@@ -487,7 +487,10 @@ function render(title, rows, t, meta) {
   for (const [k, v] of Object.entries(t.stays)) L.push(`    ${k.padEnd(34)} ${String(v.items).padStart(5)} / ${String(v.entries).padStart(4)} / ${v.holders}`)
   L.push(`    ${'learned spells (never restored)'.padEnd(34)} ${String(t.spells).padStart(5)}`)
   const jewels = Object.keys(JEWELRY_KINDS).filter(k => t.jewelry[k])
-  if (jewels.length) L.push(`  jewelry: stays removed, ${plural(t.stays[INTENTS.jewelry].items, 'item', 'items')}: ${line(jewels, k => `${JEWELRY_KINDS[k]} ${t.jewelry[k]}`)} (--also-give '0x...' returns an id)`)
+  if (jewels.length) {
+    L.push(`  jewelry: stays removed, ${plural(t.stays[INTENTS.jewelry].items, 'item', 'items')}: ${line(jewels, k => `${JEWELRY_KINDS[k]} ${t.jewelry[k]}`)} (--also-give '0x...' returns an id)`)
+    L.push(`    --also-give '${t.stays[INTENTS.jewelry].ids.map(x => x.baseId).sort().join(',')}' returns all of it`)
+  }
   L.push(`  not given: ${plural(t.skipped, 'item', 'items')} in ${plural(t.skippedDocs, 'document', 'documents')} since gone, deleted or changed hands`)
   L.push(`  cannot classify, not given: ${plural(t.unclassified, 'item', 'items')}`)
   if (t.problems) L.push(`  PROBLEMS: ${t.problems} (see the holders marked !); apply refuses until they are resolved`)

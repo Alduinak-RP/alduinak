@@ -27,9 +27,9 @@ one-shot migration.
 
 ## Giving back what the 2026-09-28 strip took too far
 
-The strip was meant to take ebony equipment, spell tomes, learned spells,
-Falmer chest armour and jewelry only (jewelry by the owner's call of
-2026-09-30). `restore-stripped-items.js` reads its backup
+The strip was meant to take ebony equipment, spell tomes, learned spells and
+Falmer chest armour only; jewelry also stays removed, by the owner's call of
+2026-09-30. `restore-stripped-items.js` reads its backup
 (`Desktop\alduinak-r13\rollback-strip`, left untouched) and gives everything
 else back:
 
@@ -68,7 +68,8 @@ else back:
   ClothingNecklace, ClothingCirclet), or only on the ring, amulet or circlet
   slot without one, whatever the strip filed it under (an enchanted amulet
   too); a helmet on the circlet slot is not. The report counts it by kind on
-  the line "jewelry: stays removed", and the borderline ids go to the
+  the line "jewelry: stays removed" and prints under it one `--also-give`
+  list that returns all of it, and the borderline ids go to the
   decisions: the Gold Earrings (ears slot) stay removed, the Leather Cape
   (ClothingNecklace on cloak slots) comes back. It also keeps each item's
   in-game name (where the plugin stores it inline) and crafting recipe, so
@@ -116,10 +117,11 @@ Get-ChildItem C:\Users\Administrator\Desktop\alduinak-r13\restore-strip\restore-
 Stop here. `Get-Service` must say Stopped. Read the summary: per character
 and container it lists what comes back, what is counted as back and what
 stays removed, "jewelry: stays removed" counts the jewelry kept out by
-kind, and "FOR THE OWNER TO DECIDE" lists the calls to make. The
-blocks below carry no override flags. For each call you decide the other
-way, add its flag to the end of every command in blocks 2 and 3 (backup,
-both applies and the plan), the same on each, for example
+kind (the `--also-give` list under it returns all of it, should the owner
+want jewelry back after all), and "FOR THE OWNER TO DECIDE" lists the calls
+to make. The blocks below carry no override flags. For each call you decide
+the other way, add its flag to the end of every command in blocks 2 and 3
+(backup, both applies and the plan), the same on each, for example
 `--also-give '0x000139BF,0x0002AC61'` or `--also-keep '0x26005565'`, and run
 the `plan` of block 1 once more with them to check the summary.
 
