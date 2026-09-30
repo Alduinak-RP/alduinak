@@ -5,7 +5,10 @@ import { isHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType, Spell, Debug } from 'skyrimPlatform'
 import { ClientListener, CombinedController, Sp } from './clientListener';
 import { MountService } from './mountService';
-import { logTrace } from '../../logging';
+import { parseCustomPacket } from './customPacketUtil';
+import { logTrace, logToPlatformLog } from '../../logging';
+import { ConnectionMessage } from '../events/connectionMessage';
+import { CustomPacketMessage } from '../messages/customPacketMessage';
 
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
@@ -24,6 +27,24 @@ export const BLOCKED_POWER_IDS = new Set([
     0x000AA026, // RaceOrcBerserk (Berserker Rage)
 ]);
 
+// A rationed racial power from the server's racialState: { powers: [{ spellId, name, readyInMs, available }] } (racialSystem.ts)
+interface RationedPower {
+    name: string;
+    // Local clock time the server's relative readyInMs ends at
+    readyAt: number;
+    // False while the power's effect is not built on the server
+    available: boolean;
+}
+
+// The server's formatWait wording
+const formatWait = (ms: number): string => {
+    const minutes = Math.ceil(ms / 60000);
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} h ${rest} min` : `${hours} h`;
+};
+
 // A relayed cast, tracked per caster and hand until its stop and echoes are sent
 interface RelayedCast {
     msg: SpellCastMsgData;
@@ -40,6 +61,8 @@ export class MagicSyncService extends ClientListener {
         super();
         this.controller.on("update", () => this.onUpdate());
         this.controller.on("spellCast", (e) => this.onSpellCast(e));
+        this.controller.emitter.on("customPacketMessage", (e) => this.onRacialState(e));
+        this.controller.emitter.on("connectionDisconnect", () => this.rationedPowers.clear());
 
         const self = this;
 
@@ -91,20 +114,63 @@ export class MagicSyncService extends ClientListener {
 
     }
 
-    private onSpellCast(event: SpellCastEvent) {
-        // Blocked racial powers: dispel locally, tell the player, do not relay
-        if (event.caster && event.caster.getFormID() === this.playerId &&
-            event.spell && BLOCKED_POWER_IDS.has(event.spell.getFormID())) {
-            const spellId = event.spell.getFormID();
-            this.controller.once('update', () => {
-                const player = Game.getPlayer();
-                const spell = Spell.from(Game.getFormEx(spellId));
-                if (player && spell) {
-                    player.dispelSpell(spell);
-                }
-                Debug.notification("Racial powers are disabled on this server.");
-            });
+    // Each racialState lists every rationed power of the character, so it replaces the last one
+    private onRacialState(event: ConnectionMessage<CustomPacketMessage>) {
+        const content = parseCustomPacket(event);
+        if (!content || content["customPacketType"] !== "racialState" || !Array.isArray(content["powers"])) {
             return;
+        }
+        const now = Date.now();
+        this.rationedPowers.clear();
+        const lines = new Array<string>();
+        for (const raw of content["powers"] as unknown[]) {
+            const p = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+            const spellId = Number(p["spellId"]) >>> 0;
+            if (!spellId) continue;
+            const readyInMs = Math.max(0, Number(p["readyInMs"]) || 0);
+            const power = { name: typeof p["name"] === "string" ? p["name"] : "", readyAt: now + readyInMs, available: p["available"] !== false };
+            this.rationedPowers.set(spellId, power);
+            lines.push(`${power.name || "unnamed"} ${spellId.toString(16)} ${!power.available ? "not available yet" : readyInMs > 0 ? `ready in ${formatWait(readyInMs)}` : "ready"}`);
+        }
+        logToPlatformLog(this, `racialState: ${lines.join(", ") || "no rationed powers"}`);
+    }
+
+    // The server's refusal text for a rationed power it would refuse now, "" when the cast may go through
+    private powerRefusal(spellId: number, spellName: string): string {
+        const power = this.rationedPowers.get(spellId);
+        if (!power) return "";
+        const name = power.name || spellName;
+        if (!power.available) return `${name} is not available yet.`;
+        const wait = power.readyAt - Date.now();
+        return wait > 0 ? `${name} is ready again in ${formatWait(wait)}.` : "";
+    }
+
+    // A cast the server would refuse: dispelled locally with a notification and never relayed
+    private refuseLocally(spellId: number, text: string) {
+        this.controller.once('update', () => {
+            const player = Game.getPlayer();
+            const spell = Spell.from(Game.getFormEx(spellId));
+            if (player && spell) {
+                player.dispelSpell(spell);
+            }
+            Debug.notification(text);
+        });
+    }
+
+    private onSpellCast(event: SpellCastEvent) {
+        // Blocked racial powers, and rationed ones the server would refuse now: dispel locally, tell the player, do not relay
+        if (event.caster && event.caster.getFormID() === this.playerId && event.spell) {
+            const spellId = event.spell.getFormID();
+            if (BLOCKED_POWER_IDS.has(spellId)) {
+                this.refuseLocally(spellId, "Racial powers are disabled on this server.");
+                return;
+            }
+            const refusal = this.powerRefusal(spellId, event.spell.getName());
+            if (refusal) {
+                logToPlatformLog(this, `power ${spellId.toString(16)} refused before the relay: ${refusal}`);
+                this.refuseLocally(spellId, refusal);
+                return;
+            }
         }
 
         // Clone replays fire this event too, but the server only accepts our own and hosted casters
@@ -331,5 +397,6 @@ export class MagicSyncService extends ClientListener {
     private castStartGraceMs = 250;
     private readonly castStopEchoDelaysMs = [1000, 3500];
     private relayedCasts = new Map<string, RelayedCast>();
+    private rationedPowers = new Map<number, RationedPower>();
     private lastSendUpdateAnimationVariables: number = 0;
 }

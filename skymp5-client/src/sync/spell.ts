@@ -165,16 +165,36 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
   });
 };
 
+// The server's racialResync: the race sync runs again with its spells kept, and those the client's race record lacks are added to the actor; returns the added ones
+export const resyncRaceAbilities = (actor: Actor, keep: Array<number>, expected: Array<number>): number[] => {
+  const race = ActorBase.from(actor.getBaseObject())?.getRace();
+  const onRecord = new Set(race ? raceSpells(race).map((spell) => spell.getFormID()) : []);
+  const lacking = expected.filter((id) => !onRecord.has(id) && !BLOCKED_POWER_IDS.has(id));
+  syncRaceAbilities(actor, [...keep, ...expected]);
+  learnSpells(actor, lacking);
+  return lacking;
+};
+
 // AldRaceSpeedEffect, the one SpeedMult effect all AldRaceSpeed_* spells share
 const RACE_SPEED_EFFECT_ID = 0x041324;
 const RACE_SPEED_EFFECT_PLUGIN = 'AlduinakAdditions.esp';
 // SpeedMult may sit this far from the speed spell's value before it counts as another race's speed
 const SPEED_MULT_TOLERANCE = 0.5;
 
+// The racialReport fields the server compares (racialSystem.ts); a speed spell reads on while SpeedMult carries it
+export interface RaceAbilityData {
+  baseRace: number;
+  engineRace: number;
+  spells: Array<{ id: number; held: boolean; state: 'on' | 'off' | 'power' }>;
+  stray: number[];
+  base: { health: number; magicka: number; stamina: number };
+}
+
 export interface RaceAbilityReport {
   text: string;
   // What the own race lacks and what other races still give, empty when all is in place
   problems: string[];
+  data: RaceAbilityData;
 }
 
 // Each spell of the base race (on, off or a power; held per HasSpell, which the Magic menu reads; listed by the server or not), SpeedMult against the race's speed spell, other races' spells running or held and the attribute passives, for the platform log
@@ -188,27 +208,32 @@ export const describeRaceAbilities = (actor: Actor, listed: Array<number>): Race
   const ownIds = new Set<number>();
   const ownEffects = new Set<number>();
   let ownSpeed = false;
+  const reported = new Array<RaceAbilityData['spells'][number]>();
   const spells = (race ? raceSpells(race) : []).map((spell) => {
     ownIds.add(spell.getFormID());
     const effects = spellEffects(spell);
     effects.forEach((effect) => ownEffects.add(effect.getFormID()));
     const held = actor.hasSpell(spell);
     let state: string;
+    let on: 'on' | 'off' | 'power';
     if (speedEffectId && effects.some((effect) => effect.getFormID() === speedEffectId)) {
       // One effect for both sexes, else the male one first
       ownSpeed = true;
       const expected = actor.getBaseActorValue('SpeedMult') + spell.getNthEffectMagnitude(spell.getNumEffects() > 1 ? base?.getSex() ?? 0 : 0);
       state = `SpeedMult ${speedMult.toFixed(1)} of ${expected.toFixed(1)}`;
-      if (Math.abs(speedMult - expected) > SPEED_MULT_TOLERANCE) problems.push(`${hex(spell)} SpeedMult ${speedMult.toFixed(1)} not ${expected.toFixed(1)}`);
+      on = Math.abs(speedMult - expected) > SPEED_MULT_TOLERANCE ? 'off' : 'on';
+      if (on === 'off') problems.push(`${hex(spell)} SpeedMult ${speedMult.toFixed(1)} not ${expected.toFixed(1)}`);
     } else if (effects[0]?.getCastingType() !== CASTING_CONSTANT_EFFECT) {
-      state = 'power';
+      state = on = 'power';
     } else {
-      state = effects.some((effect) => actor.hasMagicEffect(effect)) ? 'on' : 'off';
+      state = on = effects.some((effect) => actor.hasMagicEffect(effect)) ? 'on' : 'off';
       if (state === 'off') problems.push(`${hex(spell)} off`);
     }
     if (!held && !BLOCKED_POWER_IDS.has(spell.getFormID())) problems.push(`${hex(spell)} not held`);
+    reported.push({ id: spell.getFormID(), held, state: on });
     return `${hex(spell)} ${spell.getName()} ${state}, ${held ? 'held' : 'not held'}${listed.indexOf(spell.getFormID()) === -1 ? ', unlisted' : ''}`;
   });
+  const strayIds = new Array<number>();
   const stray = new Array<string>();
   playableRaces().forEach((other) => {
     if (other.getFormID() === race?.getFormID()) {
@@ -221,6 +246,7 @@ export const describeRaceAbilities = (actor: Actor, listed: Array<number>): Race
       const running = spellEffects(spell).some((effect) => !ownEffects.has(effect.getFormID()) && actor.hasMagicEffect(effect));
       const held = actor.hasSpell(spell);
       if (running || held) {
+        strayIds.push(spell.getFormID());
         stray.push(`${hex(spell)} ${spell.getName()} ${running && held ? 'running and held' : running ? 'running' : 'held'}`);
       }
     });
@@ -230,6 +256,13 @@ export const describeRaceAbilities = (actor: Actor, listed: Array<number>): Race
   const av = (name: string) => Math.round(actor.getBaseActorValue(name));
   return {
     problems,
+    data: {
+      baseRace: race?.getFormID() ?? 0,
+      engineRace: actor.getRace()?.getFormID() ?? 0,
+      spells: reported,
+      stray: strayIds,
+      base: { health: actor.getBaseActorValue('Health'), magicka: actor.getBaseActorValue('Magicka'), stamina: actor.getBaseActorValue('Stamina') },
+    },
     text: `race ${race ? race.getFormID().toString(16) : 'none'} (actor race ${actor.getRace()?.getFormID().toString(16) ?? 'none'}, sex ${base?.getSex() ?? '?'}): ` +
       `${spells.join('; ') || 'no spells'}${speed}; other races running or held: ${stray.join(', ') || 'none'}; ` +
       `base health ${av('Health')} magicka ${av('Magicka')} stamina ${av('Stamina')}, unarmed ${Math.round(actor.getActorValue('UnarmedDamage'))}, ` +

@@ -1,6 +1,7 @@
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { Actor, Form, FormType, Menu, interruptCast, castSpellImmediate, printConsole, applyAnimationVariablesToActor, ActorAnimationVariables } from 'skyrimPlatform';
 import {
+  ActorBase,
   Cell,
   Debug,
   EquipEvent,
@@ -27,10 +28,11 @@ import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '.
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
-import { describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlistedSpells, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
+import { describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
+import { MasteryService } from './masteryService';
 import { CharacterSelectService } from './characterSelectService';
 import { CreationLightService } from './creationLightService';
 import { endSeatWait, markLocalActivation, noteSeatWait } from './activationService';
@@ -307,6 +309,7 @@ export class RemoteServer extends ClientListener {
     });
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onRacialResync(e));
     // The engine loses worn enchantment abilities on scripted equips, inventory changes and stray dispels
     this.controller.on("equip", (e) => this.onPlayerWornChange(e.actor));
     this.controller.on("containerChanged", (e) => this.onPlayerWornChange(e.oldContainer, e.newContainer));
@@ -1427,9 +1430,44 @@ export class RemoteServer extends ClientListener {
       const pc = Game.getPlayer();
       if (pc && this.currentRaceCheck() === check) {
         const after = describeRaceAbilities(pc, listed);
+        const masteryMagicka = this.controller.lookupListener(MasteryService).writtenMagicka;
+        sendCustomPacket(this.controller, { customPacketType: "racialReport", reason, ...after.data, masteryMagicka });
         logToPlatformLog(this, `race abilities after ${reason}, spawn ${check.spawnSeq}, spawn sync ${spawnSync}, server listed ${listed.length}: ` +
-          `before ${before.text} | after ${after.text}`);
+          `before ${before.text} | after ${after.text} | racialReport sent, mastery magicka ${masteryMagicka ?? "none"}`);
       }
+    });
+  }
+
+  // The server found the race abilities amiss (racialSystem.ts, once per spawn): a base race other than the server's gets the server's appearance again, then the race sync runs keeping the server's race spells
+  private onRacialResync(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (!content || content["customPacketType"] !== "racialResync") {
+      return;
+    }
+    const raceId = Number(content["raceId"]) >>> 0;
+    const expected = Array.isArray(content["spells"]) ? (content["spells"] as unknown[]).map((id) => Number(id) >>> 0).filter((id) => id) : [];
+    const problems = Array.isArray(content["problems"]) ? (content["problems"] as unknown[]).map(String).join("; ") : "";
+    this.controller.once("update", () => {
+      const player = Game.getPlayer();
+      if (!player || !raceId) {
+        return;
+      }
+      const hex = (id: number) => id.toString(16);
+      const baseRace = ActorBase.from(player.getBaseObject())?.getRace()?.getFormID() ?? 0;
+      const appearance = this.worldModel.forms[this.worldModel.playerCharacterFormIdx]?.appearance;
+      let race = `base race ${hex(baseRace)} is the server's`;
+      if (baseRace !== raceId && appearance?.raceId === raceId) {
+        applyAppearanceToPlayer(appearance);
+        race = `base race ${hex(baseRace)} set to the server's ${hex(raceId)} from its appearance`;
+      } else if (baseRace !== raceId) {
+        race = `base race ${hex(baseRace)} kept, the server's ${hex(raceId)} is not the stored appearance's`;
+      }
+      const check = this.currentRaceCheck();
+      const listed = check ? this.listedSpellsOf(check) : this.worldModel.forms[this.worldModel.playerCharacterFormIdx]?.learnedSpells ?? [];
+      const added = resyncRaceAbilities(player, listed, expected);
+      logToPlatformLog(this, `racialResync from the server (${problems || "no problems named"}): ${race}; race sync ran keeping ${expected.map(hex).join(", ") || "none"}, ` +
+        `added from outside the race record ${added.map(hex).join(", ") || "none"}; ${check ? `checked again ${RACE_CHECK_SETTLE_MS / 1000} s after the world settles` : "no race check of this spawn to repeat"}`);
+      this.queueRaceCheck("resync");
     });
   }
 
@@ -1446,7 +1484,7 @@ export class RemoteServer extends ClientListener {
     const report = describeRaceAbilities(player, listed);
     logToPlatformLog(this, `race abilities in the Magic menu, spawn ${check.spawnSeq}, server listed ${listed.length}: ${report.text}`);
     if (report.problems.length) {
-      this.queueRaceCheck(`the Magic menu showed ${report.problems.join(", ")}`);
+      this.queueRaceCheck("the Magic menu");
     }
   }
 

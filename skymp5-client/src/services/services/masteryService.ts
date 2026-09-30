@@ -90,9 +90,14 @@ export function parseMasteryMenu(content: Record<string, unknown>): MasteryInfo 
  *   skills and magicka already fold in every slot, so applyState reads no slot.
  */
 export class MasteryService extends ClientListener {
+  // The base Magicka applyState last wrote since the player's spawn, null when it wrote none; the racialReport carries it
+  writtenMagicka: number | null = null;
+
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    // A spawn loads base values afresh
+    this.controller.emitter.on("createActorMessage", (e) => { if (e.message.isMe) this.writtenMagicka = null; });
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -114,7 +119,9 @@ export class MasteryService extends ClientListener {
     for (const av of Object.keys(skills)) {
       if (player.getBaseActorValue(av) !== skills[av]) player.setActorValue(av, skills[av]);
     }
-    if (magicka !== null && player.getBaseActorValue("Magicka") !== magicka) player.setActorValue("Magicka", magicka);
+    if (magicka === null) return;
+    if (player.getBaseActorValue("Magicka") !== magicka) player.setActorValue("Magicka", magicka);
+    this.writtenMagicka = magicka;
   }
 }
 
