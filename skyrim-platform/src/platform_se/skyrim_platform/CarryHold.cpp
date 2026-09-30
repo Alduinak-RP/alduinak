@@ -19,6 +19,9 @@ constexpr auto kWindow = 1s;
 // A body this far from its carrier is left alone, as the client's own hold does
 constexpr float kMaxDistance = 2048.f;
 constexpr float kPi = 3.14159265f;
+// A carrier step or turn past these in one frame is a warp, not motion to lead by
+constexpr float kMaxLead = 64.f;
+constexpr float kMaxLeadTurn = kPi / 4;
 
 // 1.6 ids, checked by disassembly of 1.6.1179 and again at install
 // Actor::SetPosition(pos, updateCharController): location, controller warp with zero velocity, 3D translate; vtable slot 0xA9
@@ -38,6 +41,10 @@ struct Hold
   Clock::time_point refreshed;
   // The next held frame puts the body in place and is not a drift sample
   bool snapping = true;
+  // The carrier at the last held frame
+  bool hasLast = false;
+  RE::NiPoint3 lastFrom;
+  float lastYaw = 0;
   Clock::time_point windowStart;
   double windowSum = 0;
   uint32_t windowFrames = 0;
@@ -58,7 +65,12 @@ struct Step
   float forward = 0;
   float up = 0;
   float yaw = 0;
+  bool hasLast = false;
+  RE::NiPoint3 lastFrom;
+  float lastYaw = 0;
   StepResult result = StepResult::kSkipped;
+  RE::NiPoint3 from;
+  float carrierYaw = 0;
   float drift = 0;
   float yawDrift = 0;
 };
@@ -110,17 +122,29 @@ StepResult Place(Step& s)
     return StepResult::kSkipped;
   }
   const float yaw = carrier->GetAngleZ();
-  const RE::NiPoint3 target{ from.x + std::sin(yaw) * s.forward,
-                             from.y + std::cos(yaw) * s.forward,
-                             from.z + s.up };
-  const float heading = yaw + s.yaw;
-  s.drift = current.GetDistance(target);
+  s.from = from;
+  s.carrierYaw = yaw;
+  const auto placeAt = [&](const RE::NiPoint3& at, float facing) {
+    return RE::NiPoint3{ at.x + std::sin(facing) * s.forward,
+                         at.y + std::cos(facing) * s.forward, at.z + s.up };
+  };
+  s.drift = current.GetDistance(placeAt(from, yaw));
   s.yawDrift =
-    std::abs(WrapRadians(heading - held->GetAngleZ())) * 180.f / kPi;
+    std::abs(WrapRadians(yaw + s.yaw - held->GetAngleZ())) * 180.f / kPi;
+  // The carrier moves after the frame start, so the body leads by the carrier's last frame
+  RE::NiPoint3 ahead = from;
+  float turn = 0;
+  if (s.hasLast && from.GetDistance(s.lastFrom) <= kMaxLead) {
+    ahead += from - s.lastFrom;
+    turn = WrapRadians(yaw - s.lastYaw);
+    if (std::abs(turn) > kMaxLeadTurn) {
+      turn = 0;
+    }
+  }
   static REL::Relocation<void (*)(RE::Actor*, const RE::NiPoint3&, bool)>
     setPosition{ kActorSetPosition };
-  setPosition(held, target, true);
-  held->SetRotationZ(heading);
+  setPosition(held, placeAt(ahead, yaw + turn), true);
+  held->SetRotationZ(yaw + turn + s.yaw);
   return StepResult::kHeld;
 }
 
@@ -148,11 +172,14 @@ std::string Describe(RE::FormID held, const Hold& h)
 void Record(Hold& h, const Step& s, Clock::time_point now)
 {
   auto& stats = h.stats;
-  if (s.result != StepResult::kHeld) {
+  h.hasLast = s.result == StepResult::kHeld;
+  if (!h.hasLast) {
     ++stats.skipped;
     h.snapping = true;
     return;
   }
+  h.lastFrom = s.from;
+  h.lastYaw = s.carrierYaw;
   ++stats.frames;
   if (h.snapping) {
     h.snapping = false;
@@ -214,7 +241,8 @@ void Update()
         continue;
       }
       const auto& h = it->second;
-      steps.push_back({ it->first, h.carrier, h.forward, h.up, h.yaw });
+      steps.push_back({ it->first, h.carrier, h.forward, h.up, h.yaw,
+                        h.hasLast, h.lastFrom, h.lastYaw });
       ++it;
     }
   }
@@ -293,6 +321,7 @@ bool CarryHold::Set(RE::FormID held, RE::FormID carrier, float forward,
   auto& h = g_holds[held];
   if (h.carrier != carrier) {
     h.snapping = true;
+    h.hasLast = false;
   }
   h.carrier = carrier;
   h.forward = forward;

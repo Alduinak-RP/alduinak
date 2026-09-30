@@ -443,7 +443,10 @@ Picking up a player in bleedout **ends their bleedout** (§8).
   enter clip. The hold (`sync/carryHold.ts`) hands the placement to
   SkyrimPlatform (`setCarryHold`, `CarryHold.cpp`): at the start of every
   frame, on the main thread and before the actors update, it puts the body at
-  its place on the carrier with the engine's own warp (`Actor::SetPosition`
+  its place on the carrier, led by the carrier's movement and turn over the
+  frame before since the carrier moves after the frame start (a step past 64
+  units or a turn past 45 degrees in one frame is a warp and is not led),
+  with the engine's own warp (`Actor::SetPosition`
   with the character controller, which also zeroes its velocity and resets
   its fall) and sets its heading (`Actor::SetRotationZ`), with no Papyrus. The
   client refreshes the hold every frame and ends it with `clearCarryHold`; a
@@ -493,10 +496,11 @@ prisoner can also be carried).
 - **Summary line**: when a carry ends the carried client writes one line to
   `skyrim-platform.log`:
   `carry summary: 34.2 s held, 58 fps average while carried, native hold 2010 frames (0 skipped, 2 snaps), drift before each write mean 1.4 max 3.9 worst second 2.2 units, heading drift max 3.1, 0 pose re-sends (IdleChairEnterInstant), 0 of 342 checks in the jump or fall state, 1 server moves (1 short hops)`.
-  Drift is how far the body got from its place during one frame, measured
-  before the next write, so it is about one frame of the carrier's own
-  movement; a snap is the first write after a pickup, a pause or a skipped
-  frame and is not a drift sample. On the script fallback the hold part reads
+  Drift is how far from its place on the carrier the body stood at a frame
+  start, before the write, which is what the lead missed: about zero while the
+  carrier walks or turns steadily, and about one frame of its movement when it
+  starts, stops or turns back; a snap is the first write after a pickup, a
+  pause or a skipped frame and is not a drift sample. On the script fallback the hold part reads
   `script hold 2010 translates, 6 heading writes, largest heading error 4.1, largest gap 7 units`,
   where gaps and heading errors count from one second after the pickup or a
   server move. A native hold the client stopped refreshing writes

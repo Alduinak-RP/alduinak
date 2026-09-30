@@ -19,7 +19,7 @@ export interface CarryPose {
 
 export const DEFAULT_CARRY_POSE: Readonly<CarryPose> = { forward: 16, up: 40, yaw: 45 };
 
-// What SkyrimPlatform's frame-start hold (CarryHold.cpp) measured: drift is how far the body got from its place during a frame, before the next write
+// What SkyrimPlatform's frame-start hold (CarryHold.cpp) measured: drift is how far from its place on the carrier the body stood before each write
 export interface NativeHoldStats {
   frames: number;
   skipped: number;

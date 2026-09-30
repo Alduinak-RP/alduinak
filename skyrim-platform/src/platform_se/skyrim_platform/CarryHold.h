@@ -7,7 +7,7 @@
 namespace CarryHold {
 void Install();
 
-// What a hold measured; drift is how far the body got from its place during the frame before each write
+// What a hold measured; drift is how far from its place on the carrier the body stood at each frame start, what the lead missed
 struct Stats
 {
   uint32_t frames = 0;
