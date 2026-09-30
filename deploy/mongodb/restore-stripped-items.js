@@ -305,7 +305,7 @@ function assess(doc, live, ctx) {
   const settled = ctx.earlier.byDoc.get(row.id) || new Set()
   for (const g of groups.values()) {
     const cls = classes.get(g.baseId)
-    const base = { baseId: hex(g.baseId), edid: (cls && cls.edid) || g.edid, group: groupOf(g.reason, cls), removed: g.removed }
+    const base = { baseId: hex(g.baseId), edid: (cls && cls.edid) || g.edid, name: (cls && cls.name) || '', craftable: Boolean(cls && cls.craftable), group: groupOf(g.reason, cls), removed: g.removed }
     if (!cls || cls.intent === 'unknown') { row.skipped.push({ ...base, count: g.removed, unclassified: true, why: `cannot classify: ${cls ? cls.evidence : 'not in the intent file'}` }); continue }
     const kept = ctx.give.has(g.baseId) ? '' : cls.intent ? INTENTS[cls.intent] : ctx.keep.has(g.baseId) ? 'kept by --also-keep' : ''
     if (kept) { row.stays.push({ ...base, count: g.removed, why: kept, evidence: cls.evidence || '' }); continue }
@@ -403,21 +403,26 @@ function stripped(doc, list) {
 
 function sum(items) { return items.reduce((n, x) => n + x.count, 0) }
 
-function tally(into, key, count, holder) {
-  const s = into[key] || (into[key] = { items: 0, entries: 0, holders: new Set() })
-  s.items += count
+function tally(into, g, key, holder) {
+  const s = into[key] || (into[key] = { items: 0, entries: 0, holders: new Set(), ids: new Map() })
+  s.items += g.count
   s.entries++
   s.holders.add(holder)
+  const x = s.ids.get(g.baseId) || s.ids.set(g.baseId, { baseId: g.baseId, edid: g.edid, name: g.name, count: 0 }).get(g.baseId)
+  x.count += g.count
 }
 
+function label(g) { return g.name ? `${g.edid} "${g.name}"` : g.edid }
+
 function totalsOf(rows) {
-  const t = { characters: 0, containers: 0, receiving: 0, give: {}, stays: {}, back: 0, earlier: 0, elsewhere: 0, skipped: 0, skippedDocs: 0, unclassified: 0, spells: 0, problems: 0 }
+  const t = { characters: 0, containers: 0, receiving: 0, give: {}, stays: {}, back: 0, backCraftable: 0, earlier: 0, elsewhere: 0, skipped: 0, skippedDocs: 0, unclassified: 0, spells: 0, problems: 0 }
   for (const r of rows) {
     t[r.kind === 'character' ? 'characters' : 'containers']++
     if (r.give.length) t.receiving++
-    for (const g of r.give) tally(t.give, g.group, g.count, r.formDesc)
-    for (const g of r.stays) tally(t.stays, g.why, g.count, r.formDesc)
+    for (const g of r.give) tally(t.give, g, g.group, r.formDesc)
+    for (const g of r.stays) tally(t.stays, g, g.why, r.formDesc)
     t.back += sum(r.back)
+    t.backCraftable += sum(r.back.filter(g => g.craftable))
     t.earlier += r.back.reduce((n, x) => n + x.byEarlierRestore, 0)
     t.elsewhere += r.back.reduce((n, x) => n + x.elsewhere, 0)
     t.skipped += sum(r.skipped.filter(g => !g.unclassified))
@@ -426,7 +431,7 @@ function totalsOf(rows) {
     t.spells += r.spells.length
     t.problems += r.problems.length
   }
-  const flat = o => Object.fromEntries(Object.entries(o).sort((a, b) => b[1].items - a[1].items).map(([k, v]) => [k, { items: v.items, entries: v.entries, holders: v.holders.size }]))
+  const flat = o => Object.fromEntries(Object.entries(o).sort((a, b) => b[1].items - a[1].items).map(([k, v]) => [k, { items: v.items, entries: v.entries, holders: v.holders.size, ids: [...v.ids.values()].sort((a, b) => b.count - a.count) }]))
   return { ...t, give: flat(t.give), stays: flat(t.stays), giveItems: Object.values(t.give).reduce((n, v) => n + v.items, 0), stayItems: Object.values(t.stays).reduce((n, v) => n + v.items, 0) }
 }
 
@@ -438,7 +443,9 @@ function decisionsOf(rows, ctx) {
     for (const g of seen.values()) {
       const cls = ctx.intent.classes.get(parseInt(g.baseId, 16) >>> 0)
       if (!cls || !cls.note) continue
-      const d = out.get(g.baseId) || { baseId: g.baseId, edid: g.edid, intent: cls.intent, note: cls.note, count: 0, holders: 0 }
+      const id = parseInt(g.baseId, 16) >>> 0
+      const stays = !ctx.give.has(id) && (Boolean(cls.intent) || ctx.keep.has(id))
+      const d = out.get(g.baseId) || { baseId: g.baseId, edid: g.edid, name: cls.name || '', intent: cls.intent, kind: cls.noteKind || '', note: cls.note, stays, count: 0, holders: 0 }
       d.count += g.removed
       d.holders++
       out.set(g.baseId, d)
@@ -465,8 +472,12 @@ function render(title, rows, t, meta) {
   L.push('', 'TOTALS')
   L.push(`  holders: ${plural(t.characters, 'character', 'characters')} and ${plural(t.containers, 'container', 'containers')}; ${t.receiving} get items back`)
   L.push(`  comes back: ${plural(t.giveItems, 'item', 'items')} (items / entries / holders)`)
-  for (const [k, v] of Object.entries(t.give)) L.push(`    ${k.padEnd(34)} ${String(v.items).padStart(5)} / ${String(v.entries).padStart(4)} / ${v.holders}`)
-  L.push(`  counted as back, not given: ${plural(t.back, 'item', 'items')}${t.earlier ? `, ${t.earlier} of them settled by an earlier restore` : ''}${t.elsewhere ? `, ${t.elsewhere} held elsewhere on the same profile` : ''}`)
+  for (const [k, v] of Object.entries(t.give)) {
+    L.push(`    ${k.padEnd(34)} ${String(v.items).padStart(5)} / ${String(v.entries).padStart(4)} / ${v.holders}`)
+    const word = k.startsWith('material: ') && k.slice('material: '.length)
+    if (word && v.ids.some(x => !`${x.edid} ${x.name}`.toLowerCase().includes(word))) L.push(`      the ${word} material keyword is on: ${line(v.ids, x => `${label(x)} x${x.count}`)}`)
+  }
+  L.push(`  counted as back, not given: ${plural(t.back, 'item', 'items')}${t.earlier ? `, ${t.earlier} of them settled by an earlier restore` : ''}${t.elsewhere ? `, ${t.elsewhere} held elsewhere on the same profile` : ''}${t.backCraftable ? `, ${t.backCraftable} of craftable ids` : ''}`)
   L.push(`    a copy held now in ${meta.poolByProfile ? "the profile's characters, their pets or its claimed containers" : "the document or a character's pets"} counts as returned, also one crafted,`)
   L.push("    looted or bought since the strip (--ignore-held '0x...' gives an id back in full); a return since sold, used, dropped,")
   L.push('    given away, or left in an unclaimed chest or on a deleted character is not seen and comes back again')
@@ -478,9 +489,17 @@ function render(title, rows, t, meta) {
   if (t.problems) L.push(`  PROBLEMS: ${t.problems} (see the holders marked !); apply refuses until they are resolved`)
   if (meta.decisions.length) {
     L.push('', 'FOR THE OWNER TO DECIDE')
-    for (const d of meta.decisions) {
-      const now = d.intent ? `stays removed as ${INTENTS[d.intent]}; --also-give ${d.baseId} returns it` : `comes back; --also-keep ${d.baseId} keeps it removed`
-      L.push(`  ${d.edid} ${d.baseId} (${d.note}), ${d.count} removed from ${plural(d.holders, 'holder', 'holders')}: ${now}`)
+    const recipe = meta.decisions.filter(d => d.kind === 'ebony recipe' && !d.stays)
+    for (const d of meta.decisions.filter(d => !recipe.includes(d))) {
+      const now = d.stays
+        ? d.intent ? `stays removed as ${INTENTS[d.intent]}; --also-give ${d.baseId} returns it` : 'stays removed by --also-keep'
+        : d.intent ? 'comes back by --also-give' : `comes back; --also-keep ${d.baseId} keeps it removed`
+      L.push(`  ${label(d)} ${d.baseId} (${d.note}), ${d.count} removed from ${plural(d.holders, 'holder', 'holders')}: ${now}`)
+    }
+    if (recipe.length) {
+      L.push(`  Gear whose recipe takes ebony ingots but that carries no ebony material keyword comes back, ${plural(recipe.reduce((n, d) => n + d.count, 0), 'item', 'items')}:`)
+      for (const d of recipe) L.push(`    ${label(d)} ${d.baseId}, ${d.count} removed from ${plural(d.holders, 'holder', 'holders')}: ${d.note}`)
+      L.push(`    --also-keep '${recipe.map(d => d.baseId).join(',')}' keeps all of them removed`)
     }
   }
   L.push('', 'PER HOLDER')
@@ -488,8 +507,8 @@ function render(title, rows, t, meta) {
     L.push(`${r.problems.length ? '! ' : ''}${r.who}${r.status === 'ok' ? '' : ` [skipped: ${r.status}]`}`)
     for (const p of r.problems) L.push(`  ! ${p}`)
     if (r.give.length) L.push(`  comes back: ${line(r.give, g => `${g.edid} x${g.count} [${g.group}]`)}`)
-    if (r.back.length) L.push(`  counted as back: ${line(r.back, g => `${g.edid} x${g.count} (holds ${g.current}${g.elsewhere ? `, ${g.elsewhere} held elsewhere on the profile` : ''})`)}`)
-    if (r.stays.length) L.push(`  stays removed: ${line(r.stays, g => `${g.edid} x${g.count} [${g.why}]`)}`)
+    if (r.back.length) L.push(`  counted as back: ${line(r.back, g => `${g.edid} x${g.count} (holds ${g.current}${g.elsewhere ? `, ${g.elsewhere} held elsewhere on the profile` : ''}${g.craftable ? ', craftable' : ''})`)}`)
+    if (r.stays.length) L.push(`  stays removed: ${line(r.stays, g => `${label(g)} x${g.count} [${g.why}]`)}`)
     if (r.skipped.length) L.push(`  not given: ${line(r.skipped, g => `${g.edid} x${g.count} [${g.group}]`)}`)
     if (r.spells.length) L.push(`  learned spells stay removed: ${line(r.spells, s => s.edid)}`)
   }

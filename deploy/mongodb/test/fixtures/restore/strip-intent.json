@@ -1,5 +1,5 @@
 {
- "createdAt": "2026-09-30T09:46:28.878029+00:00",
+ "createdAt": "2026-09-30T09:49:53.166159+00:00",
  "backup": "fixtures/restore/strip",
  "docsSha256": "2bb8acadba4a74bb16a9006266ab161d0de7adfb472aab3ee451ac31f5af5b20",
  "listSha256": "3c3871ddaa62bca553b9b22ecc519be577ef406fc4bab90463770ca9fb824eb7",
@@ -605,6 +605,7 @@
    "reason": "material",
    "material": "orcish",
    "adeptRecipe": false,
+   "name": "Orcish Bow",
    "type": "WEAP",
    "plugin": "skyrim.esm",
    "sources": [
@@ -612,7 +613,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 IngotIron + 2 IngotOrichalcum",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -622,6 +626,7 @@
    "reason": "material",
    "material": "ebony",
    "adeptRecipe": false,
+   "name": "Ebony Bow",
    "type": "WEAP",
    "plugin": "skyrim.esm",
    "sources": [
@@ -629,7 +634,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "3 IngotEbony",
    "note": "",
+   "noteKind": "",
    "intent": "ebony",
    "evidence": "keyword weapmaterialebony"
   },
@@ -639,6 +647,7 @@
    "reason": "material",
    "material": "orcish",
    "adeptRecipe": false,
+   "name": "Orcish Arrow",
    "type": "AMMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -646,7 +655,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 Firewood01 + 1 IngotOrichalcum",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -656,6 +668,7 @@
    "reason": "material",
    "material": "ebony",
    "adeptRecipe": false,
+   "name": "Ebony Arrow",
    "type": "AMMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -663,7 +676,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 Firewood01 + 1 IngotEbony",
    "note": "ammunition",
+   "noteKind": "ammunition",
    "intent": "ebony",
    "evidence": "keyword weapmaterialebony"
   },
@@ -671,6 +687,7 @@
    "listed": true,
    "edid": "ClothesCirclet05",
    "reason": "jewelry",
+   "name": "Copper and Onyx Circlet",
    "type": "ARMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -678,7 +695,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 IngotCorundum",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -686,6 +706,7 @@
    "listed": true,
    "edid": "JewelryRingSilver",
    "reason": "jewelry",
+   "name": "Silver Ring",
    "type": "ARMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -693,7 +714,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 ingotSilver",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -701,6 +725,7 @@
    "listed": true,
    "edid": "JewelryRingSilverGarnet",
    "reason": "jewelry",
+   "name": "Silver Garnet Ring",
    "type": "ARMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -708,7 +733,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 GemGarnet + 1 ingotSilver",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -718,6 +746,7 @@
    "reason": "material",
    "material": "falmer",
    "adeptRecipe": true,
+   "name": "Falmer Armor",
    "type": "ARMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -725,7 +754,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "2 ChaurusChitin + 3 LeatherStrips",
    "note": "",
+   "noteKind": "",
    "intent": "falmer cuirass",
    "evidence": "body slot 32, model Armor\\Falmer\\FalmerCuirass_GO.nif"
   },
@@ -735,6 +767,7 @@
    "reason": "material",
    "material": "falmer",
    "adeptRecipe": true,
+   "name": "Falmer Boots",
    "type": "ARMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -742,7 +775,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 ChaurusChitin + 2 LeatherStrips",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -752,6 +788,7 @@
    "reason": "material",
    "material": "falmer",
    "adeptRecipe": true,
+   "name": "Falmer Gauntlets",
    "type": "ARMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -759,7 +796,10 @@
     "skyrim.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 ChaurusChitin + 2 LeatherStrips",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -767,6 +807,7 @@
    "listed": true,
    "edid": "EnchClothesRobesMageDestruction05",
    "reason": "enchanted",
+   "name": "Master Mage Robes of Destruction",
    "type": "ARMO",
    "plugin": "skyrim.esm",
    "sources": [
@@ -774,7 +815,10 @@
     "waccf_armor and clothing extension.esp"
    ],
    "staff": false,
+   "craftable": false,
+   "recipe": "",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -784,6 +828,7 @@
    "reason": "material",
    "material": "dwarven",
    "adeptRecipe": false,
+   "name": "Dwarven Bolt",
    "type": "AMMO",
    "plugin": "dawnguard.esm",
    "sources": [
@@ -791,7 +836,10 @@
     "dawnguard.esm"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 Firewood01 + 1 IngotDwarven",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   },
@@ -810,13 +858,17 @@
    "reason": "material",
    "material": "ebony",
    "adeptRecipe": false,
+   "name": "Gilded Ebony Boots",
    "type": "ARMO",
    "plugin": "sentinel.esp",
    "sources": [
     "sentinel.esp"
    ],
    "staff": false,
+   "craftable": false,
+   "recipe": "",
    "note": "",
+   "noteKind": "",
    "intent": "ebony",
    "evidence": "keyword armormaterialebony, spikearmorebony"
   },
@@ -826,13 +878,17 @@
    "reason": "material",
    "material": "ebony",
    "adeptRecipe": false,
+   "name": "Gilded Ebony Armor",
    "type": "ARMO",
    "plugin": "sentinel.esp",
    "sources": [
     "sentinel.esp"
    ],
    "staff": false,
+   "craftable": false,
+   "recipe": "",
    "note": "",
+   "noteKind": "",
    "intent": "ebony",
    "evidence": "keyword armormaterialebony, spikearmorebony"
   },
@@ -842,13 +898,17 @@
    "reason": "material",
    "material": "ebony",
    "adeptRecipe": false,
+   "name": "Gilded Ebony Gauntlets",
    "type": "ARMO",
    "plugin": "sentinel.esp",
    "sources": [
     "sentinel.esp"
    ],
    "staff": false,
+   "craftable": false,
+   "recipe": "",
    "note": "",
+   "noteKind": "",
    "intent": "ebony",
    "evidence": "keyword armormaterialebony, spikearmorebony"
   },
@@ -858,13 +918,17 @@
    "reason": "material",
    "material": "ebony",
    "adeptRecipe": false,
+   "name": "Gilded Ebony Helmet",
    "type": "ARMO",
    "plugin": "sentinel.esp",
    "sources": [
     "sentinel.esp"
    ],
    "staff": false,
+   "craftable": false,
+   "recipe": "",
    "note": "",
+   "noteKind": "",
    "intent": "ebony",
    "evidence": "keyword armormaterialebony, spikearmorebony"
   },
@@ -874,13 +938,17 @@
    "reason": "material",
    "material": "ebony",
    "adeptRecipe": false,
+   "name": "Gilded Ebony Shield",
    "type": "ARMO",
    "plugin": "sentinel.esp",
    "sources": [
     "sentinel.esp"
    ],
    "staff": false,
+   "craftable": false,
+   "recipe": "",
    "note": "",
+   "noteKind": "",
    "intent": "ebony",
    "evidence": "keyword armormaterialebony, spikearmorebony"
   },
@@ -890,6 +958,7 @@
    "reason": "material",
    "material": "nordic",
    "adeptRecipe": false,
+   "name": "Einherjar Boots",
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
    "sources": [
@@ -897,7 +966,10 @@
     "einherjararmors.esp"
    ],
    "staff": false,
-   "note": "",
+   "craftable": true,
+   "recipe": "1 IngotSteel + 1 IngotEbony + 4 IngotQuicksilver + 2 LeatherStrips",
+   "note": "recipe 1 IngotSteel + 1 IngotEbony + 4 IngotQuicksilver + 2 LeatherStrips, no ebony material keyword",
+   "noteKind": "ebony recipe",
    "intent": null,
    "evidence": ""
   },
@@ -907,6 +979,7 @@
    "reason": "material",
    "material": "nordic",
    "adeptRecipe": false,
+   "name": "Einherjar Cuirass",
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
    "sources": [
@@ -914,7 +987,10 @@
     "einherjararmors.esp"
    ],
    "staff": false,
-   "note": "",
+   "craftable": true,
+   "recipe": "1 IngotSteel + 1 IngotEbony + 6 IngotQuicksilver + 3 LeatherStrips",
+   "note": "recipe 1 IngotSteel + 1 IngotEbony + 6 IngotQuicksilver + 3 LeatherStrips, no ebony material keyword",
+   "noteKind": "ebony recipe",
    "intent": null,
    "evidence": ""
   },
@@ -924,6 +1000,7 @@
    "reason": "material",
    "material": "nordic",
    "adeptRecipe": false,
+   "name": "Einherjar Gauntlets",
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
    "sources": [
@@ -931,7 +1008,10 @@
     "einherjararmors.esp"
    ],
    "staff": false,
-   "note": "",
+   "craftable": true,
+   "recipe": "1 IngotSteel + 1 IngotEbony + 3 IngotQuicksilver + 2 LeatherStrips",
+   "note": "recipe 1 IngotSteel + 1 IngotEbony + 3 IngotQuicksilver + 2 LeatherStrips, no ebony material keyword",
+   "noteKind": "ebony recipe",
    "intent": null,
    "evidence": ""
   },
@@ -941,6 +1021,7 @@
    "reason": "material",
    "material": "nordic",
    "adeptRecipe": false,
+   "name": "Einherjar Horned Helmet",
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
    "sources": [
@@ -948,7 +1029,10 @@
     "einherjararmors.esp"
    ],
    "staff": false,
-   "note": "",
+   "craftable": true,
+   "recipe": "1 IngotSteel + 1 IngotEbony + 4 IngotQuicksilver + 1 06BC0B:skyrim.esm + 2 LeatherStrips",
+   "note": "recipe 1 IngotSteel + 1 IngotEbony + 4 IngotQuicksilver + 1 06BC0B:skyrim.esm + 2 LeatherStrips, no ebony material keyword",
+   "noteKind": "ebony recipe",
    "intent": null,
    "evidence": ""
   },
@@ -958,6 +1042,7 @@
    "reason": "material",
    "material": "nordic",
    "adeptRecipe": false,
+   "name": "Einherjar Plumed Helmet",
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
    "sources": [
@@ -965,7 +1050,10 @@
     "einherjararmors.esp"
    ],
    "staff": false,
-   "note": "",
+   "craftable": true,
+   "recipe": "3 03F7F8:skyrim.esm + 1 IngotSteel + 1 IngotEbony + 5 IngotQuicksilver + 2 LeatherStrips",
+   "note": "recipe 3 03F7F8:skyrim.esm + 1 IngotSteel + 1 IngotEbony + 5 IngotQuicksilver + 2 LeatherStrips, no ebony material keyword",
+   "noteKind": "ebony recipe",
    "intent": null,
    "evidence": ""
   },
@@ -975,6 +1063,7 @@
    "reason": "material",
    "material": "nordic",
    "adeptRecipe": false,
+   "name": "Einherjar Plated Helmet",
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
    "sources": [
@@ -982,7 +1071,10 @@
     "einherjararmors.esp"
    ],
    "staff": false,
-   "note": "",
+   "craftable": true,
+   "recipe": "1 IngotSteel + 1 IngotEbony + 5 IngotQuicksilver + 1 06BC0A:skyrim.esm + 2 LeatherStrips",
+   "note": "recipe 1 IngotSteel + 1 IngotEbony + 5 IngotQuicksilver + 1 06BC0A:skyrim.esm + 2 LeatherStrips, no ebony material keyword",
+   "noteKind": "ebony recipe",
    "intent": null,
    "evidence": ""
   },
@@ -992,6 +1084,7 @@
    "reason": "material",
    "material": "nordic",
    "adeptRecipe": false,
+   "name": "Einherjar Plated Cuirass",
    "type": "ARMO",
    "plugin": "einherjararmors.esp",
    "sources": [
@@ -999,7 +1092,10 @@
     "einherjararmors.esp"
    ],
    "staff": false,
-   "note": "",
+   "craftable": true,
+   "recipe": "2 IngotSteel + 2 IngotEbony + 7 IngotQuicksilver + 3 LeatherStrips",
+   "note": "recipe 2 IngotSteel + 2 IngotEbony + 7 IngotQuicksilver + 3 LeatherStrips, no ebony material keyword",
+   "noteKind": "ebony recipe",
    "intent": null,
    "evidence": ""
   },
@@ -1009,6 +1105,7 @@
    "reason": "rank",
    "rank": "Expert",
    "factionGear": false,
+   "name": "Desert Wanderer Lowered Hood",
    "type": "ARMO",
    "plugin": "redgarb.esp",
    "sources": [
@@ -1016,7 +1113,10 @@
     "redgarb.esp"
    ],
    "staff": false,
+   "craftable": true,
+   "recipe": "1 LeatherStrips + 2 Leather01",
    "note": "",
+   "noteKind": "",
    "intent": null,
    "evidence": ""
   }

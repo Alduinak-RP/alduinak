@@ -28,9 +28,14 @@ FALMER_KW = re.compile(r'materi[ae]lfalmer')
 FALMER_DIR = re.compile(r'(^|[\\/])falmer[^\\/]*[\\/]', re.I)
 BODY = 0x4
 TEACHES_SPELL = 0x04
+LOCALIZED = 0x80
 TEMPLATE = {'ARMO': 'TNAM', 'WEAP': 'CNAM'}
 WORLD_MODELS = ('MOD2', 'MOD4')
 LIST_FIELDS = ('reason', 'material', 'rank', 'adeptRecipe', 'factionGear')
+ITEM_TYPES = {'ARMO', 'WEAP', 'AMMO', 'BOOK', 'SCRL'}
+# Recipe components are mostly MISC (ingots, leather); their editor ids name the recipes
+fi.TYPES = fi.TYPES | {'MISC'}
+EBONY_PART = re.compile('ebony', re.I)
 
 
 def num(v):
@@ -51,17 +56,59 @@ def models(r):
     return [zstr(v) for t, v in r.subs() if t in WORLD_MODELS]
 
 
-def classify(lo, kw, gid):
+def text(v):
+    b = v.split(b'\0')[0]
+    try:
+        return b.decode('utf-8')
+    except UnicodeDecodeError:
+        return b.decode('cp1252', 'replace')
+
+
+def recipes_of(lo, kw):
+    # Crafting recipes per product key as (component editor id, count) lists; tempering and the parking bench are not crafting
+    out = {}
+    for key, (t, r, m, n) in lo.recs.items():
+        if t != 'COBJ':
+            continue
+        subs = r.subs()
+        cnam = next((v for x, v in subs if x == 'CNAM'), None)
+        bnam = next((v for x, v in subs if x == 'BNAM'), None)
+        if not cnam or not bnam or kw.get(lo.ref(bnam, m, n), '').lower() in fi.NOT_CRAFTING:
+            continue
+        parts = []
+        for x, v in subs:
+            if x == 'CNTO' and len(v) >= 8:
+                ck = lo.ref(v[:4], m, n)
+                parts.append((edid(lo.recs[ck][1]) if ck in lo.recs else f'{ck[1]:06X}:{ck[0]}', struct.unpack_from('<i', v, 4)[0]))
+        out.setdefault(lo.ref(cnam, m, n), []).append(parts)
+    return out
+
+
+def recipe_text(parts):
+    return ' + '.join(f'{c} {e}' for e, c in parts)
+
+
+def classify(lo, kw, gid, recipes, localized):
     key = lo.key_of(gid)
     rec = lo.recs.get(key) if key else None
-    if not rec:
+    if not rec or rec[0] not in ITEM_TYPES:
         return {'intent': 'unknown', 'evidence': 'no ARMO, WEAP, AMMO, BOOK or SCRL record with this id in the load order'}
     t, r, m, n = rec
     ref = sub(r, TEMPLATE.get(t, '----'))
-    base = lo.recs.get(lo.ref(ref, m, n)) if ref else None
+    base_key = lo.ref(ref, m, n) if ref else None
+    base = lo.recs.get(base_key) if base_key else None
     # The plugins whose records decide this row: the defining one, the winning override and its template's winning override
     sources = sorted({key[0], n.lower()} | ({base[3].lower()} if base else set()))
-    row = {'edid': edid(r), 'type': t, 'plugin': key[0], 'sources': sources, 'staff': False, 'note': ''}
+    # Names only from plugins that store them inline; a localized plugin keeps them in its string files
+    full = ''
+    for rr, p in [(r, n)] + ([(base[1], base[3])] if base else []):
+        v = sub(rr, 'FULL')
+        if v:
+            full = '' if localized.get(p.lower()) else text(v)
+            break
+    recs = recipes.get(key, []) + (recipes.get(base_key, []) if base else [])
+    row = {'edid': edid(r), 'name': full, 'type': t, 'plugin': key[0], 'sources': sources, 'staff': False, 'craftable': bool(recs),
+           'recipe': ' or '.join(dict.fromkeys(recipe_text(p) for p in recs[:3])), 'note': '', 'noteKind': ''}
     if t == 'BOOK':
         d = sub(r, 'DATA')
         return {**row, 'intent': 'spell tome', 'evidence': 'book that teaches a spell'} if d and d[0] & TEACHES_SPELL else {**row, 'intent': None, 'evidence': 'book'}
@@ -73,10 +120,14 @@ def classify(lo, kw, gid):
     row['staff'] = t == 'WEAP' and ('weaptypestaff' in kws or (sub(r, 'DNAM') or b'\0')[0] == fi.STAFF_ANIM)
     ebony = sorted(k for k in kws if EBONY_KW.search(k))
     if ebony:
-        note = 'a daedric artifact' if 'daedricartifact' in kws else 'ammunition' if t == 'AMMO' else ''
-        return {**row, 'intent': 'ebony', 'evidence': 'keyword ' + ', '.join(ebony), 'note': note}
-    if 'aldcatmat_ebony' in kws:
-        row['note'] = 'crafted mostly from ebony (aldcatmat_ebony), but no ebony material keyword'
+        kind = 'artifact' if 'daedricartifact' in kws else 'ammunition' if t == 'AMMO' else ''
+        note = 'a daedric artifact' if kind == 'artifact' else kind
+        return {**row, 'intent': 'ebony', 'evidence': 'keyword ' + ', '.join(ebony), 'note': note, 'noteKind': kind}
+    with_ebony = [p for p in recs if any(EBONY_PART.search(e) for e, c in p)]
+    if with_ebony:
+        row['note'], row['noteKind'] = f'recipe {recipe_text(with_ebony[0])}, no ebony material keyword', 'ebony recipe'
+    elif 'aldcatmat_ebony' in kws:
+        row['note'], row['noteKind'] = 'in the ebony crafting category (aldcatmat_ebony), but no ebony material keyword and no ebony in its recipe', 'ebony category'
     bod = sub(r, 'BOD2') or sub(r, 'BODT') or (base and (sub(base[1], 'BOD2') or sub(base[1], 'BODT')))
     body = t == 'ARMO' and bod and struct.unpack_from('<I', bod, 0)[0] & BODY
     falmer = [f'keyword {k}' for k in sorted(kws) if FALMER_KW.search(k)] or [f'model {p}' for p in worn if FALMER_DIR.search(p)]
@@ -130,6 +181,11 @@ def main():
         sys.exit(f'{", ".join(flipped)} changed its light flag since the strip, so the backup ids mean other records')
     now = {nm.lower(): h for nm, h in lo.files}
     kw = {k: edid(r) for k, (t, r, m, n) in lo.recs.items() if t == 'KYWD'}
+    recipes = recipes_of(lo, kw)
+    localized = {}
+    for nm in names:
+        with open(os.path.join(s['dataDir'], nm), 'rb') as f:
+            localized[nm.lower()] = bool(struct.unpack_from('<I', f.read(12), 8)[0] & LOCALIZED)
 
     docs = json.loads(raw)
     listed = {i['globalId']: i for i in lst['items'] if info.get('factionGear') or not i.get('factionGear')}
@@ -147,7 +203,7 @@ def main():
     items = {}
     for g in sorted(ids):
         it = listed.get(g, {})
-        items[f'0x{g:08X}'] = {'listed': bool(it), 'edid': it.get('edid', ''), **{k: it[k] for k in LIST_FIELDS if k in it}, **classify(lo, kw, g)}
+        items[f'0x{g:08X}'] = {'listed': bool(it), 'edid': it.get('edid', ''), **{k: it[k] for k in LIST_FIELDS if k in it}, **classify(lo, kw, g, recipes, localized)}
 
     was = {p['name'].lower(): p['sha256'] for p in lst['plugins']}
     out = {

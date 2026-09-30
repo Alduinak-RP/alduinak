@@ -61,7 +61,12 @@ else back:
   never touched.
 - `strip-intent.json` sorts every removed id from the plugin data: an ebony
   material keyword, a book that teaches a spell, or a body-slot armour with a
-  Falmer keyword or model folder stays removed. It also carries the part of
+  Falmer keyword or model folder stays removed. It also keeps each item's
+  in-game name (where the plugin stores it inline) and crafting recipe, so
+  the report names what a material keyword covers when the names do not say
+  it (the daedric keyword on Ancient Nord armour), names what stays removed,
+  and lists gear whose recipe takes ebony ingots without an ebony keyword
+  (Einherjar, Nordic Carved, the Black Dragon Ninjato) as one decision. It also carries the part of
   the strip's list the backup needs (the full list, sha 3c3871dd, was rebuilt
   with `forbidden-items.py` from the professions plugin b843723d in
   `alduinak-r13\esp\professions` and the 89-plugin load order).
