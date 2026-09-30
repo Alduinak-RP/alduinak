@@ -41,6 +41,8 @@ export const baseIdOf = (mp: Mp, actorId: number): number => {
 };
 
 export const GOLD_BASE_ID = 0x0000000f;
+// Skyrim.esm weapBasicKnife01, the hunter's skinning knife and starting kit
+export const HUNTING_KNIFE_ID = 0x0001f25a;
 
 // Set on a character whose starting items carried gold, { count, at }; its profession kit then comes without gold
 export const STARTER_GOLD_PROP = "private.starterGold";

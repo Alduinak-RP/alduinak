@@ -3,7 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
 import { spellInfo, SpellType } from "./espmMagic";
-import { GOLD_BASE_ID, addItemTo, addSpellTo, chainMpHook, hadStarterGold, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
+import { GOLD_BASE_ID, HUNTING_KNIFE_ID, addItemTo, addSpellTo, chainMpHook, hadStarterGold, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
 import { parseStartingItems } from "./spawn";
 import { BLANK_BOOK_EDID } from "./writingSystem";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
@@ -255,7 +255,7 @@ interface KitItem {
   count: number;
 }
 
-// Skyrim.esm: IngotIron, Leather01, LeatherStrips, Axe01, weapPickaxe, SaltPile, IronDagger, HuntingBow, IronArrow, Hoe; the mage's blank book is added at boot
+// Skyrim.esm: IngotIron, Leather01, LeatherStrips, Axe01, weapPickaxe, SaltPile, IronDagger, weapBasicKnife01; the farmer's hoe and the mage's blank book are added at boot
 const DEFAULT_KITS: Record<string, KitItem[]> = {
   blacksmith: [{ baseId: 0x0005ace4, count: 5 }],
   tailor: [{ baseId: 0x000db5d2, count: 5 }, { baseId: 0x000800e4, count: 5 }],
@@ -263,7 +263,7 @@ const DEFAULT_KITS: Record<string, KitItem[]> = {
   miner: [{ baseId: 0x000e3c16, count: 1 }],
   cook: [{ baseId: 0x00034cdf, count: 10 }],
   warrior: [{ baseId: 0x0001397e, count: 1 }],
-  hunter: [{ baseId: 0x00013985, count: 1 }, { baseId: 0x0001397d, count: 20 }],
+  hunter: [{ baseId: HUNTING_KNIFE_ID, count: 1 }],
   farmer: [],
   mage: [],
 };

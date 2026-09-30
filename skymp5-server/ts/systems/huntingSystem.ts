@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
-import { addItemTo, chainMpHook, hex, holdsItem, isAlive, isNear, isPlayerActor, notifyActor, sendActionLock } from "./actorUtil";
+import { HUNTING_KNIFE_ID, addItemTo, chainMpHook, hex, holdsItem, isAlive, isNear, isPlayerActor, notifyActor, sendActionLock } from "./actorUtil";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
 import { MasterySystem } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
@@ -31,8 +31,6 @@ const BUTCHER_RANK = 3;
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
 const ANIMAL_KEYWORD = "ActorTypeAnimal";
-// Skyrim.esm Hunting Knife
-const HUNTING_KNIFE = 0x0001f25a;
 const SKIN_SECONDS = 5;
 const SKIN_REACH = 400;
 // The kneel the flora harvest and the emote wheel play; its Kneeling_Behavior plays the same clips as the IdleSearchBody idle
@@ -146,7 +144,7 @@ export class HuntingSystem implements System {
     const peltId = pelt?.rule.peltId || 0;
     const meat = firstRuleFor(names, this.meatRules)?.rule;
     if ((!peltId && !meat && !this.meatOf(mp, bodyId).length) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
-    const refusal = !holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE) ? "A hunting knife would take its pelt."
+    const refusal = !holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE_ID) ? "A hunting knife would take its pelt."
       : !this.needs.canPay(actorId, "fight", rank, true) ? "You are too tired to skin it. Rest a while." : "";
     if (refusal) {
       setImmediate(() => notifyActor(mp, actorId, refusal));

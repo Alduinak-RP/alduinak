@@ -109,7 +109,7 @@ character starts with one 50:
 | Mage | a blank book (`AldWritingBookBlank`) and 50 gold |
 | Blacksmith | 5 Iron Ingot (`0x5ACE4`) and 50 gold |
 | Cook | 10 Salt Pile (`0x34CDF`) and 50 gold |
-| Hunter | Hunting Bow (`0x13985`), 20 Iron Arrow (`0x1397D`) and 50 gold |
+| Hunter | Hunting Knife (`0x1F25A`, `weapBasicKnife01`, named "Knife" in game; the knife skinning needs) and 50 gold |
 | Miner | Pickaxe (`0xE3C16`) and 50 gold |
 | Tailor | 5 Leather (`0xDB5D2`), 5 Leather Strips (`0x800E4`) and 50 gold |
 | Warrior | Iron Dagger (`0x1397E`) and 50 gold |
@@ -561,7 +561,7 @@ Expert hunter, every kind of meat the corpse dropped has a 25% chance to hand
 the hunter one more, straight into their inventory.
 
 Pelts never drop as loot: the plugin strips them from creature inventories.
-A hunter (any rank) holding a Hunting Knife (`0001F25A`) skins a dead animal
+A hunter (any rank) holding a Hunting Knife (`0001F25A`, the one in the hunter's starting kit) skins a dead animal
 with the interact key: spawned animals through `SearchSystem.bodyAction` (the
 search request the client already sends for a body), plugin-placed ones through
 their native activation. The skinner kneels over it for 5 seconds with
