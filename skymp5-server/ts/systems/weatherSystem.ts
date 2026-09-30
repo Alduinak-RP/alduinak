@@ -331,6 +331,13 @@ export class WeatherSystem implements System {
     return this.regions.get(regionId)?.def.name ?? regionId;
   }
 
+  // The weather the region shows now, forced or rolled; null for an unknown region or with the sync off
+  currentWeatherOf(regionId: string): { id: number; edid: string; kind: string } | null {
+    const state = this.enabled ? this.regions.get(regionId)?.state : undefined;
+    const entry = state?.weatherDesc ? this.byDesc.get(state.weatherDesc.toLowerCase()) : undefined;
+    return entry ? { id: entry.id, edid: entry.edid, kind: entry.kind } : null;
+  }
+
   private isWorld(mp: Mp, id: number): boolean {
     let known = this.worldCache.get(id);
     if (known === undefined) {
