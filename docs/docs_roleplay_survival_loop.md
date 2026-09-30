@@ -439,15 +439,26 @@ Picking up a player in bleedout **ends their bleedout** (§8).
   third person and its own client holds the body `carryOffsetForward` ahead of
   and `carryOffsetUp` above the carrier's clone every frame, turned with the
   carrier (see the carry pose keys in `docs_server_configuration_reference.md`).
-  The hold (`sync/carryHold.ts`) is a non-latent TranslateTo that arrives
-  within about three frames; the latent SetAngle that turns the lying body is
-  written only when it is 5 degrees or more off, one at a time and at most
-  four a second. The carrier's clone on that client turns to the carrier's
-  heading at the AI's pace, with no deadzone, and the body follows its actual
-  facing. While carried, the pose is re-sent when no idle plays (the
-  `bIdlePlaying` graph variable) rather than after a landing, since a lifted
-  body can read as falling; after three re-sends in a row that bring no idle
-  back the check stops for that carry and says so in the Platform log.
+  The body sits in the chair sit idle (`IdleChairEnterInstant`), which has no
+  enter clip. The hold (`sync/carryHold.ts`) hands the placement to
+  SkyrimPlatform (`setCarryHold`, `CarryHold.cpp`): at the start of every
+  frame, on the main thread and before the actors update, it puts the body at
+  its place on the carrier with the engine's own warp (`Actor::SetPosition`
+  with the character controller, which also zeroes its velocity and resets
+  its fall) and sets its heading (`Actor::SetRotationZ`), with no Papyrus. The
+  client refreshes the hold every frame and ends it with `clearCarryHold`; a
+  hold it stops refreshing lets go after 0.5 s (a paused game keeps it), and
+  the native side skips a frame where either actor has no 3D, they are in
+  different cells or worldspaces, more than 2048 units apart, or the body is
+  dead, ragdolled or mounted. A client without the export, or on a game where
+  the hook could not be checked, falls back to a per-frame non-latent
+  TranslateTo plus the latent SetAngle past 5 degrees at most four a second.
+  The carrier's clone on that client turns to the carrier's heading at the
+  AI's pace, with no deadzone, and the body follows its actual facing. While
+  carried, the pose is re-sent when no idle plays (the `bIdlePlaying` graph
+  variable) rather than after a landing, since a lifted body can read as
+  falling; after three re-sends in a row that bring no idle back the check
+  stops for that carry and says so in the Platform log.
   Release with:
 
   ```json
@@ -481,9 +492,16 @@ prisoner can also be carried).
   (3D reload, equipment change, cell change) still gets its rebuild.
 - **Summary line**: when a carry ends the carried client writes one line to
   `skyrim-platform.log`:
-  `carry summary: 34.2 s held, 58 fps average while carried, 2010 translates, 6 heading writes, largest heading error 4.1, 0 pose re-sends, 1 server moves (1 short hops), largest gap 7 units`.
-  Gaps and heading errors count from one second after the pickup or a server
-  move. 1.5 s into a carry it also logs
+  `carry summary: 34.2 s held, 58 fps average while carried, native hold 2010 frames (0 skipped, 2 snaps), drift before each write mean 1.4 max 3.9 worst second 2.2 units, heading drift max 3.1, 0 pose re-sends (IdleChairEnterInstant), 0 of 342 checks in the jump or fall state, 1 server moves (1 short hops)`.
+  Drift is how far the body got from its place during one frame, measured
+  before the next write, so it is about one frame of the carrier's own
+  movement; a snap is the first write after a pickup, a pause or a skipped
+  frame and is not a drift sample. On the script fallback the hold part reads
+  `script hold 2010 translates, 6 heading writes, largest heading error 4.1, largest gap 7 units`,
+  where gaps and heading errors count from one second after the pickup or a
+  server move. A native hold the client stopped refreshing writes
+  `CarryHold: lapsed, <body> on <carrier>: ...` with the same numbers, and the
+  hook's install result is one `CarryHold:` line at startup. 1.5 s into a carry it also logs
   `carry nodes (right/forward/up from the root): body pelvis r/f/u, carrier left hand r/f/u, right hand r/f/u`,
   the numbers `carryOffsetForward` and `carryOffsetUp` are tuned from.
 

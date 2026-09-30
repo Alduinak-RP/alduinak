@@ -7,7 +7,7 @@ import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
 import { applyMovement, isCarrierCloneId } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
-import { applyCarried, makeCarriedViewState } from "../sync/carryHold";
+import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
 import { Movement, NiPoint3 } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
@@ -321,6 +321,8 @@ export class FormView {
     // Unmarked at once, since a copy spawned right after a game load can reuse the id
     if (refrId >= 0xff000000) ObjectReferenceEx.markServerCopy(refrId, false);
     this.mountState = makeMountState();
+    // Before the id can go to another copy
+    releaseHold(this.carriedState.hold);
     this.carriedState = makeCarriedViewState();
     once("update", () => {
       if (refrId >= 0xff000000) {
@@ -443,7 +445,7 @@ export class FormView {
     // A rider clone is left to the engine while it rides, and so is a horse clone while the engine is asked to seat one or a clone in a killmove
     const mounted = !model.isMyClone &&
       (applyMount(refr, model, this.mountState) || isMountSuspended(this.refrId) || isCloneMovementSuspended(this.refrId));
-    // A carried copy this client neither is nor runs lies on the local copy of its carrier every frame; its own packets move nothing while it does
+    // A carried copy this client neither is nor runs is held on the local copy of its carrier every frame; its own packets move nothing while it is
     const held = applyCarried(refr, model, this.carriedState, !model.isMyClone && !mounted && !alreadyHosted);
     const movementHeld = mounted || held;
 

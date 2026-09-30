@@ -39,7 +39,7 @@ type Mp = any;
 //   Server -> Client:
 //     { customPacketType: "playerMenuState", target, canRelease, ...flags } // -> the requester only: whether their Release applies, plus menuFlagProviders' flags
 //     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
-//     { customPacketType: "carryState",      carrying, anim, target, carryForward, carryUp, carryYaw } // -> carrier's RestraintService (pose, and where a carried NPC is held)
+//     { customPacketType: "carryState",      carrying, anim, target, carriedAnim, carryForward, carryUp, carryYaw } // -> carrier's RestraintService (pose, and where and how a carried NPC is held)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
 //     { customPacketType: "captureNotice",   text }                        // -> corner notification
 //   Neighbour-visible property on the carried actor, registered in the gamemode's 50_properties.js:
@@ -92,8 +92,8 @@ const DOOR_FOLLOW_MS = 5000;
 // A carrier who moved farther than this between follow ticks was teleported
 const CARRY_TELEPORT_SQ = 2048 * 2048;
 
-// Carried pose: a vanilla lying idle held in the carrier's arms, turned 45 degrees from their facing. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
-const DEFAULT_CARRIED_ANIM = "IdleLayDown";
+// Carried pose: the vanilla chair sit idle held in the carrier's arms, turned 45 degrees from their facing. Overridable via "carriedAnimEvent", "carryOffsetForward", "carryOffsetUp", "carryYawOffset"
+const DEFAULT_CARRIED_ANIM = "IdleChairEnterInstant";
 const DEFAULT_CARRY_FORWARD = 16;
 const DEFAULT_CARRY_UP = 40;
 const DEFAULT_CARRY_YAW = 45;
@@ -893,6 +893,7 @@ export class CaptureSystem implements System {
       carrying,
       anim: this.carrierAnim,
       target: npcTarget,
+      carriedAnim: this.carriedAnim,
       carryForward: this.carryForward,
       carryUp: this.carryUp,
       carryYaw: this.carryYaw,

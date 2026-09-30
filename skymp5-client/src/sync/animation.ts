@@ -83,7 +83,7 @@ const actorSitAnimsLowerCase = [
   'idlechairchildfrontenter',
   'idlechairchildleftenter',
   'idlechairchildrightenter',
-  // The carried pose: its copies turn by setAngle and drop collision like a seated one
+  // A carriedAnimEvent override: its copies turn by setAngle and drop collision like a seated one
   'idlelaydown',
 ];
 

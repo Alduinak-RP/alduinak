@@ -1,3 +1,4 @@
+import * as sp from "skyrimPlatform";
 import { Actor, Game, NetImmerse, ObjectReference } from "skyrimPlatform";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { FormModel } from "../view/model";
@@ -7,6 +8,7 @@ import { wrappedAngleDiff } from "./movementApply";
 import { stopMoving } from "./mountApply";
 
 // Holds a carried body on the local copy of its carrier every frame: the carried player's own client, the carrier's client for a pet it hosts, everyone else through ff_carriedBy
+// SkyrimPlatform places the body at every frame start where it has the export (setCarryHold); older clients chase the target with a per-frame TranslateTo
 
 // Ahead of and above the carrier's root, turned yaw degrees from the carrier's facing
 export interface CarryPose {
@@ -16,6 +18,25 @@ export interface CarryPose {
 }
 
 export const DEFAULT_CARRY_POSE: Readonly<CarryPose> = { forward: 16, up: 40, yaw: 45 };
+
+// What SkyrimPlatform's frame-start hold (CarryHold.cpp) measured: drift is how far the body got from its place during a frame, before the next write
+export interface NativeHoldStats {
+  frames: number;
+  skipped: number;
+  snaps: number;
+  sampled: number;
+  meanDrift: number;
+  maxDrift: number;
+  worstSecond: number;
+  maxYawDrift: number;
+}
+
+interface NativeCarryApi {
+  setCarryHold?: (heldFormId: number, carrierFormId: number, forward: number, up: number, yaw: number) => boolean;
+  clearCarryHold?: (heldFormId: number) => NativeHoldStats | null;
+}
+
+const nativeCarry = sp as unknown as NativeCarryApi;
 
 export interface HoldState {
   // When the latent heading write in flight started, 0 when none
@@ -27,11 +48,70 @@ export interface HoldState {
   headingWrites: number;
   maxHeadingError: number;
   maxGap: number;
+  // The body the native hold places for this state, 0 when it holds none
+  nativeHeld: number;
+  // The native holds of this state so far, merged as each one ends
+  native: NativeHoldStats;
 }
+
+const emptyNativeStats = (): NativeHoldStats => ({
+  frames: 0, skipped: 0, snaps: 0, sampled: 0, meanDrift: 0, maxDrift: 0, worstSecond: 0, maxYawDrift: 0,
+});
 
 export const makeHoldState = (): HoldState => ({
   headingPendingSince: 0, lastHeadingMs: 0, settledAt: 0, translates: 0, headingWrites: 0, maxHeadingError: 0, maxGap: 0,
+  nativeHeld: 0, native: emptyNativeStats(),
 });
+
+const mergeNativeStats = (into: NativeHoldStats, add: NativeHoldStats): void => {
+  const sampled = into.sampled + add.sampled;
+  into.meanDrift = sampled ? (into.meanDrift * into.sampled + add.meanDrift * add.sampled) / sampled : 0;
+  into.sampled = sampled;
+  into.frames += add.frames;
+  into.skipped += add.skipped;
+  into.snaps += add.snaps;
+  into.maxDrift = Math.max(into.maxDrift, add.maxDrift);
+  into.worstSecond = Math.max(into.worstSecond, add.worstSecond);
+  into.maxYawDrift = Math.max(into.maxYawDrift, add.maxYawDrift);
+};
+
+// Ends this state's native hold and keeps what it measured; the body is then left where it is
+export const releaseHold = (s: HoldState): void => {
+  if (!s.nativeHeld) {
+    return;
+  }
+  const stats = typeof nativeCarry.clearCarryHold === "function" ? nativeCarry.clearCarryHold(s.nativeHeld) : null;
+  s.nativeHeld = 0;
+  if (stats) {
+    mergeNativeStats(s.native, stats);
+  }
+};
+
+// Hands the frame's placement to the engine's frame start; false without the export or its hook, which leaves the script hold
+const holdNatively = (held: Actor, carrier: ObjectReference, pose: CarryPose, s: HoldState): boolean => {
+  if (typeof nativeCarry.setCarryHold !== "function") {
+    return false;
+  }
+  const heldId = held.getFormID();
+  if (s.nativeHeld !== heldId) {
+    releaseHold(s);
+  }
+  if (!nativeCarry.setCarryHold(heldId, carrier.getFormID(), pose.forward, pose.up, pose.yaw)) {
+    return false;
+  }
+  s.nativeHeld = heldId;
+  return true;
+};
+
+// The hold part of a carry summary line
+export const describeHold = (s: HoldState): string => {
+  const n = s.native;
+  return n.frames
+    ? `native hold ${n.frames} frames (${n.skipped} skipped, ${n.snaps} snaps), drift before each write mean ${n.meanDrift.toFixed(1)} ` +
+      `max ${n.maxDrift.toFixed(1)} worst second ${n.worstSecond.toFixed(1)} units, heading drift max ${n.maxYawDrift.toFixed(1)}`
+    : `script hold ${s.translates} translates, ${s.headingWrites} heading writes, largest heading error ${s.maxHeadingError.toFixed(1)}, ` +
+      `largest gap ${Math.round(s.maxGap)} units`;
+};
 
 // The translate arrives within about three frames
 const HOLD_LEAD_S = 0.05;
@@ -74,6 +154,9 @@ export const restartHold = (s: HoldState, from: number): void => {
 
 // Runs every frame; a body farther than HOLD_MAX_DIST from its place is left alone
 export const holdOnCarrier = (held: Actor, carrier: ObjectReference, pose: CarryPose, s: HoldState, now: number): void => {
+  if (holdNatively(held, carrier, pose, s)) {
+    return;
+  }
   const target = carryTarget(carrier, pose);
   const dist = ObjectReferenceEx.getDistance(ObjectReferenceEx.getPos(held), target.pos);
   if (dist > HOLD_MAX_DIST) {
@@ -123,7 +206,7 @@ const nodeOffset = (refr: ObjectReference, node: string): string => {
   return [dx * Math.cos(yaw) - dy * Math.sin(yaw), dx * Math.sin(yaw) + dy * Math.cos(yaw), dz].map((v) => v.toFixed(1)).join("/");
 };
 
-// The numbers carryOffsetForward and carryOffsetUp are tuned from: where the lying pelvis sits and where the carrier's hands are
+// The numbers carryOffsetForward and carryOffsetUp are tuned from: where the carried pelvis sits and where the carrier's hands are
 export const describeCarryNodes = (body: ObjectReference, carrier: ObjectReference | null): string =>
   `carry nodes (right/forward/up from the root): body pelvis ${nodeOffset(body, "NPC Pelvis [Pelv]")}, ` +
   `carrier left hand ${carrier ? nodeOffset(carrier, "NPC L Hand [LHnd]") : "none"}, right hand ${carrier ? nodeOffset(carrier, "NPC R Hand [RHnd]") : "none"}`;
@@ -144,7 +227,7 @@ const carriedByOf = (model: FormModel): CarriedBy | null => {
 
 export interface CarriedViewState {
   holding: boolean;
-  // Held on the local player: this client is the carrier, so the body lies at its camera
+  // Held on the local player: this client is the carrier, so the body sits at its camera
   onPlayer: boolean;
   hold: HoldState;
 }
@@ -171,6 +254,9 @@ export const applyCarried = (refr: ObjectReference, model: FormModel, state: Car
       holding = true;
       state.onPlayer = carrierLocalId === 0x14;
     }
+  }
+  if (state.holding && !holding) {
+    releaseHold(state.hold);
   }
   state.holding = holding;
   return holding;

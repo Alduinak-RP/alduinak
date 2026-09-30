@@ -8,7 +8,7 @@ import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement } from "../../sync/movement";
 import { setCarrierClone } from "../../sync/movementApply";
 import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, isInSitPose, needsEmptyHands, setRefrCollision } from "../../sync/animation";
-import { CarryPose, DEFAULT_CARRY_POSE, describeCarryNodes, finiteOr, holdOnCarrier, makeHoldState, readCarryPose, restartHold } from "../../sync/carryHold";
+import { CarryPose, DEFAULT_CARRY_POSE, describeCarryNodes, describeHold, finiteOr, holdOnCarrier, makeHoldState, readCarryPose, releaseHold, restartHold } from "../../sync/carryHold";
 import { isPlayerCharacterId } from "./playerActionService";
 import { MountService } from "./mountService";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
@@ -19,8 +19,8 @@ import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 const BOUND_HANDS_ANIM_START = "OffsetBoundStandingStart";
 const CARRY_HOLD_ANIM_START = "OffsetCarryBasketStart";
 const OFFSET_STOP_ANIM = "OffsetStop";
-// Vanilla lying idle (the emote wheel's Lay Down); actors cannot pitch, so the lying look comes from the idle
-const CARRIED_ANIM_START = "IdleLayDown";
+// Vanilla chair sit idle; it plays without furniture, as on remote copies of seated players, and has no enter clip for a re-send to restart
+const CARRIED_ANIM_START = "IdleChairEnterInstant";
 const IDLE_EXIT_ANIM = "IdleForceDefaultState";
 // Vanilla bleedout kneel (IDLE 13ECC / 13ECE), its own graph layer with its own exit; whitelisted in sync/animation.ts
 const BLEEDOUT_ANIM_START = "bleedOutStart";
@@ -73,6 +73,9 @@ const SHEATHE_SETTLE_MS = 300;
 interface CarryStats {
   startMs: number;
   frames: number;
+  // Pose ticks while carried, and those that found the player in the jump or fall state
+  ticks: number;
+  inAirTicks: number;
   poseResends: number;
   serverMoves: number;
   shortHops: number;
@@ -106,12 +109,12 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   // The restrained player (captive); carrier is the carrier's server actor id, 0 when not carried:
  *   { "customPacketType": "restraintState", "boundHands": true }
  *   { "customPacketType": "restraintState", "carried": true, "carrier": 4278190090, "anim": "OffsetBoundStandingStart",
- *     "carriedAnim": "IdleLayDown", "carryForward": 16, "carryUp": 40, "carryYaw": 45 }
+ *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 16, "carryUp": 40, "carryYaw": 45 }
  *   { "customPacketType": "restraintState", "boundHands": false, "carried": false, "carrier": 0 }
  *
  *   // The carrier (pose only, no control change); target is the carried actor's server id, an NPC's clone is posed here, 0 for a passive job load:
  *   { "customPacketType": "carryState", "carrying": true, "anim": "OffsetCarryBasketStart", "target": 4278190090,
- *     "carryForward": 16, "carryUp": 40, "carryYaw": 45 }
+ *     "carriedAnim": "IdleChairEnterInstant", "carryForward": 16, "carryUp": 40, "carryYaw": 45 }
  *   { "customPacketType": "carryState", "carrying": false }
  *
  *   // A player at 0 health (BleedoutSystem); died skips the stand-up:
@@ -130,13 +133,14 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  * Effects on the local player:
  *   - boundHands: plays the bound-hands pose and disables fighting/sneaking/
  *     activation. Movement stays enabled so the prisoner can be marched/walked.
- *   - carried: plays a lying pose held carryForward ahead of and carryUp above
- *     the carrier's clone every frame (sync/carryHold.ts), turned carryYaw
- *     degrees from the carrier's facing and turning with it. Fully immobilised
- *     in third person; the camera can still orbit. The carrier's clone stops
- *     colliding with the player meanwhile. The carrier and observers hold their
- *     copy of the body on their own copy of the carrier (ff_carriedBy). One
- *     summary line per carry goes to the Platform log.
+ *   - carried: plays a seated pose held carryForward ahead of and carryUp above
+ *     the carrier's clone every frame (sync/carryHold.ts: SkyrimPlatform's
+ *     frame-start hold where the client has it), turned carryYaw degrees from
+ *     the carrier's facing and turning with it. Fully immobilised in third
+ *     person; the camera can still orbit. The carrier's clone stops colliding
+ *     with the player meanwhile. The carrier and observers hold their copy of
+ *     the body on their own copy of the carrier (ff_carriedBy). One summary
+ *     line per carry goes to the Platform log.
  *   - carrying: plays the carry-hold pose; fighting is disabled and a drawn
  *     weapon, fists or spell is sheathed. The carrier can still walk.
  *   - downed: kneels in the bleedout pose, cannot move, fight, sneak, activate
@@ -260,6 +264,7 @@ export class RestraintService extends ClientListener {
 
   private pauseHold(ms: number, shortHop: boolean): void {
     this.holdPausedUntil = Date.now() + ms;
+    releaseHold(this.holdState);
     restartHold(this.holdState, this.holdPausedUntil);
     if (this.carryStats) {
       this.carryStats.serverMoves++;
@@ -330,6 +335,9 @@ export class RestraintService extends ClientListener {
       }
       if (typeof content["anim"] === "string" && content["anim"]) {
         this.carrierAnim = content["anim"] as string;
+      }
+      if (typeof content["carriedAnim"] === "string" && content["carriedAnim"]) {
+        this.carriedAnim = content["carriedAnim"] as string;
       }
       this.readCarryOffsets(content);
       // A carried player poses itself through restraintState; only an NPC's clone is posed by the carrier
@@ -432,6 +440,10 @@ export class RestraintService extends ClientListener {
     }
 
     const inJump = player.getAnimationVariableBool("bInJumpState");
+    if (this.carried && this.carryStats) {
+      this.carryStats.ticks++;
+      if (inJump) this.carryStats.inAirTicks++;
+    }
     const idleCheck = this.carried && isStateIdle(this.carriedAnim) && !this.idleCheckOff;
     if (this.wasInJump && !inJump && !idleCheck) {
       this.poseDirty = true;
@@ -462,6 +474,7 @@ export class RestraintService extends ClientListener {
     const carrier = this.sp.ObjectReference.from(this.sp.Game.getFormEx(carrierLocalId));
     if (!carrier || !carrier.is3DLoaded() ||
       ObjectReferenceEx.getWorldOrCell(carrier) !== ObjectReferenceEx.getWorldOrCell(player)) {
+      releaseHold(this.holdState);
       return;
     }
     this.keepCarrierCollisionOff(carrierLocalId);
@@ -473,6 +486,7 @@ export class RestraintService extends ClientListener {
   private moveCarriedNpc(player: Actor, now: number): void {
     const npc = this.posedNpcLocalId ? this.sp.Actor.from(this.sp.Game.getFormEx(this.posedNpcLocalId)) : null;
     if (!npc || !npc.is3DLoaded() || ObjectReferenceEx.getWorldOrCell(npc) !== ObjectReferenceEx.getWorldOrCell(player)) {
+      releaseHold(this.npcHoldState);
       return;
     }
     this.keepCarrierCollisionOff(this.posedNpcLocalId);
@@ -500,17 +514,18 @@ export class RestraintService extends ClientListener {
   // One summary line per carry, so a test says what the hold cost and how close it stayed
   private trackCarry(): void {
     if (this.carried && !this.carryStats) {
-      this.carryStats = { startMs: Date.now(), frames: 0, poseResends: 0, serverMoves: 0, shortHops: 0, nodesLogged: false };
+      this.carryStats = { startMs: Date.now(), frames: 0, ticks: 0, inAirTicks: 0, poseResends: 0, serverMoves: 0, shortHops: 0, nodesLogged: false };
+      releaseHold(this.holdState);
       this.holdState = makeHoldState();
       this.idleResends = 0;
       this.idleCheckOff = false;
     } else if (!this.carried && this.carryStats) {
       const c = this.carryStats;
-      const s = this.holdState;
+      releaseHold(this.holdState);
       const seconds = (Date.now() - c.startMs) / 1000;
       logToPlatformLog(this, `carry summary: ${seconds.toFixed(1)} s held, ${Math.round(c.frames / Math.max(seconds, 0.001))} fps average while carried, ` +
-        `${s.translates} translates, ${s.headingWrites} heading writes, largest heading error ${s.maxHeadingError.toFixed(1)}, ` +
-        `${c.poseResends} pose re-sends, ${c.serverMoves} server moves (${c.shortHops} short hops), largest gap ${Math.round(s.maxGap)} units`);
+        `${describeHold(this.holdState)}, ${c.poseResends} pose re-sends (${this.carriedAnim}), ${c.inAirTicks} of ${c.ticks} checks in the jump or fall state, ` +
+        `${c.serverMoves} server moves (${c.shortHops} short hops)`);
       this.carryStats = null;
     }
     if (this.carryStats) this.carryStats.frames++;
@@ -772,6 +787,7 @@ export class RestraintService extends ClientListener {
     if (localId === this.posedNpcLocalId) {
       return;
     }
+    releaseHold(this.npcHoldState);
     if (this.posedNpcLocalId) {
       const previous = this.sp.Actor.from(this.sp.Game.getFormEx(this.posedNpcLocalId));
       if (previous) {
