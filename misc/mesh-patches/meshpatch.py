@@ -25,7 +25,9 @@ def arguments(archive):
 
 
 def read_source(data, archive, mesh, sha256):
-    source = Bsa(os.path.join(data, archive)).read(mesh.replace('/', '\\'))
+    path = os.path.join(data, archive)
+    check(os.path.isfile(path), f'{archive} not in {data}')
+    source = Bsa(path).read(mesh.replace('/', '\\'))
     check(source is not None, f'{mesh} not in {archive}')
     check(hashlib.sha256(source).hexdigest() == sha256,
           f'{archive} ships a different {mesh}; the mod changed, redo the diagnosis before patching')
