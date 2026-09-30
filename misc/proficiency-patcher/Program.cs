@@ -70,8 +70,8 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors,
-       categoriesStep, Steps.MarkerEffects]
+       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
+       Steps.DisableActors, categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
@@ -1063,20 +1063,41 @@ static class Steps
         }
     }
 
-    // ---- world changes: the references of AlduinakWorldChanges.esp, carried as spec data --------------------------
+    // ---- world changes: the references of Graves's world-changes plugins, carried as spec data ---------------------
     //
-    // Graves built that plugin in a Creation Kit that dropped its .esp master and rewrote every cell it opened, so
-    // only its references are carried, as plain spec data.
+    // His Creation Kit drops their .esp masters and rewrites every cell it opens, so only the references are carried.
     public static void World(PatchContext c)
     {
         if (c.Spec["world"] is not JsonObject w) return;
-        foreach (var p in w["placements"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
-            PlaceOwn(c, p, "world");
-        foreach (var mv in w["moves"]?.AsArray().Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>())
+        var placements = Entries(w["placements"]).ToList();
+        var placed = new Dictionary<string, PlacedObject>();
+        foreach (var p in placements)
+            if (PlaceOwn(c, p, "world") is { } r) placed[p["edid"]!.GetValue<string>()] = r;
+        // Load doors name each other, so they are linked once every reference exists
+        foreach (var p in placements.Where(p => p["teleport"] is JsonObject))
+            if (placed.TryGetValue(p["edid"]!.GetValue<string>(), out var door)) Teleport(c, door, p["teleport"]!.AsObject(), placed);
+        foreach (var mv in Entries(w["moves"]))
             MoveReference(c, mv, "world");
     }
 
-    // An override of the winner at the new position, keeping everything else it wins with
+    static void Teleport(PatchContext c, PlacedObject door, JsonObject t, Dictionary<string, PlacedObject> placed)
+    {
+        var name = t["door"]!.GetValue<string>();
+        FormKey target;
+        if (placed.TryGetValue(name, out var own)) target = own.FormKey;
+        else if (name.Contains(':') && c.Cache.TryResolve<IPlacedObjectGetter>(FormKey.Factory(name), out var other)) target = other.FormKey;
+        else { c.Error($"world: {door.EditorID} leads to '{name}', which is not a placed reference"); return; }
+        door.TeleportDestination = new TeleportDestination
+        {
+            Door = target.ToLink<IPlacedObjectGetter>(),
+            Position = Vec3(t["pos"]),
+            Rotation = Vec3(t["rot"]),
+            Flags = (TeleportDestination.Flag)(t["flags"]?.GetValue<int>() ?? 0),
+        };
+        c.Note($"World door {door.EditorID} {door.FormKey} leads to {name} {target}, arriving at {door.TeleportDestination.Position}");
+    }
+
+    // An override of the winner at the new position (and scale), keeping everything else it wins with
     static void MoveReference(PatchContext c, JsonObject mv, string kind)
     {
         var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
@@ -1086,34 +1107,54 @@ static class Steps
         var rec = refs[0].GetOrAddAsOverride(c.Mod);
         var from = rec.Placement!.Position;
         rec.Placement.Position = Vec3(mv["pos"]);
-        c.Note($"Move ({kind}) {key} ({c.EdidOf(rec.Base.FormKey)}): {from} in {refs[0].ModKey} -> {rec.Placement.Position}");
+        if (mv["scale"] != null) rec.Scale = mv["scale"]!.GetValue<float>();
+        c.Note($"Move ({kind}) {key} ({c.EdidOf(rec.Base.FormKey)}): {from} in {refs[0].ModKey} -> {rec.Placement.Position}{(mv["scale"] != null ? $", scale {rec.Scale}" : "")}");
     }
 
     // A reference of the plugin's own at a pinned local id, in an override of its cell taken from the load order winner
-    static void PlaceOwn(PatchContext c, JsonObject p, string kind)
+    static PlacedObject? PlaceOwn(PatchContext c, JsonObject p, string kind)
     {
         var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
         var edid = p["edid"]!.GetValue<string>();
         var cellKey = FormKey.Factory(p["cell"]!.GetValue<string>());
-        if (!cache.TryResolveContext<ICell, ICellGetter>(cellKey, out var cellCtx)) { c.Error($"{kind}: cell {cellKey} not found"); return; }
+        if (!cache.TryResolveContext<ICell, ICellGetter>(cellKey, out var cellCtx)) { c.Error($"{kind}: cell {cellKey} not found"); return null; }
         var name = p["base"]!.GetValue<string>();
         // An editor id names a record of the plugin or the load order, a form key one of the load order's
         var baseKey = name.Contains(':') ? FormKey.Factory(name) : c.KeyOf<IMajorRecordGetter>(name);
-        if (name.Contains(':') && !cache.TryResolve<IMajorRecordGetter>(baseKey, out _)) { c.Error($"{kind}: base object {name} not found"); return; }
+        if (name.Contains(':') && !cache.TryResolve<IMajorRecordGetter>(baseKey, out _)) { c.Error($"{kind}: base object {name} not found"); return null; }
         var id = Convert.ToUInt32(p["formId"]!.GetValue<string>(), 16);
+        var persistent = p["persistent"]?.GetValue<bool>() == true;
         var cell = cellCtx.GetOrAddAsOverride(c.Mod);
         var placed = c.OwnOrNew(edid, () =>
         {
             var key = new FormKey(c.Key, id);
             if (c.Mod.EnumerateMajorRecords().Any(r => r.FormKey == key)) throw new SpecException($"{kind}: '{edid}' wants the pinned id {key}, which another record already holds");
             var r = new PlacedObject(key, SkyrimRelease.SkyrimSE) { EditorID = edid };
-            cell.Temporary.Add(r);
+            (persistent ? cell.Persistent : cell.Temporary).Add(r);
             return r;
         });
         placed.Base.SetTo(baseKey);
         placed.Placement = new Placement { Position = Vec3(p["pos"]), Rotation = Vec3(p["rot"]) };
         if (p["scale"] != null) placed.Scale = p["scale"]!.GetValue<float>();
+        if (persistent) placed.MajorRecordFlagsRaw |= PersistentFlag;
+        if (p["flags"] != null) placed.MajorRecordFlagsRaw |= Convert.ToInt32(p["flags"]!.GetValue<string>(), 16);
+        // A collision box: the CollisionMarker static with a primitive shape on a collision layer
+        if (p["primitive"] is JsonObject prim)
+        {
+            var rgb = Vec3(prim["color"]);
+            var half = Vec3(prim["bounds"]);
+            placed.Primitive = new PlacedPrimitive
+            {
+                Type = (PlacedPrimitive.TypeEnum)prim["type"]!.GetValue<int>(),
+                // The spec holds the XPRM values; Mutagen's Bounds are twice those
+                Bounds = new P3Float(half.X * 2, half.Y * 2, half.Z * 2),
+                Color = System.Drawing.Color.FromArgb((int)MathF.Round(rgb.X * 255), (int)MathF.Round(rgb.Y * 255), (int)MathF.Round(rgb.Z * 255)),
+                Unknown = prim["unknown"]!.GetValue<float>(),
+            };
+        }
+        if (p["collisionLayer"] != null) placed.CollisionLayer = p["collisionLayer"]!.GetValue<uint>();
         c.Note($"{PatchContext.Cap(kind)} reference {edid} {placed.FormKey}: {c.EdidOf(baseKey)} in cell {cellKey} at {placed.Placement.Position}");
+        return placed;
     }
 
     static P3Float Vec3(JsonNode? n)
@@ -1360,7 +1401,7 @@ static class Steps
         foreach (var name in Edids(c, spec["refs"]))
         {
             var key = FormKey.Factory(name);
-            var contexts = cache.ResolveAllContexts<IPlacedObject, IPlacedObjectGetter>(key).ToList();
+            var contexts = cache.ResolveAllContexts<IPlaced, IPlacedGetter>(key).ToList();
             if (contexts.Count == 0) { c.Error($"disable reference: {name} not found"); continue; }
             var parent = ParentCanEnable(contexts[0].Record.EnableParent);
             if ((contexts[0].Record.MajorRecordFlagsRaw & InitiallyDisabled) != 0 && !parent) { already++; continue; }
@@ -1368,7 +1409,7 @@ static class Steps
             rec.MajorRecordFlagsRaw |= InitiallyDisabled;
             if (parent) rec.EnableParent = AlwaysOff();
             disabled++;
-            c.Note($"Disabled reference {name} ({c.EdidOf(rec.Base.FormKey)}) from {contexts[0].ModKey}{(parent ? ", enable parent now the player, opposite" : "")}");
+            c.Note($"Disabled reference {name} ({c.EdidOf(BaseOf(rec))}) from {contexts[0].ModKey}{(parent ? ", enable parent now the player, opposite" : "")}");
         }
         c.Note($"Disable references: {disabled} newly disabled, {already} already disabled");
     }
@@ -1406,6 +1447,14 @@ static class Steps
 
     static EnableParent AlwaysOff() =>
         new() { Reference = PlayerRef.ToLink<IPlacedGetter>(), Flags = EnableParent.Flag.SetEnableStateToOppositeOfParent };
+
+    static FormKey BaseOf(IPlacedGetter r) => r switch
+    {
+        IPlacedObjectGetter o => o.Base.FormKey,
+        IPlacedNpcGetter n => n.Base.FormKey,
+        IPlacedHazardGetter h => h.Hazard.FormKey,
+        _ => FormKey.Null,
+    };
 
     // ---- overrides: one field of a record another plugin defines, a quest's scripts, or an own placed reference -----
     public static void Overrides(PatchContext c)
@@ -1474,6 +1523,19 @@ static class Steps
         }
         foreach (var mv in Entries(o["moves"]))
             MoveReference(c, mv, "overrides");
+        foreach (var f in Entries(o["flags"]))
+        {
+            var key = FormKey.Factory(f["ref"]!.GetValue<string>());
+            var contexts = cache.ResolveAllContexts<IPlaced, IPlacedGetter>(key).ToList();
+            if (contexts.Count == 0) { c.Error($"overrides: reference {key} not found"); continue; }
+            var clear = Convert.ToInt32(f["clear"]?.GetValue<string>() ?? "0", 16);
+            var set = Convert.ToInt32(f["set"]?.GetValue<string>() ?? "0", 16);
+            var from = contexts[0].Record.MajorRecordFlagsRaw;
+            if (((from & ~clear) | set) == from) { c.Note($"Override {key}: flags already {from:X}"); continue; }
+            var rec = contexts[0].GetOrAddAsOverride(c.Mod);
+            rec.MajorRecordFlagsRaw = (from & ~clear) | set;
+            c.Note($"Override {key} ({c.EdidOf(BaseOf(rec))}, from {contexts[0].ModKey}): flags {from:X} -> {rec.MajorRecordFlagsRaw:X}");
+        }
     }
 
     static IEnumerable<JsonObject> Entries(JsonNode? list) =>

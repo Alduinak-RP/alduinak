@@ -6458,7 +6458,7 @@
   }
  ],
  "world": {
-  "comment": "AlduinakWorldChanges.esp (9776cba3), merged as spec data. Its Creation Kit dropped the Warbirds Whiterun Metropolis.esp master and rewrote every cell it opened, so only the references are carried: the new ones here, the nudges under \"moves\", and one disable under \"disableReferences\". The section is plain data, edited by hand.",
+  "comment": "AlduinakWorldChanges.esp (9776cba3), merged as spec data. Its Creation Kit dropped the Warbirds Whiterun Metropolis.esp master and rewrote every cell it opened, so only the references are carried: the new ones here, the nudges under \"moves\", and one disable under \"disableReferences\". The section is plain data, edited by hand. Then Graves's Alduinak925.esp (4715f256), whose Creation Kit again dropped the .esp masters: its 40 new references are the placements from AldWorldRef_00592F on, pinned at 0x0412FC..0x041323 in the order of their Alduinak925 ids. There persistent puts a reference in the worldspace's persistent cell, flags adds record flags (0x8000, visible when distant), primitive and collisionLayer make a collision box, and teleport links a load door to another placement by editor id with its arrival point. Its removals are in disableReferences and its nudges under overrides.moves. Left out: the cooking stand and pot under the Thalmor Embassy kitchen floor (5934, 5936), the link it gave WindhelmSSE.esp's door 08AF9E to the retired gate door 0A17D2, and its copy of the Windhelm navmesh 02B076, which lost WindhelmSSE.esp's door and edge links.",
   "placements": [
    {
     "edid": "AldWorldRef_00AA00",
@@ -6811,6 +6811,748 @@
      0.0,
      -0.0,
      1.5
+    ]
+   },
+   {
+    "edid": "AldWorldRef_005937",
+    "name": "Cooking Spit (CraftingCookingFireSpit), Thalmor Embassy (interior)",
+    "formId": "0x0412FF",
+    "base": "068ADB:Skyrim.esm",
+    "cell": "07C98B:Skyrim.esm",
+    "pos": [
+     -1715.9086,
+     -217.77235,
+     0.0
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     3.183193
+    ]
+   },
+   {
+    "edid": "AldWorldRef_005938",
+    "name": "Oven (CraftingOvenMarker), Moorside Inn (interior)",
+    "formId": "0x041300",
+    "base": "00283F:HearthFires.esm",
+    "cell": "0138CE:Skyrim.esm",
+    "pos": [
+     767.72076,
+     -392.3326,
+     0.0
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     3.1308346
+    ]
+   },
+   {
+    "edid": "AldWorldRef_029080",
+    "name": "Tanning Rack (CraftingTanningRackMarker), Dark Brotherhood Sanctuary (interior)",
+    "formId": "0x041322",
+    "base": "0727A1:Skyrim.esm",
+    "cell": "0AD5A1:Skyrim.esm",
+    "pos": [
+     -2486.979,
+     -445.74133,
+     -1056.2649
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "edid": "AldWorldRef_02E181",
+    "name": "Tanning Rack (CraftingTanningRackMarker), Dark Brotherhood Sanctuary (interior)",
+    "formId": "0x041323",
+    "base": "0727A1:Skyrim.esm",
+    "cell": "0AD5A1:Skyrim.esm",
+    "pos": [
+     791.8489,
+     -1124.1329,
+     -945.2808
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     -3.099993
+    ]
+   },
+   {
+    "edid": "AldWorldRef_005933",
+    "name": "Door (WHDoorFrontGate), near Windhelm Docks",
+    "formId": "0x0412FE",
+    "base": "09F27C:Skyrim.esm",
+    "cell": "000D74:Skyrim.esm",
+    "pos": [
+     138326.03,
+     37626.605,
+     -12680.905
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     0.8000008
+    ],
+    "persistent": true,
+    "teleport": {
+     "door": "AldWorldRef_005932",
+     "pos": [
+      138249.56,
+      37477.59,
+      -12687.6045
+     ],
+     "rot": [
+      0.0,
+      0.0,
+      0.80000234
+     ]
+    }
+   },
+   {
+    "edid": "AldWorldRef_01EE70",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Morvunskar",
+    "formId": "0x041317",
+    "base": "AldWoodcraftingBench",
+    "cell": "00912A:Skyrim.esm",
+    "pos": [
+     119794.12,
+     19274.203,
+     -10256.483
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     2.18319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE74",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Fort Kastav",
+    "formId": "0x04131B",
+    "base": "AldWoodcraftingBench",
+    "cell": "009034:Skyrim.esm",
+    "pos": [
+     112223.59,
+     52769.457,
+     -3431.3948
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "edid": "AldWorldRef_019D65",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Helgen",
+    "formId": "0x04130C",
+    "base": "AldWoodcraftingBench",
+    "cell": "00982B:Skyrim.esm",
+    "pos": [
+     15173.531,
+     -78236.26,
+     8226.292
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     2.9
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE75",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Fort Neugrad",
+    "formId": "0x04131C",
+    "base": "AldWoodcraftingBench",
+    "cell": "009884:Skyrim.esm",
+    "pos": [
+     32111.992,
+     -93272.01,
+     13738.964
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     5.283188
+    ]
+   },
+   {
+    "edid": "AldWorldRef_00AA5E",
+    "name": "CollisionMarker, near Whiterun Stables",
+    "formId": "0x041301",
+    "base": "000021:Skyrim.esm",
+    "cell": "00961D:Skyrim.esm",
+    "pos": [
+     9945.023,
+     -12075.403,
+     -4677.2935
+    ],
+    "rot": [
+     -0.028834315,
+     -0.05262496,
+     2.1375542
+    ],
+    "primitive": {
+     "type": 1,
+     "bounds": [
+      177.1582,
+      67.887695,
+      158.78174
+     ],
+     "color": [
+      1.0,
+      1.0,
+      0.0
+     ],
+     "unknown": 0.15
+    },
+    "collisionLayer": 49
+   },
+   {
+    "edid": "AldWorldRef_019D66",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Ivarstead",
+    "formId": "0x04130D",
+    "base": "AldWoodcraftingBench",
+    "cell": "0097BF:Skyrim.esm",
+    "pos": [
+     76681.61,
+     -65738.39,
+     10922.419
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     2.500007
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE69",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Kynesgrove",
+    "formId": "0x041310",
+    "base": "AldWoodcraftingBench",
+    "cell": "00B580:Skyrim.esm",
+    "pos": [
+     137066.28,
+     10951.871,
+     -11919.66
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     5.28319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE78",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Goldenglow Estate",
+    "formId": "0x04131F",
+    "base": "AldWoodcraftingBench",
+    "cell": "00BCD5:Skyrim.esm",
+    "pos": [
+     153986.22,
+     -96461.7,
+     10796.647
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     5.483189
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE6B",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Eastmarch Imperial Camp",
+    "formId": "0x041312",
+    "base": "AldWoodcraftingBench",
+    "cell": "00BA5D:Skyrim.esm",
+    "pos": [
+     174804.72,
+     -19979.3,
+     -1927.246
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     2.5831945
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE6E",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Reach Imperial Camp",
+    "formId": "0x041315",
+    "base": "AldWoodcraftingBench",
+    "cell": "00709F:Skyrim.esm",
+    "pos": [
+     -161080.75,
+     36777.297,
+     -3185.4392
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     3.3831928
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE71",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Karthspire Camp",
+    "formId": "0x041318",
+    "base": "AldWoodcraftingBench",
+    "cell": "0095A2:Skyrim.esm",
+    "pos": [
+     -127963.44,
+     7836.2144,
+     -7493.976
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     4.983193
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE67",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Karthwasten",
+    "formId": "0x04130E",
+    "base": "AldWoodcraftingBench",
+    "cell": "00949A:Skyrim.esm",
+    "pos": [
+     -130824.664,
+     38619.6,
+     -6089.2383
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     3.7831929
+    ]
+   },
+   {
+    "edid": "AldWorldRef_00FB5D",
+    "name": "ImpExtIceWall01, near Fort Hraggstad",
+    "formId": "0x041304",
+    "base": "06F757:Skyrim.esm",
+    "cell": "009223:Skyrim.esm",
+    "pos": [
+     -112499.16,
+     116397.12,
+     -5555.1934
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     1.470003
+    ],
+    "scale": 1.2,
+    "flags": "0x8000"
+   },
+   {
+    "edid": "AldWorldRef_00FB5C",
+    "name": "ImpExtIceWall01, near Fort Hraggstad",
+    "formId": "0x041303",
+    "base": "06F757:Skyrim.esm",
+    "cell": "009223:Skyrim.esm",
+    "pos": [
+     -112368.12,
+     116424.33,
+     -5562.837
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     1.470003
+    ],
+    "scale": 1.2,
+    "flags": "0x8000"
+   },
+   {
+    "edid": "AldWorldRef_00FB5E",
+    "name": "Smelter (CraftingSmelterMarker1), near Fort Hraggstad",
+    "formId": "0x041305",
+    "base": "09C6CE:Skyrim.esm",
+    "cell": "009244:Skyrim.esm",
+    "pos": [
+     -114041.75,
+     113712.58,
+     -5317.562
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE73",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Fort Hraggstad",
+    "formId": "0x04131A",
+    "base": "AldWoodcraftingBench",
+    "cell": "009244:Skyrim.esm",
+    "pos": [
+     -112190.34,
+     112149.05,
+     -4902.4985
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     3.4000018
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE6C",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Haafingar Stormcloak Camp",
+    "formId": "0x041313",
+    "base": "AldWoodcraftingBench",
+    "cell": "009305:Skyrim.esm",
+    "pos": [
+     -92108.016,
+     88111.88,
+     -12512.84
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     3.28319
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE6A",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Meeko's Shack",
+    "formId": "0x041311",
+    "base": "AldWoodcraftingBench",
+    "cell": "009363:Skyrim.esm",
+    "pos": [
+     -71895.04,
+     76230.02,
+     -12640.537
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     1.1000015
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE6F",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Morthal",
+    "formId": "0x041316",
+    "base": "AldWoodcraftingBench",
+    "cell": "0093BE:Skyrim.esm",
+    "pos": [
+     -40271.19,
+     65306.55,
+     -13803.048
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     4.1831923
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE76",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Fort Snowhawk",
+    "formId": "0x04131D",
+    "base": "AldWoodcraftingBench",
+    "cell": "0093A2:Skyrim.esm",
+    "pos": [
+     -57375.797,
+     67709.69,
+     -11872.683
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     1.9000003
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE6D",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Pale Imperial Camp",
+    "formId": "0x041314",
+    "base": "AldWoodcraftingBench",
+    "cell": "00928C:Skyrim.esm",
+    "pos": [
+     -3113.4827,
+     100699.01,
+     -11029.215
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     5.783191
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE68",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Knifepoint Ridge",
+    "formId": "0x04130F",
+    "base": "AldWoodcraftingBench",
+    "cell": "009BE5:Skyrim.esm",
+    "pos": [
+     -71530.61,
+     -68714.766,
+     2969.5913
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     5.366385
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE77",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Fort Sungard",
+    "formId": "0x04131E",
+    "base": "AldWoodcraftingBench",
+    "cell": "009A9B:Skyrim.esm",
+    "pos": [
+     -73348.78,
+     -25838.361,
+     843.5824
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     3.3831928
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C62",
+    "name": "TorchPermanantOn, near Hammerfell Gate start location",
+    "formId": "0x041309",
+    "base": "101592:Skyrim.esm",
+    "cell": "009CE8:Skyrim.esm",
+    "pos": [
+     -50784.504,
+     -99127.8,
+     1178.4281
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     3.6832008
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C61",
+    "name": "TorchPermanantOn, near Hammerfell Gate start location",
+    "formId": "0x041308",
+    "base": "101592:Skyrim.esm",
+    "cell": "009CE8:Skyrim.esm",
+    "pos": [
+     -50558.504,
+     -99564.445,
+     1177.5994
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     4.9831977
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C64",
+    "name": "TorchPermanantOn, near Hammerfell Gate start location",
+    "formId": "0x04130B",
+    "base": "101592:Skyrim.esm",
+    "cell": "009CE8:Skyrim.esm",
+    "pos": [
+     -50357.598,
+     -99465.67,
+     1180.9833
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     0.3832093
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C5F",
+    "name": "TorchPermanantOn, near Hammerfell Gate start location",
+    "formId": "0x041306",
+    "base": "101592:Skyrim.esm",
+    "cell": "009CE8:Skyrim.esm",
+    "pos": [
+     -52143.72,
+     -99822.15,
+     1134.851
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     2.4000034
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C63",
+    "name": "TorchPermanantOn, near Hammerfell Gate start location",
+    "formId": "0x04130A",
+    "base": "101592:Skyrim.esm",
+    "cell": "009CE8:Skyrim.esm",
+    "pos": [
+     -50584.336,
+     -99026.54,
+     1196.5996
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     1.7832048
+    ]
+   },
+   {
+    "edid": "AldWorldRef_014C60",
+    "name": "TorchPermanantOn, near Hammerfell Gate start location",
+    "formId": "0x041307",
+    "base": "101592:Skyrim.esm",
+    "cell": "009CE8:Skyrim.esm",
+    "pos": [
+     -51206.742,
+     -100047.87,
+     1155.3611
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     5.7831936
+    ]
+   },
+   {
+    "edid": "AldWorldRef_01EE72",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), near Fort Greymoor",
+    "formId": "0x041319",
+    "base": "AldWoodcraftingBench",
+    "cell": "0099E8:Skyrim.esm",
+    "pos": [
+     -13655.289,
+     -7674.6455,
+     -5480.3936
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     1.6831949
+    ]
+   },
+   {
+    "edid": "AldWorldRef_005932",
+    "name": "Door (WHDoorFrontGate), Windhelm (city)",
+    "formId": "0x0412FD",
+    "base": "09F27C:Skyrim.esm",
+    "cell": "01691F:Skyrim.esm",
+    "pos": [
+     138249.56,
+     37477.59,
+     -12687.6045
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     0.80000234
+    ],
+    "persistent": true,
+    "teleport": {
+     "door": "AldWorldRef_005933",
+     "pos": [
+      138339.95,
+      37604.97,
+      -12656.634
+     ],
+     "rot": [
+      0.0,
+      0.0,
+      2.4000022
+     ]
+    }
+   },
+   {
+    "edid": "AldWorldRef_00592F",
+    "name": "CaveGRockS01, Windhelm (city)",
+    "formId": "0x0412FC",
+    "base": "0224E3:Skyrim.esm",
+    "cell": "038382:Skyrim.esm",
+    "pos": [
+     132256.23,
+     35907.34,
+     -12373.952
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     2.9832013
+    ]
+   },
+   {
+    "edid": "AldWorldRef_00FB59",
+    "name": "CollisionMarker, Whiterun (city)",
+    "formId": "0x041302",
+    "base": "000021:Skyrim.esm",
+    "cell": "01A27F:Skyrim.esm",
+    "pos": [
+     19952.748,
+     -5138.9487,
+     -2912.816
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     0.18523426
+    ],
+    "primitive": {
+     "type": 1,
+     "bounds": [
+      146.39844,
+      48.117676,
+      87.0
+     ],
+     "color": [
+      1.0,
+      1.0,
+      0.0
+     ],
+     "unknown": 0.15
+    },
+    "collisionLayer": 49
+   },
+   {
+    "edid": "AldWorldRef_023F7F",
+    "name": "Carpenter's Workbench (BYOHHouseCarpentersWorkbench), Solitude (city)",
+    "formId": "0x041320",
+    "base": "AldWoodcraftingBench",
+    "cell": "037EE5:Skyrim.esm",
+    "pos": [
+     -59020.215,
+     108633.945,
+     -7935.046
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     1.7000027
+    ]
+   },
+   {
+    "edid": "AldWorldRef_023F80",
+    "name": "Smelter (CraftingSmelterMarker1), Solitude (city)",
+    "formId": "0x041321",
+    "base": "09C6CE:Skyrim.esm",
+    "cell": "037EE5:Skyrim.esm",
+    "pos": [
+     -61131.188,
+     106801.11,
+     -7936.0
+    ],
+    "rot": [
+     0.0,
+     0.0,
+     0.500008
     ]
    }
   ],
@@ -7210,7 +7952,7 @@
   ]
  },
  "disableReferences": {
-  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). Then the duplicate floor of Digitus Quintus' House, the Two-Moons Delegation Hall (The Great City of Solitude cell 00B213): the flat SMDEFloSol03 tile 00B27A at (320,-1008,0) z-fights the ceiling-carrying SMDEFloSol01 tile 00B448 one unit east of it, so the flat one goes and the ceiling stays. Then Immersive Armors' shield painting activator 020EC5 in Whiterun (exterior, near 29461,-2367,-2054): its Ecks_ShieldPaintingRackActivateScript adds the Configure Auxiliary Armors power to a player who lacks it, and with IAGRemoveSpell at 0 (overrides.globals) on every activation, since Papyrus binds its && before the trailing || !IAGRemoveSpell.GetValue(); its enable parent C06FuneralClutter, opposite, would switch it on regardless of the flag, so a listed reference with an enable parent that could turn it on gets the player, opposite, as disableActors does. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run.",
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). Then the duplicate floor of Digitus Quintus' House, the Two-Moons Delegation Hall (The Great City of Solitude cell 00B213): the flat SMDEFloSol03 tile 00B27A at (320,-1008,0) z-fights the ceiling-carrying SMDEFloSol01 tile 00B448 one unit east of it, so the flat one goes and the ceiling stays. Then Immersive Armors' shield painting activator 020EC5 in Whiterun (exterior, near 29461,-2367,-2054): its Ecks_ShieldPaintingRackActivateScript adds the Configure Auxiliary Armors power to a player who lacks it, and with IAGRemoveSpell at 0 (overrides.globals) on every activation, since Papyrus binds its && before the trailing || !IAGRemoveSpell.GetValue(); its enable parent C06FuneralClutter, opposite, would switch it on regardless of the flag, so a listed reference with an enable parent that could turn it on gets the player, opposite, as disableActors does. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run. Then the removals of Alduinak925.esp, which Graves disabled and dropped under the floor (the flag alone keeps them off): the Thalmor Embassy kitchen table with its food, crate and rag, the firewood pile by the new Solitude smelter, two barrels in Whiterun (0C1E28, and 0057D8 of JKs Whiterun.esp), the Throat of the World blizzard hazard 105375 (a placed hazard), the MQ204 pushback triggers 097010 and 09DD0F and the rock trim 06B52C on the path to the summit, and the vanilla Windhelm gate doors 0A17D2 and 0A17D3, which AldWorldRef_005932 and AldWorldRef_005933 replace.",
   "refs": [
    "0A467D:Skyrim.esm",
    "025D97:Skyrim.esm",
@@ -7252,7 +7994,48 @@
    "07C5FE:Warbirds Whiterun Metropolis.esp",
    "001F23:AlduinakAdditions.esp",
    "00B27A:The Great City of Solitude.esp",
-   "020EC5:Hothtrooper44_ArmorCompilation.esp"
+   "020EC5:Hothtrooper44_ArmorCompilation.esp",
+   "0D182C:Skyrim.esm",
+   "0D1865:Skyrim.esm",
+   "0D1375:Skyrim.esm",
+   "0D1411:Skyrim.esm",
+   "0D18C1:Skyrim.esm",
+   "0D1834:Skyrim.esm",
+   "0D1830:Skyrim.esm",
+   "0D1673:Skyrim.esm",
+   "0D1672:Skyrim.esm",
+   "0D13B8:Skyrim.esm",
+   "0D1832:Skyrim.esm",
+   "0D13D0:Skyrim.esm",
+   "0D13BB:Skyrim.esm",
+   "0D1374:Skyrim.esm",
+   "0D13F0:Skyrim.esm",
+   "0D18BC:Skyrim.esm",
+   "0D18BB:Skyrim.esm",
+   "0D1833:Skyrim.esm",
+   "0D1676:Skyrim.esm",
+   "0D1376:Skyrim.esm",
+   "0D1801:Skyrim.esm",
+   "0D168A:Skyrim.esm",
+   "0D140F:Skyrim.esm",
+   "0D1689:Skyrim.esm",
+   "0D182B:Skyrim.esm",
+   "0D1417:Skyrim.esm",
+   "0D1378:Skyrim.esm",
+   "0D1831:Skyrim.esm",
+   "0D1377:Skyrim.esm",
+   "0D140E:Skyrim.esm",
+   "0D1410:Skyrim.esm",
+   "0D1400:Skyrim.esm",
+   "0A17D2:Skyrim.esm",
+   "105375:Skyrim.esm",
+   "097010:Skyrim.esm",
+   "06B52C:Skyrim.esm",
+   "09DD0F:Skyrim.esm",
+   "0A17D3:Skyrim.esm",
+   "0C1E28:Skyrim.esm",
+   "0057D8:JKs Whiterun.esp",
+   "050C60:Skyrim.esm"
   ]
  },
  "enableReferences": {
@@ -7262,7 +8045,7 @@
   ]
  },
  "overrides": {
-  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). moves sets a placed reference's position by form key, keeping everything else it wins with (the SMdETraCon01 seam piece 00B444 of Digitus Quintus' House, The Great City of Solitude cell 00B213, one unit down from (321,-1296,0): one unit off the kit grid like 00B448, its beam lies inside the top beam of the wall 00B28C on the same seam with both undersides, its ceiling strip and its floor strip on the planes of 00B28C and the floor 00B221, which z-fights; disabling it instead leaves the atrium side of that beam and the ceiling under the balcony 00B446 open). globals sets a global's value by form key (Immersive Armors' IAGRemoveSpell to 0: IAStartupQuestScript adds the Configure Auxiliary Armors power to the player at every game start while it is not 0 and SkyUI.esp is absent, and SkyUI SE is SkyUI_SE.esp; the shield painting activator, the other script that adds it, is in disableReferences). Runs in the hotfix list too.",
+  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). moves sets a placed reference's position by form key, keeping everything else it wins with (the SMdETraCon01 seam piece 00B444 of Digitus Quintus' House, The Great City of Solitude cell 00B213, one unit down from (321,-1296,0): one unit off the kit grid like 00B448, its beam lies inside the top beam of the wall 00B28C on the same seam with both undersides, its ceiling strip and its floor strip on the planes of 00B28C and the floor 00B221, which z-fights; disabling it instead leaves the atrium side of that beam and the ceiling under the balcony 00B446 open). globals sets a global's value by form key (Immersive Armors' IAGRemoveSpell to 0: IAStartupQuestScript adds the Configure Auxiliary Armors power to the player at every game start while it is not 0 and SkyUI.esp is absent, and SkyUI SE is SkyUI_SE.esp; the shield painting activator, the other script that adds it, is in disableReferences). Runs in the hotfix list too. A moves entry may also set a scale. flags clears (clear) or sets (set) record flags of a placed reference by form key: the Castle Dour jail door 05E922 loses Inaccessible (0x100), as Alduinak925.esp has it. The nudges of Alduinak925.esp are under moves too: the Thalmor Embassy raw beef and dog meat, the Moorside Inn cask (moved aside for the new oven, scale 0.6), a snow drift on the path to the Throat of the World and the thicket sunk among the new torches at Hammerfell Gate.",
   "misc": [
    {
     "item": "0012C8:Saltdeposits.esp",
@@ -7362,6 +8145,59 @@
      -1296,
      -1
     ]
+   },
+   {
+    "ref": "0D0F4D:Skyrim.esm",
+    "name": "Raw Beef (FoodBeef)",
+    "pos": [
+     -1890.9407,
+     -294.16586,
+     73.72463
+    ]
+   },
+   {
+    "ref": "0D1C77:Skyrim.esm",
+    "name": "Dog Meat (FoodDogMeat)",
+    "pos": [
+     -1910.1415,
+     -224.95148,
+     83.32914
+    ]
+   },
+   {
+    "ref": "0E0197:Skyrim.esm",
+    "name": "BreweryCaskLargeClosed01",
+    "pos": [
+     873.67786,
+     -537.6022,
+     5.388236
+    ],
+    "scale": 0.6
+   },
+   {
+    "ref": "10BF8D:Skyrim.esm",
+    "name": "FXAmbSnowBlowingDriftTip",
+    "pos": [
+     56231.04,
+     -39189.863,
+     24686.299
+    ]
+   },
+   {
+    "ref": "04C667:Skyrim.esm",
+    "name": "TreeThicket01",
+    "pos": [
+     -50593.387,
+     -99557.5,
+     905.46466
+    ]
+   }
+  ],
+  "flags": [
+   {
+    "ref": "05E922:Skyrim.esm",
+    "name": "Castle Dour jail door Door (SDoorJail01)",
+    "clear": "0x100"
    }
   ]
  },

@@ -243,7 +243,7 @@ def main():
                 effects[edid(r)] = k
             if r.type == 'RACE':
                 races[edid(r)] = id_list(pl, r.data(), 'SPLO')
-            if ((r.type, k) in ro or r.type == 'REFR' and k in listed_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
+            if ((r.type, k) in ro or r.type in PLACED and k in listed_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
                 winners[(r.type, k)] = (pl, r.flags, r.data(), pl.container(r, CELL_GROUPS if r.type != 'CELL' else WORLD_GROUPS))
         pl.buf = None
     for (t, k), r in ro.items():
@@ -265,13 +265,14 @@ def main():
     head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
     tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and (prefix and edid(r).startswith(prefix) or edid(r).startswith('AldKeyword_'))}
-    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops, a global everything but its value, a moved reference everything but its position
+    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops, a global everything but its value, a moved reference everything but its position and scale, a reflagged reference everything but its flags
     over = spec.get('overrides', {})
     over_misc = {form_key(m['item']): m['weight'] for m in over.get('misc', [])}
     over_cobj = {form_key(r['recipe']): r['count'] for r in over.get('recipes', [])}
     over_qust = {form_key(q['quest']): q['dropScripts'] for q in over.get('quests', [])}
     over_glob = {form_key(g['global']): g['value'] for g in over.get('globals', [])}
-    over_move = {form_key(m['ref']): m['pos'] for m in over.get('moves', [])}
+    over_move = {form_key(m['ref']): (m['pos'], m.get('scale')) for m in over.get('moves', [])}
+    over_flags = {form_key(f['ref']): (int(f.get('clear', '0'), 16), int(f.get('set', '0'), 16)) for f in over.get('flags', [])}
     over_refs = {r['ref']: r['scale'] for r in over.get('refs', [])}
     over_food = {form_key(f['item']): (effects.get(f['from']), effects.get(f['hunger'])) for f in over.get('foods', [])}
     for (t, k), q in ro.items():
@@ -377,14 +378,25 @@ def main():
             checked['head parts given their race list'] += 1
         elif t == 'REFR' and k in over_move:
             src, flags, data, cell = ref
-            why = ck.compare(t, src, flags, data, out, q.data(), skip=('DATA',))
+            pos, scale = over_move[k]
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=('DATA',) + (('XSCL',) if scale is not None else ()))
             was, now = dict(parse_subs(data)).get('DATA', b''), dict(parse_subs(q.data())).get('DATA', b'')
             moved = len(was) == len(now) == 24 and struct.unpack('<3f', was[12:]) == struct.unpack('<3f', now[12:]) \
-                and all(abs(x - y) <= 1e-3 for x, y in zip(struct.unpack('<3f', now[:12]), over_move[k]))
+                and all(abs(x - y) <= 1e-3 for x, y in zip(struct.unpack('<3f', now[:12]), pos))
+            xscl = dict(parse_subs(q.data())).get('XSCL', b'')
+            if scale is not None and (len(xscl) != 4 or abs(struct.unpack('<f', xscl)[0] - scale) > 1e-6):
+                why = why or f'XSCL {xscl.hex()}'
             if why or not moved or q.flags & ~COMPRESSED != flags & ~COMPRESSED or cell != where:
-                problems.append(f'{label}: not {src.name}\'s reference with only the position set to {over_move[k]} ({why or now.hex()}, cell {cell} -> {where})')
+                problems.append(f'{label}: not {src.name}\'s reference with only the position set to {pos}{"" if scale is None else f" and the scale to {scale}"} ({why or now.hex()}, cell {cell} -> {where})')
             checked['references moved to their overridden position'] += 1
-        elif t == 'REFR' and k in disable_refs:
+        elif t in PLACED and k in over_flags:
+            src, flags, data, cell = ref
+            clear, set_ = over_flags[k]
+            why = ck.compare(t, src, flags, data, out, q.data())
+            if why or q.flags & ~COMPRESSED != ((flags & ~clear) | set_) & ~COMPRESSED or cell != where:
+                problems.append(f'{label}: not {src.name}\'s reference with only flags {clear:#x} cleared and {set_:#x} set ({why or f"flags {flags:#x} -> {q.flags:#x}"}, cell {cell} -> {where})')
+            checked['references overridden for their flags'] += 1
+        elif t in PLACED and k in disable_refs:
             src, flags, data, cell = ref
             parent = enable_parent(src, data)
             why = ck.compare(t, src, flags, data, out, q.data(), skip=('XESP',))
@@ -444,8 +456,8 @@ def main():
         if race not in races or left:
             problems.append(f'RACE {race}: {"not found" if race not in races else f"still hands out {left}"}')
     for k in disable_refs:
-        final = ro.get(('REFR', k)) or ro.get(('ACHR', k))
-        flags = final.flags if final is not None else winners.get(('REFR', k), (None, 0))[1]
+        final = ro.get(('REFR', k)) or ro.get(('ACHR', k)) or ro.get(('PHZD', k))
+        flags = final.flags if final is not None else (winners.get(('REFR', k)) or winners.get(('PHZD', k)) or (None, 0))[1]
         parent = parents.get(k, (None, 0, None))[2]
         if not flags & (DISABLED | DELETED):
             problems.append(f'disableReferences {show(k)} is not Initially Disabled')
