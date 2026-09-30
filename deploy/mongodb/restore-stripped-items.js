@@ -429,7 +429,7 @@ function totalsOf(rows) {
     t.elsewhere += r.back.reduce((n, x) => n + x.elsewhere, 0)
     t.skipped += sum(r.skipped.filter(g => !g.unclassified))
     t.unclassified += sum(r.skipped.filter(g => g.unclassified))
-    if (r.status !== 'ok') t.skippedDocs++
+    if (r.skipped.some(g => !g.unclassified)) t.skippedDocs++
     t.spells += r.spells.length
     t.problems += r.problems.length
   }

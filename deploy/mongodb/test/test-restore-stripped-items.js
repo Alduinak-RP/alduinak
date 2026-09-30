@@ -184,6 +184,7 @@ async function main() {
   assert.equal(ph('14').spells.length, 52)
   assert.deepEqual(ph('c4bd5:Skyrim.esm').give, [])
   assert.equal(ph('d03').status, 'the character was deleted')
+  assert.ok(pvText.includes('not given: 0 items in 0 documents since gone, deleted or changed hands'))
   assert.equal(ph('b36b:The Great City of Solitude.esp').status, 'ok')
   assert.match(ph('b36b:The Great City of Solitude.esp').who, / of Fixture F \(profile 7\)$/)
   assert.equal(p.totals.unclassified, 1)
@@ -279,6 +280,7 @@ async function main() {
   await R.run(['backup', '--out', path.join(ROOT, 'b1'), '--intent', INTENT], { open: s.open, log: quiet })
   r = await plan(w)
   assert.equal(r.h('75d').status, 'the document no longer exists')
+  assert.match(r.text, /not given: 1 item in 1 document since/)
   assert.equal(r.given('11', RING), 0)
   assert.equal(r.given('11', BOLT), 40)
 
