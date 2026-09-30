@@ -65,7 +65,8 @@ type Mp = any;
 //                       afflictions: [name], diseases: [{ name, stage }] }
 //                     cold 0-1000 and coldStage 0-5, both -1 with cold off; coldPenalty is the 0-1 share of maximum health removed;
 //                     temperatureLevel sets Survival_TemperatureLevel (0 neutral, 1 near heat, 2 warming, 3 cooling, 4 freezing);
-//                     freezingArea sets AldSurvival_FreezingArea; diseases name each held disease with its stage 1-3
+//                     freezingArea sets AldSurvival_FreezingArea; diseases name each held disease with its stage 1-3, food poisoning
+//                     first as { "Food poisoning", 1 } while it runs
 //                     { customPacketType: "masteryNotice", text }
 //
 // Persistence: private.survival = { v, at, body: { spells: [desc], respawn }, foodPoisonUntil, foodPoisonSpell: desc, cold, coldSpell: desc,
@@ -151,6 +152,7 @@ const DEFAULT_POISON_CHANCE = 0.5;
 const DEFAULT_POISON_HOURS = 24;
 const DEFAULT_CURE_MIN_HEALTH = 25;
 const FOOD_POISONING_SPELL = "Survival_DiseaseFoodPoisoning";
+const FOOD_POISONING_NAME = "Food poisoning";
 // Survival_AfflictionHungerChance, ...ExhaustionChance and ...ColdChance; the need update intervals at our 1:1 clock
 const AFFLICTION_DEFS = [
   { key: "weakened", spell: "Survival_AfflictionWeakened", name: "Weakened", worst: "starving", chance: 0.2, tickMinutes: 15, notice: "Starving has weakened you: your one-handed, two-handed and block skills suffer" },
@@ -926,6 +928,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const hours = Math.round(this.poisonMs / HOUR_MS * 10) / 10;
     this.log(`[survival] ${what}: ${outcome}, poisoned for ${hours} h until ${clock(entry.rec.foodPoisonUntil)}`);
     this.notice(mp, actorId, `You feel sick: food poisoning slows your magicka and stamina recovery for ${hours} hours. ${this.cureHint()}`);
+    if (entry.coldAt) this.sendState(mp, entry, false);
   }
 
   // Clears food poisoning, the afflictions and the diseases; a healing potion also takes every other Disease spell, which the native cure does for Cure Disease
@@ -1564,7 +1567,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       warmth: on ? Math.round(entry.warmth) : 0,
       freezingArea: entry.freezingArea,
       afflictions: this.afflictions.filter((a) => entry.rec.afflictions[a.key]).map((a) => a.name),
-      diseases: entry.rec.diseases.map((d) => ({ name: this.diseaseName(d.id), stage: d.stage })),
+      diseases: (entry.rec.foodPoisonUntil ? [{ name: FOOD_POISONING_NAME, stage: 1 }] : [])
+        .concat(entry.rec.diseases.map((d) => ({ name: this.diseaseName(d.id), stage: d.stage }))),
     };
     if (this.cold.healthScale) this.setHealthScale(mp, entry, 1 - penalty);
     const key = JSON.stringify(payload);

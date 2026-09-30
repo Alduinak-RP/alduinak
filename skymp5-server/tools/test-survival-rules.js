@@ -449,6 +449,23 @@ async function main() {
     assert.equal(t.rec(b).foodPoisonUntil, 0)
   })
 
+  await test('food poisoning shows in survivalState as the first disease while it runs and goes when it runs out', async () => {
+    const t = setup({ survivalEnabled: true }, true)
+    const a = actor()
+    t.join(a, REDGUARD_RACE)
+    t.put(a, TAMRIEL, [1000, 1000, 0])
+    later()
+    await t.update()
+    assert.deepEqual(t.states(a).pop().diseases, [])
+    Math.random = () => 0
+    t.mp.onEatItem(a, VENISON)
+    await tick()
+    assert.deepEqual(t.states(a).pop().diseases, [{ name: 'Food poisoning', stage: 1 }], 'sent when poisoned')
+    later(24 * HOUR + 1)
+    await t.update()
+    assert.deepEqual(t.states(a).pop().diseases, [], 'sent again when it runs out')
+  })
+
   await test('a Cure Disease potion clears food poisoning and the afflictions; a healing potion of 25 or more also takes every Disease spell', async () => {
     const t = setup()
     const [a, b, c] = [actor(), actor(), actor()]

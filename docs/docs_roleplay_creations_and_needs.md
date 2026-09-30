@@ -645,7 +645,8 @@ freezing area, diseases with their next stage time, afflictions, food poisoning)
   `needsRequest`, `weatherRequest` and `gameTimeRequest` schedule the login window re-send of the survival spells.
 - Server -> Client: `{ customPacketType: "survivalState", cold, coldStage, coldStageName, coldPenalty, temperatureLevel,
   warmth, freezingArea, afflictions: [name], diseases: [{ name, stage }] }` on change and on request (cold and coldStage
-  -1 with cold off); notices through `masteryNotice`.
+  -1 with cold off; while food poisoning runs, `diseases` starts with `{ "name": "Food poisoning", "stage": 1 }`, so the
+  HUD's Sick line shows it too); notices through `masteryNotice`.
 - `private.survival` on the character: `{ v: 1, at, body: { spells, respawn }, foodPoisonUntil, foodPoisonSpell, cold,
   coldSpell, warmBonus, warmUntil, afflictions: { <key>: { until, spell } }, lastRoll, diseases: [{ id, stage, nextAt,
   since, from, spell }] }`. Spells are stored as `"id:Plugin"` descs and diseases by catalog id, never raw form ids, so the
