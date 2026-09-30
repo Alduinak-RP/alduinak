@@ -184,6 +184,16 @@ export const isBleedingOut = (mp: Mp, actorId: number): boolean => {
   }
 };
 
+// Whether any of the modes is on in the ff_adminModes mirror AdminSystem writes (god, smite, healhit, invis, ghost)
+export const hasAdminMode = (mp: Mp, actorId: number, modes: string[]): boolean => {
+  try {
+    const mirror = mp.get(actorId, "ff_adminModes");
+    return !!mirror && modes.some((m) => !!mirror[m]);
+  } catch {
+    return false;
+  }
+};
+
 // Set when a character is created, cleared once its race menu or creator is accepted
 export const isCreationPending = (mp: Mp, actorId: number): boolean => {
   try {
