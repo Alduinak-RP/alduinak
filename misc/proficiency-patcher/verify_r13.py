@@ -32,6 +32,10 @@ PLACED_IDS = {'NAME', 'XESP', 'XOWN', 'XLCN', 'XEZN', 'XLKR', 'XLRT', 'XLRL', 'X
 FORM_IDS = {'ACHR': PLACED_IDS, 'REFR': PLACED_IDS, 'CELL': {'XCLR', 'LTMP', 'XCWT', 'XCCM', 'XCAS', 'XCMO', 'XCIM', 'XILL', 'XOWN', 'XLCN', 'XEZN'},
             'WRLD': {'WNAM', 'CNAM', 'NAM2', 'NAM3', 'XLCN', 'ZNAM'}, 'RACE': {'SPLO', 'KWDA', 'RNAM', 'WNAM'}, 'HDPT': {'RNAM', 'HNAM', 'TNAM', 'CNAM'}}
 ANY_IDS = {'KWDA', 'EFID', 'EITM', 'ETYP', 'SPLO'}
+# The subrecords of one effect of a spell or an ingestible
+EFFECT_SUBS = ('EFID', 'EFIT', 'CTDA', 'CIS1', 'CIS2')
+HAS_SPELL, GET_GLOBAL_VALUE = 264, 74
+HIDE_IN_UI = 0x8000
 
 
 class Plugin:
@@ -184,8 +188,13 @@ def gained(rs, race):
                   + [s for s, p in rs.get('powers', {}).items() if p.get('attach', True) and race in p['races']])
 
 
+def condition(v):
+    # (function, param 1, comparison value, operator and flags, run on) of a CTDA
+    return struct.unpack_from('<H', v, 8)[0], struct.unpack_from('<I', v, 12)[0], struct.unpack_from('<f', v, 4)[0], v[0], struct.unpack_from('<I', v, 20)[0]
+
+
 def effects_of(pl, data):
-    # [effect key, magnitude, [(function, param 1, comparison value, operator and flags, run on)]] per effect of a spell
+    # [effect key, magnitude, [condition]] per effect of a spell
     out = []
     for t, v in parse_subs(data):
         if t == 'EFID':
@@ -193,8 +202,109 @@ def effects_of(pl, data):
         elif t == 'EFIT' and out:
             out[-1][1] = struct.unpack_from('<f', v)[0]
         elif t == 'CTDA' and out:
-            out[-1][2].append((struct.unpack_from('<H', v, 8)[0], struct.unpack_from('<I', v, 12)[0], struct.unpack_from('<f', v, 4)[0], v[0], struct.unpack_from('<I', v, 20)[0]))
+            out[-1][2].append(condition(v))
     return out
+
+
+def effect_blocks(pl, data):
+    # [(effect key, [(subrecord, bytes)])] per effect, for records whose effects are compared as a whole
+    out = []
+    for t, v in parse_subs(data):
+        if t == 'EFID':
+            out.append((pl.key(struct.unpack('<I', v)[0]), []))
+        elif t in EFFECT_SUBS and out:
+            out[-1][1].append((t, v))
+    return out
+
+
+def same_effects(ck, src, a, dst, b):
+    tab, names = ck.table(src, dst)
+    return len(a) == len(b) and all(ka == kb and [t for t, _ in xa] == [t for t, _ in xb] and not any(ck.same_bytes(x, y, tab, names, False) for (_, x), (_, y) in zip(xa, xb))
+                                    for (ka, xa), (kb, xb) in zip(a, b))
+
+
+def spit_of(rec):
+    # (spell type, cast type, delivery) of a spell
+    v = dict(rec.subs()).get('SPIT', b'')
+    return (struct.unpack_from('<I', v, 8)[0],) + struct.unpack_from('<II', v, 16) if len(v) >= 24 else None
+
+
+def text_of(rec, tag):
+    return zstr(dict(rec.subs()).get(tag, b''))
+
+
+def check_survival(sv, out, ro, ck, effects, sources):
+    # Abilities and disease stages hold exactly the spec's effects, a disease effect is its source without conditions, script and Hide In UI, on self, and the freezing water spell is Survival's under the global
+    problems, own = [], {(t, edid(r)): r for (t, k), r in ro.items() if k[0] == out.name.lower()}
+    for spell, a in sv.get('abilities', {}).items():
+        rec = own.get(('SPEL', spell))
+        if rec is None or spit_of(rec) != (SPELL_TYPES['Ability'], 0, 0) or effects_of(out, rec.data()) != [[effects.get(m), float(v), []] for m, v in a['effects'].items()]:
+            problems.append(f'SPEL {spell}: not a constant effect ability on self holding {a["effects"]}')
+    for mgef, e in sv.get('effects', {}).items():
+        rec, src = own.get(('MGEF', mgef)), sources.get(e['from'])
+        if rec is None or src is None:
+            problems.append(f'MGEF {mgef} or its source {e["from"]}: missing')
+            continue
+        pl, flags, data = src
+        want = bytearray(dict(parse_subs(data))['DATA'])
+        struct.pack_into('<I', want, 0, struct.unpack_from('<I', want)[0] & ~HIDE_IN_UI)
+        # Casting type and delivery: constant effect on self
+        struct.pack_into('<II', want, 80, 0, 0)
+        why = ck.compare('MGEF', pl, flags, data, out, rec.data(), skip=('EDID', 'FULL', 'DNAM', 'VMAD', 'CTDA', 'DATA')) \
+            or ck.same_bytes(bytes(want), dict(rec.subs()).get('DATA', b''), *ck.table(pl, out), False)
+        if why or {'VMAD', 'CTDA'} & {t for t, _ in rec.subs()} or (text_of(rec, 'FULL'), text_of(rec, 'DNAM')) != (e['name'], e['description']):
+            problems.append(f'MGEF {mgef}: not {e["from"]} without conditions, script and Hide In UI, constant on self, with the spec text ({why})')
+    for d, spec_d in sv.get('diseases', {}).items():
+        for i, suffix in enumerate(sv['stages']):
+            spell = f'AldDisease_{d[0].upper()}{d[1:]}{i + 1}'
+            rec = own.get(('SPEL', spell))
+            want = [[effects.get(m), float(v[i]), []] for m, v in spec_d['effects'].items()]
+            if rec is None or spit_of(rec) != (SPELL_TYPES['Disease'], 0, 0) or effects_of(out, rec.data()) != want or text_of(rec, 'FULL') != spec_d['name'] + suffix:
+                problems.append(f'SPEL {spell}: not a constant effect disease on self named {spec_d["name"] + suffix!r} holding stage {i + 1} of {spec_d["effects"]}')
+    fw = sv.get('freezingWater')
+    if fw:
+        glob, water, src = own.get(('GLOB', fw['global'])), own.get(('SPEL', fw['spell'])), sources.get(fw['from'])
+        if glob is None or water is None or src is None:
+            return problems + [f'freezingWater: {fw["global"]}, {fw["spell"]} or {fw["from"]} missing']
+        if dict(glob.subs()).get('FNAM') != b's' or dict(glob.subs()).get('FLTV') != struct.pack('<f', 0):
+            problems.append(f'GLOB {fw["global"]}: not a short at 0')
+        param = len(out.masters) << 24 | next(k[1] for (t, k), r in ro.items() if r is glob)
+        want = [[k, m, conds + [(GET_GLOBAL_VALUE, param, 1.0, 0, 0)]] for k, m, conds in effects_of(src[0], src[2])]
+        if spit_of(water) != (SPELL_TYPES['Ability'], 0, 0) or effects_of(out, water.data()) != want:
+            problems.append(f'SPEL {fw["spell"]}: not the effects of {fw["from"]} each also under {fw["global"]} == 1')
+    return problems
+
+
+def check_alchemy(spec, ri, ro, inp, out, ck, log):
+    # Each alchemy recipe of the spec keeps everything but its rank markers, which name its spec tier
+    problems, me = [], out.name.lower()
+    before = {edid(r): r for (t, k), r in ri.items() if t == 'COBJ' and k[0] == me}
+    after = {edid(r): r for (t, k), r in ro.items() if t == 'COBJ' and k[0] == me}
+    markers = {k: edid(r) for (t, k), r in ro.items() if t == 'SPEL' and k[0] == me and edid(r).startswith('AldProf_')}
+
+    def conds(pl, rec):
+        return [(f, pl.key(p) if p else 0, v, o, on) for f, p, v, o, on in (condition(x) for t, x in rec.subs() if t == 'CTDA')]
+
+    def gates(pl, rec):
+        return sorted(markers[p] for f, p, *_ in conds(pl, rec) if f == HAS_SPELL and p in markers)
+
+    def others(pl, rec):
+        return [c for c in conds(pl, rec) if not (c[0] == HAS_SPELL and c[1] in markers)]
+    prof = spec['alchemy']['profession']
+    for r in spec['alchemy']['recipes']:
+        name = r.get('edid') or f"AldRecipeAlchemy_{r['output']}"
+        a, b = before.get(name), after.get(name)
+        want = [] if r['tier'] == 'Anyone' else sorted({f'AldProf_{p[0].upper()}{p[1:]}_{r["tier"]}' for p in [prof] + r.get('also', [])})
+        if b is None or gates(out, b) != want:
+            problems.append(f'COBJ {name}: gates {gates(out, b) if b else "missing"}, the spec tier gives {want}')
+            continue
+        if a is None:
+            continue
+        if ck.compare('COBJ', inp, a.flags, a.data(), out, b.data(), skip=('CTDA',)) or others(inp, a) != others(out, b):
+            problems.append(f'COBJ {name}: changed beyond its rank markers')
+        elif gates(inp, a) != want:
+            log.append(f'  alchemy rank changed: {name} {gates(inp, a)} -> {want}')
+    return problems
 
 
 def check_speed(speed, out, ro, races):
@@ -232,10 +342,6 @@ def check_abilities(rs, out, ro, races, effects):
     # Each ability holds the spec's effects and magnitudes, each power one scriptless fire and forget effect, and exactly the races named hand them out
     problems, own = [], {(t, edid(r)): (k, r) for (t, k), r in ro.items() if k[0] == out.name.lower()}
 
-    def spit(rec):
-        v = dict(rec.subs()).get('SPIT', b'')
-        return (struct.unpack_from('<I', v, 8)[0],) + struct.unpack_from('<II', v, 16) if len(v) >= 24 else None
-
     def holders(key, want, label):
         got = sorted(n for n, splo in races.items() if key in splo)
         return [] if got == sorted(want) else [f'{label}: handed out by {got}, the spec names {sorted(want)}']
@@ -244,8 +350,8 @@ def check_abilities(rs, out, ro, races, effects):
             problems.append(f'SPEL {spell}: missing')
             continue
         key, rec = own[('SPEL', spell)]
-        if spit(rec) != (SPELL_TYPES['Ability'], 0, 0):
-            problems.append(f'SPEL {spell}: SPIT {spit(rec)} is not a constant effect ability on self')
+        if spit_of(rec) != (SPELL_TYPES['Ability'], 0, 0):
+            problems.append(f'SPEL {spell}: SPIT {spit_of(rec)} is not a constant effect ability on self')
         want = [(effects.get(m), float(v), []) for m, v in a['effects'].items()]
         got = [(m, v, c) for m, v, c in effects_of(out, rec.data())]
         if got != want:
@@ -258,8 +364,8 @@ def check_abilities(rs, out, ro, races, effects):
             continue
         (key, rec), (ekey, erec) = own[('SPEL', spell)], own[('MGEF', effect)]
         etyp = dict(rec.subs()).get('ETYP', b'')
-        if spit(rec) != (SPELL_TYPES['LesserPower'], 1, 0) or len(etyp) != 4 or out.key(struct.unpack('<I', etyp)[0]) != VOICE_EQUIP:
-            problems.append(f'SPEL {spell}: SPIT {spit(rec)} is not a fire and forget lesser power on self in the voice slot')
+        if spit_of(rec) != (SPELL_TYPES['LesserPower'], 1, 0) or len(etyp) != 4 or out.key(struct.unpack('<I', etyp)[0]) != VOICE_EQUIP:
+            problems.append(f'SPEL {spell}: SPIT {spit_of(rec)} is not a fire and forget lesser power on self in the voice slot')
         if effects_of(out, rec.data()) != [[ekey, 0.0, []]]:
             problems.append(f'SPEL {spell}: effects are not {effect} alone')
         data, subs = dict(erec.subs()).get('DATA', b''), dict(erec.subs())
@@ -324,6 +430,9 @@ def main():
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
     winners, actors, parents, spells, races, weapons, lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
+    # The winning effects and spell the survival section copies, by editor id
+    sv = spec.get('survival', {})
+    copied, sources = {e['from'] for e in sv.get('effects', {}).values()} | {sv.get('freezingWater', {}).get('from')}, {}
     for n in order[:here]:
         pl = Plugin(os.path.join(stage['dataDir'], n))
         if not (pl.flags & ESL or n.lower().endswith('.esl')):
@@ -345,6 +454,8 @@ def main():
                 effects[edid(r)] = k
             if r.type == 'RACE':
                 races[edid(r)] = id_list(pl, r.data(), 'SPLO')
+            if r.type in ('MGEF', 'SPEL') and edid(r) in copied:
+                sources[edid(r)] = (pl, r.flags, r.data())
             if ((r.type, k) in ro or r.type in PLACED and k in listed_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
                 winners[(r.type, k)] = (pl, r.flags, r.data(), pl.container(r, CELL_GROUPS if r.type != 'CELL' else WORLD_GROUPS))
         pl.buf = None
@@ -359,6 +470,8 @@ def main():
             weapons[edid(r)] = damage_of(r)
         if t == 'RACE':
             races[edid(r)] = id_list(out, r.data(), 'SPLO')
+    # The input's own overrides win over the plugins before it
+    sources.update({edid(r): (inp, r.flags, r.data()) for (t, k), r in ri.items() if t in ('MGEF', 'SPEL') and edid(r) in copied})
     ck = Checker(order, known)
 
     # Every changed or added record is one a spec section explains
@@ -367,7 +480,7 @@ def main():
     head_parts = {p: h['validRaces'] for h in spec.get('headParts', []) for p in h['parts']}
     prefix = spec.get('craftingCategories', {}).get('keywordPrefix')
     tags = {k for (t, k), r in ro.items() if t == 'KYWD' and k[0] == me and (prefix and edid(r).startswith(prefix) or edid(r).startswith('AldKeyword_'))}
-    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect, an own reference everything but its scale, a quest everything but the scripts it drops, a global everything but its value, a moved reference everything but its position and scale, a reflagged reference everything but its flags
+    # The overrides section: an item keeps everything but its weight, a recipe everything but its created count, a food everything but one effect swapped or removed, an own reference everything but its scale, a quest everything but the scripts it drops, a global everything but its value, a spell everything but the effects it drops, a moved reference everything but its position and scale, a reflagged reference everything but its flags
     over = spec.get('overrides', {})
     over_misc = {form_key(m['item']): m['weight'] for m in over.get('misc', [])}
     over_cobj = {form_key(r['recipe']): r['count'] for r in over.get('recipes', [])}
@@ -376,7 +489,10 @@ def main():
     over_move = {form_key(m['ref']): (m['pos'], m.get('scale')) for m in over.get('moves', [])}
     over_flags = {form_key(f.get('ref') or f['item']): (int(f.get('clear', '0'), 16), int(f.get('set', '0'), 16)) for f in over.get('flags', [])}
     over_refs = {r['ref']: r['scale'] for r in over.get('refs', [])}
-    over_food = {form_key(f['item']): (effects.get(f['from']), effects.get(f['hunger'])) for f in over.get('foods', [])}
+    over_food = {form_key(f['item']): (effects.get(f['from']), effects.get(f['hunger'])) for f in over.get('foods', []) if 'remove' not in f}
+    over_food_drop = {form_key(f['item']): effects.get(f['remove']) for f in over.get('foods', []) if 'remove' in f}
+    over_spel = {form_key(s['spell']): s['dropEffectsEndingWith'] for s in over.get('spells', [])}
+    effect_names = {k: e for e, k in effects.items()}
     for (t, k), q in ro.items():
         r = ri.get((t, k))
         diff = None if r is None else ck.compare(t, inp, r.flags, r.data(), out, q.data()) or (r.flags & ~COMPRESSED != q.flags & ~COMPRESSED and f'flags {r.flags:#x} -> {q.flags:#x}')
@@ -443,6 +559,22 @@ def main():
             if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or None in swap or now != [swap[1] if e == swap[0] else e for e in id_list(src, data, 'EFID')]:
                 problems.append(f'{label}: not {src.name}\'s food with only {swap[0]} swapped for {swap[1]} ({why or now})')
             checked['foods overridden for their hunger effect'] += 1
+        elif t == 'ALCH' and k in over_food_drop:
+            src, flags, data, _ = ref
+            drop, was = over_food_drop[k], effect_blocks(src, data)
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=EFFECT_SUBS)
+            if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or drop is None or drop not in [e for e, _ in was] \
+                    or not same_effects(ck, src, [b for b in was if b[0] != drop], out, effect_blocks(out, q.data())):
+                problems.append(f'{label}: not {src.name}\'s food with only its {show(drop) if drop else "?"} effect removed ({why or [show(e) for e, _ in effect_blocks(out, q.data())]})')
+            checked['foods overridden without an effect'] += 1
+        elif t == 'SPEL' and k in over_spel:
+            src, flags, data, _ = ref
+            was = effect_blocks(src, data)
+            stays = [b for b in was if not effect_names.get(b[0], '').endswith(over_spel[k])]
+            why = ck.compare(t, src, flags, data, out, q.data(), skip=EFFECT_SUBS)
+            if why or q.flags & ~COMPRESSED != flags & ~COMPRESSED or len(stays) == len(was) or not same_effects(ck, src, stays, out, effect_blocks(out, q.data())):
+                problems.append(f'{label}: not {src.name}\'s spell with only its effects ending with {over_spel[k]} removed ({why or [show(e) for e, _ in effect_blocks(out, q.data())]})')
+            checked['spells overridden without their dropped effects'] += 1
         elif t == 'QUST' and k in over_qust:
             src, flags, data, _ = ref
             why = ck.compare(t, src, flags, data, out, q.data(), skip=('VMAD',))
@@ -563,6 +695,13 @@ def main():
     if 'abilities' in rs or 'powers' in rs:
         problems.extend(check_abilities(rs, out, ro, races, effects))
         checked['racial abilities and powers checked'] += len(rs.get('abilities', {})) + len(rs.get('powers', {}))
+    if sv:
+        own_effects = {edid(r): k for (t, k), r in ro.items() if t == 'MGEF' and k[0] == me}
+        problems.extend(check_survival(sv, out, ro, ck, {**effects, **own_effects}, sources))
+        checked['survival abilities, disease effects and disease stages checked'] += len(sv.get('abilities', {})) + len(sv.get('effects', {})) + len(sv.get('diseases', {})) * len(sv.get('stages', []))
+    if 'alchemy' in spec:
+        problems.extend(check_alchemy(spec, ri, ro, inp, out, ck, log))
+        checked['alchemy recipes checked against their spec tier'] += len(spec['alchemy']['recipes'])
     for k in disable_refs:
         final = ro.get(('REFR', k)) or ro.get(('ACHR', k)) or ro.get(('PHZD', k))
         flags = final.flags if final is not None else (winners.get(('REFR', k)) or winners.get(('PHZD', k)) or (None, 0))[1]

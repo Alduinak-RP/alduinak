@@ -511,7 +511,18 @@
   "AldDisease_YellowTick2": "0x041390",
   "AldDisease_YellowTick3": "0x041391",
   "AldSurvival_FreezingArea": "0x041392",
-  "AldSurvival_FreezingWaterDamage": "0x041393"
+  "AldSurvival_FreezingWaterDamage": "0x041393",
+  "AldDiseaseEffect_LockpickPickpocket": "0x041394",
+  "AldDiseaseEffect_Stamina": "0x041395",
+  "AldDiseaseEffect_Magicka": "0x041396",
+  "AldDiseaseEffect_Melee": "0x041397",
+  "AldDiseaseEffect_CarryWeight": "0x041398",
+  "AldDiseaseEffect_Speed": "0x041399",
+  "AldDiseaseEffect_StaminaRate": "0x04139A",
+  "AldDiseaseEffect_MagickaRate": "0x04139B",
+  "AldDiseaseEffect_Archery": "0x04139C",
+  "AldDiseaseEffect_Speech": "0x04139D",
+  "AldDiseaseEffect_ArmorSkills": "0x04139E"
  },
  "woodcraftingBench": {
   "edid": "AldWoodcraftingBench",
@@ -1024,7 +1035,7 @@
    {
     "output": "CureDisease",
     "name": "Potion of Cure Disease",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "ChaurusEggs": 7,
      "deathBell": 6,
@@ -8152,7 +8163,7 @@
   ]
  },
  "overrides": {
-  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). moves sets a placed reference's position by form key, keeping everything else it wins with (the SMdETraCon01 seam piece 00B444 of Digitus Quintus' House, The Great City of Solitude cell 00B213, one unit down from (321,-1296,0): one unit off the kit grid like 00B448, its beam lies inside the top beam of the wall 00B28C on the same seam with both undersides, its ceiling strip and its floor strip on the planes of 00B28C and the floor 00B221, which z-fights; disabling it instead leaves the atrium side of that beam and the ceiling under the balcony 00B446 open). globals sets a global's value by form key (Immersive Armors' IAGRemoveSpell to 0: IAStartupQuestScript adds the Configure Auxiliary Armors power to the player at every game start while it is not 0 and SkyUI.esp is absent, and SkyUI SE is SkyUI_SE.esp; the shield painting activator, the other script that adds it, is in disableReferences). Runs in the hotfix list too. A moves entry may also set a scale. flags clears (clear) or sets (set) record flags of a placed reference (ref) or an armour (item) by form key: the Castle Dour jail door 05E922 loses Inaccessible (0x100), as Alduinak925.esp has it, and the four Tied Linen Pouches of Nirn Necessities, the hip pouches the tailor makes at Adept, lose Non-Playable (0x4), which hid a crafted pouch from the inventory. The nudges of Alduinak925.esp are under moves too: the Thalmor Embassy raw beef and dog meat, the Moorside Inn cask (moved aside for the new oven, scale 0.6), a snow drift on the path to the Throat of the World and the thicket sunk among the new torches at Hammerfell Gate.",
+  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). moves sets a placed reference's position by form key, keeping everything else it wins with (the SMdETraCon01 seam piece 00B444 of Digitus Quintus' House, The Great City of Solitude cell 00B213, one unit down from (321,-1296,0): one unit off the kit grid like 00B448, its beam lies inside the top beam of the wall 00B28C on the same seam with both undersides, its ceiling strip and its floor strip on the planes of 00B28C and the floor 00B221, which z-fights; disabling it instead leaves the atrium side of that beam and the ceiling under the balcony 00B446 open). globals sets a global's value by form key (Immersive Armors' IAGRemoveSpell to 0: IAStartupQuestScript adds the Configure Auxiliary Armors power to the player at every game start while it is not 0 and SkyUI.esp is absent, and SkyUI SE is SkyUI_SE.esp; the shield painting activator, the other script that adds it, is in disableReferences). Runs in the hotfix list too. A moves entry may also set a scale. flags clears (clear) or sets (set) record flags of a placed reference (ref) or an armour (item) by form key: the Castle Dour jail door 05E922 loses Inaccessible (0x100), as Alduinak925.esp has it, and the four Tied Linen Pouches of Nirn Necessities, the hip pouches the tailor makes at Adept, lose Non-Playable (0x4), which hid a crafted pouch from the inventory. The nudges of Alduinak925.esp are under moves too: the Thalmor Embassy raw beef and dog meat, the Moorside Inn cask (moved aside for the new oven, scale 0.6), a snow drift on the path to the Throat of the World and the thicket sunk among the new torches at Hammerfell Gate. foods may instead remove one effect by editor id (remove): the HearthFires Garlic Bread loses Cure Disease (AlchCureDisease), so only potions cure diseases (O6), starting from Survival's override of it. spells removes the effects whose editor id ends with dropEffectsEndingWith from a spell by form key (Survival's cold stage abilities lose their screen effects, the ImodEffect ones, and keep the Freezing and Numb frost shader, O8, as creations.stageAbilities did for hunger and exhaustion).",
   "misc": [
    {
     "item": "0012C8:Saltdeposits.esp",
@@ -8225,6 +8236,11 @@
     "name": "Ash Yam",
     "from": "Survival_FoodRestoreHungerVerySmall",
     "hunger": "Survival_FoodRestoreHungerSmall"
+   },
+   {
+    "item": "0009DC:HearthFires.esm",
+    "name": "Garlic Bread",
+    "remove": "AlchCureDisease"
    }
   ],
   "quests": [
@@ -8241,6 +8257,38 @@
     "global": "01BA0D:Hothtrooper44_ArmorCompilation.esp",
     "name": "IAGRemoveSpell",
     "value": 0
+   }
+  ],
+  "spells": [
+   {
+    "spell": "000890:ccQDRSSE001-SurvivalMode.esl",
+    "name": "Survival_ColdStage0 (Warm)",
+    "dropEffectsEndingWith": "ImodEffect"
+   },
+   {
+    "spell": "00086E:ccQDRSSE001-SurvivalMode.esl",
+    "name": "Survival_ColdStage1 (Comfortable)",
+    "dropEffectsEndingWith": "ImodEffect"
+   },
+   {
+    "spell": "000891:ccQDRSSE001-SurvivalMode.esl",
+    "name": "Survival_ColdStage2 (Chilly)",
+    "dropEffectsEndingWith": "ImodEffect"
+   },
+   {
+    "spell": "00086D:ccQDRSSE001-SurvivalMode.esl",
+    "name": "Survival_ColdStage3 (Very Cold)",
+    "dropEffectsEndingWith": "ImodEffect"
+   },
+   {
+    "spell": "000870:ccQDRSSE001-SurvivalMode.esl",
+    "name": "Survival_ColdStage4 (Freezing)",
+    "dropEffectsEndingWith": "ImodEffect"
+   },
+   {
+    "spell": "000871:ccQDRSSE001-SurvivalMode.esl",
+    "name": "Survival_ColdStage5 (Numb)",
+    "dropEffectsEndingWith": "ImodEffect"
    }
   ],
   "moves": [
@@ -8850,6 +8898,429 @@
      "KhajiitRaceVampire"
     ]
    }
+  }
+ },
+ "survival": {
+  "comment": "The records SurvivalSystem grants (docs/docs_roleplay_creations_and_needs.md); nothing hands them out in the plugin, so they do nothing until the server grants them. abilities makes an Ability per entry from effects of the load order by editor id (AldSurvival_AbNoHealthRegen: Survival_DamageHealRate 100, HealRateMult -100, granted with the carry weight ability). effects makes the disease effects: each copies its from effect (value and actor values, sounds, art) without its conditions, since the vanilla disease effects carry the contraction roll GetRandomPercent <= 2..10 that would switch a server-granted disease off, without its script and without Hide In UI, so every disease shows in the Active Effects, constant on self. diseases makes AldDisease_<Id>1..3 for each catalog disease of survival.md 2.3 (the key is the server's disease id, the edid its first letter capitalised), Disease spells constant on self named name plus the stages suffix, each effect with its magnitude per stage; the server grants one stage at a time and a CureDisease effect removes them (MpActor::ApplyMagicEffect). Speech and the armor skills do little here, so Greenspore also slows stamina regeneration, less than Rattles (critique A.2). freezingWater makes the global the client sets while the player is in a freezing area (global, a short at 0) and an Ability holding the effects of Survival's freezing water spell (from) each under IsSwimming == 1 and that global == 1, which the server grants once instead of adding and removing Survival's spell at every area border (critique A.14).",
+  "abilities": {
+   "AldSurvival_AbNoHealthRegen": {
+    "name": "No Health Regeneration",
+    "description": "Health does not regenerate on its own.",
+    "effects": {
+     "Survival_DamageHealRate": 100
+    }
+   }
+  },
+  "effects": {
+   "AldDiseaseEffect_LockpickPickpocket": {
+    "from": "DisDamagePickpocketLockpick",
+    "name": "Reduced Lockpick & Pickpocket",
+    "description": "Picking locks and picking pockets is <mag>% harder."
+   },
+   "AldDiseaseEffect_Stamina": {
+    "from": "DisDamageStamina",
+    "name": "Reduced Stamina",
+    "description": "Maximum stamina is reduced by <mag> points."
+   },
+   "AldDiseaseEffect_Magicka": {
+    "from": "DisDamageMagicka",
+    "name": "Reduced Magicka",
+    "description": "Maximum magicka is reduced by <mag> points."
+   },
+   "AldDiseaseEffect_Melee": {
+    "from": "DisDamageOnehandedTwohanded",
+    "name": "Reduced Weapon Skills",
+    "description": "You are <mag>% less effective with melee weapons."
+   },
+   "AldDiseaseEffect_CarryWeight": {
+    "from": "DLC2DisDamageCarryWeight",
+    "name": "Reduced Carry Weight",
+    "description": "Carry weight is reduced by <mag>."
+   },
+   "AldDiseaseEffect_Speed": {
+    "from": "Survival_DamageSpeed",
+    "name": "Reduced Speed",
+    "description": "You move <mag>% slower."
+   },
+   "AldDiseaseEffect_StaminaRate": {
+    "from": "Survival_DamageStaminaRate",
+    "name": "Slow Stamina Regeneration",
+    "description": "Stamina regenerates <mag>% slower."
+   },
+   "AldDiseaseEffect_MagickaRate": {
+    "from": "Survival_DamageMagickaRate",
+    "name": "Slow Magicka Regeneration",
+    "description": "Magicka regenerates <mag>% slower."
+   },
+   "AldDiseaseEffect_Archery": {
+    "from": "Survival_DamageArchery",
+    "name": "Reduced Archery",
+    "description": "Bows are <mag>% less effective."
+   },
+   "AldDiseaseEffect_Speech": {
+    "from": "Survival_DisDamageSpeechcraft3",
+    "name": "Reduced Speech",
+    "description": "Speech is <mag>% less effective."
+   },
+   "AldDiseaseEffect_ArmorSkills": {
+    "from": "Survival_DisDamageLightArmorHeavyArmor2",
+    "name": "Reduced Armor Skills",
+    "description": "Light and heavy armor are <mag>% less effective."
+   }
+  },
+  "stages": [
+   "",
+   " (advanced)",
+   " (severe)"
+  ],
+  "diseases": {
+   "ataxia": {
+    "name": "Ataxia",
+    "effects": {
+     "AldDiseaseEffect_LockpickPickpocket": [
+      25,
+      50,
+      75
+     ]
+    }
+   },
+   "boneBreakFever": {
+    "name": "Bone Break Fever",
+    "effects": {
+     "AldDiseaseEffect_Stamina": [
+      25,
+      50,
+      75
+     ]
+    }
+   },
+   "brainRot": {
+    "name": "Brain Rot",
+    "effects": {
+     "AldDiseaseEffect_Magicka": [
+      25,
+      50,
+      75
+     ]
+    }
+   },
+   "rattles": {
+    "name": "Rattles",
+    "effects": {
+     "AldDiseaseEffect_StaminaRate": [
+      25,
+      50,
+      75
+     ]
+    }
+   },
+   "rockjoint": {
+    "name": "Rockjoint",
+    "effects": {
+     "AldDiseaseEffect_Melee": [
+      25,
+      50,
+      75
+     ]
+    }
+   },
+   "witbane": {
+    "name": "Witbane",
+    "effects": {
+     "AldDiseaseEffect_MagickaRate": [
+      25,
+      50,
+      75
+     ]
+    }
+   },
+   "droops": {
+    "name": "Droops",
+    "effects": {
+     "AldDiseaseEffect_Melee": [
+      15,
+      30,
+      45
+     ]
+    }
+   },
+   "brownRot": {
+    "name": "Brown Rot",
+    "effects": {
+     "AldDiseaseEffect_ArmorSkills": [
+      25,
+      50,
+      75
+     ]
+    }
+   },
+   "greenspore": {
+    "name": "Greenspore",
+    "effects": {
+     "AldDiseaseEffect_Speech": [
+      25,
+      50,
+      75
+     ],
+     "AldDiseaseEffect_StaminaRate": [
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "gutworm": {
+    "name": "Gutworm",
+    "effects": {
+     "AldDiseaseEffect_StaminaRate": [
+      25,
+      50,
+      100
+     ]
+    }
+   },
+   "astralVapors": {
+    "name": "Astral Vapors",
+    "effects": {
+     "AldDiseaseEffect_Magicka": [
+      20,
+      40,
+      60
+     ],
+     "AldDiseaseEffect_MagickaRate": [
+      15,
+      30,
+      45
+     ]
+    }
+   },
+   "blackHeartBlight": {
+    "name": "Black-Heart Blight",
+    "effects": {
+     "AldDiseaseEffect_CarryWeight": [
+      10,
+      20,
+      30
+     ],
+     "AldDiseaseEffect_Stamina": [
+      15,
+      30,
+      45
+     ]
+    }
+   },
+   "bloodLung": {
+    "name": "Blood Lung",
+    "effects": {
+     "AldDiseaseEffect_StaminaRate": [
+      20,
+      40,
+      60
+     ]
+    }
+   },
+   "chanthraxBlight": {
+    "name": "Chanthrax Blight",
+    "effects": {
+     "AldDiseaseEffect_Speed": [
+      3,
+      6,
+      10
+     ],
+     "AldDiseaseEffect_LockpickPickpocket": [
+      15,
+      30,
+      45
+     ]
+    }
+   },
+   "chills": {
+    "name": "Chills",
+    "effects": {
+     "AldDiseaseEffect_MagickaRate": [
+      15,
+      30,
+      45
+     ]
+    }
+   },
+   "collywobbles": {
+    "name": "Collywobbles",
+    "effects": {
+     "AldDiseaseEffect_StaminaRate": [
+      15,
+      30,
+      45
+     ]
+    }
+   },
+   "dampworm": {
+    "name": "Dampworm",
+    "effects": {
+     "AldDiseaseEffect_Speed": [
+      3,
+      6,
+      10
+     ]
+    }
+   },
+   "feebleLimb": {
+    "name": "Feeble Limb",
+    "effects": {
+     "AldDiseaseEffect_CarryWeight": [
+      15,
+      30,
+      45
+     ],
+     "AldDiseaseEffect_Melee": [
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "helljoint": {
+    "name": "Helljoint",
+    "effects": {
+     "AldDiseaseEffect_Speed": [
+      3,
+      6,
+      10
+     ],
+     "AldDiseaseEffect_Stamina": [
+      15,
+      30,
+      45
+     ]
+    }
+   },
+   "redRage": {
+    "name": "Red Rage",
+    "effects": {
+     "AldDiseaseEffect_MagickaRate": [
+      20,
+      40,
+      60
+     ],
+     "AldDiseaseEffect_CarryWeight": [
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "rustChancre": {
+    "name": "Rust Chancre",
+    "effects": {
+     "AldDiseaseEffect_Speech": [
+      20,
+      40,
+      60
+     ],
+     "AldDiseaseEffect_Speed": [
+      3,
+      6,
+      10
+     ]
+    }
+   },
+   "serpiginousDementia": {
+    "name": "Serpiginous Dementia",
+    "effects": {
+     "AldDiseaseEffect_Magicka": [
+      20,
+      40,
+      60
+     ],
+     "AldDiseaseEffect_Speech": [
+      15,
+      30,
+      45
+     ]
+    }
+   },
+   "shakes": {
+    "name": "Shakes",
+    "effects": {
+     "AldDiseaseEffect_LockpickPickpocket": [
+      20,
+      40,
+      60
+     ],
+     "AldDiseaseEffect_Archery": [
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "swampFever": {
+    "name": "Swamp Fever",
+    "effects": {
+     "AldDiseaseEffect_Stamina": [
+      20,
+      40,
+      60
+     ],
+     "AldDiseaseEffect_CarryWeight": [
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "wither": {
+    "name": "Wither",
+    "effects": {
+     "AldDiseaseEffect_Stamina": [
+      10,
+      20,
+      30
+     ],
+     "AldDiseaseEffect_CarryWeight": [
+      10,
+      20,
+      30
+     ],
+     "AldDiseaseEffect_Melee": [
+      10,
+      20,
+      30
+     ]
+    }
+   },
+   "witlessPox": {
+    "name": "Witless Pox",
+    "effects": {
+     "AldDiseaseEffect_Magicka": [
+      25,
+      50,
+      75
+     ]
+    }
+   },
+   "yellowTick": {
+    "name": "Yellow Tick",
+    "effects": {
+     "AldDiseaseEffect_Speed": [
+      3,
+      6,
+      10
+     ],
+     "AldDiseaseEffect_CarryWeight": [
+      10,
+      20,
+      30
+     ]
+    }
+   }
+  },
+  "freezingWater": {
+   "global": "AldSurvival_FreezingArea",
+   "spell": "AldSurvival_FreezingWaterDamage",
+   "from": "Survival_FreezingWaterDamage",
+   "name": "Freezing Water",
+   "description": "Swimming in freezing water drains health, and health does not regenerate while you swim in it."
   }
  },
  "headParts": [

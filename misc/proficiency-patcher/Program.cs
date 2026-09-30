@@ -69,13 +69,13 @@ JsonObject? categories = null;
 Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
-    ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
+    ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
+       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
        Steps.DisableActors, categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
+       Steps.Racial, Steps.Retier, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
        Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
@@ -254,13 +254,28 @@ class PatchContext
 
     T AddAt<T>(IGroup<T> group, string edid, uint id) where T : class, IMajorRecord
     {
-        var key = new FormKey(Key, id);
-        if (Mod.EnumerateMajorRecords().FirstOrDefault(r => r.FormKey == key) is { } holder)
-            throw new SpecException($"'{edid}' wants the pinned id {key}, which {holder.EditorID} already holds");
-        var rec = group.AddNew(key);
+        var rec = group.AddNew(FreeKey(edid, id));
         rec.EditorID = edid;
         return rec;
     }
+
+    // The pinned key, refused while another record holds it
+    FormKey FreeKey(string edid, uint id)
+    {
+        var key = new FormKey(Key, id);
+        if (Mod.EnumerateMajorRecords().FirstOrDefault(r => r.FormKey == key) is { } holder)
+            throw new SpecException($"'{edid}' wants the pinned id {key}, which {holder.EditorID} already holds");
+        return key;
+    }
+
+    // A short global of the plugin's own by editor id, at its pinned id; the Globals group holds an abstract type AddNew cannot make
+    public GlobalShort OwnGlobal(string edid) => OwnOrNew(edid, () =>
+    {
+        if (PinnedId(edid) is not uint id) throw new SpecException($"global '{edid}' needs a formIds pin");
+        var global = new GlobalShort(FreeKey(edid, id), SkyrimRelease.SkyrimSE) { EditorID = edid };
+        Mod.Globals.Add(global);
+        return global;
+    });
 
     // Same for records outside a top-level group, such as placed references; create adds the record to its container
     public T OwnOrNew<T>(string edid, Func<T> create, Action<T>? init = null) where T : class, IMajorRecord
@@ -420,6 +435,23 @@ static class Steps
 
     static void ConfigureAbility(Spell spell, string name, string description) =>
         ConfigureSpell(spell, SpellType.Ability, CastType.ConstantEffect, name, description);
+
+    // A disease stage: constant on self like an ability, and a CureDisease effect takes it away
+    static void ConfigureDisease(Spell spell, string name, string description) =>
+        ConfigureSpell(spell, SpellType.Disease, CastType.ConstantEffect, name, description);
+
+    static Effect NewEffect(FormKey mgef, float magnitude) =>
+        new() { BaseEffect = new FormLinkNullable<IMagicEffectGetter>(mgef), Data = new EffectData { Magnitude = magnitude, Area = 0, Duration = 0 } };
+
+    // An ability of the plugin's own holding effects of the load order by editor id with their magnitudes
+    static Spell NewAbility(PatchContext c, string edid, JsonObject a)
+    {
+        var spell = c.OwnOrNew(c.Mod.Spells, edid);
+        ConfigureAbility(spell, a["name"]!.GetValue<string>(), a["description"]!.GetValue<string>());
+        foreach (var (effect, magnitude) in a["effects"]!.AsObject())
+            spell.Effects.Add(NewEffect(c.KeyOf<IMagicEffectGetter>(effect), magnitude!.GetValue<float>()));
+        return spell;
+    }
 
     static void ConfigureSpell(Spell spell, SpellType type, CastType cast, string name, string description)
     {
@@ -1503,6 +1535,18 @@ static class Steps
         {
             var key = FormKey.Factory(f["item"]!.GetValue<string>());
             if (!cache.TryResolveContext<IIngestible, IIngestibleGetter>(key, out var ctx)) { c.Error($"overrides: food {key} not found"); continue; }
+            if (f["remove"] is JsonNode remove)
+            {
+                var drop = c.KeyOf<IMagicEffectGetter>(remove.GetValue<string>());
+                var found = ctx.Record.Effects.Count(e => e.BaseEffect.FormKey == drop);
+                // A re-run finds its own override without the effect
+                if (found == 0 && ctx.ModKey != c.Key) c.Error($"overrides: food {c.EdidOf(key)} ({key}) carries no {c.EdidOf(drop)} effect");
+                if (found == 0) continue;
+                var food = ctx.GetOrAddAsOverride(c.Mod);
+                food.Effects.RemoveAll(e => e.BaseEffect.FormKey == drop);
+                c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): {found} {c.EdidOf(drop)} effect(s) removed, {food.Effects.Count} kept");
+                continue;
+            }
             var from = c.KeyOf<IMagicEffectGetter>(f["from"]!.GetValue<string>());
             var to = c.KeyOf<IMagicEffectGetter>(f["hunger"]!.GetValue<string>());
             // Matching the new effect too keeps a re-run on a patched plugin idempotent
@@ -1540,6 +1584,19 @@ static class Steps
             var from = global.RawFloat;
             global.RawFloat = value;
             c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): value {from} -> {value}");
+        }
+        foreach (var s in Entries(o["spells"]))
+        {
+            var key = FormKey.Factory(s["spell"]!.GetValue<string>());
+            if (!cache.TryResolveContext<ISpell, ISpellGetter>(key, out var ctx)) { c.Error($"overrides: spell {key} not found"); continue; }
+            var suffix = s["dropEffectsEndingWith"]!.GetValue<string>();
+            bool Drop(IEffectGetter e) => c.Cache.TryResolve<IMagicEffectGetter>(e.BaseEffect.FormKey, out var mgef) && (mgef.EditorID ?? "").EndsWith(suffix, StringComparison.Ordinal);
+            var found = ctx.Record.Effects.Count(Drop);
+            if (found == 0 && ctx.ModKey != c.Key) c.Error($"overrides: spell {c.EdidOf(key)} ({key}) has no effect ending with {suffix}");
+            if (found == 0) continue;
+            var spell = ctx.GetOrAddAsOverride(c.Mod);
+            spell.Effects.RemoveAll(e => Drop(e));
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): {found} effect(s) ending with {suffix} removed, {spell.Effects.Count} kept");
         }
         foreach (var mv in Entries(o["moves"]))
             MoveReference(c, mv, "overrides");
@@ -1657,13 +1714,8 @@ static class Steps
         foreach (var (edid, a) in spec["abilities"]?.AsObject() ?? new JsonObject())
         {
             var races = Edids(c, a!["races"]).Select(c.Winning<IRaceGetter>).ToList();
-            var effects = a["effects"]!.AsObject();
-            var spell = c.OwnOrNew(c.Mod.Spells, edid);
-            ConfigureAbility(spell, a["name"]!.GetValue<string>(), a["description"]!.GetValue<string>());
-            foreach (var (effect, magnitude) in effects)
-                spell.Effects.Add(new Effect { BaseEffect = new FormLinkNullable<IMagicEffectGetter>(c.KeyOf<IMagicEffectGetter>(effect)), Data = new EffectData { Magnitude = magnitude!.GetValue<float>(), Area = 0, Duration = 0 } });
-            HandOut(c, spell, races);
-            c.Note($"Race ability {edid} ({string.Join(", ", races.Select(r => r.EditorID))}): {string.Join(", ", effects.Select(e => $"{e.Key} {e.Value}"))}");
+            HandOut(c, NewAbility(c, edid, a.AsObject()), races);
+            c.Note($"Race ability {edid} ({string.Join(", ", races.Select(r => r.EditorID))}): {string.Join(", ", a["effects"]!.AsObject().Select(e => $"{e.Key} {e.Value}"))}");
         }
         // Lesser powers keep no engine timer, so the server gates their use; the effect itself does nothing in the engine
         foreach (var (edid, p) in powers)
@@ -1717,6 +1769,64 @@ static class Steps
             race.ActorEffect ??= [];
             if (!race.ActorEffect.Any(x => x.FormKey == spell.FormKey)) race.ActorEffect.Add(spell.ToLink<ISpellRecordGetter>());
         }
+    }
+
+    // ---- survival: the abilities, disease stages and freezing water spell the server grants ------------------------
+    public static void Survival(PatchContext c)
+    {
+        if (c.Spec["survival"] is not JsonObject spec) return;
+        foreach (var (edid, a) in spec["abilities"]?.AsObject() ?? new JsonObject())
+        {
+            NewAbility(c, edid, a!.AsObject());
+            c.Note($"Survival ability {edid}: {string.Join(", ", a["effects"]!.AsObject().Select(e => $"{e.Key} {e.Value}"))}");
+        }
+        // A disease effect copies one of the load order without its conditions (the vanilla contraction roll) and script, shown and on self
+        foreach (var (edid, e) in spec["effects"]?.AsObject() ?? new JsonObject())
+        {
+            var template = c.Winning<IMagicEffectGetter>(e!["from"]!.GetValue<string>());
+            var mgef = c.OwnOrNew(c.Mod.MagicEffects, edid);
+            var key = mgef.FormKey;
+            mgef.DeepCopyIn(template);
+            if (mgef.FormKey != key) throw new Exception("form key changed by DeepCopyIn");
+            mgef.EditorID = edid;
+            mgef.Name = e["name"]!.GetValue<string>();
+            mgef.Description = e["description"]!.GetValue<string>();
+            mgef.VirtualMachineAdapter = null;
+            mgef.Conditions.Clear();
+            mgef.Flags &= ~MagicEffect.Flag.HideInUI;
+            mgef.CastType = CastType.ConstantEffect;
+            mgef.TargetType = TargetType.Self;
+            c.Note($"Disease effect {edid}: {template.EditorID} ({template.FormKey}) {template.Archetype.Type} {template.Archetype.ActorValue}, without its conditions and script");
+        }
+        var stages = Edids(c, spec["stages"]).ToList();
+        foreach (var (id, d) in spec["diseases"]?.AsObject() ?? new JsonObject())
+        {
+            var effects = d!["effects"]!.AsObject().Select(kv => (Key: c.KeyOf<IMagicEffectGetter>(kv.Key), Edid: kv.Key, Magnitudes: kv.Value!.AsArray().Select(x => x!.GetValue<float>()).ToList())).ToList();
+            if (effects.Any(x => x.Magnitudes.Count != stages.Count)) { c.Error($"survival: disease {id} needs {stages.Count} magnitudes per effect"); continue; }
+            for (int i = 0; i < stages.Count; i++)
+            {
+                var spell = c.OwnOrNew(c.Mod.Spells, $"AldDisease_{PatchContext.Cap(id)}{i + 1}");
+                ConfigureDisease(spell, d["name"]!.GetValue<string>() + stages[i], d["description"]?.GetValue<string>() ?? "");
+                foreach (var x in effects) spell.Effects.Add(NewEffect(x.Key, x.Magnitudes[i]));
+            }
+            c.Note($"Disease {id}: {string.Join("; ", effects.Select(x => $"{x.Edid} {string.Join("/", x.Magnitudes)}"))}");
+        }
+        // Survival's own spell under a global the client sets while the player is in a freezing area, so the server grants it once
+        if (spec["freezingWater"] is not JsonObject fw) return;
+        var global = c.OwnGlobal(fw["global"]!.GetValue<string>());
+        global.Data = 0;
+        var from = c.Winning<ISpellGetter>(fw["from"]!.GetValue<string>());
+        var water = c.OwnOrNew(c.Mod.Spells, fw["spell"]!.GetValue<string>());
+        ConfigureAbility(water, fw["name"]!.GetValue<string>(), fw["description"]!.GetValue<string>());
+        foreach (var effect in from.Effects.Select(x => x.DeepCopy()))
+        {
+            if (effect.Conditions.Count > 0) effect.Conditions[^1].Flags &= ~Condition.Flag.OR;
+            var data = new GetGlobalValueConditionData { RunOnType = Condition.RunOnType.Subject };
+            data.Global.Link.SetTo(global.FormKey);
+            effect.Conditions.Add(new ConditionFloat { CompareOperator = CompareOperator.EqualTo, ComparisonValue = 1f, Data = data });
+            water.Effects.Add(effect);
+        }
+        c.Note($"Freezing water {water.EditorID}: the {water.Effects.Count} effects of {from.EditorID} ({from.FormKey}), each also under {global.EditorID} == 1");
     }
 
     // ---- head parts: the races character creation offers a head part to --------------------------------------------

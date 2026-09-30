@@ -152,9 +152,15 @@ def actors_allowed(spec):
     return lambda k, rec: on and k[0] in ('ACHR', 'CELL', 'WRLD')
 
 
+def survival_allowed(spec):
+    # The survival section adds one global of the plugin's own, the freezing area switch the client sets
+    fw = json.load(open(spec, encoding='utf-8')).get('survival', {}).get('freezingWater', {})
+    return lambda k, rec: k[0] == 'GLOB' and k[1] == 'self' and k[2] == fw.get('global')
+
+
 def spec_allowed(spec):
     # Each spec section that adds or changes records of other types brings its own rule; verify_r13.py applies the same
-    rules = [f(spec) for f in (meadery_allowed, spec_overrides, world_allowed, actors_allowed)]
+    rules = [f(spec) for f in (meadery_allowed, spec_overrides, world_allowed, actors_allowed, survival_allowed)]
     return lambda k, rec: any(rule(k, rec) for rule in rules)
 
 
