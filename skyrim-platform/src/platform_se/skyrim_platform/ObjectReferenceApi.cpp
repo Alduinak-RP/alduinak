@@ -1,6 +1,7 @@
 #include "ObjectReferenceApi.h"
 
 #include "CallNativeApi.h"
+#include "CarryHold.h"
 #include "NullPointerException.h"
 #include "SkyrimPlatform.h"
 #include "StaticFreeze.h"
@@ -322,6 +323,40 @@ Napi::Value ObjectReferenceApi::MarkServerCopy(const Napi::CallbackInfo& info)
     NapiHelper::ExtractUInt32(info[0], "refrFormId"),
     NapiHelper::ExtractBoolean(info[1], "serverCopy"));
   return info.Env().Undefined();
+}
+
+Napi::Value ObjectReferenceApi::SetCarryHold(const Napi::CallbackInfo& info)
+{
+  return Napi::Boolean::New(
+    info.Env(),
+    CarryHold::Set(NapiHelper::ExtractUInt32(info[0], "heldFormId"),
+                   NapiHelper::ExtractUInt32(info[1], "carrierFormId"),
+                   NapiHelper::ExtractFloat(info[2], "forward"),
+                   NapiHelper::ExtractFloat(info[3], "up"),
+                   NapiHelper::ExtractFloat(info[4], "yaw")));
+}
+
+Napi::Value ObjectReferenceApi::ClearCarryHold(const Napi::CallbackInfo& info)
+{
+  auto env = info.Env();
+  const auto stats =
+    CarryHold::Clear(NapiHelper::ExtractUInt32(info[0], "heldFormId"));
+  if (!stats) {
+    return env.Null();
+  }
+  const auto sampled =
+    stats->frames > stats->snaps ? stats->frames - stats->snaps : 0;
+  auto result = Napi::Object::New(env);
+  result.Set("frames", Napi::Number::New(env, stats->frames));
+  result.Set("skipped", Napi::Number::New(env, stats->skipped));
+  result.Set("snaps", Napi::Number::New(env, stats->snaps));
+  result.Set("sampled", Napi::Number::New(env, sampled));
+  result.Set("meanDrift",
+             Napi::Number::New(env, sampled ? stats->driftSum / sampled : 0));
+  result.Set("maxDrift", Napi::Number::New(env, stats->maxDrift));
+  result.Set("worstSecond", Napi::Number::New(env, stats->worstSecond));
+  result.Set("maxYawDrift", Napi::Number::New(env, stats->maxYawDrift));
+  return result;
 }
 
 Napi::Value ObjectReferenceApi::MountActor(const Napi::CallbackInfo& info)

@@ -1652,6 +1652,21 @@ export declare function mountActor(rider: Actor | number, mount: Actor | number)
 
 export declare function markServerCopy(refrFormId: number, serverCopy: boolean): void;
 
+export interface CarryHoldStats {
+  frames: number;
+  skipped: number;
+  snaps: number;
+  sampled: number;
+  meanDrift: number;
+  maxDrift: number;
+  worstSecond: number;
+  maxYawDrift: number;
+}
+
+export declare function setCarryHold(heldFormId: number, carrierFormId: number, forward: number, up: number, yaw: number): boolean;
+
+export declare function clearCarryHold(heldFormId: number): CarryHoldStats | null;
+
 // Based on Form.pex
 export declare class Form extends PapyrusObject {
   static from(papyrusObject: PapyrusObject | null): Form | null

@@ -1,4 +1,5 @@
 #include "Hooks.h"
+#include "CarryHold.h"
 #include "EventHandler.h"
 #include <algorithm>
 #include <atomic>
@@ -380,6 +381,7 @@ void Hooks::Install()
   InstallCompoundFrustumStateGuard();
   InstallTextDisplayDataIsNotEqualHook();
   InstallQuickStatsBlock();
+  CarryHold::Install();
   HookVirtualMachineBind();
 
   logger::info("CommonLib hooks installed.");
