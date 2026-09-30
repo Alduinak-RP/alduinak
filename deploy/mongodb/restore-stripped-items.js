@@ -459,6 +459,12 @@ async function planMode(flags, ctx, env) {
   }, env.open)
 }
 
+// A filter that matches only while the stored entries are still exactly the ones read
+function unchanged(doc) {
+  const e = doc.inv && doc.inv.entries
+  return { _id: doc._id, formDesc: doc.formDesc, 'inv.entries': Array.isArray(e) ? e : null }
+}
+
 function infoMatches(info, ctx) {
   const same = (a, b) => [...a].sort().join(',') === [...b].sort().join(',')
   if (info.stripDocsSha256 !== ctx.strip.info.docsSha256) throw new Refusal('the backup belongs to another strip backup')
@@ -514,7 +520,8 @@ async function applyMode(flags, ctx, env) {
       env.log(`[dry run] backup ${dir} matches; ${blocker ? `apply would refuse: ${blocker}` : `re-run with --apply to give back ${plural(t.giveItems, 'item', 'items')} to ${t.receiving} holders`}`)
       return
     }
-    if (blocker) throw new Refusal(blocker)
+    const late = blocker || await env.blocker()
+    if (late) throw new Refusal(late)
     const record = {
       createdAt: new Date().toISOString(), stripDocsSha256: ctx.strip.info.docsSha256, backup: dir,
       docs: rows.map(r => ({ id: r.id, formDesc: r.formDesc, who: r.who, entriesSha256: sha256(canonical(r.set['inv.entries'])), given: r.give.map(g => ({ baseId: g.baseId, edid: g.edid, count: g.count })) })),
@@ -522,8 +529,8 @@ async function applyMode(flags, ctx, env) {
     writeNew(path.join(dir, APPLIED_FILE), JSON.stringify(record, null, 1))
     const undo = `node deploy/mongodb/restore-stripped-items.js restore --backup "${dir}" --apply`
     for (const r of rows) {
-      const res = await col.updateOne({ _id: r.live._id, formDesc: r.formDesc }, { $set: r.set }).catch(err => { throw new Error(`${err.message}; stopped part way, roll back with: ${undo}`) })
-      if (res.matchedCount !== 1) throw new Error(`updateOne matched ${res.matchedCount} documents for ${r.who}; stopped part way, roll back with: ${undo}`)
+      const res = await col.updateOne(unchanged(r.live), { $set: r.set }).catch(err => { throw new Error(`${err.message}; stopped part way, roll back with: ${undo}`) })
+      if (res.matchedCount !== 1) throw new Error(`${r.who} changed after it was read, nothing written to it; stopped part way, roll back with: ${undo}`)
     }
     const wrote = new Map(record.docs.map(d => [d.id, d.entriesSha256]))
     const bad = []
@@ -554,15 +561,15 @@ async function rollbackMode(flags, env) {
       const r = rec.get(String(d._id))
       const entries = now && canonical(arr(now.inv && now.inv.entries))
       if (!now) problems.push(`${d.formDesc} no longer exists`)
-      else if (r && sha256(entries) === r.entriesSha256) undo.push(d)
+      else if (r && sha256(entries) === r.entriesSha256) undo.push({ d, now })
       else if (entries !== canonical(arr(d.inv && d.inv.entries))) problems.push(`${d.formDesc}${r ? ` ${r.who}` : ''}: its inventory changed since the apply`)
     }
     env.log(`${plural(undo.length, 'document', 'documents')} of ${docs.length} in ${dir} hold what the apply wrote`)
     if (problems.length) throw new Refusal(`rolling back would lose changes made after the apply:\n  ${problems.slice(0, 20).join('\n  ')}`)
     if (!flags.apply) { env.log('[dry run] re-run with --apply to put the backed up inventories back'); return }
-    for (const d of undo) {
-      const res = await col.updateOne({ _id: d._id, formDesc: d.formDesc }, { $set: { 'inv.entries': arr(d.inv && d.inv.entries) } })
-      if (res.matchedCount !== 1) throw new Error(`updateOne matched ${res.matchedCount} documents for ${d.formDesc}`)
+    for (const { d, now } of undo) {
+      const res = await col.updateOne(unchanged(now), { $set: { 'inv.entries': arr(d.inv && d.inv.entries) } })
+      if (res.matchedCount !== 1) throw new Error(`${d.formDesc} changed after it was read, nothing written to it; stopped part way`)
     }
     fs.renameSync(recFile, path.join(dir, ROLLED_BACK_FILE))
     env.log(`rolled back ${plural(undo.length, 'document', 'documents')}`)

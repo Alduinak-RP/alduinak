@@ -73,7 +73,11 @@ node deploy/mongodb/restore-stripped-items.js apply --backup C:\Users\Administra
 node deploy/mongodb/restore-stripped-items.js plan
 ```
 
-`Get-Service` must say Stopped. Read the summary before the backup: per
+`Get-Service` must say Stopped, and nobody edits a character in the Server
+Manager until the last `plan`. The apply checks the game server again right
+before its first write and writes a document only while its inventory is
+still what it read, so it stops (roll back, take a new backup) rather than
+overwrite a change made in between. Read the summary before the backup: per
 character and container it lists what comes back, what is already back and
 what stays removed, and "FOR THE OWNER TO DECIDE" lists the calls to make. The first `apply`
 is a dry run; it refuses if a document changed since the backup (take the

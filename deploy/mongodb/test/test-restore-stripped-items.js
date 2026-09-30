@@ -74,18 +74,24 @@ function world() {
 const doc = (docs, formDesc) => docs.find(d => d.formDesc === formDesc)
 const addEntry = (d, base, count, extra = {}) => d.inv.entries.push({ baseId: base > 0x7FFFFFFF ? Long.fromNumber(base) : new Int32(base), count: new Int32(count), ...extra })
 
-// An in-memory changeForms collection with the queries the tools use
-function stub(docs, failAt = 0) {
+// An in-memory changeForms collection with the queries the tools use; beforeWrite plays a concurrent writer
+function stub(docs, { failAt = 0, beforeWrite = null } = {}) {
   const store = docs.map(clone)
   const writes = []
   const key = (k, v) => (k === '_id' ? String(v) : v)
-  const match = (d, q) => Object.entries(q).every(([k, v]) => (v && typeof v === 'object' && Array.isArray(v.$in) ? v.$in.map(x => key(k, x)).includes(key(k, d[k])) : key(k, v) === key(k, d[k])))
+  const at = (d, k) => k.split('.').reduce((o, p) => (o === null || o === undefined ? undefined : o[p]), d)
+  const same = (a, b) => EJSON.stringify(a === undefined ? null : a) === EJSON.stringify(b === undefined ? null : b)
+  const match = (d, q) => Object.entries(q).every(([k, v]) => {
+    if (v && typeof v === 'object' && Array.isArray(v.$in)) return v.$in.map(x => key(k, x)).includes(key(k, at(d, k)))
+    return Array.isArray(v) || v === null ? same(v, at(d, k)) : key(k, v) === key(k, at(d, k))
+  })
   const col = {
     find(q) {
       const out = store.filter(d => match(d, q)).map(clone)
       return (async function* () { yield* out })()
     },
     async updateOne(filter, update) {
+      if (beforeWrite) beforeWrite(store, filter)
       if (writes.length + 1 === failAt) { failAt = 0; throw new Error('connection reset') }
       writes.push(clone({ filter, update }))
       const d = store.find(x => match(x, filter))
@@ -228,7 +234,7 @@ async function main() {
   for (const x of s.writes) {
     assert.deepEqual(Object.keys(x.update), ['$set'])
     assert.deepEqual(Object.keys(x.update.$set), ['inv.entries'])
-    assert.deepEqual(Object.keys(x.filter), ['_id', 'formDesc'])
+    assert.deepEqual(Object.keys(x.filter), ['_id', 'formDesc', 'inv.entries'])
   }
   for (const d of s.store) {
     const old = pre.get(String(d._id))
@@ -290,7 +296,7 @@ async function main() {
   fs.rmSync(ROOT, { recursive: true })
 
   // An apply that stops part way can still be rolled back: written documents go back, the rest are left alone
-  const half = stub(world(), 3)
+  const half = stub(world(), { failAt: 3 })
   await R.run(['backup', '--out', path.join(ROOT, 'half'), '--intent', INTENT], { open: half.open, log: quiet })
   const halfPre = half.store.map(clone)
   await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'half'), '--apply', '--intent', INTENT], { open: half.open, blocker: async () => null, log: quiet }), /stopped part way, roll back with/)
@@ -298,6 +304,33 @@ async function main() {
   await R.run(['restore', '--backup', path.join(ROOT, 'half'), '--apply'], { open: half.open, blocker: async () => null, log: quiet })
   half.store.forEach((d, i) => assert.equal(EJSON.stringify(d.inv), EJSON.stringify(halfPre[i].inv), d.formDesc))
   assert.equal(half.writes.length, 4)
+  fs.rmSync(ROOT, { recursive: true })
+
+  // A write between the read and the update is never overwritten: the apply stops there and the rest can be rolled back
+  let raced = null
+  let gold = 0
+  const race = stub(world(), {
+    beforeWrite(store, filter) {
+      if (raced) return
+      raced = String(filter._id)
+      const d = store.find(x => String(x._id) === raced)
+      gold = total(d, 0xF)
+      d.inv.entries.push({ baseId: new Int32(0xF), count: new Int32(999) })
+    },
+  })
+  await R.run(['backup', '--out', path.join(ROOT, 'race'), '--intent', INTENT], { open: race.open, log: quiet })
+  await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'race'), '--apply', '--intent', INTENT], { open: race.open, blocker: async () => null, log: quiet }), /changed after it was read, nothing written to it; stopped part way/)
+  assert.equal(total(race.store.find(x => String(x._id) === raced), 0xF), gold + 999)
+  assert.equal(race.writes.length, 1)
+  fs.rmSync(ROOT, { recursive: true })
+
+  // The game server check runs again right before the first write
+  let checks = 0
+  s = stub(world())
+  await R.run(['backup', '--out', path.join(ROOT, 'late'), '--intent', INTENT], { open: s.open, log: quiet })
+  await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'late'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => (++checks > 1 ? 'AlduinakGameServer is SERVICE_START_PENDING, stop it first' : null), log: quiet }), refused(/START_PENDING/))
+  assert.equal(s.writes.length, 0)
+  assert.ok(!fs.existsSync(path.join(ROOT, 'late', 'restore-applied.json')))
   fs.rmSync(ROOT, { recursive: true })
 
   // Containers: a claim that changed hands or is gone is skipped
