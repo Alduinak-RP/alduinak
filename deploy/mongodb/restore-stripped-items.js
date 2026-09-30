@@ -26,8 +26,8 @@ const USAGE = [
   'all but restore also take [--strip <strip backup dir>] [--intent <strip-intent.json>] [--strip-plan <strip-inventories-plan-*.json>]',
   "  [--also-keep '0x...,0x...'] (keep these removed base ids removed too) [--also-give '0x...,0x...'] (return these although the intent keeps them; never spells)",
   "  [--ignore-held '0x...,0x...'] (give these ids back in full: a copy held now was crafted, looted or bought, not returned)",
-  '  ids are hex with 0x; quote a list in PowerShell, and give each flag once',
   '  [--per-document] (count returns per document only, not across the characters and claimed containers of a profile)',
+  '  ids are hex with 0x; quote a list in PowerShell, and give each flag once',
 ].join('\n')
 
 const STRIP_DIR = process.env.ALDUINAK_STRIP_BACKUP || 'C:\\Users\\Administrator\\Desktop\\alduinak-r13\\rollback-strip'
@@ -66,10 +66,9 @@ function checkRemoved(ids, flag, classes) {
 
 function byHex(obj) { return new Map(Object.entries(obj || {}).map(([k, v]) => [parseInt(k, 16) >>> 0, v])) }
 
-// The strip's list as far as the backup touches it, with the owner's intent per base id (strip-intent.py)
 // The Data folder must still hold what the intent was read from: the same light flags (the backup's form ids) and the same plugins behind the removed items
 async function checkPlugins(raw, settings, file) {
-  const again = `run python deploy/mongodb/strip-intent.py to sort the removed items again from the plugins as they are now, then take a new backup`
+  const again = 'run python deploy/mongodb/strip-intent.py to sort the removed items again from the plugins as they are now, then take a new backup'
   if (!settings.dataDir) throw new Refusal('server-settings.json has no dataDir, so the plugins behind strip-intent.json cannot be checked')
   if (!raw.sourceSha256 || arr(raw.plugins).some(p => !p.sha256)) throw new Refusal(`${file} carries no plugin hashes: ${again}`)
   const flags = modsync.readPluginFlags(raw.plugins.map(p => p.name), { dataDir: settings.dataDir })
@@ -84,6 +83,7 @@ async function checkPlugins(raw, settings, file) {
   if (changed.length) throw new Refusal(`${changed.join(', ')} changed since ${file} was made: ${again}`)
 }
 
+// The strip's list as far as the backup touches it, with the owner's intent per base id (strip-intent.py)
 async function loadIntent(file, info, settings) {
   const raw = readJson(file, 'intent file')
   if (raw.docsSha256 !== info.docsSha256) throw new Refusal(`${file} was made for another strip backup, run strip-intent.py for this one`)
@@ -461,14 +461,14 @@ function render(title, rows, t, meta) {
   L.push(`strip backup ${meta.strip} (${meta.stripCreatedAt}, ${plural(rows.length, 'document', 'documents')}, database ${meta.databaseName})`)
   L.push(`intent ${meta.intent} (list ${meta.listSha256.slice(0, 12)})`)
   L.push(`strip plan report ${meta.stripPlan}: the strip rule reproduces it for ${meta.reproduced} of ${rows.length} documents`)
-  L.push(meta.poolByProfile ? 'returns count per document and across each profile (its characters and claimed containers)' : 'returns count per document only (--per-document)')
+  L.push(meta.poolByProfile ? "returns count per document and across each profile (its characters, their pets and its claimed containers)" : 'returns count per document only (--per-document)')
   L.push(`earlier applies are looked for in ${meta.restoreRoot}`)
   for (const r of meta.earlier) {
     L.push(`an earlier restore was applied ${r.createdAt} (${r.dir}): it wrote ${r.written} of ${plural(r.writes, 'document', 'documents')}${r.writes > r.written ? `, the ${r.writes - r.written} it never wrote are planned again` : ''}; what it settled is not given again`)
     for (const who of r.unsure) L.push(`  ! it stopped while writing ${who}, whose inventory changed since: counted as given, check it by hand`)
   }
   const given = Object.entries(OVERRIDES).filter(([k]) => meta[k].length)
-  if (given.length) L.push(given.map(([k, flag]) => `${flag} ${meta[k].join(',')}`).join('  '))
+  L.push(`overrides: ${given.map(([k, flag]) => `${flag} ${meta[k].join(',')}`).join('  ') || 'none'}`)
   L.push('', 'TOTALS')
   L.push(`  holders: ${plural(t.characters, 'character', 'characters')} and ${plural(t.containers, 'container', 'containers')}; ${t.receiving} get items back`)
   L.push(`  comes back: ${plural(t.giveItems, 'item', 'items')} (items / entries / holders)`)
