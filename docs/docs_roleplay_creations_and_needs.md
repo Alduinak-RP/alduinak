@@ -221,9 +221,11 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   copies and sent `DropItem`, so the server dropped one more at the player's feet, or, when the eaten one was the
   last, threw `Source inventory doesn't have enough <id> (1 is required while 0 present)` (249 of those for foods,
   potions and ingredients in the September logs). Since 1.0 a potion or ingredient that leaves the pack with no world
-  reference within a second of its own equip is eaten, not dropped, and the client logs `DropItemService: consumed,
-  not dropped: <name> <id> left the pack with no world reference <ms> ms from its equip; the nearest <name> in the
-  world <d> units away was left alone` (or `no <name> in the world within 2000 units`) to `skyrim-platform.log`; a
+  reference within a second of its own equip is eaten, not dropped; the equips are counted per item, so two quick eats
+  of the same potion in one frame each match their own removal. The client logs `DropItemService: consumed, not
+  dropped: <name> <id> left the pack with no world reference <ms> ms from its equip[, N more equip(s) of it still to
+  match]; the nearest <name> in the world <d> units away was left alone` (or `no <name> in the world within 2000
+  units`) to `skyrim-platform.log`; a
   real drop logs `DropItemService: dropped <id> x<n>: world reference <id|none>, <k> local copies removed`. The
   server's inventory watch logs `[inv] <name> (<id>, profile P) drop of <editor id> <id> xN <ms> ms after eating
   one: the client sent the eat as a drop too` if such a drop still arrives (see `GoldWatchSystem` in

@@ -22,8 +22,11 @@ export class DropItemService extends ClientListener {
     }
 
     private onEquip(e: EquipEvent) {
-        if (!e.actor || !e.baseObj || e.actor.getFormID() !== 0x14) return;
-        if (CONSUMABLE_TYPES.has(e.baseObj.getType())) this.consumedAt.set(e.baseObj.getFormID(), Date.now());
+        if (!e.actor || !e.baseObj || e.actor.getFormID() !== 0x14 || !CONSUMABLE_TYPES.has(e.baseObj.getType())) return;
+        const baseId = e.baseObj.getFormID();
+        const now = Date.now();
+        const prev = this.consumed.get(baseId);
+        this.consumed.set(baseId, { count: prev && now - prev.at <= CONSUME_WINDOW_MS ? prev.count + 1 : 1, at: now });
     }
 
     private onContainerChanged(e: ContainerChangedEvent) {
@@ -56,14 +59,14 @@ export class DropItemService extends ClientListener {
     }
 
     private wasConsumed(baseId: number, name: string): boolean {
-        const at = this.consumedAt.get(baseId);
-        const apart = at === undefined ? Infinity : Date.now() - at;
-        if (apart > CONSUME_WINDOW_MS) return false;
-        this.consumedAt.delete(baseId);
+        const eaten = this.consumed.get(baseId);
+        const apart = eaten === undefined ? Infinity : Date.now() - eaten.at;
+        if (!eaten || apart > CONSUME_WINDOW_MS) return false;
+        if (--eaten.count <= 0) this.consumed.delete(baseId);
         const player = this.sp.Game.getPlayer() as Actor;
         const near = this.sp.Game.findClosestReferenceOfType(this.sp.Game.getFormEx(baseId), player.getPositionX(), player.getPositionY(), player.getPositionZ(), DROP_SCAN_RADIUS);
         const nearText = near ? `the nearest ${name} in the world ${Math.round(player.getDistance(near))} units away was left alone` : `no ${name} in the world within ${DROP_SCAN_RADIUS} units`;
-        logToPlatformLog(this, `consumed, not dropped: ${name} ${baseId.toString(16)} left the pack with no world reference ${apart} ms from its equip; ${nearText}`);
+        logToPlatformLog(this, `consumed, not dropped: ${name} ${baseId.toString(16)} left the pack with no world reference ${apart} ms from its equip${eaten.count > 0 ? `, ${eaten.count} more equip(s) of it still to match` : ""}; ${nearText}`);
         return true;
     }
 
@@ -145,6 +148,6 @@ export class DropItemService extends ClientListener {
         return extras;
     }
 
-    // baseId -> when the player last equipped (ate, drank or applied) it
-    private consumedAt = new Map<number, number>();
+    // baseId -> equips (eats, drinks, poison applies) not yet matched to a removal, and the last one's time
+    private consumed = new Map<number, { count: number; at: number }>();
 }
