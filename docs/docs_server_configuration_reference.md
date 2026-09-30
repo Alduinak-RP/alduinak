@@ -443,6 +443,113 @@ menu closes.
 }
 ```
 
+## racialPassives
+
+What a playable race gets comes from two places: the plugin (`AlduinakAdditions.esp` from r27a: the `AldRacial_*`
+resistance abilities, the RACE starting health, magicka and stamina, the claws and the powers) and this block, which
+holds every race number a server system reads. `RacialSystem` (`skymp5-server/ts/systems/racialSystem.ts`) is its
+only reader; NeedsSystem and SurvivalSystem ask it for a character's traits. The race is the character's appearance
+race, a vampire or child race through `aliases`, cached per character until its next spawn, creation finish or
+accepted race menu; a character still in creation gets neutral traits. All optional: with no block every race is
+neutral. Not a protected setting, so Migrate settings carries it to live. Read at boot. The whole race table is in
+`docs/docs_racial_passives.md`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | `false` makes every race neutral, gives no start items and refuses no power |
+| `aliases` | the 10 vampire races and `ImperialRaceChild`, `NordRaceChild`, `RedguardRaceChild`, `BretonRaceChild`, `BretonRaceChildVampire` to their base race | `{ "<race editor id>": "<race editor id of the entry>" }`, merged over the built-in map; a race with its own `races` entry uses that before its alias |
+| `races` | none | `{ "<race editor id>": { ... } }` with the keys below |
+| `startItemsSince` | `"2026-10-01T16:00:00-07:00"` (the 1.0 launch) | Epoch ms or a date string. A character created at or after it (the earliest of `private.startLocation.at`, `private.rp.createdAt` and `private.starterGold.at`) whose race has `startingItems` and that never got them gets them once at its next login, under the same slot guard, so holding them back past the launch costs nobody anything. A character with no creation time is recorded once as `creation time unknown` and gets nothing |
+
+Race entry keys. A missing multiplier is 1, a missing warmth 0 and a missing flag false; an unusable value keeps that
+and is named in a `[racial] warning: racialPassives...` boot line, as are an unknown key and a race editor id that no
+RACE of the load order has.
+
+| Key | Meaning | Read by |
+|---|---|---|
+| `fatigueCostMult` | Multiplies every fatigue cost the character pays: crafts, the bench check, gathering, skinning, kills, casts and the concentration drain. Above 0. It multiplies with the drink discount and the alchemist flora discount; mastery hours and the hour bank are untouched | NeedsSystem |
+| `hungerRateMult` | Multiplies the hunger drain, online and, with `needsHungerOffline`, offline. Above 0 | NeedsSystem |
+| `coldRateMult` | Multiplies every cold gain: the cold step, the freezing water jump, frost spell hits and frost venom hits. `0` never grows cold. 0 or more | SurvivalSystem |
+| `warmth` | Warmth points on top of what the character wears. The race ability's `Survival_FortifyWarmthConstant` makes the inventory's Warmth total agree, and the boot report warns when the two differ | SurvivalSystem |
+| `rawMeatSafe` | `true`: raw meat never gives food poisoning | SurvivalSystem |
+| `freezingWaterImmune` | Printed in the boot report only; no system acts on it in this build. Freezing water cold follows `coldRateMult`, and its damage follows the plugin's frost resistance, so the water hurts every race (owner decision O2) | none |
+| `startingItems` | `[{ baseId, count }]`, the shape of `startingItems`. Given once when the character's creation finishes, on top of the kit, guarded per profile and character slot by the `<profileId>:<slot>:race` key in `starter-grants.json` and recorded in `private.racial.startItems`; a character recreated in a slot that had them gets nothing. Gold goes through `addGold` and never marks `private.starterGold`, so the profession kit keeps its gold | RacialSystem |
+
+The Test Server block (staged with a README in `Desktop/alduinak-r13/live/r27-RC4/`):
+
+```json5
+{
+  // ...
+  "racialPassives": {
+    "enabled": true,
+    "startItemsSince": "2026-10-01T16:00:00-07:00",
+    "races": {
+      "NordRace":     { "coldRateMult": 0, "freezingWaterImmune": false },
+      "ArgonianRace": { "coldRateMult": 1.25, "rawMeatSafe": true },
+      "KhajiitRace":  { "coldRateMult": 1.25, "rawMeatSafe": true },
+      "OrcRace":      { "hungerRateMult": 0.85, "fatigueCostMult": 0.85, "warmth": 10 },
+      "WoodElfRace":  { "fatigueCostMult": 0.75 },
+      "DarkElfRace":  { "fatigueCostMult": 0.75 },
+      "HighElfRace":  { "fatigueCostMult": 0.75 },
+      "ImperialRace": { "startingItems": [{ "baseId": "0x0000000F", "count": 50 }] }
+    }
+  }
+  // ...
+}
+```
+
+Breton and Orc magic resistance is not in this block. The plugin's abilities resist magic in the client engine, and
+server spell damage needs two `damageMultConditionalFormulaSettings` entries, x0.5 for a Breton target and x0.75 for
+an Orc, vampire forms included. They wrap every server spell hit, not poisons, and stand in until the native magic
+pass (plan task NV7), which replaces them:
+
+```json5
+{
+  // ...
+  "damageMultConditionalFormulaSettings": {
+    // ... the existing entries
+    "racialMagicResistBreton": {
+      "magicDamageMultiplier": 0.5,
+      "conditions": [
+        { "function": "GetIsRace", "runsOn": "Target", "comparison": "==", "value": 1, "parameter1": "0x00013741", "parameter2": "0x0", "logicalOperator": "OR" },
+        { "function": "GetIsRace", "runsOn": "Target", "comparison": "==", "value": 1, "parameter1": "0x0008883C", "parameter2": "0x0", "logicalOperator": "AND" }
+      ]
+    },
+    "racialMagicResistOrc": {
+      "magicDamageMultiplier": 0.75,
+      "conditions": [
+        { "function": "GetIsRace", "runsOn": "Target", "comparison": "==", "value": 1, "parameter1": "0x00013747", "parameter2": "0x0", "logicalOperator": "OR" },
+        { "function": "GetIsRace", "runsOn": "Target", "comparison": "==", "value": 1, "parameter1": "0x000A82B9", "parameter2": "0x0", "logicalOperator": "AND" }
+      ]
+    }
+  }
+  // ...
+}
+```
+
+Boot lines in `C:\logs\test\gameserver.log`:
+
+- `[racial] ready: on, 8 race entries (NordRace, ...), 15 aliases, powers ..., start items once per slot, backfilled
+  at login for characters created since 2026-10-01T23:00Z; self-check ...; Player NPC_ offsets H/M/S 50/50/50`, or
+  `no racialPassives block, every race neutral`, or `off (enabled false), every race neutral`.
+- `[racial] magic damage entries: racialMagicResistBreton x0.5 on BretonRace, BretonRaceVampire; racialMagicResistOrc
+  x0.75 on OrcRace, OrcRaceVampire` (or `none`).
+- One line per playable race with what the plugin and the settings give it, for example on plugin r22
+  `[racial] NordRace: resist frost 50, base H/M/S 100/100/100, cold x0 (immune), freezing water hurts, fatigue x1,
+  hunger x1, warmth 0, raw meat unsafe, start items none, claws 4 (race unarmed), magic damage x1, abilities RaceNord +
+  AldRaceSpeed_Nord, powers -, AldRacial_Nord not in plugin yet`; on r27a it reads `resist frost 75`, `base H/M/S
+  100/100/150` and `AldRacial_Nord on the race`.
+- `[racial] warning: ...`: races without their `AldRacial_*` ability (expected before r27a), an `AldRacial_*` in the
+  load order that its race does not list (a wrong or stale plugin in the server Data folder), a race whose ability
+  resists magic with no entry above, an entry that names a race but not its vampire race, settings warmth that differs
+  from the plugin's, and every ignored value.
+- `[needs] modifier sources: race (hunger OrcRace x0.85; fatigue OrcRace x0.85, WoodElfRace x0.75, DarkElfRace x0.75,
+  HighElfRace x0.75)`.
+
+In play: `[racial] <id> ImperialRace start items: 50 gold (slot 0, creation)` (or `login` for the backfill),
+`... start items: none, slot <n> of profile <p> had them already (...)` and `... start items: none, creation time
+unknown`; the `[needs]` cost lines end `, race x0.75` (see Hunger and fatigue).
+
 ## npcHostRange
 
 How far, in game units, a player can be from a server NPC (a spawn zone NPC or a companion) and still be picked as its new host. Only players the server streams the NPC to count: the server sends an actor to the players in its 4096-unit grid cell and the eight cells around it, so a player 4.1k units away across two cell lines may not have it, while one 11k units away diagonally may. The server moves an NPC's hosting to the player it is fighting, to its owner, or to the nearest such player within this range. A host that still streams the NPC keeps it when nobody else qualifies, so an NPC is unhosted only once its host no longer receives it (see `docs_roleplay_npc_spawns.md`, Hosting). Default 8192. Needs the `scam_native` build with `setHoster`; older builds log once at boot and keep client-driven hosting. A player whose game is paused, alt-tabbed or loading is never picked; that test needs `getMovementAgeMs`, and a build without it logs once and skips such a player only after another client claims its NPC.
@@ -1014,7 +1121,7 @@ If "damageMultFormulaSettings" is not present, the server will use some default 
 
 ## damageMultConditionalFormulaSettings
 
-Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. Two rules ship in the settings. `practiceArrows` makes a bow or crossbow deal nothing while Practice Arrows (Skyrim.esm AMMO `0xCAB52`, 0 damage in the plugin but the server only reads the bow's damage) are nocked, for players and NPC archers alike; a bow bash with them nocked deals nothing too, since the rule cannot tell a bash from a shot. `hunterOverDraw` is the hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from the `proficiency-ids.json` of the last plugin run: the full slot of `AlduinakAdditions.esp` followed by its local id `002032`, today `0x33002032` because `DynDOLOD.esm` is a full plugin loaded before it; a plugin added or removed before it moves the slot):
+Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. `magicDamageMultiplier` scales server spell hits the same way; the two racial magic resistance entries of the Test Server are under `racialPassives`. Two rules ship in the settings. `practiceArrows` makes a bow or crossbow deal nothing while Practice Arrows (Skyrim.esm AMMO `0xCAB52`, 0 damage in the plugin but the server only reads the bow's damage) are nocked, for players and NPC archers alike; a bow bash with them nocked deals nothing too, since the rule cannot tell a bash from a shot. `hunterOverDraw` is the hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from the `proficiency-ids.json` of the last plugin run: the full slot of `AlduinakAdditions.esp` followed by its local id `002032`, today `0x33002032` because `DynDOLOD.esm` is a full plugin loaded before it; a plugin added or removed before it moves the slot):
 
 ```json5
 {
@@ -1066,7 +1173,7 @@ fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a
 | `needsFatigueStageAbilities` | `true` | Grant the Survival exhaustion stage ability of the current stage |
 | `needsExhaustionMax` | `960` | Exhaustion of an empty fatigue bar (`Survival_ExhaustionNeedMaxValue`) |
 | `needsAttributePenalties` | `true` | `false` sends no max stamina or max magicka penalty |
-| `needsSurvivalModeFlag` | `true` | Clients set the Creation's `Survival_ModeToggle` (`SRVT`, esl 0x828) to 1 with every `needsState`. `HUDMenu::AdvanceMovie` polls that global every frame and calls the HUD's `ShowSurvivalElements(true, penalties)` under it; with the toggle at 0 the engine calls it once with false after each load and never again, so `false` hides the red penalty segments whatever the penalty globals hold. `Survival_ModeEnabled` is script-only and nothing in the engine reads it. `true` also brings the engine's own Survival extras on every client: arrows, bolts and the lockpick weigh their record weight, armour cards and the inventory bar show Warmth. Survival's quests and scripts stay off (the plugin drops `Survival_MainScript`, which would otherwise start them from this toggle), so no hunger, cold or exhaustion effect starts from it. Read at boot |
+| `needsSurvivalModeFlag` | `true` | Clients set the Creation's `Survival_ModeToggle` (`SRVT`, esl 0x828) to 1 with every `needsState`. `HUDMenu::AdvanceMovie` polls that global every frame and calls the HUD's `ShowSurvivalElements(true, penalties)` under it; with the toggle at 0 the engine calls it once with false after each load and never again, so `false` hides the red penalty segments whatever the penalty globals hold. `Survival_ModeEnabled` is script-only and nothing in the engine reads it. `true` also brings the engine's own Survival extras on every client: arrows, bolts and the lockpick weigh their record weight (0.1 each: every vanilla and DLC arrow and bolt record, and the lockpick through Update.esm; with the flag off they weigh nothing), armour cards and the inventory bar show Warmth. Survival's quests and scripts stay off (the plugin drops `Survival_MainScript`, which would otherwise start them from this toggle), so no hunger, cold or exhaustion effect starts from it. Read at boot |
 | `needsAlcoholDiscount` | `0.25` | Warmed by drink: the share of the fatigue cost a cook or alchemist (Novice or better) saves on the crafts priced by their own rank after drinking an alcohol; `0` turns the rule off. Any other character gets the hunger only. Read at boot |
 | `needsAlcoholMinutes` | `10` | How long one drink warms; another drink refreshes the timer and never stacks |
 | `needsAlcoholItems` | `{}` | `{ "<ALCH editor id or hex id>": true \| false }` counting an item as alcohol or not, over the record rule (an ALCH drunk with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate effect: every vanilla ale, mead, wine, brandy, flin, sujamma, shein and matze; not juice, water, milk or skooma). Rotgut and Battle-Brew Special carry no rate effect and need `true` here to count |
@@ -1074,6 +1181,20 @@ fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a
 | `blockStaminaCostWarrior` | `0.05` | What a warrior pays instead |
 | `blockStaggerWithoutStamina` | `true` | A blocker whose stamina is below the block cost still blocks that hit but is staggered on their own screen and on their copies (at most once a second, never while downed, mounted or seated); logs `[needs] <id> staggered: blocked without stamina`. Needs the matching client |
 | `blockStaggerMagnitude` | `0.5` | The stagger's `staggerMagnitude`, clamped to 0.1 to 1 |
+
+**Per-character factors.** NeedsSystem multiplies every fatigue cost and the hunger drain by the factors of its
+modifier sources, which have no keys of their own here. The first source is the race: `fatigueCostMult` and
+`hungerRateMult` of `racialPassives`. The factors of all sources multiply with each other and with a caller's own
+factor (the drink discount, the alchemist flora discount); one that is not a positive number counts as 1. The seven
+fatigue paths (craft, the bench check, cast attempt with the concentration drain, cast, kill, and every gather or skin
+through `canPay` and `pay`) all price with them; mastery hours never do. The log shows them:
+
+- boot: `[needs] modifier sources: race (hunger OrcRace x0.85; fatigue OrcRace x0.85, WoodElfRace x0.75, ...)`, or
+  `none`;
+- a craft: `[needs] <id> craft <recipe> r<rank>[ half][, drink x0.75]: -N%, fatigue F%, race x0.75`; the spend lines
+  (gather, kill, skin, flora) and the refused and too-tired lines end `, race x0.75` the same way, only when a factor
+  is in force;
+- the login line: `[needs] <id> online: ..., hunger drain race x0.85, fatigue costs race x0.85`.
 
 ## Mastery, gathering and hunting
 
