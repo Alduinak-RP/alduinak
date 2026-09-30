@@ -1,6 +1,6 @@
 'use strict'
 
-// polymorph.ts against a stub mp and a fixed race list: transform, face rules, gear, sex swap, revert and the restart lookup: node tools/test-polymorph.js
+// polymorph.ts against a stub mp and a fixed race list: refusals, transform, face rules, gear, sex swap, revert and the restart lookup: node tools/test-polymorph.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -31,6 +31,7 @@ const RACES = [
   race('88794:Skyrim.esm', 'NordRaceVampire', 'vampire', true, { morph: '13746:Skyrim.esm' }),
   race('1320a:Skyrim.esm', 'WolfRace', 'creature', false),
   race('e7713:Skyrim.esm', 'AlduinRace', 'creature', false, { female: sex(false), risk: 'flying race' }),
+  race('17f44:Skyrim.esm', 'SkeeverRace', 'creature', false, { female: sex(false) }),
   race('99999:Skyrim.esm', 'BrokenRace', 'creature', false, { male: sex(false), female: sex(false) }),
 ]
 
@@ -85,6 +86,7 @@ let t = setup()
 assert.equal(new Polymorph(() => {}, '', []).transform(t.mp, t.id, '1320a:Skyrim.esm', 1).startsWith('The race list is still loading'), true, 'no catalog yet')
 assert.equal(t.pm.transform(t.mp, t.id, 'dead:Skyrim.esm', 1), 'Unknown race')
 assert.match(t.pm.transform(t.mp, t.id, '99999:Skyrim.esm', 1), /no skeleton/, 'a race without a skeleton is refused')
+assert.equal(t.pm.transform(t.mp, t.id, 'e7713:Skyrim.esm', 1), 'Alduin (AlduinRace) is marked as a crash risk (flying race), refused')
 assert.equal(t.pm.transform(t.mp, t.id, '13746:Skyrim.esm', 1), 'The character already is that race')
 assert.equal(t.p['private.polymorph'], undefined, 'refusals store nothing')
 
@@ -141,7 +143,7 @@ assert.deepEqual(t.p.equipment.inv.entries, WORN, 'a playable race keeps the gea
 
 // A female admin into a male-only race gets the male body; the revert brings her back
 t = setup({ ...NORD_LOOK, isFemale: true })
-r = t.pm.transform(t.mp, t.id, 'e7713:Skyrim.esm', 1)
+r = t.pm.transform(t.mp, t.id, '17f44:Skyrim.esm', 1)
 assert.equal(r.swapped, true)
 assert.equal(t.p.appearance.isFemale, false)
 t.pm.revert(t.mp, t.id, 'test')

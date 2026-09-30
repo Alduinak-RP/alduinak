@@ -76,7 +76,7 @@ export class Polymorph {
           this.byDesc = new Map(races.map((r) => [r.desc.toLowerCase(), r]));
           const groups = RACE_GROUPS.map((g) => `${races.filter((r) => r.group === g).length} ${g}`).join(", ");
           const refused = races.filter((r) => !r.male.usable && !r.female.usable).length;
-          this.log(`AdminSystem: race catalog ${races.length} race(s) (${groups}), ${refused} refused without a skeleton, ${races.filter((r) => r.risk).length} marked as crash risks, in ${Date.now() - started} ms`);
+          this.log(`AdminSystem: race catalog ${races.length} race(s) (${groups}), ${refused} refused without a skeleton, ${races.filter((r) => r.risk).length} marked as crash risks and refused, in ${Date.now() - started} ms`);
         })
         .catch((e) => this.log(`AdminSystem: race catalog build failed: ${e}`))
         .finally(() => { this.build = null; });
@@ -109,6 +109,7 @@ export class Polymorph {
     const entry = this.byDesc.get(desc.toLowerCase());
     if (!entry) return "Unknown race";
     if (!entry.male.usable && !entry.female.usable) return `${entry.edid} has no skeleton or behaviour graph, refused`;
+    if (entry.risk) return `${entry.name} (${entry.edid}) is marked as a crash risk (${entry.risk}), refused`;
     const raceId = this.idOf(mp, entry.desc);
     if (!raceId) return `${entry.desc} is not in the server load order`;
     let current: Look | null = null;

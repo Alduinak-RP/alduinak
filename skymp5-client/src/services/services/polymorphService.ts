@@ -29,7 +29,8 @@ const hex = (id: number): string => (id >>> 0).toString(16);
  * Admin Polymorph (AdminSystem, Admin > Polymorph): the server swaps the appearance race, which rebuilds this character on every other client.
  * The local player also needs Actor.SetRace for the new skeleton, since the appearance apply only swaps the base's race and head.
  *   Server -> Client: { customPacketType: "polymorph", on, raceId, gearOff, worn }  worn: the entries to put back on a revert
- * A creature form takes the gear off and forces third person first (creature skeletons have no first person body), and takes off whatever is put on in it.
+ * A creature form takes the gear off and forces third person first (creature skeletons have no first person body), takes off whatever is put on in it
+ * and keeps worn gear out of the equipment reports meanwhile.
  */
 export class PolymorphService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -42,6 +43,11 @@ export class PolymorphService extends ClientListener {
       this.seq++;
     });
     this.controller.on("equip", (e) => this.onEquip(e));
+  }
+
+  // SendInputsService leaves worn gear out of the equipment it reports while this holds
+  get creatureForm(): boolean {
+    return this.gearOff;
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {

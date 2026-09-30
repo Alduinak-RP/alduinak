@@ -49,8 +49,12 @@ let saved = { race: '', search: '', group: '', toPlayer: false };
 
 const groupLabel = (id: string): string => (GROUPS.find((g) => g.id === id) || GROUPS[0]).label;
 
+// The server refuses a race without a skeleton and one marked as a crash risk
+const usable = (r: RaceRow): boolean => (r.m || r.f) && !r.r;
+
 const noteOf = (r: RaceRow): string => {
   if (!r.m && !r.f) return 'no skeleton, refused';
+  if (r.r) return 'refused';
   const notes: string[] = [];
   if (r.g === 'creature') notes.push('gear comes off');
   if (!r.m || !r.f) notes.push(r.m ? 'male body only' : 'female body only');
@@ -74,10 +78,10 @@ const PolymorphTab = ({ data, ev, send, selfActorId, selected }: PolymorphTabPro
   const target = toPlayer && selected ? selected.a : '';
   const targetId = target || selfActorId;
   const current = active.find((x) => x.a === targetId) || null;
-  const canTransform = !!(ev.polymorph && pick && (pick.m || pick.f));
+  const canTransform = !!(ev.polymorph && pick && usable(pick));
 
   const transform = (row: RaceRow | null): void => {
-    if (row && ev.polymorph && (row.m || row.f)) send(ev.polymorph, target, row.d);
+    if (row && ev.polymorph && usable(row)) send(ev.polymorph, target, row.d);
   };
 
   let listText = '';
@@ -122,7 +126,7 @@ const PolymorphTab = ({ data, ev, send, selfActorId, selected }: PolymorphTabPro
                 key={r.d}
                 className={'admin-panel__row admin-panel__row--clickable admin-panel__row--zone'
                   + (pick && pick.d === r.d ? ' admin-panel__row--selected' : '')
-                  + (r.m || r.f ? '' : ' admin-panel__row--offline')}
+                  + (usable(r) ? '' : ' admin-panel__row--offline')}
                 onClick={() => setForm({ ...form, race: r.d })}
                 onDoubleClick={() => {
                   setForm({ ...form, race: r.d });
@@ -177,7 +181,7 @@ const PolymorphTab = ({ data, ev, send, selfActorId, selected }: PolymorphTabPro
       ) : null}
       <span className="admin-panel__hint">
         {current ? 'The target is ' + current.race + '. ' : ''}
-        Transform turns you, or the player selected on the Players tab, into the race; double click does it at once. Revert puts the character&apos;s own race, face and gear back, and so do logging out, a crash and a server restart. Creature forms take the gear off until Revert. Races marked as a crash risk may crash the game of the transformed player or of players near them.
+        Transform turns you, or the player selected on the Players tab, into the race; double click does it at once. Revert puts the character&apos;s own race, face and gear back, and so do logging out, a crash and a server restart. Creature forms take the gear off until Revert. Races without a skeleton and races marked as a crash risk (flying, immobile and water-only races, the beast forms, horses, props and effects) are refused.
       </span>
     </div>
   );

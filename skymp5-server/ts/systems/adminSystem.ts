@@ -897,10 +897,10 @@ export class AdminSystem implements System {
       return;
     }
     const e = result.entry;
-    const text = `${by} polymorphed ${who} from ${result.from} into ${e.name} (${e.edid}) [${e.desc} ${e.group}], ${result.female ? "female" : "male"}${result.swapped ? " (the only skeleton the race has)" : ""}, ${result.face}, ${result.gearOff ? "gear taken off" : "gear kept"}${e.risk ? `, crash risk: ${e.risk}` : ""}`;
+    const text = `${by} polymorphed ${who} from ${result.from} into ${e.name} (${e.edid}) [${e.desc} ${e.group}], ${result.female ? "female" : "male"}${result.swapped ? " (the only skeleton the race has)" : ""}, ${result.face}, ${result.gearOff ? "gear taken off" : "gear kept"}`;
     this.log(`AdminSystem: ${text}`);
     this.adminLog(text);
-    this.reply(mp, userId, true, `${subject} now ${e.name} (${e.edid})${e.risk ? `. Crash risk: ${e.risk}` : ""}`, self ? action : undefined);
+    this.reply(mp, userId, true, `${subject} now ${e.name} (${e.edid})`, self ? action : undefined);
     this.sendRaces(mp, userId, myActorId);
   }
 
