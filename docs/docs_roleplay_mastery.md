@@ -69,7 +69,8 @@ Blacksmith is counted: H hours at the craft, 1 hour still banked." The server lo
 - `[mastery] <id> online with <N> hours banked, next paid in <M> online min` at login
 
 The online time since the last counted hour is saved at logout, at every counted or banked hour and every 5 minutes
-while hours are banked, so a crash loses at most 5 minutes of it. A profession reset empties the bank.
+while hours are banked, so a crash loses at most 5 minutes of it. A profession reset empties the bank, and so does a
+profession changed or cleared in the manager's character editor (Players tab), which also restarts the hour clock.
 
 Hours are **per character**: the record `private.mastery`
 `{ v: 2, profession, points, lastPointAt, rank, granted, spellTier, resets, bank, onlineMs }` lives on the
