@@ -7,6 +7,7 @@ import { GOLD_BASE_ID, HUNTING_KNIFE_ID, addItemTo, addSpellTo, chainMpHook, had
 import { parseStartingItems } from "./spawn";
 import { BLANK_BOOK_EDID } from "./writingSystem";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
+import { ADEPT, FREE, LEGENDARY, NOVICE, RANK_NAMES } from "./masterySlots";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -61,11 +62,7 @@ const HALF_COST_BENCHES_OF = ["cook", "alchemist", "miner", "hunter"];
 const HALF_COST_PRODUCTS = new Set(["mce_thread"]);
 const RECORD_VERSION = 2;
 
-export const RANK_NAMES = ["Free", "Novice", "Adept", "Expert", "Master", "Legendary"];
-export const FREE = 0;
-export const NOVICE = 1;
-export const ADEPT = 2;
-export const LEGENDARY = 5;
+export { RANK_NAMES, FREE, NOVICE, ADEPT, LEGENDARY };
 // Skill level of the character's own profession skills by rank; every other mapped skill stays at the Free level
 const RANK_SKILL = [15, 25, 40, 60, 80, 100];
 const MAGE_MAGICKA = [100, 125, 150, 175, 200, 500];
