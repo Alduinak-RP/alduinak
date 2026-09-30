@@ -36,7 +36,11 @@ else back:
   the strip's plan report for every document) and, per base id, gives
   `min(removed, backup total - current total)`, counting every variant of the
   item. An item an admin or a trade already returned is not given twice, and
-  no entry is ever lowered or removed. It also caps each profile at what it
+  no entry is ever lowered or removed. The data cannot tell a return from a
+  new copy, so any copy held now counts as returned, also one crafted,
+  looted or bought since the strip and also in the same document
+  (`--per-document` does not change that); `--ignore-held '0x0003B97C'`
+  gives an id back in full, not counting held copies. It also caps each profile at what it
   lost less what its characters, their pets (stored saddlebags, or the actor
   of a pet out in the world) and its claimed containers hold now, so a return
   moved to a chest, a pet or another character counts too (`--per-document`

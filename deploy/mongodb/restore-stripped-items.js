@@ -24,6 +24,7 @@ const USAGE = [
   '          roll an apply back to the backed up inventories; a dry run unless --apply; --skip-changed leaves the documents changed since as they are',
   'all but restore also take [--strip <strip backup dir>] [--intent <strip-intent.json>] [--strip-plan <strip-inventories-plan-*.json>]',
   "  [--also-keep '0x...,0x...'] (keep these removed base ids removed too) [--also-give '0x...,0x...'] (return these although the intent keeps them; never spells)",
+  "  [--ignore-held '0x...,0x...'] (give these ids back in full: a copy held now was crafted, looted or bought, not returned)",
   '  ids are hex with 0x; quote a list in PowerShell, and give each flag once',
   '  [--per-document] (count returns per document only, not across the characters and claimed containers of a profile)',
 ].join('\n')
@@ -39,6 +40,7 @@ const ROLLED_BACK_LOG = 'restore-applied.rolled-back.log'
 const INTENTS = { ebony: 'ebony equipment', 'spell tome': 'spell tomes', 'falmer cuirass': 'Falmer chest armour' }
 const GROUPS = { jewelry: 'jewelry', scroll: 'scrolls', enchanted: 'enchanted gear', staff: 'staves', 'spell tome': 'spell tomes', 'enchanted entry': 'player-enchanted gear' }
 const WORN = ['worn', 'wornLeft']
+const OVERRIDES = { alsoKeep: '--also-keep', alsoGive: '--also-give', ignoreHeld: '--ignore-held' }
 const PETS_PROP = 'private.pets'
 
 function readJson(file, what) {
@@ -160,18 +162,18 @@ function resolveEarlier(records, live, settings) {
 }
 
 function loadInputs(flags, settings) {
-  const keep = idList(flags.alsoKeep, '--also-keep')
-  const give = idList(flags.alsoGive, '--also-give')
+  const ov = Object.fromEntries(Object.entries(OVERRIDES).map(([k, flag]) => [k, idList(flags[k], flag)]))
+  const keep = ov.alsoKeep
+  const give = ov.alsoGive
   const both = [...keep].filter(id => give.has(id))
   if (both.length) throw new UsageError(`${both.map(hex).join(', ')} is in both --also-keep and --also-give`)
   const dir = path.resolve(flags.strip || STRIP_DIR)
   const strip = S.readBackup(dir, settings)
   const intent = loadIntent(path.resolve(flags.intent || INTENT_FILE), strip.info, settings)
-  checkRemoved(keep, '--also-keep', intent.classes)
-  checkRemoved(give, '--also-give', intent.classes)
+  for (const [k, flag] of Object.entries(OVERRIDES)) checkRemoved(ov[k], flag, intent.classes)
   const stripPlan = loadStripPlan(flags.stripPlan && path.resolve(flags.stripPlan), strip.info)
   const { purge, BSON } = S.requireDriver()
-  return { dir, strip, intent, stripPlan, keep, give, settings, records: earlierApplies(strip.info.docsSha256), earlier: NO_EARLIER, isPlayer: purge.isPlayer, BSON, owners: null, profiles: null, actors: null, pool: !flags.perDocument }
+  return { dir, strip, intent, stripPlan, keep, give, ignore: ov.ignoreHeld, settings, records: earlierApplies(strip.info.docsSha256), earlier: NO_EARLIER, isPlayer: purge.isPlayer, BSON, owners: null, profiles: null, actors: null, pool: !flags.perDocument }
 }
 
 // ── The restore rule ─────────────────────────────────────────────────────────
@@ -290,8 +292,9 @@ function assess(doc, live, ctx) {
     if (kept) { row.stays.push({ ...base, count: g.removed, why: kept, evidence: cls.evidence || '' }); continue }
     if (row.status !== 'ok') { row.skipped.push({ ...base, count: g.removed, why: row.status }); continue }
     const current = totalOf(liveEntries, g.baseId)
+    const counted = ctx.ignore.has(g.baseId) ? 0 : current
     const done = settled.has(g.baseId)
-    const want = done ? 0 : Math.max(0, Math.min(g.removed, totalOf(backupEntries, g.baseId) - current))
+    const want = done ? 0 : Math.max(0, Math.min(g.removed, totalOf(backupEntries, g.baseId) - counted))
     row.wants.push({ g, base, current, done, want, elsewhere: 0 })
   }
   return row
@@ -334,7 +337,7 @@ function capByProfile(rows, ctx) {
   for (const r of rows) {
     if (r.status !== 'ok' || r.profile === null) continue
     for (const w of r.wants) {
-      if (!ctx.intent.list.items.has(w.g.baseId)) continue
+      if (!ctx.intent.list.items.has(w.g.baseId) || ctx.ignore.has(w.g.baseId)) continue
       const key = `${r.profile}|${w.g.baseId}`
       pools.set(key, [...(pools.get(key) || []), { w, profile: r.profile }])
     }
@@ -438,14 +441,16 @@ function render(title, rows, t, meta) {
     L.push(`an earlier restore was applied ${r.createdAt} (${r.dir}): it wrote ${r.written} of ${plural(r.writes, 'document', 'documents')}${r.writes > r.written ? `, the ${r.writes - r.written} it never wrote are planned again` : ''}; what it settled is not given again`)
     for (const who of r.unsure) L.push(`  ! it stopped while writing ${who}, whose inventory changed since: counted as given, check it by hand`)
   }
-  if (meta.alsoKeep.length || meta.alsoGive.length) L.push(`--also-keep ${meta.alsoKeep.join(',') || '-'}  --also-give ${meta.alsoGive.join(',') || '-'}`)
+  const given = Object.entries(OVERRIDES).filter(([k]) => meta[k].length)
+  if (given.length) L.push(given.map(([k, flag]) => `${flag} ${meta[k].join(',')}`).join('  '))
   L.push('', 'TOTALS')
   L.push(`  holders: ${plural(t.characters, 'character', 'characters')} and ${plural(t.containers, 'container', 'containers')}; ${t.receiving} get items back`)
   L.push(`  comes back: ${plural(t.giveItems, 'item', 'items')} (items / entries / holders)`)
   for (const [k, v] of Object.entries(t.give)) L.push(`    ${k.padEnd(34)} ${String(v.items).padStart(5)} / ${String(v.entries).padStart(4)} / ${v.holders}`)
-  L.push(`  already back since the strip, not given again: ${plural(t.back, 'item', 'items')}${t.earlier ? `, ${t.earlier} of them by an earlier restore` : ''}${t.elsewhere ? `, ${t.elsewhere} held elsewhere on the same profile` : ''}`)
-  L.push(`    held now counts ${meta.poolByProfile ? "the profile's characters, their pets and its claimed containers" : "the document itself and a character's pets"}; a return since sold, used, dropped,`)
-  L.push('    given away, or left in a chest nobody of the profile claims or on a deleted character is not seen and comes back again')
+  L.push(`  counted as back, not given: ${plural(t.back, 'item', 'items')}${t.earlier ? `, ${t.earlier} of them settled by an earlier restore` : ''}${t.elsewhere ? `, ${t.elsewhere} held elsewhere on the same profile` : ''}`)
+  L.push(`    a copy held now in ${meta.poolByProfile ? "the profile's characters, their pets or its claimed containers" : "the document or a character's pets"} counts as returned, also one crafted,`)
+  L.push("    looted or bought since the strip (--ignore-held '0x...' gives an id back in full); a return since sold, used, dropped,")
+  L.push('    given away, or left in an unclaimed chest or on a deleted character is not seen and comes back again')
   L.push(`  stays removed: ${plural(t.stayItems, 'item', 'items')} (items / entries / holders)`)
   for (const [k, v] of Object.entries(t.stays)) L.push(`    ${k.padEnd(34)} ${String(v.items).padStart(5)} / ${String(v.entries).padStart(4)} / ${v.holders}`)
   L.push(`    ${'learned spells (never restored)'.padEnd(34)} ${String(t.spells).padStart(5)}`)
@@ -464,7 +469,7 @@ function render(title, rows, t, meta) {
     L.push(`${r.problems.length ? '! ' : ''}${r.who}${r.status === 'ok' ? '' : ` [skipped: ${r.status}]`}`)
     for (const p of r.problems) L.push(`  ! ${p}`)
     if (r.give.length) L.push(`  comes back: ${line(r.give, g => `${g.edid} x${g.count} [${g.group}]`)}`)
-    if (r.back.length) L.push(`  already back: ${line(r.back, g => `${g.edid} x${g.count} (holds ${g.current}${g.elsewhere ? `, ${g.elsewhere} held elsewhere on the profile` : ''})`)}`)
+    if (r.back.length) L.push(`  counted as back: ${line(r.back, g => `${g.edid} x${g.count} (holds ${g.current}${g.elsewhere ? `, ${g.elsewhere} held elsewhere on the profile` : ''})`)}`)
     if (r.stays.length) L.push(`  stays removed: ${line(r.stays, g => `${g.edid} x${g.count} [${g.why}]`)}`)
     if (r.skipped.length) L.push(`  not given: ${line(r.skipped, g => `${g.edid} x${g.count} [${g.group}]`)}`)
     if (r.spells.length) L.push(`  learned spells stay removed: ${line(r.spells, s => s.edid)}`)
@@ -488,7 +493,7 @@ function metaOf(ctx, settings, rows) {
     databaseName: settings.databaseName, strip: ctx.dir, stripCreatedAt: ctx.strip.info.createdAt, stripDocsSha256: ctx.strip.info.docsSha256,
     listSha256: ctx.strip.info.listSha256, intent: ctx.intent.file, intentSha256: ctx.intent.sha, stripPlan: ctx.stripPlan.file,
     reproduced: rows.filter(r => !r.problems.length).length, restoreRoot: path.resolve(RESTORE_ROOT), earlier: ctx.earlier.summaries,
-    alsoKeep: [...ctx.keep].map(hex), alsoGive: [...ctx.give].map(hex), poolByProfile: ctx.pool, decisions: decisionsOf(rows, ctx),
+    ...overridesOf(ctx), poolByProfile: ctx.pool, decisions: decisionsOf(rows, ctx),
   }
 }
 
@@ -544,12 +549,16 @@ function unchanged(doc) {
   return { _id: doc._id, formDesc: doc.formDesc, 'inv.entries': Array.isArray(e) ? e : null }
 }
 
+function overridesOf(ctx) { return { alsoKeep: [...ctx.keep].map(hex), alsoGive: [...ctx.give].map(hex), ignoreHeld: [...ctx.ignore].map(hex) } }
+
 function infoMatches(info, ctx) {
-  const same = (a, b) => [...a].sort().join(',') === [...b].sort().join(',')
+  const same = (a, b) => [...arr(a)].sort().join(',') === [...b].sort().join(',')
+  const mine = overridesOf(ctx)
+  const said = Object.entries(OVERRIDES).map(([k, flag]) => `${flag} ${arr(info[k]).join(',') || '(none)'}`).join(' ')
   if (info.stripDocsSha256 !== ctx.strip.info.docsSha256) throw new Refusal('the backup belongs to another strip backup')
   if (info.intentSha256 !== ctx.intent.sha) throw new Refusal('strip-intent.json changed since the backup, take a new one')
   if (info.poolByProfile !== ctx.pool) throw new Refusal(`the backup was taken ${info.poolByProfile ? 'without' : 'with'} --per-document, pass the same`)
-  if (!same(info.alsoKeep, [...ctx.keep].map(hex)) || !same(info.alsoGive, [...ctx.give].map(hex))) throw new Refusal(`the backup was taken with --also-keep ${info.alsoKeep.join(',') || '(none)'} --also-give ${info.alsoGive.join(',') || '(none)'}, pass the same`)
+  if (Object.keys(OVERRIDES).some(k => !same(info[k], mine[k]))) throw new Refusal(`the backup was taken with ${said}, pass the same`)
 }
 
 // Apply records are looked up only in the folders directly under RESTORE_ROOT
@@ -568,7 +577,7 @@ async function backupMode(flags, ctx, env) {
     writeNew(path.join(dir, DOCS_FILE), text)
     const info = {
       createdAt: new Date().toISOString(), databaseName: env.settings.databaseName, stripDocsSha256: ctx.strip.info.docsSha256, intentSha256: ctx.intent.sha,
-      alsoKeep: [...ctx.keep].map(hex), alsoGive: [...ctx.give].map(hex), poolByProfile: ctx.pool, count: rows.length, docsSha256: sha256(text), ids: rows.map(r => r.id),
+      ...overridesOf(ctx), poolByProfile: ctx.pool, count: rows.length, docsSha256: sha256(text), ids: rows.map(r => r.id),
     }
     writeNew(path.join(dir, INFO_FILE), JSON.stringify(info, null, 1))
     env.log(`backed up ${plural(rows.length, 'changeForm', 'changeForms')} to ${dir}`)
@@ -679,11 +688,11 @@ async function rollbackMode(flags, env) {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
-const INPUTS = ['strip', 'intent', 'stripPlan', 'alsoKeep', 'alsoGive', 'perDocument']
+const INPUTS = ['strip', 'intent', 'stripPlan', 'alsoKeep', 'alsoGive', 'ignoreHeld', 'perDocument']
 const ARGS = {
   defaultMode: 'plan',
   bools: { '--apply': 'apply', '--per-document': 'perDocument', '--skip-changed': 'skipChanged' },
-  valued: { '--out': 'out', '--backup': 'backup', '--report': 'report', '--strip': 'strip', '--intent': 'intent', '--strip-plan': 'stripPlan', '--also-keep': 'alsoKeep', '--also-give': 'alsoGive' },
+  valued: { '--out': 'out', '--backup': 'backup', '--report': 'report', '--strip': 'strip', '--intent': 'intent', '--strip-plan': 'stripPlan', '--also-keep': 'alsoKeep', '--also-give': 'alsoGive', '--ignore-held': 'ignoreHeld' },
   allowed: {
     preview: ['report', ...INPUTS],
     plan: ['report', ...INPUTS],

@@ -475,6 +475,22 @@ async function main() {
   assert.equal(r.given('11', RING) + r.given('c0cd4:Skyrim.esm', RING), 1)
   assert.equal(r.given('c0cd4:Skyrim.esm', RING), 0)
 
+  // A copy crafted since the strip counts as a return, per document too; --ignore-held gives the id in full, and the backup must be taken with it
+  w = world()
+  addEntry(doc(w, '11'), RING, 3)
+  r = await plan(w)
+  assert.equal(r.given('11', RING), 2)
+  r = await plan(w, ['--per-document'])
+  assert.equal(r.given('11', RING), 2)
+  w.push(alt)
+  r = await plan(w, ['--ignore-held', '0x0003B97C'])
+  assert.equal(r.given('11', RING), 5)
+  assert.equal(r.given('c0cd4:Skyrim.esm', RING), 7)
+  s = stub(w)
+  await R.run(['backup', '--out', path.join(ROOT, 'held'), '--intent', INTENT, '--ignore-held', '0x0003B97C'], { open: s.open, log: quiet })
+  await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'held'), '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet }), refused(/--ignore-held 0x0003B97C/))
+  fs.rmSync(ROOT, { recursive: true })
+
   // Owner overrides: --also-give returns an intended removal, --also-keep keeps a return, never both
   r = await plan(world(), ['--also-give', '0x000139BF', '--also-keep', '0x3B97C'])
   assert.equal(r.given('c4bd5:Skyrim.esm', 0x000139BF), 1)
