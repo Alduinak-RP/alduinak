@@ -2,6 +2,9 @@
 // Players tab data: the backend's records and the hours played straight from MongoDB (read only), joined with the characters
 // from the changeForms store. Writes to backend records go through the backend API, which is their only writer.
 
+const formIds = require('./formIds')
+const { readPluginFlags } = require('./modsync')
+
 const RACES = {
   0x13740: 'Argonian', 0x13741: 'Breton', 0x13742: 'Dunmer', 0x13743: 'Altmer', 0x13744: 'Imperial',
   0x13745: 'Khajiit', 0x13746: 'Nord', 0x13747: 'Orsimer', 0x13748: 'Redguard', 0x13749: 'Bosmer',
@@ -12,10 +15,43 @@ const RACES = {
 const RACE_NAMES = ['Nord', 'Imperial', 'Redguard', 'Breton', 'Altmer', 'Dunmer', 'Orsimer', 'Bosmer', 'Khajiit', 'Argonian']
 const GM_ROLE_ID = '1521259484859863190'
 const DEV_ROLE_ID = '1521259396481421475'
-const GOLD_BASE_ID = 0xf
+const GOLD_IDS = new Set([0xf])
+// General Stats item counts: label -> local:Plugin descs, resolved against the server's load order (sources in the README)
+const MATERIALS = [
+  ['Leather', ['db5d2:Skyrim.esm']],
+  ['Leather Strips', ['800e4:Skyrim.esm']],
+  ['Iron Ingot', ['5ace4:Skyrim.esm']],
+  ['Steel Ingot', ['5ace5:Skyrim.esm']],
+  ['Corundum Ingot', ['5ad93:Skyrim.esm']],
+  ['Dwarven Metal Ingot', ['db8a2:Skyrim.esm']],
+  ['Quicksilver Ingot', ['5ada0:Skyrim.esm']],
+  ['Refined Moonstone', ['5ad9f:Skyrim.esm']],
+  ['Refined Malachite', ['5ada1:Skyrim.esm']],
+  ['Orichalcum Ingot', ['5ad99:Skyrim.esm']],
+  ['Ebony Ingot', ['5ad9d:Skyrim.esm']],
+  ['Silver Ingot', ['5ace3:Skyrim.esm']],
+  ['Gold Ingot', ['5ad9e:Skyrim.esm']],
+  ['Glacial Crystal Ingot', ['da0b12:Update.esm']],
+  ['Refined Amber', ['bc7:ccBGSSSE025-AdvDSGS.esm']],
+  ['Madness Ingot', ['bc8:ccBGSSSE025-AdvDSGS.esm']],
+  ['Wood', ['6f993:Skyrim.esm', '3cf16:Dragonborn.esm', '300e:HearthFires.esm']],
+  ['Thread', ['6ce001:Update.esm']],
+  ['Charcoal', ['33760:Skyrim.esm']],
+]
 
 const raceOf = raceId => RACES[Number(raceId) >>> 0] || 'Other'
-const goldOf = inventory => (inventory || []).reduce((n, e) => n + ((Number(e.baseId) >>> 0) === GOLD_BASE_ID ? Number(e.count) || 0 : 0), 0)
+const countIn = (inventory, ids) => (inventory || []).reduce((n, e) => n + (ids.has(Number(e.baseId) >>> 0) ? Number(e.count) || 0 : 0), 0)
+const goldOf = inventory => countIn(inventory, GOLD_IDS)
+
+// [label, form ids] per material in the server's load order, light flags read from the plugin headers in dataDir; a plugin left out of the order drops its ids
+function materialIds(settings) {
+  const names = (Array.isArray(settings.loadOrder) ? settings.loadOrder : []).map(formIds.basename)
+  const slots = formIds.computeSlots(names, formIds.flagsOf(readPluginFlags(names, { dataDir: settings.dataDir }), 'light'))
+  return MATERIALS.map(([label, descs]) => [label, descs.flatMap(desc => {
+    const [local, plugin] = desc.split(':')
+    try { return [formIds.encodeId(plugin, parseInt(local, 16), slots)] } catch { return [] }
+  })])
+}
 
 // Every value of a hwid or ip history, including records from before the lists existed
 function history(list, latest) {
@@ -112,11 +148,14 @@ function factionChoices(whitelist) {
 const HOUR_BRACKETS = [[0, 1, 'Under 1 hour'], [1, 4, '1 to 3 hours'], [4, 12, '4 to 11'], [12, 24, '12 to 23'], [24, 48, '24 to 47'], [48, 128, '48 to 127'], [128, 400, '128 to 399'], [400, 1200, '400 to 1199'], [1200, Infinity, '1200+']]
 const GOLD_BRACKETS = [[0, 50, 'Under 50 gold'], [50, 500, '50 to 499'], [500, 5000, '500 to 4999'], [5000, 50001, '5000 to 50000'], [50001, Infinity, 'Over 50000']]
 
-function stats(rows) {
+// containers: inventory entry lists of the store's containers; materials: materialIds output
+function stats(rows, containers = [], materials = []) {
   const count = (list, key) => list.reduce((m, x) => (m[key(x)] = (m[key(x)] || 0) + 1, m), {})
   const bracket = (value, brackets) => brackets.find(([lo, hi]) => value >= lo && value < hi)[2]
   const chars = rows.flatMap(r => r.characters.filter(c => !c.fallen && c.appearance))
-  const wealth = rows.reduce((n, r) => n + r.gold, 0)
+  const carried = rows.reduce((n, r) => n + r.gold, 0)
+  const stored = containers.reduce((n, inv) => n + goldOf(inv), 0)
+  const inventories = rows.flatMap(r => r.characters.map(c => c.inventory)).concat(containers)
   return {
     players: rows.length,
     characters: chars.length,
@@ -125,11 +164,15 @@ function stats(rows) {
     professions: count(chars, c => c.profession || 'None'),
     hours: count(rows, r => bracket(r.seconds / 3600, HOUR_BRACKETS)),
     hourOrder: HOUR_BRACKETS.map(b => b[2]),
-    totalWealth: wealth,
-    averageWealth: rows.length ? Math.round(wealth / rows.length) : 0,
+    totalWealth: carried + stored,
+    carriedWealth: carried,
+    storedWealth: stored,
+    averageWealth: rows.length ? Math.round(carried / rows.length) : 0,
     wealth: count(rows, r => bracket(r.gold, GOLD_BRACKETS)),
     wealthOrder: GOLD_BRACKETS.map(b => b[2]),
+    materials: Object.fromEntries(materials.map(([label, ids]) => { const set = new Set(ids); return [label, inventories.reduce((n, inv) => n + countIn(inv, set), 0)] })),
+    materialOrder: materials.map(m => m[0]),
   }
 }
 
-module.exports = { RACE_NAMES, readBackend, buildRows, assignmentsOf, factionChoices, stats }
+module.exports = { RACE_NAMES, MATERIALS, readBackend, buildRows, assignmentsOf, factionChoices, materialIds, stats }

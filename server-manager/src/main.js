@@ -568,9 +568,21 @@ ipcMain.handle('players:detail', async (_e, profileId) => {
   } catch (err) { return { ok: false, error: err.message } }
 })
 
+// Inventory entries of every container in the store: references (recType 0) holding items
+async function readContainerInventories(settings) {
+  const query = { recType: 0, isDeleted: { $ne: true }, 'inv.entries.0': { $exists: true } }
+  return withMongoChangeForms(settings, async col => (await col.find(query, { projection: { 'inv.entries': 1 } }).toArray()).map(cf => cf.inv.entries))
+}
+
 ipcMain.handle('players:stats', async () => {
-  try { return { ok: true, stats: playerData.stats((await playerRows()).rows) } }
-  catch (err) { return { ok: false, error: err.message } }
+  try {
+    const { rows } = await playerRows()
+    const settings = readServerSettings()
+    const containers = await readContainerInventories(settings)
+    let materials = [], materialError = ''
+    try { materials = playerData.materialIds(settings) } catch (err) { materialError = err.message }
+    return { ok: true, stats: { ...playerData.stats(rows, containers, materials), materialError } }
+  } catch (err) { return { ok: false, error: err.message } }
 })
 
 // Writes to the backend's records go through its API with the manager token

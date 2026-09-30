@@ -117,7 +117,7 @@ function showStats() {
   selected = 'stats'
   renderList()
   const box = $('#player-detail')
-  box.innerHTML = '<h3>General Stats</h3><p class="muted">Counts every account and living character in the database.</p>'
+  box.innerHTML = '<h3>General Stats</h3><p class="muted">Counts every account and living character in the database; gold and materials count every character and every container.</p>'
   const btn = el('button', { className: 'action go' }, 'Generate stats')
   btn.addEventListener('click', async () => {
     btn.disabled = true
@@ -134,9 +134,12 @@ function showStats() {
       `<div class="kv"><b>Accounts</b><span>${s.players}</span></div><div class="kv"><b>Living characters</b><span>${s.characters}</span></div>` +
       table('Race', s.races) + table('Gender', s.genders) + table('Profession', s.professions) +
       table('Hours played', s.hours, s.hourOrder) +
-      `<h4>Wealth</h4><div class="kv"><b>Total gold carried</b><span>${s.totalWealth.toLocaleString()}</span></div>` +
-      `<div class="kv"><b>Average per account</b><span>${s.averageWealth.toLocaleString()}</span></div>` +
-      table('Gold per account', s.wealth, s.wealthOrder))
+      `<h4>Wealth</h4><div class="kv"><b>Total gold</b><span>${s.totalWealth.toLocaleString()}</span></div>` +
+      `<div class="kv"><b>Carried by characters</b><span>${s.carriedWealth.toLocaleString()}</span></div>` +
+      `<div class="kv"><b>In containers</b><span>${s.storedWealth.toLocaleString()}</span></div>` +
+      `<div class="kv"><b>Average carried per account</b><span>${s.averageWealth.toLocaleString()}</span></div>` +
+      table('Gold carried per account', s.wealth, s.wealthOrder) +
+      (s.materialError ? `<h4>Materials</h4><p class="muted">Unavailable: ${esc(s.materialError)}</p>` : table('Materials (characters and containers)', s.materials, s.materialOrder)))
   })
   box.appendChild(btn)
 }

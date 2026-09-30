@@ -76,8 +76,40 @@ fails it prints a direct download URL - save that zip as
     ID, Newest, Oldest, Richest, Poorest, Most Played or Least Played.
     **Refresh** reloads; the header shows visible/total.
   - The pinned **General Stats** entry has a **Generate** button: race, gender
-    and profession counts, hours brackets, total and average gold, gold
-    brackets.
+    and profession counts, hours brackets, gold and material counts. **Total
+    gold** is the gold every character of every account carries plus the gold
+    in containers: every reference in `changeForms` (`recType` 0, not deleted)
+    that holds items, such as house chests, bounty board strongboxes and any
+    world container a player opened or filled (a container nobody touched is
+    not in the store; NPC and pet inventories are not counted). The average
+    and the brackets stay per account and count carried gold only.
+    **Materials** counts the same characters and containers. Each row lists
+    `local:Plugin` records (`MATERIALS` in `src/playerData.js`), turned into
+    form ids against the server's `loadOrder` with the light flags read from
+    the plugin headers in `dataDir` (`src/formIds.js`), so a load order change
+    moves the ids with it; a plugin missing from the order drops its records
+    and a plugin file missing from `dataDir` shows the reason instead of the
+    table. Test: `node tools/test-player-stats.js`.
+
+    | Row | Records (form id in the 2026-09 load order) |
+    |---|---|
+    | Leather | `db5d2:Skyrim.esm` Leather01 (`0x000DB5D2`) |
+    | Leather Strips | `800e4:Skyrim.esm` LeatherStrips (`0x000800E4`) |
+    | Iron, Steel, Corundum, Dwarven Metal, Quicksilver, Orichalcum, Ebony, Silver, Gold Ingot | Skyrim.esm IngotIron `0x0005ACE4`, IngotSteel `0x0005ACE5`, IngotCorundum `0x0005AD93`, IngotDwarven `0x000DB8A2`, IngotQuicksilver `0x0005ADA0`, IngotOrichalcum `0x0005AD99`, IngotEbony `0x0005AD9D`, ingotSilver `0x0005ACE3`, IngotGold `0x0005AD9E` |
+    | Refined Moonstone, Refined Malachite | Skyrim.esm IngotIMoonstone `0x0005AD9F`, IngotMalachite `0x0005ADA1` |
+    | Glacial Crystal Ingot | `da0b12:Update.esm` IAMIIngotGlacialCrystal (`0x01DA0B12`), injected by Hothtrooper44_ArmorCompilation.esp |
+    | Refined Amber, Madness Ingot | `bc7:ccBGSSSE025-AdvDSGS.esm` (`0x06000BC7`), `bc8:ccBGSSSE025-AdvDSGS.esm` (`0x06000BC8`) |
+    | Wood | Firewood `6f993:Skyrim.esm` (`0x0006F993`), Solstheim Firewood `3cf16:Dragonborn.esm` (`0x0403CF16`), Sawn Log `300e:HearthFires.esm` (`0x0300300E`) |
+    | Thread | `6ce001:Update.esm` MCE_Thread (`0x016CE001`), injected by MoreCraftableEquipment.esp, the thread every tailoring recipe uses |
+    | Charcoal | `33760:Skyrim.esm` Charcoal (`0x00033760`), the item the smelter's charcoal recipe makes |
+
+    The ingots are every misc item in the load order with the
+    VendorItemOreIngot keyword and an ingot editor id or name; left out are the ores, the
+    Dwemer scrap, the broken weapon parts, the war horns, the quest copies
+    `43e27:Skyrim.esm` (FFRiften14Ingot, "Orichalcum Ingot") and
+    `b7492:City of Dawnstar.esp` ("Ingot of Zenithar"), and Sea Salt Rock.
+    `bfb09:Skyrim.esm` (Coal01, also named "Charcoal") is not the recipe's
+    charcoal and is not counted.
   - The account detail shows the account, Discord ID, roles (GM is role
     `1521259484859863190`, plus Developer and Whitelist, from the roles saved
     on characters at login), profile ID, created, last seen, hours played, the
