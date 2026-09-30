@@ -334,6 +334,15 @@ public:
     return MapVirtualKeyA(code, MAPVK_VSC_TO_VK);
   }
 
+  // On 1.6 members after controlMap[] are 8 bytes later (kMarketplace context)
+  template <class T>
+  static T ControlMapMember(const RE::ControlMap* controls,
+                            std::ptrdiff_t seOffset)
+  {
+    return REL::RelocateMemberIf<const T>(REL::Module::IsAE(), controls,
+                                          seOffset + 8, seOffset);
+  }
+
   // Engine gates that can ignore a key DirectInput delivered
   static void LogEngineInputGates(uint8_t code)
   {
@@ -351,12 +360,15 @@ public:
     }
     spdlog::info(
       "Input: key {:#x} down after entering the game, engine: gameActive {}, "
-      "controls {:#x}, textEntry {}, ignoreKbMouse {}, paused {}, menus [{}]",
+      "enabledControls {:#x}, textEntry {}, ignoreKbMouse {}, paused {}, "
+      "menus [{}]",
       code, engine && engine->gameActive,
-      controls ? controls->enabledControls.underlying() : 0u,
-      controls ? static_cast<int>(controls->textEntryCount) : -1,
-      controls && controls->ignoreKeyboardMouse, ui && ui->GameIsPaused(),
-      menus);
+      controls ? ControlMapMember<std::uint32_t>(controls, 0x118) : 0u,
+      controls
+        ? static_cast<int>(ControlMapMember<std::int8_t>(controls, 0x120))
+        : -1,
+      controls && ControlMapMember<bool>(controls, 0x121),
+      ui && ui->GameIsPaused(), menus);
   }
 
   void OnKeyStateChange(uint8_t code, bool down) noexcept override
