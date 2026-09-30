@@ -7,8 +7,7 @@ import { NiPoint3 } from "./movement";
 import { wrappedAngleDiff } from "./movementApply";
 import { stopMoving } from "./mountApply";
 
-// Holds a carried body on the local copy of its carrier every frame: the carried player's own client, the carrier's client for a pet it hosts, everyone else through ff_carriedBy
-// SkyrimPlatform places the body at every frame start where it has the export (setCarryHold); older clients chase the target with a per-frame TranslateTo
+// Holds a carried body on the local copy of its carrier every frame, natively through setCarryHold where the export exists, else with a per-frame TranslateTo
 
 // Ahead of and above the carrier's root, turned yaw degrees from the carrier's facing
 export interface CarryPose {

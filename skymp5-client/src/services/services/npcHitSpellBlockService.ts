@@ -57,8 +57,7 @@ interface Swing {
 // Creature poison hit spells (the Falmer perk's crFalmerPoisonedWeapon, spider and chaurus bites) are cast by the victim's own engine and never reach the server,
 // so a blocked swing still poisons; a hit from a copy this client does not host is a replayed swing whose real hit the host reports.
 // Both are dispelled here and the health floored to the value before the effect, keyed to NPC aggressors and Contact-delivery poison effects only.
-// The server names every Falmer swing it resolves as blocked (npcHitPoisonBlocked), and that verdict dispels the landing too.
-// SkyrimPlatform's dispelSpellFrom takes only that NPC's copy; without it dispelSpell takes every caster's, so a landing is spared while another NPC's unblocked copy runs.
+// A server npcHitPoisonBlocked verdict dispels too, through dispelSpellFrom so only that NPC's copy goes.
 export class NpcHitSpellBlockService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();

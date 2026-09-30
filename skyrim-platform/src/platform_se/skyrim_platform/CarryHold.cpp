@@ -23,8 +23,7 @@ constexpr float kPi = 3.14159265f;
 constexpr float kMaxLead = 64.f;
 constexpr float kMaxLeadTurn = kPi / 4;
 
-// 1.6 ids, checked by disassembly of 1.6.1179 and again at install
-// Actor::SetPosition(pos, updateCharController): location, controller warp with zero velocity, 3D translate; vtable slot 0xA9
+// Actor::SetPosition(pos, updateCharController) on 1.6, vtable slot 0xA9, checked by disassembly and again at install
 constexpr REL::ID kActorSetPosition{ 37309 };
 constexpr std::size_t kSetPositionSlot = 0xA9;
 // Main::Update hands the player to this call before the frame's actor updates
