@@ -5,8 +5,9 @@ import { isBadMenuShown, applyEquipment, countWorn, equipEntries, Equipment, get
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
-import { applyMovement } from "../sync/movementApply";
+import { applyMovement, isCarrierCloneId } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
+import { applyCarried, makeCarriedViewState } from "../sync/carryHold";
 import { Movement, NiPoint3 } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
@@ -320,6 +321,7 @@ export class FormView {
     // Unmarked at once, since a copy spawned right after a game load can reuse the id
     if (refrId >= 0xff000000) ObjectReferenceEx.markServerCopy(refrId, false);
     this.mountState = makeMountState();
+    this.carriedState = makeCarriedViewState();
     once("update", () => {
       if (refrId >= 0xff000000) {
         const refr = ObjectReference.from(Game.getFormEx(refrId));
@@ -441,6 +443,9 @@ export class FormView {
     // A rider clone is left to the engine while it rides, and so is a horse clone while the engine is asked to seat one or a clone in a killmove
     const mounted = !model.isMyClone &&
       (applyMount(refr, model, this.mountState) || isMountSuspended(this.refrId) || isCloneMovementSuspended(this.refrId));
+    // A carried copy this client neither is nor runs lies on the local copy of its carrier every frame; its own packets move nothing while it does
+    const held = applyCarried(refr, model, this.carriedState, !model.isMyClone && !mounted && !alreadyHosted);
+    const movementHeld = mounted || held;
 
     if (model.movement) {
       let ac = Actor.from(refr);
@@ -478,13 +483,13 @@ export class FormView {
           }
           try {
             // A sender silent for 2 s (paused game, Steam overlay) settles at the copy's own height instead of running in place or hanging mid-air
-            const movement: Movement = mounted || isNewMovement || !this.movState.everApplied || !ac
+            const movement: Movement = movementHeld || isNewMovement || !this.movState.everApplied || !ac
               ? model.movement
               : { ...model.movement, runMode: "Standing", isInJumpState: false, pos: [model.movement.pos[0], model.movement.pos[1], refr.getPositionZ()] };
             // The first apply also runs on the host, where a self offset would replace the follow its service just issued
             const ownOffset = !hostedByOther && keepsOwnOffset(this.remoteRefrId);
-            applyMovement(refr, movement, !!model.isMyClone, mounted, ownOffset);
-            if (!mounted) {
+            applyMovement(refr, movement, !!model.isMyClone, movementHeld, ownOffset);
+            if (!movementHeld) {
               restoreSitCollisionIfMoving(refr, movement);
               if (ac) {
                 this.watchSlide(refr, ac, movement, model);
@@ -583,9 +588,11 @@ export class FormView {
           screenPoint[0] < 1 &&
           screenPoint[1] < 1 &&
           screenPoint[2] < 1;
+        // The carry partner's head sits at the camera for the whole carry, so it is rebuilt only after its tints were reset
+        const carryPartner = (held && this.carriedState.onPlayer) || isCarrierCloneId(this.refrId);
         if (isOnScreen != this.isOnScreen) {
           this.isOnScreen = isOnScreen;
-          if (isOnScreen && Date.now() - this.lastNiNodeUpdateMs >= FormView.niNodeUpdateMinIntervalMs) {
+          if (isOnScreen && Date.now() - this.lastNiNodeUpdateMs >= FormView.niNodeUpdateMinIntervalMs && !(carryPartner && this.lastNiNodeUpdateMs)) {
             this.lastNiNodeUpdateMs = Date.now();
             actor.queueNiNodeUpdate();
             // The rebuilt 3D drops effect shaders
@@ -1044,6 +1051,7 @@ export class FormView {
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
   private mountState = makeMountState();
+  private carriedState = makeCarriedViewState();
   private localImmortal = false;
   private hostilityApplied = false;
   private hostileFlagSeen: unknown = undefined;

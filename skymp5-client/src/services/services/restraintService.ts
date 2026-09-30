@@ -1,13 +1,14 @@
-import { Actor, ObjectReference } from "skyrimPlatform";
+import { Actor } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { logToPlatformLog, logTrace } from "../../logging";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
-import { Movement, NiPoint3 } from "../../sync/movement";
-import { wrappedAngleDiff, setCarrierClone } from "../../sync/movementApply";
+import { Movement } from "../../sync/movement";
+import { setCarrierClone } from "../../sync/movementApply";
 import { isInSitPose, needsEmptyHands, setRefrCollision } from "../../sync/animation";
+import { CarryPose, DEFAULT_CARRY_POSE, describeCarryNodes, finiteOr, holdOnCarrier, makeHoldState, readCarryPose, restartHold } from "../../sync/carryHold";
 import { isPlayerCharacterId } from "./playerActionService";
 import { MountService } from "./mountService";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
@@ -47,25 +48,28 @@ const LOCK_POSE_LOG_MS = 60000;
 // Master graph variable set while an idle plays
 const IDLE_PLAYING_VAR = "bIdlePlaying";
 
-// Carried body is held ahead of and above the carrier, turned 45 degrees from their facing; the server may override these
-const CARRY_FORWARD = 16;
-const CARRY_UP = 40;
-const CARRY_YAW = 45;
-
-// Carried body chases the carrier's clone locally; the server's drift snap is only a backstop
-const CARRY_FOLLOW_TIME_S = 0.2;
-const CARRY_FOLLOW_DEADZONE = 4;
-const CARRY_FOLLOW_YAW_DEADZONE = 1;
-const CARRY_FOLLOW_MIN_SPEED = 50;
-const CARRY_FOLLOW_MAX_DIST = 2048;
 const CARRIER_COLLISION_REFRESH_MS = 1000;
+// A lifted body can read as falling, so a carried idle pose is re-sent when no idle plays this long after it was sent instead of after a landing
+const CARRIED_IDLE_CHECK_MS = 1000;
+// Re-sends in a row that bring no idle back mean the graph variable does not follow this pose; the check stops for the carry
+const CARRIED_IDLE_MAX_RESENDS = 3;
+// The server's short hop of a carried body takes up to 0.35 s; the hold waits for it to land
+const CARRIED_HOP_MS = 500;
+const CARRY_NODES_LOG_MS = 1500;
 
 // A carrier's forced sheathe is retried this often; the carry pose waits for the sheathe to blend out
 const SHEATHE_RETRY_MS = 1000;
 const SHEATHE_SETTLE_MS = 300;
 
-const finiteOr = (value: unknown, fallback: number): number =>
-  typeof value === "number" && Number.isFinite(value) ? value : fallback;
+// What the carried client's summary line reports when the carry ends
+interface CarryStats {
+  startMs: number;
+  frames: number;
+  poseResends: number;
+  serverMoves: number;
+  shortHops: number;
+  nodesLogged: boolean;
+}
 
 interface ActionLock {
   anim: string;
@@ -118,10 +122,12 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *   - boundHands: plays the bound-hands pose and disables fighting/sneaking/
  *     activation. Movement stays enabled so the prisoner can be marched/walked.
  *   - carried: plays a lying pose held carryForward ahead of and carryUp above
- *     the carrier's clone, turned carryYaw degrees from the carrier's facing
- *     and turning with it (movementApply turns the carrier's clone outright).
- *     Fully immobilised in third person; the camera can still orbit. The
- *     carrier's clone stops colliding with the player meanwhile.
+ *     the carrier's clone every frame (sync/carryHold.ts), turned carryYaw
+ *     degrees from the carrier's facing and turning with it. Fully immobilised
+ *     in third person; the camera can still orbit. The carrier's clone stops
+ *     colliding with the player meanwhile. The carrier and observers hold their
+ *     copy of the body on their own copy of the carrier (ff_carriedBy). One
+ *     summary line per carry goes to the Platform log.
  *   - carrying: plays the carry-hold pose; fighting is disabled and a drawn
  *     weapon, fists or spell is sheathed. The carrier can still walk.
  *   - downed: kneels in the bleedout pose, cannot move, fight, sneak, activate
@@ -144,7 +150,8 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a
  *     fall and after a server move (onTeleported), whose 3D reattach can
- *     swallow a pose sent around it.
+ *     swallow a pose sent around it. A carried idle pose is re-applied when no
+ *     idle plays instead of after a fall, since a lifted body can read as falling.
  *
  * A capture or carry ends a downed target's bleedout server-side, so carried and
  * downed never last together.
@@ -221,6 +228,7 @@ export class RestraintService extends ClientListener {
 
   // Must run on update, right after the move; a pose the reattach swallowed is never re-sent otherwise
   onTeleported(): void {
+    if (this.carried) this.pauseHold(TELEPORT_SETTLE_S * 1000, false);
     if (!this.isPoseLocked) return;
     this.sp.Utility.wait(TELEPORT_SETTLE_S).then(() => {
       this.controller.once("update", () => {
@@ -229,6 +237,20 @@ export class RestraintService extends ClientListener {
         logToPlatformLog(this, `pose ${this.appliedPose} re-sent after teleport`);
       });
     });
+  }
+
+  // The server's short same-cell hop of the carried player (a put-down or a door arrival) lands before the hold resumes
+  onCarriedHop(): void {
+    if (this.carried) this.pauseHold(CARRIED_HOP_MS, true);
+  }
+
+  private pauseHold(ms: number, shortHop: boolean): void {
+    this.holdPausedUntil = Date.now() + ms;
+    restartHold(this.holdState, this.holdPausedUntil);
+    if (this.carryStats) {
+      this.carryStats.serverMoves++;
+      if (shortHop) this.carryStats.shortHops++;
+    }
   }
 
   // Must run on update: the kneel is left for the pair, the controls stay locked
@@ -357,23 +379,30 @@ export class RestraintService extends ClientListener {
     this.applyState();
   }
 
-  // Throttled: landing detection (event-name independent) and the carried follow
+  // The carry holds run every frame; landing detection (event-name independent), locks and pose checks are throttled
   private onUpdate(): void {
+    this.trackCarry();
     if (!this.isPoseLocked) {
       this.wasInJump = false;
       this.poseDirty = false;
       return;
     }
+    const player = this.sp.Game.getPlayer();
+    if (!player) {
+      return;
+    }
     const now = Date.now();
+    if (this.carrying) {
+      this.moveCarriedNpc(player, now);
+    }
+    if (this.carried && this.carrierId && now >= this.holdPausedUntil) {
+      this.followCarrier(player, now);
+    }
     if (now - this.lastTickMs < TICK_MS) {
       return;
     }
     this.lastTickMs = now;
 
-    const player = this.sp.Game.getPlayer();
-    if (!player) {
-      return;
-    }
     if (this.lock && now >= this.lock.until) {
       this.lock = null;
       this.applyStateNow();
@@ -385,27 +414,32 @@ export class RestraintService extends ClientListener {
     }
 
     const inJump = player.getAnimationVariableBool("bInJumpState");
-    if (this.wasInJump && !inJump) {
+    const idleCheck = this.carried && isStateIdle(this.carriedAnim) && !this.idleCheckOff;
+    if (this.wasInJump && !inJump && !idleCheck) {
       this.poseDirty = true;
     }
     this.wasInJump = inJump;
+    if (idleCheck) {
+      this.checkCarriedIdle(player, now);
+    }
     if (this.carrying) {
       this.holdCarrierFightLock(player, now);
       this.poseCarriedNpc();
-      this.moveCarriedNpc(player);
     }
-    if (this.poseDirty && !inJump && now >= this.nextPoseReapplyMs) {
+    if (this.poseDirty && (!inJump || idleCheck) && now >= this.nextPoseReapplyMs) {
       this.poseDirty = false;
       this.nextPoseReapplyMs = now + POSE_REAPPLY_MIN_MS;
+      if (this.carried && this.carryStats) this.carryStats.poseResends++;
       this.reapplyPoses();
     }
-
-    if (this.carried && this.carrierId) {
-      this.followCarrier(player);
+    if (this.carryStats && !this.carryStats.nodesLogged && now - this.carryStats.startMs >= CARRY_NODES_LOG_MS) {
+      this.carryStats.nodesLogged = true;
+      logToPlatformLog(this, describeCarryNodes(player, this.sp.ObjectReference.from(this.sp.Game.getFormEx(remoteIdToLocalId(this.carrierId)))));
     }
   }
 
-  private followCarrier(player: Actor): void {
+  // Held on the carrier's clone, which stops colliding with the player
+  private followCarrier(player: Actor, now: number): void {
     const carrierLocalId = remoteIdToLocalId(this.carrierId);
     const carrier = this.sp.ObjectReference.from(this.sp.Game.getFormEx(carrierLocalId));
     if (!carrier || !carrier.is3DLoaded() ||
@@ -414,50 +448,58 @@ export class RestraintService extends ClientListener {
     }
     this.keepCarrierCollisionOff(carrierLocalId);
     setCarrierClone(carrierLocalId);
-    this.holdAt(player, carrier);
+    holdOnCarrier(player, carrier, this.carryPose, this.holdState, now);
   }
 
   // The carrier hosts the carried NPC, so moving its clone here moves it for everyone
-  private moveCarriedNpc(player: Actor): void {
+  private moveCarriedNpc(player: Actor, now: number): void {
     const npc = this.posedNpcLocalId ? this.sp.Actor.from(this.sp.Game.getFormEx(this.posedNpcLocalId)) : null;
     if (!npc || !npc.is3DLoaded() || ObjectReferenceEx.getWorldOrCell(npc) !== ObjectReferenceEx.getWorldOrCell(player)) {
       return;
     }
     this.keepCarrierCollisionOff(this.posedNpcLocalId);
-    this.holdAt(npc, player);
+    holdOnCarrier(npc, player, this.carryPose, this.npcHoldState, now);
+  }
+
+  // A pose the graph variable cannot see is re-sent only a few times, then left alone for the carry
+  private checkCarriedIdle(player: Actor, now: number): void {
+    if (this.poseDirty || now - this.poseSentMs < CARRIED_IDLE_CHECK_MS) {
+      return;
+    }
+    if (player.getAnimationVariableBool(IDLE_PLAYING_VAR)) {
+      this.idleResends = 0;
+      return;
+    }
+    if (this.idleResends >= CARRIED_IDLE_MAX_RESENDS) {
+      this.idleCheckOff = true;
+      logToPlatformLog(this, `carried pose ${this.carriedAnim}: no idle playing after ${this.idleResends} re-sends, idle check off for this carry`);
+      return;
+    }
+    this.idleResends++;
+    this.poseDirty = true;
+  }
+
+  // One summary line per carry, so a test says what the hold cost and how close it stayed
+  private trackCarry(): void {
+    if (this.carried && !this.carryStats) {
+      this.carryStats = { startMs: Date.now(), frames: 0, poseResends: 0, serverMoves: 0, shortHops: 0, nodesLogged: false };
+      this.holdState = makeHoldState();
+      this.idleResends = 0;
+      this.idleCheckOff = false;
+    } else if (!this.carried && this.carryStats) {
+      const c = this.carryStats;
+      const s = this.holdState;
+      const seconds = (Date.now() - c.startMs) / 1000;
+      logToPlatformLog(this, `carry summary: ${seconds.toFixed(1)} s held, ${Math.round(c.frames / Math.max(seconds, 0.001))} fps average while carried, ` +
+        `${s.translates} translates, ${s.headingWrites} heading writes, largest heading error ${s.maxHeadingError.toFixed(1)}, ` +
+        `${c.poseResends} pose re-sends, ${c.serverMoves} server moves (${c.shortHops} short hops), largest gap ${Math.round(s.maxGap)} units`);
+      this.carryStats = null;
+    }
+    if (this.carryStats) this.carryStats.frames++;
   }
 
   private readCarryOffsets(content: Record<string, unknown>): void {
-    this.carryForward = finiteOr(content["carryForward"], this.carryForward);
-    this.carryUp = finiteOr(content["carryUp"], this.carryUp);
-    this.carryYaw = finiteOr(content["carryYaw"], this.carryYaw);
-  }
-
-  // Held ahead of and above the carrier, turned carryYaw from its facing
-  private holdAt(held: Actor, carrier: ObjectReference): void {
-    const carrierYaw = carrier.getAngleZ();
-    const yawRad = carrierYaw * Math.PI / 180;
-    const carrierPos = ObjectReferenceEx.getPos(carrier);
-    const target: NiPoint3 = [
-      carrierPos[0] + Math.sin(yawRad) * this.carryForward,
-      carrierPos[1] + Math.cos(yawRad) * this.carryForward,
-      carrierPos[2] + this.carryUp,
-    ];
-    const targetYaw = carrierYaw + this.carryYaw;
-    const yawDiff = wrappedAngleDiff(targetYaw, held.getAngleZ());
-    const dist = ObjectReferenceEx.getDistance(ObjectReferenceEx.getPos(held), target);
-    if (dist > CARRY_FOLLOW_MAX_DIST || (dist < CARRY_FOLLOW_DEADZONE && yawDiff < CARRY_FOLLOW_YAW_DEADZONE)) {
-      return;
-    }
-    // A state idle ignores TranslateTo's angle; the full angle is written so no X or Y from an earlier ragdoll stays
-    if (yawDiff >= CARRY_FOLLOW_YAW_DEADZONE) {
-      held.setAngle(0, 0, targetYaw);
-    }
-    held.translateTo(
-      target[0], target[1], target[2],
-      0, 0, targetYaw,
-      Math.max(dist / CARRY_FOLLOW_TIME_S, CARRY_FOLLOW_MIN_SPEED), 0,
-    );
+    this.carryPose = readCarryPose(content, this.carryPose);
   }
 
   // Re-asserted periodically: a respawned clone or a synced get-up animation turns collision back on
@@ -584,6 +626,7 @@ export class RestraintService extends ClientListener {
     if (desired === this.lock?.anim) this.checkLockPose(desired);
     this.appliedPose = desired;
     this.appliedExit = desired === this.lock?.anim ? this.lock.exitAnim : exitOf(desired);
+    this.poseSentMs = Date.now();
     const token = ++this.poseToken;
     // A pose with its own exit (an action lock's exitAnim) leaves through it even on the same layer
     const crossesLayer = !!previous && previous !== OFFSET_STOP_ANIM &&
@@ -673,6 +716,7 @@ export class RestraintService extends ClientListener {
     npc.setDontMove(true);
     this.sp.Debug.sendAnimationEvent(npc, this.carriedAnim);
     this.posedNpcLocalId = localId;
+    this.npcHoldState = makeHoldState();
   }
 
   // Hits on a downed player are the server's to judge, so local NPC swings and clone hits pass through; an admin's own ghost mode is left alone
@@ -717,11 +761,16 @@ export class RestraintService extends ClientListener {
   private carrierId = 0;
   private captiveAnim = BOUND_HANDS_ANIM_START;
   private carriedAnim = CARRIED_ANIM_START;
-  private carryForward = CARRY_FORWARD;
-  private carryUp = CARRY_UP;
-  private carryYaw = CARRY_YAW;
+  private carryPose: CarryPose = { ...DEFAULT_CARRY_POSE };
+  private holdState = makeHoldState();
+  private npcHoldState = makeHoldState();
+  private holdPausedUntil = 0;
+  private carryStats: CarryStats | null = null;
+  private idleResends = 0;
+  private idleCheckOff = false;
   private appliedPose = "";
   private appliedExit = "";
+  private poseSentMs = 0;
   private poseToken = 0;
   private carriedControlsApplied = false;
   private downed = false;

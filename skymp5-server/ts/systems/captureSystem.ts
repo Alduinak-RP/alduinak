@@ -13,9 +13,11 @@ type Mp = any;
 // server-driven RestraintService:
 //   - boundHands ("arrest"): Helgen bound-hands pose; can walk and chat, cannot
 //     fight, sneak or use hands.
-//   - carried: fully immobilised; the captive's client follows the carrier's
-//     clone and the server snaps the body back when it drifts. The camera is
-//     locked to third person. A put-down sets the body at the carrier's feet, and the body only follows
+//   - carried: fully immobilised; every client holds the body on its own copy of
+//     the carrier each frame (ff_carriedBy tells the others who carries whom), and
+//     the server moves it only through a door, at a put-down, or when the body was
+//     left far behind. The camera is locked to third person.
+//     A put-down sets the body at the carrier's feet, and the body only follows
 //     the carrier into another cell through a door they used within DOOR_FOLLOW_MS;
 //     any other cell change or teleport ends the carry where the body was.
 // Flows: arresting needs the configured "manacles" item (settings.manaclesFormId)
@@ -40,6 +42,8 @@ type Mp = any;
 //     { customPacketType: "carryState",      carrying, anim, target, carryForward, carryUp, carryYaw } // -> carrier's RestraintService (pose, and where a carried NPC is held)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
 //     { customPacketType: "captureNotice",   text }                        // -> corner notification
+//   Neighbour-visible property on the carried actor, registered in the gamemode's 50_properties.js:
+//     ff_carriedBy: { carrier, carryForward, carryUp, carryYaw } | null
 
 const RESTRAINT_PACKET = "restraintState";
 const CARRY_PACKET = "carryState";
@@ -51,6 +55,7 @@ const MENU_STATE_PACKET = "playerMenuState";
 // on it (e.g. skip its temple pass-out for a bound or carried player):
 //   mp.get(actorId, "private.restrained") -> { boundHands, carried, captorActorId, carrierActorId } | null
 const RESTRAINED_PROP = "private.restrained";
+const CARRIED_BY_PROP = "ff_carriedBy";
 
 function restraintOf(mp: Mp, actorId: number): { boundHands?: boolean, carried?: boolean } | null {
   try {
@@ -78,10 +83,10 @@ export function isCarried(mp: Mp, actorId: number): boolean {
 // 0 = no item requirement; set manaclesFormId in server-settings.json to gate arrests behind a carryable item
 const DEFAULT_MANACLES = 0;
 
-// Carry re-snap interval and min carrier movement (squared game units); throttling keeps reliable Teleport packets and rubber-banding to a minimum
+// How often carries are checked for doors, teleports and lost bodies
 const CARRY_FOLLOW_INTERVAL_MS = 350;
-const CARRY_FOLLOW_MIN_MOVE_SQ = 96 * 96;
-const CARRY_MAX_DRIFT_SQ = 256 * 256;
+// A body this far from its carrier within the cell on two checks in a row was left behind (squared game units)
+const CARRY_LOST_SQ = 2048 * 2048;
 // A carrier's cell change this soon after a door activation is a load door; later ones drop the body
 const DOOR_FOLLOW_MS = 5000;
 // A carrier who moved farther than this between follow ticks was teleported
@@ -142,8 +147,9 @@ export class CaptureSystem implements System {
   private carrying = new Map<number, number>();
   // carriedActorId -> carrierActorId (reverse lookup)
   private carriedBy = new Map<number, number>();
-  // carriedActorId -> last carrier pos we snapped them to (spam/jitter guard)
-  private lastCarryPos = new Map<number, [number, number, number]>();
+  // carriedActorIds farther than CARRY_LOST_SQ from their carrier at the last check
+  private farBodies = new Set<number>();
+  private carriedByFailLogged = false;
   // carrierActorId -> when they last activated a door
   private doorUsedAt = new Map<number, number>();
   // carrierActorId -> where the last follow tick saw them
@@ -250,7 +256,7 @@ export class CaptureSystem implements System {
     }
   }
 
-  // Snap every carried body onto its carrier; runs from the ~1ms update loop, self-throttled to CARRY_FOLLOW_INTERVAL_MS
+  // Doors, teleports and lost bodies; runs from the ~1ms update loop, self-throttled to CARRY_FOLLOW_INTERVAL_MS
   async updateAsync(ctx: SystemContext): Promise<void> {
     if (this.carrying.size === 0) {
       return;
@@ -282,13 +288,9 @@ export class CaptureSystem implements System {
         this.carrierLastLoc.set(carrierActorId, { cellOrWorldDesc: loc.cellOrWorldDesc, pos: [...loc.pos] });
         const teleported = !!lastLoc && lastLoc.cellOrWorldDesc === loc.cellOrWorldDesc &&
           (loc.pos[0] - lastLoc.pos[0]) ** 2 + (loc.pos[1] - lastLoc.pos[1]) ** 2 + (loc.pos[2] - lastLoc.pos[2]) ** 2 > CARRY_TELEPORT_SQ;
-        const carrierYaw = Array.isArray(loc.rot) ? Number(loc.rot[2]) || 0 : 0;
-        const [x, y, z] = this.carryTarget(loc.pos as number[], carrierYaw);
-        // Each snap is a full engine teleport on the carried client; only
-        // resend when the body actually drifted or changed cell
         const carriedLoc = mp.get(carriedActorId, "locationalData");
         const cellChanged = !!carriedLoc && carriedLoc.cellOrWorldDesc !== loc.cellOrWorldDesc;
-        // A carried pet is moved by its carrier's client within a cell; a load door still snaps it, and a player body keeps the old path
+        // A carried pet is moved by its carrier's client within a cell; a load door still snaps it
         if (this.userOf(ctx, carriedActorId) < 0 && !isPlayerActor(mp, carriedActorId) && carriedLoc && !cellChanged) continue;
         // Only a door carries the body into another cell or far across it; a carrier who got there any other way lost it where it was
         if ((cellChanged || teleported) && now - (this.doorUsedAt.get(carrierActorId) ?? 0) > DOOR_FOLLOW_MS) {
@@ -298,26 +300,18 @@ export class CaptureSystem implements System {
           this.log(`[carry] ${carrierActorId.toString(16)} ${cellChanged ? "changed cell" : "teleported"} without a door, dropped ${carriedActorId.toString(16)}`);
           continue;
         }
-        if (carriedLoc && Array.isArray(carriedLoc.pos) && !cellChanged) {
-          const dx = x - carriedLoc.pos[0], dy = y - carriedLoc.pos[1], dz = z - carriedLoc.pos[2];
-          if (dx * dx + dy * dy + dz * dz < CARRY_MAX_DRIFT_SQ) {
-            continue;
-          }
-        } else {
-          const prev = this.lastCarryPos.get(carriedActorId);
-          if (prev && carriedLoc && carriedLoc.cellOrWorldDesc === loc.cellOrWorldDesc) {
-            const dx = x - prev[0], dy = y - prev[1], dz = z - prev[2];
-            if (dx * dx + dy * dy + dz * dz < CARRY_FOLLOW_MIN_MOVE_SQ) {
-              continue;
-            }
-          }
+        // Within a cell every client holds the body on its own copy of the carrier, so the server only watches for one left behind
+        if (!cellChanged && !teleported) {
+          if (carriedLoc && Array.isArray(carriedLoc.pos)) this.checkLostBody(ctx, carrierActorId, carriedActorId, loc.pos, carriedLoc.pos);
+          continue;
         }
+        const carrierYaw = Array.isArray(loc.rot) ? Number(loc.rot[2]) || 0 : 0;
+        const [x, y, z] = this.carryTarget(loc.pos as number[], carrierYaw);
         mp.set(carriedActorId, "locationalData", {
           cellOrWorldDesc: loc.cellOrWorldDesc,
           pos: [x, y, z],
           rot: [0, 0, carrierYaw + this.carryYaw],
         });
-        this.lastCarryPos.set(carriedActorId, [x, y, z]);
         if (cellChanged) this.doorUsedAt.delete(carrierActorId);
       } catch (e) {
         // carrier or carried vanished mid-carry: free the pair so no stale restraint record survives
@@ -343,8 +337,9 @@ export class CaptureSystem implements System {
       this.dropAtCarrier(ctx, actorId, carrier);
       this.carrying.delete(carrier);
       this.carriedBy.delete(actorId);
-      this.lastCarryPos.delete(actorId);
+      this.farBodies.delete(actorId);
       this.doorUsedAt.delete(carrier);
+      this.mirrorCarrier(ctx.svr as Mp, actorId);
       this.sendCarryState(ctx, carrier, false);
       const own = this.restraints.get(actorId);
       if (own) {
@@ -379,6 +374,7 @@ export class CaptureSystem implements System {
           mp.set(actorId, RESTRAINED_PROP, null);
         }
       } catch { /* form gone */ }
+      this.mirrorCarrier(mp, actorId);
       return;
     }
     if (this.userOf(ctx, info.captorActorId) < 0) {
@@ -709,6 +705,36 @@ export class CaptureSystem implements System {
     try {
       (ctx.svr as Mp).set(targetActorId, RESTRAINED_PROP, value);
     } catch { /* form gone */ }
+    this.mirrorCarrier(ctx.svr as Mp, targetActorId);
+  }
+
+  // Every client holds the body on its own copy of the carrier from this; a gamemode without the property changes nothing else
+  private mirrorCarrier(mp: Mp, targetActorId: number): void {
+    const carrier = this.carriedBy.get(targetActorId);
+    try {
+      if (carrier === undefined && !mp.get(targetActorId, CARRIED_BY_PROP)) return;
+      mp.set(targetActorId, CARRIED_BY_PROP, carrier === undefined ? null
+        : { carrier, carryForward: this.carryForward, carryUp: this.carryUp, carryYaw: this.carryYaw });
+    } catch (e) {
+      if (this.carriedByFailLogged) return;
+      this.carriedByFailLogged = true;
+      this.log(`[carry] ${CARRIED_BY_PROP} not written (registered in the gamemode's 50_properties.js?): ${e}`);
+    }
+  }
+
+  // A body left this far behind on two checks in a row is set down at its carrier's feet
+  private checkLostBody(ctx: SystemContext, carrierActorId: number, carriedActorId: number, carrierPos: number[], carriedPos: number[]): void {
+    const distSq = (carrierPos[0] - carriedPos[0]) ** 2 + (carrierPos[1] - carriedPos[1]) ** 2 + (carrierPos[2] - carriedPos[2]) ** 2;
+    if (distSq <= CARRY_LOST_SQ) {
+      this.farBodies.delete(carriedActorId);
+      return;
+    }
+    if (!this.farBodies.has(carriedActorId)) {
+      this.farBodies.add(carriedActorId);
+      return;
+    }
+    this.log(`[carry] ${carrierActorId.toString(16)} lost ${carriedActorId.toString(16)} at ${Math.round(Math.sqrt(distSq))} units`);
+    this.stopCarry(ctx, carriedActorId);
   }
 
   private applyCapture(ctx: SystemContext, targetActorId: number, captorActorId: number): void {
@@ -742,7 +768,7 @@ export class CaptureSystem implements System {
     this.restraints.set(targetActorId, info);
     this.carrying.set(carrierActorId, targetActorId);
     this.carriedBy.set(targetActorId, carrierActorId);
-    this.lastCarryPos.delete(targetActorId);
+    this.farBodies.delete(targetActorId);
     this.carrierLastLoc.delete(carrierActorId);
     this.mirrorState(ctx, targetActorId);
     this.sendRestraint(ctx, targetActorId, info);
@@ -759,7 +785,7 @@ export class CaptureSystem implements System {
     if (setDown) this.dropAtCarrier(ctx, targetActorId, carrier);
     this.carrying.delete(carrier);
     this.carriedBy.delete(targetActorId);
-    this.lastCarryPos.delete(targetActorId);
+    this.farBodies.delete(targetActorId);
     this.doorUsedAt.delete(carrier);
     this.sendCarryState(ctx, carrier, false, targetActorId);
     if (this.userOf(ctx, targetActorId) < 0) this.onNpcCarryEnd?.(targetActorId, carrier);
@@ -789,7 +815,7 @@ export class CaptureSystem implements System {
       this.dropAtCarrier(ctx, targetActorId, carrier);
       this.carrying.delete(carrier);
       this.carriedBy.delete(targetActorId);
-      this.lastCarryPos.delete(targetActorId);
+      this.farBodies.delete(targetActorId);
       this.doorUsedAt.delete(carrier);
       this.sendCarryState(ctx, carrier, false, targetActorId);
       if (this.userOf(ctx, targetActorId) < 0) this.onNpcCarryEnd?.(targetActorId, carrier);
@@ -813,7 +839,9 @@ export class CaptureSystem implements System {
       const carrierYaw = Array.isArray(loc.rot) ? Number(loc.rot[2]) || 0 : 0;
       mp.set(carriedActorId, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: [...loc.pos], rot: [0, 0, carrierYaw] });
       this.log(`[carry] ${carriedActorId.toString(16)} set down at ${carrierActorId.toString(16)}`);
-    } catch { /* carrier or carried gone */ }
+    } catch (e) {
+      this.log(`[carry] ${carriedActorId.toString(16)} not set down at ${carrierActorId.toString(16)}: ${e}`);
+    }
   }
 
   // ── Packet senders ─────────────────────────────────────────────────────────

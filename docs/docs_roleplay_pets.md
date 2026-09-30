@@ -106,7 +106,8 @@ housing `propertyMenu` carries `pets` (the door's category or empty); `petBases 
 
 Properties: `private.pets {list}` on the owner (never sent), `private.pet {owner, uid, kind, name, released?}` on the actor (never sent),
 `ff_pet {kind, name, owner, dead?, flee?, carried?}` on the actor and `ff_mount` on riders, both neighbor-visible. The gamemode must register the
-two `ff_` ones (see Deployment).
+two `ff_` ones (see Deployment). A carried pet also carries CaptureSystem's `ff_carriedBy`, from which everyone but its carrier holds their copy in
+the carrier's arms (`docs_roleplay_survival_loop.md` section 10).
 
 ## Settings (`server-settings.json`, all optional)
 

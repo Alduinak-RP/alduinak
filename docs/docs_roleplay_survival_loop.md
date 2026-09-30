@@ -437,8 +437,17 @@ Picking up a player in bleedout **ends their bleedout** (§8).
 
   `RestraintService` immobilises them (`setDontMove`, controls disabled) in
   third person and its own client holds the body `carryOffsetForward` ahead of
-  and `carryOffsetUp` above the carrier's clone every 100 ms, turned with the
+  and `carryOffsetUp` above the carrier's clone every frame, turned with the
   carrier (see the carry pose keys in `docs_server_configuration_reference.md`).
+  The hold (`sync/carryHold.ts`) is a non-latent TranslateTo that arrives
+  within about three frames; the latent SetAngle that turns the lying body is
+  written only when it is 5 degrees or more off, one at a time and at most
+  four a second. The carrier's clone on that client turns to the carrier's
+  heading at the AI's pace, with no deadzone, and the body follows its actual
+  facing. While carried, the pose is re-sent when no idle plays (the
+  `bIdlePlaying` graph variable) rather than after a landing, since a lifted
+  body can read as falling; after three re-sends in a row that bring no idle
+  back the check stops for that carry and says so in the Platform log.
   Release with:
 
   ```json
@@ -448,22 +457,59 @@ Picking up a player in bleedout **ends their bleedout** (§8).
 `boundHands` and `carried` are independent flags and may be combined (a bound
 prisoner can also be carried).
 
+- **What the carrier and everyone else see**: `CaptureSystem` sets the
+  neighbour-visible `ff_carriedBy` property on the carried actor,
+  `{ carrier, carryForward, carryUp, carryYaw }`, and `null` when the carry
+  ends (the carried player's own disconnect included). Every other client holds
+  its copy of the body on its own copy of the carrier every frame with the same
+  hold (`view/formView.ts`), on the local player when that client is the
+  carrier, and ignores the carried client's movement packets meanwhile, so the
+  body stays in the arms with no network delay between the two copies. A copy
+  whose carrier has no copy on that client, is in another cell or is more than
+  2048 units away goes back to normal movement sync. A carried pet on its
+  carrier's client is held by `RestraintService`, which hosts it. The gamemode
+  must register the property in `gamemode_extensions/50_properties.js`
+  (gitignored; Migrate server carries the test server's copy to live):
+  `try { mp.makeProperty('ff_carriedBy', { isVisibleByOwner: true, isVisibleByNeighbors: true, updateOwner: '', updateNeighbor: '' }) } catch (err) { console.error('[carry] makeProperty ff_carriedBy: ' + (err && err.message)) }`,
+  then Build gamemode only. Without it the server logs
+  `[carry] ff_carriedBy not written ...` once and observers fall back to the
+  carried client's packets, as before.
+- **The carry partner's head**: the 5 s on-screen head rebuild
+  (`queueNiNodeUpdate`, which redraws a copy's own tints) skips the carrier's
+  clone on the carried client and the held body on the carrier's client once
+  it has run, since those heads sit at the camera the whole carry. A tint reset
+  (3D reload, equipment change, cell change) still gets its rebuild.
+- **Summary line**: when a carry ends the carried client writes one line to
+  `skyrim-platform.log`:
+  `carry summary: 34.2 s held, 58 fps average while carried, 2010 translates, 6 heading writes, largest heading error 4.1, 0 pose re-sends, 1 server moves (1 short hops), largest gap 7 units`.
+  Gaps and heading errors count from one second after the pickup or a server
+  move. 1.5 s into a carry it also logs
+  `carry nodes (right/forward/up from the root): body pelvis r/f/u, carrier left hand r/f/u, right hand r/f/u`,
+  the numbers `carryOffsetForward` and `carryOffsetUp` are tuned from.
+
 ### Server rules (`captureSystem.ts`)
 
 - **Consent / eligibility**: a conscious target answers a Yes/No prompt; a
   downed or restrained target is picked up at once, which ends a bleedout
   (`CaptureSystem.rescueDowned`). A carrier who goes down, dies or is restrained
   drops the body, and a carried player hit to 0 slips free and bleeds out again.
-- **Moving the body**: the carried client follows the carrier's clone; the
-  server re-snaps the body every 350 ms only when it drifted more than 256
-  units, so the follow is collisionless and the body pokes through thin walls
-  and bar doors while it is held.
+- **Moving the body**: every client holds the body on its own copy of the
+  carrier (above), and the server never moves it within a cell: it only
+  checks every 350 ms for doors, teleports and a lost body. The hold is
+  collisionless, so the body pokes through thin walls and bar doors while it
+  is held. A body the server sees more than 2048 units from its carrier in the
+  same cell on two checks in a row (a carried client that froze or stopped
+  sending) is set down at the carrier's feet, with the line
+  `[carry] <carrier> lost <carried> at <n> units`.
 - **Put down**: every end of a carry (Put down, Release, the carrier's
   disconnect or collapse, and a carried player's own disconnect, whose parked
   body is left there) first moves the body to the carrier's feet, facing the
-  carrier's way, with the line `[carry] <carried> set down at <carrier>`. A
+  carrier's way, with the line `[carry] <carried> set down at <carrier>`
+  (`[carry] <carried> not set down at <carrier>: <error>` when the move
+  failed, for example for a player who already timed out). A
   body held through a wall or a jail bar door therefore ends up back beside the
   carrier, never inside the cell. NPC bodies are set down by PetSystem instead.
+  The carried client pauses its hold while such a server move lands (0.5 s).
 - **Relog**: a carried player who logs back in is picked up again only while
   their carrier is still online, not downed, in the same cell and within
   `captureInteractMaxDistance` (default 256) of the parked body; otherwise the

@@ -98,17 +98,12 @@ export const setCarrierClone = (localId: number): void => {
   carrierCloneId = localId;
 };
 
-const isCarrierClone = (ac: Actor): boolean => carrierCloneId !== 0 && ac.getFormID() === carrierCloneId;
+export const isCarrierCloneId = (localId: number): boolean => carrierCloneId !== 0 && localId === carrierCloneId;
 
 const keepOffsetFromActor = (ac: Actor, m: Movement) => {
-  // The carrier clone turns outright to its packet yaw while standing, so the carried body turns with the carrier and not at the AI's pace; a walking copy is turned by its translate
-  const carrierClone = isCarrierClone(ac);
-  if (carrierClone && m.runMode === "Standing" && wrappedAngleDiff(m.rot[2], ac.getAngleZ()) > 0) {
-    ac.setAngle(ac.getAngleX(), ac.getAngleY(), m.rot[2]);
-  }
   let offsetAngle = m.rot[2] - ac.getAngleZ();
-  // Wider deadzone when standing: 130ms-stale idle angle noise makes the offset hunt visibly
-  const deadzone = carrierClone ? 0 : m.runMode === "Standing" ? 12 : 5;
+  // Wider deadzone when standing: 130ms-stale idle angle noise makes the offset hunt visibly; the carrier clone turns all the way so the body in its arms does
+  const deadzone = isCarrierCloneId(ac.getFormID()) ? 0 : m.runMode === "Standing" ? 12 : 5;
   if (Math.abs(offsetAngle) < deadzone) {
     offsetAngle = 0;
   }

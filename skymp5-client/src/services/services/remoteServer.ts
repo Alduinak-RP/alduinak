@@ -532,6 +532,7 @@ export class RemoteServer extends ClientListener {
         const dist = ObjectReferenceEx.getDistance(
           ObjectReferenceEx.getPos(refr), [msg.pos[0], msg.pos[1], msg.pos[2]]);
         if (dist < 2048) {
+          this.controller.lookupListener(RestraintService).onCarriedHop();
           refr.setAngle(msg.rot[0], msg.rot[1], msg.rot[2]);
           refr.translateTo(
             msg.pos[0], msg.pos[1], msg.pos[2],
