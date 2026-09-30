@@ -7,6 +7,9 @@ import { writeFileAtomic } from "./fileUtil";
 import { addItemTo, holdsItem, takeItemFrom, userSlotCount } from "./actorUtil";
 import { FactionDef, holdRanksOf, managesHold } from "./factionRules";
 import { Hold, holdOfRefs, isOutdoors, loadHolds } from "./holdOf";
+import { describeActor, profileIdOf, realNameOf } from "./playerText";
+import { adminAudit } from "./discordAlerts";
+import { WRITING_ID } from "./writingStore";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -26,13 +29,15 @@ type Mp = any;
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
 //     { customPacketType: "propertyInfoRequest", target: <refrId> }
-//     { customPacketType: "propertyRequest", action, target, recipient?, name? }
+//     { customPacketType: "propertyRequest", action, target, recipient?, name?, id? }
 //       action: claim | abandon | lock | unlock (both locks) | lockentrance | unlockentrance
 //             | lockexit | unlockexit | rename | transfer
 //             | breaklock (revoke from older clients) | createkey | revokekeys | grantcontainer
+//             | pinnote (id: the letter) | takenote
 //   Server -> Client:
 //     { customPacketType: "propertyMenu", target, view, owned, name, locked (either lock),
-//       lockedEntrance, lockedExit, sides, canLock, hasKeys, canGrantContainers, ownerName, pets, hold }
+//       lockedEntrance, lockedExit, sides, canLock, hasKeys, canGrantContainers, ownerName, pets, hold,
+//       note: null | { title, text, byline, signFaction, brokenSeals, mine, canTakeDown }, letters: [{ id, title }] }
 //     { customPacketType: "propertyNotice", text }
 //     { customPacketType: "refDecor", full?, refs: [{refId,name,locked}] }
 //
@@ -51,8 +56,15 @@ type Mp = any;
 // Holds. A property lies in the hold its door's location belongs to (holdOf.ts: the cell's location walked up to the
 // LocTypeHold one, either half of a teleport pair). Ranks that manage hold property (Jarl and Steward by default) manage
 // only the claims inside their own court's hold, and only while standing inside it; admins manage every claim.
+//
+// Door notes. A written, unsealed letter can be pinned to one half of a claimed door that is no faction's, one note per
+// half. The letter leaves the pinner's pack and the half stores only `private.doorNote` { id, by, byProfile, byName, at };
+// the text stays in the writing store. Everyone who opens the menu at that half reads it; the poster (same account and
+// character), the owner, a key holder or an admin takes it down into their own pack, and on an unclaimed door only the
+// poster or an admin. The server acts on the half the user last opened the menu at, never on an id from the packet.
 
 const HOUSING_PROP = "private.housing";
+const NOTE_PROP = "private.doorNote";
 const OWNER_INDEX_PROP = "private.indexed.housingOwner";
 const REGISTRY_FILE = "./housing.json";
 
@@ -110,6 +122,28 @@ interface ViewerAccess {
   profileId: number;
   admin: boolean;
   keys: Set<string>;
+}
+
+// A letter pinned to one door reference; its text stays in the writing store
+interface DoorNote {
+  id: string;
+  by: number;
+  byProfile: number;
+  byName: string;
+  at: number;
+}
+
+// Why a pinned letter can no longer be read
+type NoteGone = "missing" | "destroyed";
+
+// What a door note needs from WritingSystem
+export interface DoorNoteWritings {
+  available(): boolean;
+  lettersOf(mp: Mp, actorId: number): Array<{ id: string; title: string }>;
+  takeLetterToPin(mp: Mp, userId: number, actorId: number, id: string): { id: string; title: string } | null;
+  returnPinnedLetter(mp: Mp, actorId: number, id: string): "given" | "failed" | NoteGone;
+  pinnedNoteView(mp: Mp, viewerId: number, id: string): { title: string } | NoteGone | null;
+  logDoorNote(text: string): void;
 }
 
 const emptyRecord = (): PropertyRecord => ({
@@ -222,6 +256,7 @@ export class HousingSystem implements System {
 
   // A fresh actor needs the full picture: names and locks for every claim.
   private onActorAssigned(ctx: SystemContext, userId: number): void {
+    this.menuDoors.delete(userId);
     this.pushDecor(ctx, userId);
     const actorId = this.actorOf(ctx, userId);
     if (actorId && this.keySplitOnLogin) this.splitUncutKeys(ctx, actorId);
@@ -238,6 +273,7 @@ export class HousingSystem implements System {
       this.refuse(ctx, userId, actorId, "menu", target, "That is too far away.");
       return;
     }
+    this.menuDoors.set(userId, target);
     this.sendMenu(ctx, userId, actorId, target);
   }
 
@@ -288,6 +324,8 @@ export class HousingSystem implements System {
       case "revokekeys": this.doRevokeKeys(ctx, userId, primary, rec, isOwner, isManager); break;
       case "transfer": this.doTransfer(ctx, userId, primary, rec, isOwner, isManager, content["recipient"]); break;
       case "grantcontainer": this.doGrantContainer(ctx, userId, primary, rec, isOwner, isManager, content["recipient"]); break;
+      case "pinnote": this.doPinNote(ctx, userId, actorId, primary, rec, content["id"]); break;
+      case "takenote": this.doTakeNote(ctx, userId, actorId, primary, rec); break;
       default: break;
     }
   }
@@ -492,6 +530,7 @@ export class HousingSystem implements System {
     }
     const primary = this.primaryOf(ctx, target);
     const rec = primary ? this.read(ctx, primary) : null;
+    const door = (primary && this.menuDoor(ctx, userId, primary)) || target;
     const owned = !!rec && rec.owner !== 0;
     const profileId = this.profileOf(ctx, actorId);
     const isOwner = owned && rec!.owner === profileId;
@@ -525,7 +564,187 @@ export class HousingSystem implements System {
       ownerName: owned ? (rec!.ownerName || "Someone") : null,
       pets: this.petCategoryOf ? this.petCategoryOf(actorId, primary || target) : "",
       hold: primary ? (this.holdOf(ctx, primary)?.name ?? "") : "",
+      note: primary ? this.noteFor(ctx, actorId, door, primary, rec || emptyRecord()) : null,
+      letters: owned && this.canPinAt(ctx, actorId, door) ? this.writings!.lettersOf(ctx.svr, actorId) : [],
     });
+  }
+
+  // ── Door notes ──────────────────────────────────────────────────────────────
+
+  // Set by WritingSystem: carried letters, pinning, returning and reading them
+  writings: DoorNoteWritings | null = null;
+
+  // The half this user last opened the menu at, when it belongs to this property
+  private menuDoor(ctx: SystemContext, userId: number, primary: number): number {
+    const door = this.menuDoors.get(userId) || 0;
+    return door && this.primaryOf(ctx, door) === primary ? door : 0;
+  }
+
+  // The remembered half, refused when there is none or the actor walked off
+  private menuDoorInReach(ctx: SystemContext, userId: number, actorId: number, primary: number, action: string): number {
+    const door = this.menuDoor(ctx, userId, primary);
+    if (!door) {
+      this.refuse(ctx, userId, actorId, action, primary, "Open the housing menu at the door first.");
+      return 0;
+    }
+    if (!this.withinReach(ctx, actorId, door)) {
+      this.refuse(ctx, userId, actorId, action, door, "That is too far away.");
+      return 0;
+    }
+    return door;
+  }
+
+  private readNote(ctx: SystemContext, door: number): DoorNote | null {
+    let raw: any = null;
+    try { raw = (ctx.svr as Mp).get(door, NOTE_PROP); } catch { return null; }
+    if (!raw || typeof raw !== "object" || !WRITING_ID.test(String(raw.id))) return null;
+    const byProfile = Number(raw.byProfile);
+    return {
+      id: String(raw.id),
+      by: Number(raw.by) >>> 0,
+      byProfile: Number.isInteger(byProfile) ? byProfile : -1,
+      byName: String(raw.byName || "").slice(0, 100),
+      at: Number(raw.at) || 0,
+    };
+  }
+
+  // null clears the note
+  private writeNote(ctx: SystemContext, door: number, note: DoorNote | null): boolean {
+    try {
+      (ctx.svr as Mp).set(door, NOTE_PROP, note);
+      return true;
+    } catch (e) {
+      this.log(`[housing] note write failed for door ${door.toString(16)}: ${e}`);
+      return false;
+    }
+  }
+
+  // A door that is no faction's with no note on this half; the caller checks the claim
+  private canPinAt(ctx: SystemContext, actorId: number, door: number): boolean {
+    return !!this.writings && this.writings.available() && this.baseTypeOf(ctx, door) === "DOOR"
+      && !(this.factionGate && this.factionGate(actorId, door)) && !this.readNote(ctx, door);
+  }
+
+  // The same account and the same character, so a reused actor id of another account never matches
+  private isNotePoster(ctx: SystemContext, note: DoorNote, actorId: number): boolean {
+    return note.byProfile >= 0 && note.byProfile === profileIdOf(ctx.svr, actorId) && note.by === actorId;
+  }
+
+  // "" when this actor may not take the note down
+  private noteTakerRole(ctx: SystemContext, primary: number, rec: PropertyRecord, note: DoorNote, actorId: number): string {
+    if (this.isNotePoster(ctx, note, actorId)) return "poster";
+    if (rec.owner === 0) return this.isAdmin(ctx, actorId) ? "admin" : "";
+    return this.accessRole(ctx, primary, rec, actorId);
+  }
+
+  // The note on this half as the viewer reads it; one whose document is gone is cleared here
+  private noteFor(ctx: SystemContext, actorId: number, door: number, primary: number, rec: PropertyRecord): Record<string, unknown> | null {
+    const note = this.writings ? this.readNote(ctx, door) : null;
+    if (!note) return null;
+    const view = this.writings!.pinnedNoteView(ctx.svr, actorId, note.id);
+    if (!view) return null;
+    if (typeof view === "string") {
+      this.crumble(ctx, door, note, view);
+      return null;
+    }
+    return { ...view, mine: this.isNotePoster(ctx, note, actorId), canTakeDown: this.noteTakerRole(ctx, primary, rec, note, actorId) !== "" };
+  }
+
+  private crumble(ctx: SystemContext, door: number, note: DoorNote, reason: NoteGone): void {
+    this.writeNote(ctx, door, null);
+    const line = `letter ${note.id} pinned to door ${door.toString(16)} crumbled: its document is ${reason}`;
+    this.writings?.logDoorNote(line);
+    this.log(`[housing] ${line}`);
+  }
+
+  private doorLabel(ctx: SystemContext, primary: number, rec: PropertyRecord, door: number): string {
+    const side = this.sideOf(ctx, primary, rec.partner ? rec : { ...rec, partner: this.partnerOf(ctx, primary) }, door);
+    return `door ${door.toString(16)}${side ? ` (${side})` : ""} of ${this.claimLabel(primary, rec)}`;
+  }
+
+  private doPinNote(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, rawId: unknown): void {
+    const door = this.menuDoorInReach(ctx, userId, actorId, primary, "pinnote");
+    const id = String(rawId ?? "");
+    if (!door || !WRITING_ID.test(id) || !this.writings) return;
+    const faction = this.factionGate ? this.factionGate(actorId, door) : null;
+    let refusal = "";
+    if (this.baseTypeOf(ctx, door) !== "DOOR") refusal = "Notes can only be pinned to doors.";
+    else if (rec.owner === 0) refusal = "Only a claimed door takes a note.";
+    else if (faction) refusal = `This belongs to ${faction.name}.`;
+    else if (!this.writings.available()) refusal = "Writing is not available yet.";
+    if (refusal) {
+      this.refuse(ctx, userId, actorId, "pinnote", door, refusal);
+      return;
+    }
+    // Checked before anything is taken, so a second letter stays in the pack
+    const there = this.readNote(ctx, door);
+    if (there) {
+      const view = this.writings.pinnedNoteView(ctx.svr, actorId, there.id);
+      if (typeof view !== "string") {
+        this.refuse(ctx, userId, actorId, "pinnote", door, "A note is already pinned here.");
+        return;
+      }
+      this.crumble(ctx, door, there, view);
+    }
+    const taken = this.writings.takeLetterToPin(ctx.svr, userId, actorId, id);
+    if (!taken) return;
+    const note: DoorNote = { id, by: actorId, byProfile: profileIdOf(ctx.svr, actorId), byName: realNameOf(ctx.svr, actorId).slice(0, 100), at: Date.now() };
+    const where = this.doorLabel(ctx, primary, rec, door);
+    if (!this.writeNote(ctx, door, note)) {
+      const back = this.writings.returnPinnedLetter(ctx.svr, actorId, id);
+      this.log(`[housing] note ${id} could not be pinned to ${where} by ${this.who(ctx, actorId)}, letter ${back === "given" ? "given back" : `not given back (${back})`}`);
+      this.notice(ctx, userId, CHANGE_FAILED);
+      return;
+    }
+    this.writings.logDoorNote(`${describeActor(ctx.svr, actorId)} pinned letter ${id} ${JSON.stringify(taken.title)} to ${where}, owner profile ${rec.owner}`);
+    this.log(`[housing] note ${id} pinned to ${where} by ${this.who(ctx, actorId)}`);
+    this.notice(ctx, userId, "You pin the note to the door.");
+    this.sendMenu(ctx, userId, actorId, primary);
+  }
+
+  // Clears the pin first, then hands the letter over; a failed hand-over puts the pin back
+  private doTakeNote(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord): void {
+    const door = this.menuDoorInReach(ctx, userId, actorId, primary, "takenote");
+    if (!door || !this.writings) return;
+    const note = this.readNote(ctx, door);
+    if (!note) {
+      this.notice(ctx, userId, "There is no note here any more.");
+      this.sendMenu(ctx, userId, actorId, primary);
+      return;
+    }
+    const role = this.noteTakerRole(ctx, primary, rec, note, actorId);
+    if (!role) {
+      this.refuse(ctx, userId, actorId, "takenote", door, "Only whoever pinned it, the owner, a key holder or an admin may take it down.");
+      return;
+    }
+    const view = this.writings.pinnedNoteView(ctx.svr, actorId, note.id);
+    if (!view) {
+      this.refuse(ctx, userId, actorId, "takenote", door, "Writing is not available yet.");
+      return;
+    }
+    if (typeof view !== "string" && !this.writeNote(ctx, door, null)) {
+      this.notice(ctx, userId, CHANGE_FAILED);
+      return;
+    }
+    const where = this.doorLabel(ctx, primary, rec, door);
+    const given = typeof view === "string" ? view : this.writings.returnPinnedLetter(ctx.svr, actorId, note.id);
+    if (given === "failed") {
+      this.writeNote(ctx, door, note);
+      this.log(`[housing] note ${note.id} on ${where} not taken down by ${this.who(ctx, actorId)}: the letter could not be given, the pin is back`);
+      this.notice(ctx, userId, CHANGE_FAILED);
+      return;
+    }
+    if (given !== "given" || typeof view === "string") {
+      if (given !== "given") this.crumble(ctx, door, note, given);
+      this.notice(ctx, userId, "The note crumbles to dust.");
+      this.sendMenu(ctx, userId, actorId, primary);
+      return;
+    }
+    this.writings.logDoorNote(`${describeActor(ctx.svr, actorId)} took down letter ${note.id} ${JSON.stringify(view.title)} from ${where} as ${role}, pinned by [profile ${note.byProfile}] ${JSON.stringify(note.byName)} at ${new Date(note.at).toISOString()}`);
+    this.log(`[housing] note ${note.id} taken down from ${where} by ${this.who(ctx, actorId)} as ${role}`);
+    if (role === "admin") adminAudit(`profile ${this.profileOf(ctx, actorId)} (${adminTierOf(ctx.svr as Mp, actorId, this.roleCfg)}) took down letter ${note.id} from door ${door.toString(16)} (${this.claimLabel(primary, rec)})`);
+    this.notice(ctx, userId, "You take the note down. It is in your pack.");
+    this.sendMenu(ctx, userId, actorId, primary);
   }
 
   // ── Pets ────────────────────────────────────────────────────────────────────
@@ -1091,6 +1310,8 @@ export class HousingSystem implements System {
   private unclaimableLogged = new Set<number>();
   private lastRequestMs = new Map<number, number>();
   private lastDenyMs = new Map<number, number>();
+  // The half each user last opened the menu at
+  private menuDoors = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxDistance = DEFAULT_MAX_DISTANCE;
   private keySplitOnLogin = false;

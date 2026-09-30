@@ -59,6 +59,8 @@ const TAG = /\((W[0-9A-Z]{5})\)$/;
 const OPEN_COOLDOWN_MS = 1000;
 const SAVE_COOLDOWN_MS = 2000;
 const DAY_MS = 24 * 3600000;
+const MAX_PINNABLE_LISTED = 100;
+const CHANGE_FAILED = "That cannot be changed right now.";
 
 // Factions with a mark in skymp5-front/src/img/seals, guilds and the Legion before the hold courts
 const SEAL_FACTIONS = [
@@ -81,6 +83,18 @@ interface Carried {
   id: string;
   key: BaseKey;
 }
+
+// A letter pinned to a door as one viewer reads it in the housing menu
+export interface PinnedNoteView {
+  title: string;
+  text: string;
+  byline: string;
+  signFaction: string;
+  brokenSeals: string[];
+}
+
+// Why a pinned letter can no longer be read
+type NoteGone = "missing" | "destroyed";
 
 // Creation times: made keeps documents within the window that still exist, recent every document of the last day
 interface Counter {
@@ -487,6 +501,65 @@ export class WritingSystem implements System {
     return out;
   }
 
+  // ── Door notes (HousingSystem) ──────────────────────────────────────────────
+
+  available(): boolean {
+    return this.enabled && this.ready;
+  }
+
+  // Unsealed written letters the character carries, titled as the pack shows them
+  lettersOf(mp: Mp, actorId: number): Array<{ id: string; title: string }> {
+    if (!this.available()) return [];
+    return this.carried(mp, actorId).filter((c) => c.key === "letter").slice(0, MAX_PINNABLE_LISTED)
+      .map((c) => ({ id: c.id, title: String(c.entry.name || "").replace(TAG, "").trim() || KIND_LABEL.letter }));
+  }
+
+  // Takes one carried open letter out of the pack for a door; null once the player was told why not
+  takeLetterToPin(mp: Mp, userId: number, actorId: number, id: string): { id: string; title: string } | null {
+    if (!this.available()) {
+      this.notice(mp, userId, "Writing is not available yet.");
+      return null;
+    }
+    const found = this.reconcile(mp, userId, actorId, id);
+    if (!found) return null;
+    if (found.carried.key !== "letter") {
+      this.notice(mp, userId, found.carried.key === "sealed" ? "Only an open letter can be pinned." : "Only a letter can be pinned.");
+      return null;
+    }
+    if (!this.rewrite(mp, actorId, [[found.carried.entry, 1]], [])) {
+      this.notice(mp, userId, CHANGE_FAILED);
+      return null;
+    }
+    return { id, title: found.doc.title || KIND_LABEL.letter };
+  }
+
+  // Puts a pinned letter into a pack under its current title
+  returnPinnedLetter(mp: Mp, actorId: number, id: string): "given" | "failed" | NoteGone {
+    if (!this.available()) return "failed";
+    const doc = this.pinnedDoc(id);
+    if (typeof doc === "string") return doc;
+    return this.rewrite(mp, actorId, [], [{ baseId: this.base("letter"), count: 1, name: this.nameOf(doc, false) }]) ? "given" : "failed";
+  }
+
+  // A pinned letter as this viewer reads it, null while writing is off
+  pinnedNoteView(mp: Mp, viewerId: number, id: string): PinnedNoteView | NoteGone | null {
+    if (!this.available()) return null;
+    const doc = this.pinnedDoc(id);
+    if (typeof doc === "string") return doc;
+    const { byline, brokenSeals } = this.readerLines(mp, viewerId, doc, false);
+    return { title: doc.title || KIND_LABEL.letter, text: doc.pages[0] || "", byline, signFaction: doc.signed ? doc.author.factionId : "", brokenSeals };
+  }
+
+  logDoorNote(text: string): void {
+    this.appendLog(text);
+  }
+
+  private pinnedDoc(id: string): WritingDoc | NoteGone {
+    const doc = WRITING_ID.test(id) ? this.store.load(id) : null;
+    if (!doc || doc.kind !== "letter") return "missing";
+    return doc.destroyedAt ? "destroyed" : doc;
+  }
+
   // ── Menu ────────────────────────────────────────────────────────────────────
 
   private sendMenu(mp: Mp, userId: number, body: Record<string, unknown>): void {
@@ -503,13 +576,11 @@ export class WritingSystem implements System {
     });
   }
 
-  // What this reader may see and do; staff see real names and never act on the item
-  private sendDoc(mp: Mp, userId: number, actorId: number, doc: WritingDoc, carried: Carried | null, staff: boolean): void {
-    const sealed = carried?.key === "sealed";
-    const hidden = sealed && !staff;
+  // Names on a document under the introductions rule; staff see real names and profiles
+  private readerLines(mp: Mp, viewerId: number, doc: WritingDoc, staff: boolean) {
     const nameFor = (who: WritingPerson): string => {
       if (staff) return `${who.realName || "someone unrecorded"} (profile ${who.profileId})`;
-      const known = who.actorId === actorId || (!!who.actorId && isIntroduced(mp, actorId, who.actorId));
+      const known = who.actorId === viewerId || (!!who.actorId && isIntroduced(mp, viewerId, who.actorId));
       return known ? titledName(who.title, who.shownName) : "";
     };
     const sealName = (seal: WritingSeal): string => {
@@ -517,7 +588,19 @@ export class WritingSystem implements System {
       return name ? `the seal of ${name}` : "an unfamiliar seal";
     };
     const author = doc.signed ? nameFor(doc.author) : "";
-    const byline = !doc.signed ? "" : author ? `Signed, ${author}` : "Signed in an unfamiliar hand";
+    return {
+      nameFor,
+      sealName,
+      byline: !doc.signed ? "" : author ? `Signed, ${author}` : "Signed in an unfamiliar hand",
+      brokenSeals: doc.brokenSeals.map((b) => capitalise(`${sealName(b.seal)} was broken.`)),
+    };
+  }
+
+  // What this reader may see and do; staff see real names and never act on the item
+  private sendDoc(mp: Mp, userId: number, actorId: number, doc: WritingDoc, carried: Carried | null, staff: boolean): void {
+    const sealed = carried?.key === "sealed";
+    const hidden = sealed && !staff;
+    const { nameFor, sealName, byline, brokenSeals } = this.readerLines(mp, actorId, doc, staff);
     const staffLines = staff ? [
       `Scribe: ${describePerson(doc.scribe)}`,
       `Written ${new Date(doc.createdAt).toISOString()}, last changed ${new Date(doc.updatedAt).toISOString()}`,
@@ -539,7 +622,7 @@ export class WritingSystem implements System {
         // Heraldry is public: the marks show to every reader, only the names follow the introductions rule
         sealFaction: hidden ? doc.seal?.factionId || "" : "",
         signFaction: !hidden && doc.signed ? doc.author.factionId : "",
-        brokenSeals: doc.brokenSeals.map((b) => capitalise(`${sealName(b.seal)} was broken.`)),
+        brokenSeals,
         canEdit: editable,
         canFinish: editable && doc.kind === "book",
         canSeal: !staff && carried?.key === "letter",

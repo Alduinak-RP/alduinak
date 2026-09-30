@@ -91,7 +91,7 @@ const SEALS: Record<string, { file: string; label: string }> = {
 };
 
 // The pressed seal on a sealed face, or the mark under a signature; null without artwork
-const sealMark = (id: string, sign?: boolean): React.ReactNode => {
+export const sealMark = (id: string, sign?: boolean): React.ReactNode => {
   const seal = SEALS[id];
   if (!seal) return null;
   return (

@@ -295,6 +295,9 @@ const main = async () => {
   bountyBoardSystem.canRemove = (actorId, boardName) => factionSystem.canRemoveBoardPosts(actorId, boardName);
   bountyBoardSystem.canManage = (actorId, boardName) => factionSystem.canManageBoard(actorId, boardName);
   bountyBoardSystem.titleOf = (actorId) => factionSystem.titleOfActor(actorId);
+  // Letters pinned to doors from the housing menu
+  const writingSystem = new WritingSystem(log, factionSystem);
+  housingSystem.writings = writingSystem;
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
@@ -334,7 +337,7 @@ const main = async () => {
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
     bountyBoardSystem,
-    new WritingSystem(log, factionSystem),
+    writingSystem,
     new UntouchableSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it
     hostingSystem,

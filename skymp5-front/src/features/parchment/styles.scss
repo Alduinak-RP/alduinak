@@ -1,12 +1,8 @@
 // Paper reader, confirm bar, composer and buttons shared by the missive board and the writings; swap background-image art in on __read and __compose-text
 
-$fast: 140ms ease;
+@use '../../styles/paper' as *;
 
-// Placeholder parchment tones.
-$paper: #d8c9a3;
-$paper-edge: #b5a478;
-$ink: #2a2118;
-$ink-dim: rgba(42, 33, 24, 0.65);
+$fast: 140ms ease;
 
 // Chrome shared with the other menus (black and gold).
 $gold: #c8b48a;

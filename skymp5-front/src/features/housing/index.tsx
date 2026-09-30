@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
+import { PaperReader, useEscapeLayer } from '../parchment';
+import { sealMark } from '../writing';
 import './styles.scss';
 
 interface HousingEvents {
@@ -19,9 +21,27 @@ interface HousingEvents {
   revokeKeys: string;
   grantContainer: string;
   pets: string;
+  pinNote: string;
+  takeNote: string;
   cancel: string;
   typing: string;
   [key: string]: string;
+}
+
+// The letter pinned to the door half the menu was opened at (housingSystem.ts noteFor)
+interface DoorNote {
+  title: string;
+  text: string;
+  byline: string;
+  signFaction: string;
+  brokenSeals: string[];
+  mine: boolean;
+  canTakeDown: boolean;
+}
+
+interface PinnableLetter {
+  id: string;
+  title: string;
 }
 
 // The widget object the client pushes through window.skyrimPlatform.widgets.
@@ -40,6 +60,8 @@ export interface HousingData {
   ownerName: string | null;
   pets?: string; // "stable" | "farm" | "house" when pets are kept at this door, else ""
   hold?: string; // The hold the property lies in, "" outside every hold
+  note?: DoorNote | null;
+  letters?: PinnableLetter[]; // Letters this viewer may pin here now
   events: HousingEvents;
 }
 
@@ -47,7 +69,7 @@ export interface HousingData {
 const NAME_CHARS = /^[A-Za-z0-9 '_-]+$/;
 
 // Actions that ask before they go to the server
-type Pending = 'voidKeys' | 'giveUp' | 'breakLock';
+type Pending = 'voidKeys' | 'giveUp' | 'breakLock' | 'pinNote';
 
 const send = (key: string, ...args: unknown[]): void => {
   try {
@@ -70,10 +92,15 @@ const Housing = ({ data }: { data: HousingData }) => {
   const hasAccess = manages || view === 'keyholder';
   const canLock = hasAccess && data.canLock !== false;
 
+  const note = data.note || null;
+  const letters = data.letters || [];
+
   const [rename, setRename] = useState(data.name || '');
   const [pending, setPending] = useState<Pending | null>(null);
+  const [reading, setReading] = useState(false);
+  const [pick, setPick] = useState('');
 
-  const confirms: Record<Pending, { title: string; body: string; label: string; event: string }> = {
+  const confirms: Record<Pending, { title: string; body: React.ReactNode; label: string; event: string; args?: unknown[] }> = {
     voidKeys: {
       title: 'Void all keys?',
       body: 'Every key cut for this property stops working, including the ones you hold.',
@@ -87,8 +114,40 @@ const Housing = ({ data }: { data: HousingData }) => {
       label: 'Break lock',
       event: ev.breakLock,
     },
+    pinNote: {
+      title: 'Pin which note?',
+      body: (
+        <>
+          <span className="housing__pick">
+            {letters.map((l) => (
+              <label key={l.id} className="housing__pick-row">
+                <input type="radio" name="housing-pick" checked={pick === l.id} onChange={() => setPick(l.id)} />
+                <span>{l.title}</span>
+                <span className="housing__pick-id">{l.id}</span>
+              </label>
+            ))}
+          </span>
+          It leaves your pack. Whoever takes it down gets it.
+        </>
+      ),
+      label: 'Pin it',
+      event: ev.pinNote,
+      args: [pick],
+    },
   };
   const dialog = pending ? confirms[pending] : null;
+
+  const openPicker = (): void => {
+    setPick(letters.length ? letters[0].id : '');
+    setPending('pinNote');
+  };
+
+  useEscapeLayer(reading, () => setReading(false));
+
+  // A note taken down or crumbled closes its reader
+  useEffect(() => {
+    if (!note) setReading(false);
+  }, [note]);
 
   // The client tears the widget down on close, but a re-push while it is open
   // (after lock, rename, ...) keeps this instance - follow the server's name.
@@ -123,6 +182,14 @@ const Housing = ({ data }: { data: HousingData }) => {
         ) : null}
 
         {data.hold ? <p className="housing__owner">Hold: {data.hold}</p> : null}
+
+        {note ? (
+          <button className="housing__note" onClick={() => setReading(true)}>
+            <span className="housing__note-label">{note.mine ? 'Your note is pinned here' : 'A note is pinned here'}</span>
+            <span className="housing__note-title">{note.title}</span>
+            <span className="housing__note-text">{note.text}</span>
+          </button>
+        ) : null}
 
         {!hasAccess ? (
           <p className="housing__empty">
@@ -198,6 +265,14 @@ const Housing = ({ data }: { data: HousingData }) => {
           {data.pets ? (
             <button className="housing__button" onClick={() => send(ev.pets)}>Pets</button>
           ) : null}
+
+          {letters.length > 0 && ev.pinNote ? (
+            <button className="housing__button" onClick={openPicker}>Pin a note</button>
+          ) : null}
+
+          {note && note.canTakeDown ? (
+            <button className="housing__button" onClick={() => send(ev.takeNote)}>Take down the note</button>
+          ) : null}
         </div>
 
         {isOwner && data.sides ? (
@@ -239,13 +314,29 @@ const Housing = ({ data }: { data: HousingData }) => {
           </button>
         </div>
       </div>
+      {note && reading ? (
+        <PaperReader
+          heading={note.title}
+          text={note.text}
+          byline={note.byline}
+          mark={sealMark(note.signFaction, true)}
+          meta={note.brokenSeals}
+          wide
+          onBack={() => setReading(false)}
+        >
+          {note.canTakeDown ? (
+            <button className="parchment__button" onClick={() => send(ev.takeNote)}>Take it down</button>
+          ) : null}
+          <button className="parchment__button parchment__button--primary" onClick={() => setReading(false)}>Back</button>
+        </PaperReader>
+      ) : null}
       {dialog ? (
         <ConfirmDialog
           title={dialog.title}
           body={dialog.body}
           confirmLabel={dialog.label}
           onConfirm={() => {
-            send(dialog.event);
+            send(dialog.event, ...(dialog.args || []));
             setPending(null);
           }}
           onCancel={() => setPending(null)}

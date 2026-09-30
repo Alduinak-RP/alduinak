@@ -220,6 +220,51 @@ frees when the document ages out of the window, so the cap never becomes a
 lifetime limit. A burned document still counts toward the day. The refusal
 tells the player how many days until the next slot frees.
 
+## Pinning a letter to a door (2026-09, G3)
+
+A player carrying a written, unsealed Letter sees **Pin a note** in the
+housing menu (X on a door). It opens a picker of their letters (title, with
+the id beside it so two letters of one title can be told apart), preselects
+the first and pins the chosen one with **Pin it**: the letter leaves the pack
+and hangs on that door. Everyone who opens the housing menu at that door
+(owner, key holder, hold official, admin, stranger, claimable view) sees a
+paper card, "A note is pinned here" ("Your note is pinned here" for the
+poster), with the title and the first lines; clicking it opens the paper
+reader with the signature and the mark under the introductions rule, and
+the broken-seal lines. Escape backs out of the reader first, then closes the
+menu.
+
+- What: a written Letter only. Not a Blank Parchment, a Sealed Letter, a
+  journal or a book ("Only an open letter can be pinned.", "Only a letter can
+  be pinned.").
+- Where: a claimed door (a claim with an owner) that is no faction's; never a
+  container, an unclaimed door or a faction door. One note per door
+  reference, so a house door carries one note outside and one inside, and the
+  menu shows the note of the half it was opened at.
+- Who takes it down (**Take down the note**, or **Take it down** in the
+  reader): the character that pinned it (same account and same character), and
+  on a claimed door the owner (any character of the owning account), a key
+  holder or an admin; on a door left unclaimed by Give up or Break lock only
+  the poster or an admin. Hold officials see it but cannot take it down. The
+  letter goes into the pack of whoever takes it down, named from the
+  document's current title.
+- Transfer, Void all keys, Give up and Break lock leave the note on the door;
+  the right to take it down follows whoever holds the claim.
+- A pinned letter is in nobody's pack, so it cannot be edited, sealed or
+  burned. Staff destroying its document makes it crumble the next time the
+  menu opens there ("The note crumbles to dust."), and the pin is cleared.
+- While writing is off (`writingEnabled` false or a record missing) no card,
+  no option and no take down; stored pins come back when it is on.
+
+Storage: `private.doorNote` `{ id, by, byProfile, byName, at }` on the door
+reference, riding its changeform into MongoDB like `private.housing`; the text
+stays in `writings/<id>.json`. Pinning neither makes nor destroys a document,
+so the per-character counters do not move. The server acts on the half the
+player last opened the housing menu at (checked for reach again), never on a
+door id from the packet. Code: `housingSystem.ts` (Door notes section) and the
+`lettersOf`, `takeLetterToPin`, `returnPinnedLetter` and `pinnedNoteView`
+methods of `writingSystem.ts`.
+
 ## Staff
 
 The Writings tab was removed from the Personal Menu. The server still answers
@@ -239,6 +284,20 @@ was pressed), break, copy, burn, duplicates cut back and staff renames and
 destructions. The staff reader's "Scribe" and "Sealed by" lines end the same
 way. The manager rotates it with the other
 gamemode logs. Only staff with access to the server may read it.
+
+Door notes add three `writing.log` lines (the text is not repeated, it was
+logged when written):
+
+    [profile 12] "Ria" pinned letter W1A7QZ "To the owner" to door 1a2b3c (outside) of claim 1a2b3c "Breezehome", owner profile 7
+    [profile 7] "Sen" took down letter W1A7QZ "To the owner" from door 1a2b3c (outside) of claim 1a2b3c "Breezehome" as owner, pinned by [profile 12] "Ria" at 2026-09-30T14:02:11.000Z
+    letter W1A7QZ pinned to door 1a2b3c crumbled: its document is destroyed
+
+and the server log `[housing] note W1A7QZ pinned to door ... by Ria (profile
+12)`, `[housing] note W1A7QZ taken down from door ... by Sen (profile 7) as
+owner` (`poster`, `owner`, `key` or `admin`), the crumble line and every
+refusal as `[housing] pinnote|takenote <id> refused for <who>: <text>`. An
+admin taking a note down also writes `profile 3 (gm) took down letter W1A7QZ
+from door 1a2b3c (claim 1a2b3c "Breezehome")` to `admin.log`.
 
 ## Wire protocol
 
@@ -263,6 +322,15 @@ Every message is a CustomPacket carrying JSON:
       { customPacketType: "writingClosed" }
       { customPacketType: "notification", text }
       { customPacketType: "adminActionResult", ok, text }   // staff requests
+
+Door notes ride the housing packets (`docs_roleplay_property_factions.md`):
+
+    Client -> Server:
+      { customPacketType: "propertyRequest", action: "pinnote", target, id }
+      { customPacketType: "propertyRequest", action: "takenote", target }
+    Server -> Client, added to propertyMenu:
+      note: null | { title, text, byline, signFaction, brokenSeals, mine, canTakeDown }
+      letters: [{ id, title }]   // non-empty only when this viewer may pin here now
 
 A sealed letter's `writingMenu` carries no pages; `sealFaction` is set only on
 the sealed face and `signFaction` only on a signed open writing, both faction
@@ -345,3 +413,16 @@ In this order:
 - Relog and restart: names and text persist.
 - Staff Read, Rename and Destroy from the Personal Menu, each in `admin.log`.
 - The missive board still posts, reads, backs out with Escape and refunds.
+- Door notes: with no letter, or only a Blank Parchment, a sealed letter, a
+  journal or a book, X on a claimed door shows no Pin a note. With a written
+  letter, Pin a note, pick it, Pin it: it leaves the pack, the card shows, the
+  `writing.log` and `[housing]` lines are there. The owner comes home to a
+  locked door, presses X, reads the card (stranger and introduced signatures),
+  then Unlock Entrance works as before. The owner, a key holder, the poster and
+  an admin (`admin.log`) can take it down into their pack; another character
+  of the poster's account and a hold official cannot. A second note on the
+  same half is refused and stays in the pack. On a house door a note outside
+  does not show inside. A container, an unclaimed door and a faction door
+  offer no pinning. Give up leaves the note on the claimable view. Staff
+  destroy the document: the next X shows "The note crumbles to dust." Restart
+  the Test Server: the note persists.
