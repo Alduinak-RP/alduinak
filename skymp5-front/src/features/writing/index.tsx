@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-import { PaperComposer, PaperReader, sendToClient as send, useCloseOnUnfocus, useEscapeLayer } from '../parchment';
+import { ConfirmBar, PaperComposer, PaperReader, sendToClient as send, useCloseOnUnfocus, useEscapeLayer } from '../parchment';
 import { assetUrl } from '../../utils/assetUrl';
 import './styles.scss';
 
@@ -241,19 +241,14 @@ const Writing = ({ data }: { data: WritingData }) => {
   }
 
   const confirmBar = (id: string) => (confirm ? (
-    <div className="writing__confirm">
-      <span className="writing__confirm-text">{CONFIRM_TEXT[confirm]}</span>
-      <button
-        className="parchment__button parchment__button--primary"
-        onClick={() => {
-          send(confirm === 'burn' ? ev.burn : confirm === 'break' ? ev.breakSeal : ev.finish, id);
-          setConfirm('');
-        }}
-      >
-        Yes
-      </button>
-      <button className="parchment__button" onClick={() => setConfirm('')}>No</button>
-    </div>
+    <ConfirmBar
+      text={CONFIRM_TEXT[confirm]}
+      onYes={() => {
+        send(confirm === 'burn' ? ev.burn : confirm === 'break' ? ev.breakSeal : ev.finish, id);
+        setConfirm('');
+      }}
+      onNo={() => setConfirm('')}
+    />
   ) : null);
 
   if (menu.view === 'list') {

@@ -95,18 +95,6 @@ $text: #e8e0d0;
     text-align: center;
   }
 
-  &__confirm {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-  }
-
-  &__confirm-text {
-    font-size: 15px;
-  }
-
   &__list {
     display: flex;
     flex-direction: column;

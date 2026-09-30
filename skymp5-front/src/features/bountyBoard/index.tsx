@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-import { PaperComposer, PaperReader, sendToClient as send, useCloseOnUnfocus, useEscapeLayer } from '../parchment';
+import { ConfirmBar, PaperComposer, PaperReader, sendToClient as send, useCloseOnUnfocus, useEscapeLayer } from '../parchment';
 import './styles.scss';
 
 interface BoardNote {
@@ -8,6 +8,7 @@ interface BoardNote {
   author: string;
   text: string;
   ageHours: number;
+  mine?: boolean;
 }
 
 interface BoardEvents {
@@ -49,6 +50,7 @@ const BountyBoard = ({ data }: { data: BountyBoardData }) => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [confirming, setConfirming] = useState(false);
 
   const selected = notes.filter((n) => n.id === selectedId)[0] || null;
 
@@ -56,6 +58,10 @@ const BountyBoard = ({ data }: { data: BountyBoardData }) => {
   useEffect(() => {
     if (selectedId !== null && !selected) setSelectedId(null);
   }, [notes, selectedId, selected]);
+
+  useEffect(() => {
+    setConfirming(false);
+  }, [selectedId]);
 
   // The draft survives a rejected post (cooldown, distance, gold); it only
   // clears once the server shows the note pinned.
@@ -67,9 +73,10 @@ const BountyBoard = ({ data }: { data: BountyBoardData }) => {
 
   useCloseOnUnfocus(ev.close);
 
-  // While a paper or the compose dialog is up, Escape backs out one layer rather than closing the board.
+  // While a paper, its confirm or the compose dialog is up, Escape backs out one layer rather than closing the board.
   useEscapeLayer(composing || selectedId !== null, () => {
     if (composing) setComposing(false);
+    else if (confirming) setConfirming(false);
     else setSelectedId(null);
   });
 
@@ -122,11 +129,28 @@ const BountyBoard = ({ data }: { data: BountyBoardData }) => {
           <PaperReader
             text={selected.text}
             byline={'\u2014 ' + selected.author}
-            meta={[pinnedLabel(selected.ageHours) + ' \u00b7 ' + fadesLabel(selected.ageHours, data.expiryDays)]}
+            meta={[pinnedLabel(selected.ageHours) + ' \u00b7 ' + fadesLabel(selected.ageHours, data.expiryDays)].concat(selected.mine ? ['Your notice'] : [])}
             onBack={() => setSelectedId(null)}
           >
-            <button className="parchment__button" onClick={() => setSelectedId(null)}>Back</button>
-            {data.canRemove ? <button className="parchment__button" onClick={() => send(ev.remove, selected.id)}>Remove notice</button> : null}
+            {confirming ? (
+              <ConfirmBar
+                text={selected.mine ? 'Take your notice down? The fee is not returned.' : 'Remove this notice for good?'}
+                onYes={() => {
+                  send(ev.remove, selected.id);
+                  setConfirming(false);
+                }}
+                onNo={() => setConfirming(false)}
+              />
+            ) : (
+              <>
+                <button className="parchment__button" onClick={() => setSelectedId(null)}>Back</button>
+                {selected.mine || data.canRemove ? (
+                  <button className="parchment__button" onClick={() => setConfirming(true)}>
+                    {selected.mine ? 'Take down your notice' : 'Remove notice'}
+                  </button>
+                ) : null}
+              </>
+            )}
           </PaperReader>
         ) : null}
 

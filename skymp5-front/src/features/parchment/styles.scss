@@ -1,4 +1,4 @@
-// Paper reader, composer and buttons shared by the missive board and the writings; swap background-image art in on __read and __compose-text
+// Paper reader, confirm bar, composer and buttons shared by the missive board and the writings; swap background-image art in on __read and __compose-text
 
 $fast: 140ms ease;
 
@@ -126,6 +126,18 @@ $text-dim: rgba(232, 224, 208, 0.6);
 
   &__read &__actions {
     margin-top: 14px;
+  }
+
+  &__confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  &__confirm-text {
+    font-size: 15px;
   }
 
   &__compose {

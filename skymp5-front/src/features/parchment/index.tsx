@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 
 import './styles.scss';
 
-// Paper widgets shared by the missive board and the writings: the client bridge, focus and Escape handling, the reader and the composer
+// Paper widgets shared by the missive board and the writings: the client bridge, focus and Escape handling, the reader, the confirm bar and the composer
 
 export const sendToClient = (key: string, ...args: unknown[]): void => {
   try {
@@ -65,6 +65,21 @@ export const PaperReader = ({ heading, text, byline, meta, wide, onBack, stamp, 
       ))}
       <div className="parchment__actions parchment__actions--end">{children}</div>
     </div>
+  </div>
+);
+
+interface ConfirmBarProps {
+  text: string;
+  onYes: () => void;
+  onNo: () => void;
+}
+
+// A Yes/No question in place of a paper's buttons
+export const ConfirmBar = ({ text, onYes, onNo }: ConfirmBarProps) => (
+  <div className="parchment__confirm">
+    <span className="parchment__confirm-text">{text}</span>
+    <button className="parchment__button parchment__button--primary" onClick={onYes}>Yes</button>
+    <button className="parchment__button" onClick={onNo}>No</button>
   </div>
 );
 

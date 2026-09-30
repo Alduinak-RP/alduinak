@@ -33,7 +33,7 @@ type Mp = any;
 //   Server -> Client:
 //     { customPacketType: "bountyBoardMenu", board, boardName, reason,
 //       costGold, gold, maxTextLen, maxNotes, expiryDays,
-//       canRemove, notes: [{ id, author, text, ageHours }] }
+//       canRemove, notes: [{ id, author, text, ageHours, mine }] }
 //     { customPacketType: "bountyBoardNotice", text }
 //
 // Persistence: `private.bountyBoard` on the canonical board reference, which
@@ -41,7 +41,10 @@ type Mp = any;
 // lazily on every read plus a slow sweep, so correctness does not depend on
 // the sweep having run. The strongbox id rides along as `stash`.
 //
-// Every post and expiry is appended to bounty.log in the shared log directory.
+// A notice comes down at its poster's hand or a hold officer's (canRemove);
+// the fee stays in the strongbox.
+//
+// Every post, removal and expiry is appended to bounty.log in the shared log directory.
 //
 // server-settings.json keys (all optional):
 //   bountyBoardCostGold     price of pinning a notice, default 25
@@ -103,6 +106,8 @@ interface BoardNote {
   author: string;
   // Poster's account, kept for the audit trail; never sent to clients.
   profileId: number;
+  // Poster's character, 0 on notes from before it was kept; never sent to clients.
+  actorId: number;
   text: string;
   createdAt: number;
 }
@@ -123,6 +128,10 @@ interface BoardSession {
 }
 
 const emptyRecord = (): BoardRecord => ({ nextId: 1, notes: [] });
+
+// Same account, and the same character when the note recorded one
+const isPosterOf = (note: BoardNote, actorId: number, profileId: number): boolean =>
+  profileId >= 0 && note.profileId === profileId && (!note.actorId || note.actorId === actorId);
 
 export class BountyBoardSystem implements System {
   systemName = "BountyBoardSystem";
@@ -394,6 +403,7 @@ export class BountyBoardSystem implements System {
       id: rec.nextId,
       author,
       profileId: profileIdOf(ctx.svr, actorId),
+      actorId,
       text,
       createdAt: now,
     });
@@ -422,14 +432,18 @@ export class BountyBoardSystem implements System {
     const id = Number(content["id"]);
     if (!session || !Number.isInteger(id) || id < 1 || toFormId(content["board"]) !== session.primary) return;
     const actorId = this.actorOf(ctx, userId);
-    if (!actorId || !this.withinReach(ctx, actorId, session.refr)) return;
-    if (!this.canRemove(actorId, session.name)) return this.notice(ctx, userId, "Only non-citizen members of this hold may remove notices.");
+    if (!actorId) return;
+    if (!this.withinReach(ctx, actorId, session.refr)) return this.notice(ctx, userId, "You are too far from the board.");
     const rec = this.read(ctx, session.primary) || emptyRecord();
     const at = rec.notes.findIndex((note) => note.id === id);
     if (at < 0) return this.notice(ctx, userId, "That notice is no longer on this board.");
+    const own = isPosterOf(rec.notes[at], actorId, profileIdOf(ctx.svr, actorId));
+    if (!own && !this.canRemove(actorId, session.name)) return this.notice(ctx, userId, "Only its poster or a non-citizen member of this hold may remove a notice.");
     const [note] = rec.notes.splice(at, 1);
     if (!this.write(ctx, session.primary, rec)) return this.notice(ctx, userId, "The board would not remove that notice.");
-    this.appendLog(`${describeActor(ctx.svr, actorId)} removed note ${note.id} from the ${session.name} board: ${JSON.stringify(note.text)}`);
+    const as = own ? "as its poster" : "as a hold officer or staff";
+    this.appendLog(`${describeActor(ctx.svr, actorId)} removed note ${note.id} by [profile ${note.profileId}] ${JSON.stringify(note.author)} from the ${session.name} board ${as}: ${JSON.stringify(note.text)}`);
+    this.notice(ctx, userId, own ? "You take your notice down." : "The notice is taken down.");
     this.refreshViewers(ctx, session.primary);
   }
 
@@ -443,6 +457,7 @@ export class BountyBoardSystem implements System {
     const rec = this.read(ctx, session.primary) || emptyRecord();
     if (this.prune(ctx, session.primary, rec)) this.write(ctx, session.primary, rec);
     const now = Date.now();
+    const profileId = profileIdOf(ctx.svr, actorId);
     this.send(ctx, userId, {
       customPacketType: "bountyBoardMenu",
       board: session.primary,
@@ -459,6 +474,7 @@ export class BountyBoardSystem implements System {
         author: n.author,
         text: n.text,
         ageHours: Math.max(0, Math.floor((now - n.createdAt) / 3600000)),
+        mine: isPosterOf(n, actorId, profileId),
       })),
     });
   }
@@ -715,6 +731,7 @@ export class BountyBoardSystem implements System {
             id: Number(n.id) || 0,
             author: typeof n.author === "string" ? n.author.slice(0, 100) : "Unknown",
             profileId: Number.isFinite(Number(n.profileId)) ? Number(n.profileId) : -1,
+            actorId: Number(n.actorId) >>> 0,
             text,
             // A future stamp would make the note immortal.
             createdAt: Math.min(Number(n.createdAt) || 0, now),
