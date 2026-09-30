@@ -28,6 +28,7 @@ import { RacialSystem } from "./systems/racialSystem";
 import { GatheringSystem } from "./systems/gatheringSystem";
 import { FactionCraftSystem } from "./systems/factionCraftSystem";
 import { HuntingSystem } from "./systems/huntingSystem";
+import { SurvivalSystem } from "./systems/survivalSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { WritingSystem } from "./systems/writingSystem";
 import { CaptureSystem } from "./systems/captureSystem";
@@ -288,6 +289,9 @@ const main = async () => {
   // Per-region weather; the admin panel's Weather sub-tab forces and clears it
   const weatherSystem = new WeatherSystem(log);
   adminSystem.setWeatherSystem(weatherSystem);
+  // Survival Mode on the server; its diseases scale needs like the race factors
+  const survivalSystem = new SurvivalSystem(log, racialSystem, huntingSystem, weatherSystem);
+  needsSystem.addModifierSource(survivalSystem);
   const factionSystem = new FactionSystem(log, housingSystem);
   // A PK leaves a lootable body at the spot of death
   const bodySystem = new BodySystem(log);
@@ -339,6 +343,8 @@ const main = async () => {
     new FactionCraftSystem(log, factionSystem),
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
+    // After hunting, whose raw meat it reads, and after needs, whose eat hook it wraps
+    survivalSystem,
     bountyBoardSystem,
     new WritingSystem(log, factionSystem),
     new UntouchableSystem(log),

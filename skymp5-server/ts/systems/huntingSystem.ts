@@ -209,6 +209,11 @@ export class HuntingSystem implements System {
     return this.meats.has(baseId >>> 0) && this.isAnimal(ctx, bodyId);
   }
 
+  // The raw meat of huntingMeats and the meat rules, resolved at boot
+  rawMeatIds(): number[] {
+    return Array.from(new Set([...this.meats, ...this.meatRules.map((r) => r.meatId)]));
+  }
+
   private meatOf(mp: Mp, bodyId: number): Array<{ baseId: number; count: number }> {
     try {
       const entries: any[] = mp.get(bodyId, "inventory")?.entries || [];
