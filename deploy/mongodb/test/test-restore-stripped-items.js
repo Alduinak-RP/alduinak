@@ -265,6 +265,7 @@ async function main() {
   w = world().filter(d => d.formDesc !== '75d')
   addEntry(doc(w, '11'), NEW, 7)
   addEntry(doc(w, '11'), RING, 1, { worn: true })
+  addEntry(doc(w, '11'), BOLT, 1, { worn: true })
   doc(w, 'd03').isDeleted = true
   s = stub(w)
   const before = clone(doc(w, '11').inv.entries)
@@ -272,17 +273,22 @@ async function main() {
   r = await plan(w)
   assert.equal(r.h('75d').status, 'the document no longer exists')
   assert.equal(r.given('11', RING), 0)
+  assert.equal(r.given('11', BOLT), 40)
 
-  // Apply: a dry run writes nothing, a running server refuses, a document changed after the backup refuses
+  // Apply: a dry run writes nothing, a running server refuses, an intent file changed since the backup refuses, a document changed after the backup refuses
   await R.run(['apply', '--backup', path.join(ROOT, 'b1'), '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet })
   assert.equal(s.writes.length, 0)
   await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'b1'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => 'AlduinakGameServer is SERVICE_RUNNING, stop it first', log: quiet }), refused(/SERVICE_RUNNING/))
+  assert.equal(s.writes.length, 0)
+  const changedIntent = path.join(TMP, 'changed-intent.json')
+  fs.writeFileSync(changedIntent, JSON.stringify({ ...intent, items: { ...intent.items, [S.hex(RING)]: { ...intent.items[S.hex(RING)], intent: null } } }))
+  await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'b1'), '--apply', '--intent', changedIntent], { open: s.open, blocker: async () => null, log: quiet }), refused(/strip-intent.json changed since the backup/))
   assert.equal(s.writes.length, 0)
   addEntry(doc(s.store, '11'), NEW, 1)
   await assert.rejects(R.run(['apply', '--backup', path.join(ROOT, 'b1'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet }), refused(/changed since the backup/))
   assert.equal(s.writes.length, 0)
 
-  // Apply for real: only $set of inv.entries, never lowering an entry, typed numbers, equipmentDump and spells untouched
+  // Apply for real: only $set of inv.entries, never lowering an entry or adding to a worn one, typed numbers, equipmentDump and spells untouched
   await R.run(['backup', '--out', path.join(ROOT, 'b2'), '--intent', INTENT], { open: s.open, log: quiet })
   const pre = new Map(s.store.map(d => [String(d._id), clone(d)]))
   await R.run(['apply', '--backup', path.join(ROOT, 'b2'), '--apply', '--intent', INTENT], { open: s.open, blocker: async () => null, log: quiet })
@@ -312,6 +318,8 @@ async function main() {
   after = doc(s.store, '11')
   assert.equal(total(after, RING), 1)
   assert.ok(after.inv.entries.find(e => id(e) === RING && e.worn), 'the worn ring stays as it was')
+  const bolts = after.inv.entries.filter(e => id(e) === BOLT).map(e => [formIds.num(e.count), Boolean(e.worn)])
+  assert.deepEqual(bolts, [[1, true], [40, false]], 'the returned bolts come as their own unequipped entry beside the worn ones')
   assert.equal(total(after, NEW), 8)
   assert.equal(after.inv.entries.length, before.length + 1 + 4)
   const bootsEntry = doc(s.store, 'c0cee:Skyrim.esm').inv.entries.find(e => id(e) === EINHERJAR_BOOTS)
