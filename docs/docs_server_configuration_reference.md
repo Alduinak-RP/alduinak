@@ -1296,7 +1296,7 @@ Afflictions (Weakened at Starving, Addled at Debilitated, Frostbitten at Numb):
 
 | Key | Default | Meaning |
 |---|---|---|
-| `survivalAfflictions` | `{ "weakened": { "chance": 0.2, "tickMinutes": 15 }, "addled": { "chance": 0.3, "tickMinutes": 30 }, "frostbitten": { "chance": 0.16, "tickMinutes": 5 } }` | Chance rolled on reaching the need's stage 5 and every `tickMinutes` while there; merged over the defaults; `false` for one or for the whole key turns it off |
+| `survivalAfflictions` | `{ "weakened": { "chance": 0.2, "tickMinutes": 15 }, "addled": { "chance": 0.3, "tickMinutes": 30 }, "frostbitten": { "chance": 0.16, "tickMinutes": 5 } }` | Chance rolled at the need's stage 5, at most once every `tickMinutes` (leaving stage 5 and coming back inside that time rolls nothing); merged over the defaults; `false` for one or for the whole key turns it off |
 | `survivalAfflictionHours` | `24` | Real hours an affliction lasts, offline included |
 
 Diseases:

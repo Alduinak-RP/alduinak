@@ -932,7 +932,7 @@ async function main() {
     assert.deepEqual(t.mp.calls, [`${h} +910`], 'no roll while weakened')
   })
 
-  await test('afflictions: debilitated rolls Addled, reaching stage 5 again rolls at once after a minute, nothing rolls in creation, dead or with the chance at 0', async () => {
+  await test('afflictions: debilitated rolls Addled at most once per 30 min even when fatigue leaves stage 5 and comes back, nothing rolls in creation, dead or with the chance at 0', async () => {
     const t = setup({ survivalEnabled: true, survivalAfflictions: { weakened: { chance: 0 } } })
     const [a, b, c] = [actor(), actor(), actor()]
     t.join(a, NORD_RACE)
@@ -956,6 +956,14 @@ async function main() {
     t.sys.onNeedsStage(t.ctx, a, 5, 4)
     later(1000)
     Math.random = () => 0.2
+    t.sys.onNeedsStage(t.ctx, a, 5, 5)
+    await tick()
+    assert.equal(t.logs.length, 1, 'back at stage 5 two minutes after the last roll: the rest-then-work loop rolls nothing')
+    later(30 * 60000 - 111000 - 1)
+    t.sys.onNeedsStage(t.ctx, a, 5, 5)
+    await tick()
+    assert.equal(t.logs.length, 1, 'still inside the 30 min interval')
+    later(1)
     t.sys.onNeedsStage(t.ctx, a, 5, 5)
     await tick()
     assert.equal(t.logs.pop(), `[survival] ${h} debilitated: addled 30%, roll 0.200, addled for 24 h until ${hhmm(clock.now + 24 * HOUR)}`)

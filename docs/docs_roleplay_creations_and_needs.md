@@ -522,8 +522,10 @@ they weigh nothing again.
 
 ### Afflictions
 
-Survival Mode's conditions: at a need's stage 5 a character not holding the affliction rolls once on reaching it
-(never within a minute of the last roll) and then every interval while there.
+Survival Mode's conditions: at a need's stage 5 a character not holding the affliction rolls at most once per interval,
+as Survival's need update does. The first roll comes on reaching stage 5 when the last one is an interval old, and a
+need that leaves stage 5 and comes back inside the interval (fatigue resting just above Debilitated between crafts)
+rolls nothing new.
 
 | Affliction | Need at stage 5 | Chance, interval | Effect (Survival's spell) |
 |---|---|---|---|

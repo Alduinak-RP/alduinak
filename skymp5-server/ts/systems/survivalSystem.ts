@@ -45,7 +45,8 @@ type Mp = any;
 // fire spells and hot food warm. The stage ability Survival_ColdStage0..5 follows the stage and the client takes the maximum health
 // penalty from survivalState. Cold falls while logged out and starts over at a respawn.
 // Afflictions, Survival's conditions: at a need's stage 5 (hunger Starving and fatigue Debilitated from NEEDS_STAGE_EVENT, cold Numb) a
-// character not holding its affliction rolls once on reaching it and then every tickMinutes while there: Weakened (hunger, 20% every 15 min),
+// character not holding its affliction rolls at most once per tickMinutes, like Survival's need update, so leaving stage 5 and coming
+// back inside that time rolls nothing: Weakened (hunger, 20% every 15 min),
 // Addled (fatigue, 30% every 30 min), Frostbitten (cold, 16% every 5 min). The affliction ability lasts survivalAfflictionHours of wall
 // clock, offline included, or until cured like food poisoning.
 // Diseases (survivalDiseases.ts): a weapon or unarmed hit a player takes from a carrier creature (the attacker's race editor id holds a
@@ -157,8 +158,6 @@ const AFFLICTION_DEFS = [
   { key: "frostbitten", spell: "Survival_AfflictionFrostbitten", name: "Frostbitten", worst: "numb", chance: 0.16, tickMinutes: 5, notice: "The cold has frostbitten you: your archery, lockpicking and pickpocketing suffer" },
 ];
 const DEFAULT_AFFLICTION_HOURS = 24;
-// Reaching stage 5 again rolls at once, but not sooner than this after the last roll
-const ENTER_ROLL_GAP_MS = 60000;
 const WORST_STAGE = 5;
 const RAW_MEAT_LIST = "Survival_FoodRawMeat";
 const ALTAR_LIST = "Survival_BlessingAltars";
@@ -313,8 +312,6 @@ interface Online {
   engineSeen: string;
   healthScale: number;
   killed: boolean;
-  // Whether each affliction's need was at stage 5 at its last check, unknown until the first one
-  atWorst: Record<string, boolean>;
 }
 
 interface ArmorInfo {
@@ -423,7 +420,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   }
 
   private afflictionLine(): string {
-    const list = this.afflictions.map((a) => `${a.key} ${!a.id ? `(${a.spell} not in the load order, never given)` : a.chance > 0 ? `${pct(a.chance)} when ${a.worst}, rolled on reaching it and every ${a.tickMs / 60000} min (${hex(a.id)})` : "off"}`);
+    const list = this.afflictions.map((a) => `${a.key} ${!a.id ? `(${a.spell} not in the load order, never given)` : a.chance > 0 ? `${pct(a.chance)} when ${a.worst}, rolled at most once every ${a.tickMs / 60000} min there (${hex(a.id)})` : "off"}`);
     return `${list.join(", ")}; each lasts ${this.afflictionMs / HOUR_MS} h, offline included, or until cured`;
   }
 
@@ -655,7 +652,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const entry: Online = {
       actorId, userId, rec, bodyDue: !isCreationPending(mp, actorId), revoked: [], coldAt: 0, heatAt: 0, heatPos: null, nearHeat: false, heatFrom: -1,
       swimming: false, flameCloak: false, inFreezingWater: false, reportAt: 0, fightAt: 0, area: "", areaWhy: "", freezingArea: false, level: 0, levelParts: [],
-      temperature: 0, warmth: 0, gear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false, atWorst: {},
+      temperature: 0, warmth: 0, gear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false,
     };
     if (stored && this.enabled && this.cold.enabled && rec.cold > this.cold.start) {
       const hours = Math.max(0, now - stored.at) / HOUR_MS;
@@ -868,16 +865,14 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     });
   }
 
-  // Survival's affliction roll: on reaching the need's stage 5 (not within ENTER_ROLL_GAP_MS of the last roll) and every tickMinutes there,
+  // Survival's affliction roll: at stage 5, at most once per tickMinutes whether the need stayed there or left and came back,
   // never while the affliction is held, in creation, dead or where cold does not run (the realms)
   private rollAffliction(mp: Mp, entry: Online, key: string, atWorst: boolean, now: number): void {
     const a = this.afflictions.find((x) => x.key === key);
-    const was = entry.atWorst[key];
-    entry.atWorst[key] = atWorst;
     const rec = entry.rec;
     if (!a || !atWorst || !a.id || a.chance <= 0 || rec.afflictions[key] || entry.area === "none" || isCreationPending(mp, entry.actorId) || !isAlive(mp, entry.actorId)) return;
     const last = rec.lastRoll[key] || 0;
-    if (now - last < (was === false ? ENTER_ROLL_GAP_MS : a.tickMs)) return;
+    if (now - last < a.tickMs) return;
     rec.lastRoll[key] = now;
     const roll = Math.random();
     const what = `[survival] ${hex(entry.actorId)} ${a.worst}: ${key} ${pct(a.chance)}, roll ${roll.toFixed(3)}`;
