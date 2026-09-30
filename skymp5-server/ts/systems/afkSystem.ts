@@ -36,7 +36,7 @@ const ACTIVE_PACKET_TYPES = new Set([
   "afkPing", "adminAction",
   "tradeRequest", "tradeRespond", "tradeSetOffer", "tradeLock", "tradeUnlock", "tradeAccept", "tradeCancel",
   "propertyRequest", "propertyInfoRequest", "petRequest", "companionCommand", "jobStart", "jobPutDown",
-  "bountyBoardOpenRequest", "bountyBoardPost", "bountyBoardRemove", "bountyBoardManage", "bountyBoardClose",
+  "bountyBoardPost", "bountyBoardRemove", "bountyBoardManage", "bountyBoardClose",
   "writingCreate", "writingSave", "writingUse", "writingFinish", "writingSeal", "writingBreak", "writingCopy", "writingBurn", "writingOpen", "writingClose",
   "searchRequest", "searchConsentResult", "searchEnd", "introduceRequest",
   "captureRequest", "carryRequest", "releaseRequest", "putdownRequest", "captureConsentResult",

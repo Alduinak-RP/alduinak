@@ -173,7 +173,7 @@ for (const [id, [label]] of Object.entries(GAME_HOTKEYS)) {
 }
 // DIK -> [use, also shared by Game Hotkeys rows]; movement cancelling an emote is intended, so those only count for Server Hotkeys
 const CLIENT_FIXED_KEYS = {
-  28: ['Activate Chat', true], 49: ['bounty board', true],
+  28: ['Activate Chat', true],
   17: ['emote cancel', false], 30: ['emote cancel', false], 31: ['emote cancel', false],
   32: ['emote cancel', false], 57: ['emote cancel', false], 19: ['emote cancel', false],
 }

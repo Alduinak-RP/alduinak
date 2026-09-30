@@ -73,7 +73,7 @@ Rules:
   chat and highlight words. **Graphics / UI** holds the field of view and the
   nametag toggles below. **Controls** rebinds the server keys in game (emote
   wheel, Interact / Menus, hide interface, free cursor, voice push-to-talk,
-  chat, bounty board): click a row, press a key or a middle/4/5 mouse button
+  chat): click a row, press a key or a middle/4/5 mouse button
   (Esc cancels, Backspace returns the row to the launcher's key). Like the
   launcher, the tab warns when two rows share a key or a row sits on a key the
   client already uses (Esc, Tab, Enter, or W, A, S, D, Space and R, which

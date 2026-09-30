@@ -19,10 +19,9 @@ const KEY_ROWS: [string, string][] = [
   ['freeCursorKeyCode', 'Free cursor'],
   ['voicePushToTalkKeyCode', 'Voice push-to-talk'],
   ['chatFocusKeyCode', 'Chat'],
-  ['bountyBoardMenuKeyCode', 'Bounty board'],
 ];
 
-// The launcher's CLIENT_FIXED_KEYS (skymp5-launcher-tauri/ui/renderer.js) without the bounty board, which is a row here
+// The launcher's CLIENT_FIXED_KEYS (skymp5-launcher-tauri/ui/renderer.js) plus Esc and Tab
 const CLIENT_FIXED_KEYS: Record<number, string> = {
   1: 'menu close', 15: 'game menu', 28: 'Chat',
   17: 'emote cancel', 30: 'emote cancel', 31: 'emote cancel', 32: 'emote cancel', 57: 'emote cancel', 19: 'emote cancel',

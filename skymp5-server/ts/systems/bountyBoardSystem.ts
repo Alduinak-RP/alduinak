@@ -23,7 +23,6 @@ type Mp = any;
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
-//     { customPacketType: "bountyBoardOpenRequest" }
 //     { customPacketType: "bountyBoardPost", board: <refrId>, text }
 //     { customPacketType: "bountyBoardRemove", board: <refrId>, id }
 //     { customPacketType: "bountyBoardManage", board: <refrId> }
@@ -233,7 +232,6 @@ export class BountyBoardSystem implements System {
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     switch (type) {
-      case "bountyBoardOpenRequest": this.onOpenRequest(ctx, userId); break;
       case "bountyBoardPost": this.onPost(ctx, userId, content); break;
       case "bountyBoardRemove": this.onRemove(ctx, userId, content); break;
       case "bountyBoardManage": this.onManage(ctx, userId, content); break;
@@ -262,9 +260,7 @@ export class BountyBoardSystem implements System {
 
   // ── Opening ─────────────────────────────────────────────────────────────────
 
-  // Activating the visible board opens the menu through onActivate; this is
-  // the other road in, for the N hotkey and the /board command. Reach is
-  // checked here.
+  // Activating the visible board opens the menu through onActivate; /board comes in here, with a reach check.
   private onOpenRequest(ctx: SystemContext, userId: number): void {
     const now = Date.now();
     if (now - (this.lastOpenMs.get(userId) || 0) < OPEN_COOLDOWN_MS) return;

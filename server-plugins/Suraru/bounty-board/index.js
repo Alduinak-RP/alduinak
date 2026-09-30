@@ -1,6 +1,4 @@
-// /board opens the nearest missive board menu. The Missives board activator
-// has no engine-side activate prompt under skymp, so chat is the way in for
-// clients that predate the N hotkey. BountyBoardSystem does all the work.
+// /board opens the nearest missive board menu, the chat road beside activating the board. BountyBoardSystem does all the work.
 
 api.registerChatCommand('board', (actorId) => {
   const open = globalThis.__alduinakBountyOpen

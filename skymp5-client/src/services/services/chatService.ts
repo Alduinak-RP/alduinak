@@ -9,7 +9,6 @@ import { EmoteService } from "./emoteService";
 import { PlayerActionService } from "./playerActionService";
 import { BrowserService } from "./browserService";
 import { VoiceService } from "./voiceService";
-import { BountyBoardService } from "./bountyBoardService";
 
 declare const window: any;
 
@@ -377,7 +376,6 @@ export class ChatService extends ClientListener {
       freeCursorKeyCode: browser.launcherFreeCursorKeyCode,
       voicePushToTalkKeyCode: this.controller.lookupListener(VoiceService).launcherPushToTalkKeyCode,
       chatFocusKeyCode: browser.launcherChatKeyCode,
-      bountyBoardMenuKeyCode: this.controller.lookupListener(BountyBoardService).launcherMenuKeyCode,
     };
   }
 
@@ -428,7 +426,6 @@ export class ChatService extends ClientListener {
     browser.setFreeCursorKey(key("freeCursorKeyCode"));
     browser.setChatKey(key("chatFocusKeyCode"));
     this.controller.lookupListener(VoiceService).setPushToTalkKey(key("voicePushToTalkKeyCode"));
-    this.controller.lookupListener(BountyBoardService).setMenuKey(key("bountyBoardMenuKeyCode"));
   }
 
   // Persist settings sent from the chat UI to disk so they survive a relaunch.
