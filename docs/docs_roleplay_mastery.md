@@ -554,6 +554,27 @@ and cost half the fatigue. Fish and hanging
 clutter never kneel. Picking credits farmer and alchemist hours and costs a
 gathering action of fatigue by the better of those ranks.
 
+The plant itself comes from the native harvest. The fatigue, the kneel and the
+Adept and Master extra follow only once the plant reads harvested (Papyrus
+`IsHarvested`) right after it: a plant the server already holds harvested, or
+one the native side refuses (disabled, blocked by another system), costs
+nothing and logs `[gathering] <id> harvest of <plant> <ref> handed over
+nothing, no fatigue taken`. Hearthfire's planter plants (`BYOHHouseFlora*`,
+`BYOHHouseIngrd*`) and mead barrel (`BYOHMeadBarrel`) do not hand over the
+produce: their harvest item is a non-playable token (`BYOHHouseFoodCarrots` and
+the like, invisible in the inventory) whose `BYOHHiddenObjectScript` swaps it
+for the real item, a script that never runs on this server. The server makes
+that swap: every token the picker holds is taken and `ItemCount` of the
+script's `itemToAddPotion` or `itemToAddIngredient` is handed over per token
+(4 Carrots per carrot plant, 3 to 4 of a herb, 5 Nord Mead per barrel), times
+the rank's yield. The load order places 24 carrot plants in the Temple of Jhunal's
+greenhouse (`MWRGreenhouse`, Winterhold Restored), 27 herb planters in JK's
+Whiterun Outskirts' inn, JK's Whiterun, Riften Extension North and the
+Windhelm Iron Meadery, and 19 mead barrels. The first activation of each kind
+logs `[gathering] <plant> hands over token <id>, swapped for Nx <produce> per
+token`, every harvest `[gathering] <id> harvested <plant>: N token(s) <id>
+swapped, Mx <produce> handed over`.
+
 ### Chopping
 
 A chopping block needs a woodcutter's axe. One swing takes ten seconds

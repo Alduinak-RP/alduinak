@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { espmContainerEntries, espmFieldFormIds, espmLeveledEntries, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
-import { addItemTo, holdsItem, sendActionLock } from "./actorUtil";
+import { addItemTo, countItem, hex, holdsItem, sendActionLock, takeItemFrom } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { FREE, LEGENDARY, MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
@@ -39,6 +39,9 @@ type Mp = any;
 // Harvesting a plant (flora or tree with an ingredient) or a nirnroot costs fatigue (flora half) and holds the picker for CROP_MS or FLORA_MS,
 // during which they cannot move or harvest again: a crop is hoed (IdleHoe, left through IdleStop so the hoe prop goes away), flora kneels;
 // a farmer's or alchemist's yield follows YIELD_BY_RANK. Crops (CROP_WORDS in the editor id) need a hoe in the inventory.
+// A plant is handed over by the native harvest, and the fatigue, the kneel and any extra yield follow only once the ref reads harvested,
+// so a plant the native side refuses or already holds harvested costs nothing. Hearthfire planters (BYOHHouseFlora*, BYOHHouseIngrd*,
+// the mead barrel) hand over a non-playable token whose BYOHHiddenObjectScript would swap it for the produce; the server makes that swap.
 // Fish (leaping salmon, slaughterfish eggs, racked salmon and oarfish) and hanging clutter (garlic, elves ear, frost mirriam,
 // rabbits and pheasants, any flora whose editor id starts with Hanging) cost the fatigue but never kneel.
 // Catching a bee costs nothing and plays nothing.
@@ -82,8 +85,8 @@ const HARVEST_ANIM = "IdleKneelingEnter";
 // Crops: the looping farming idle with its hoe prop; a prop idle must exit through IdleStop, IdleForceDefaultState leaves the hoe in hand
 const CROP_ANIM = "IdleHoe";
 const CROP_EXIT_ANIM = "IdleStop";
-// The native flora reloot when server-settings names none
-const DEFAULT_PLANT_REGROW_MS = 3600000;
+// Hearthfire's harvest token: myBase, ItemCount and itemToAddPotion or itemToAddIngredient
+const HIDDEN_OBJECT_SCRIPT = "byohhiddenobjectscript";
 // Engine furniture reach is 256; a wall marker stands a little off its vein.
 const SEAT_REACH = 400;
 // Nobody works one sitting this long; a stuck session is dropped.
@@ -184,8 +187,6 @@ export class GatheringSystem implements System {
     if (Number.isFinite(veinTotal) && veinTotal >= 0) this.veinTotalOverride = Math.floor(veinTotal);
     const pick = Number(all?.["gatheringPickMinutes"]);
     if (Number.isFinite(pick) && pick >= 0) this.pickMs = pick * 60000;
-    const reloot = all?.["reloot"];
-    if (reloot && typeof reloot === "object") this.reloot = reloot as Record<string, unknown>;
     const regen = Number(all?.["gatheringVeinRegenMinutes"]);
     if (Number.isFinite(regen) && regen > 0) this.regenMs = regen * 60000;
     await this.loadVeinTiers(ctx, all?.["miningVeinTiers"], s.dataDir, s.loadOrder);
@@ -377,11 +378,11 @@ export class GatheringSystem implements System {
     const grant = (count: number) => {
       this.addItem(ctx, actorId, item, count);
       this.hidePicked(ctx, refrId, Date.now() + this.pickMs);
+      this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + this.pickMs });
     };
-    if (props["harvest"]) return this.harvest(ctx, refrId, actorId, this.pickMs, props, name, grant);
+    if (props["harvest"]) return this.harvest(ctx, refrId, actorId, props, name, grant);
     return () => {
       grant(1);
-      this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + this.pickMs });
       return false;
     };
   }
@@ -400,15 +401,14 @@ export class GatheringSystem implements System {
     };
   }
 
-  // The native harvest hands over the ingredient; an already harvested plant is left to it for free
+  // A plant the native side holds harvested gives nothing, so it is left to it and costs nothing
   private onPlant(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>, name: string): Verdict {
-    if (this.veinState(ctx, refrId, 1, props["regrow"]).left <= 0) return undefined;
-    const extra = props["item"] ? (count: number) => { if (count > 1) this.addItem(ctx, actorId, this.rollItem(ctx, props["item"]), count - 1); } : undefined;
-    return this.harvest(ctx, refrId, actorId, props["regrow"], props, name, undefined, extra);
+    if (this.isHarvested(ctx, refrId)) return undefined;
+    return this.harvest(ctx, refrId, actorId, props, name);
   }
 
-  // Without grant the activation goes on to the native harvest, and extra hands over what a Master or Legendary farmer gets on top
-  private harvest(ctx: SystemContext, refrId: number, actorId: number, readyMs: number, props: Record<string, number>, name: string, grant?: (count: number) => void, extra?: (count: number) => void): Verdict {
+  // With grant the server hands the item over; without it the native harvest does, and the rest waits until the ref reads harvested
+  private harvest(ctx: SystemContext, refrId: number, actorId: number, props: Record<string, number>, name: string, grant?: (count: number) => void): Verdict {
     if (!this.withinReach(ctx, actorId, refrId)) return false;
     if ((this.harvestUntil.get(actorId) || 0) > Date.now()) return false;
     const mp = ctx.svr as Mp;
@@ -418,17 +418,58 @@ export class GatheringSystem implements System {
     const flora = !props["crop"];
     if (!props["free"] && !this.needs.canPay(actorId, "gather", rank, flora)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
     const kneelMs = props["instant"] ? 0 : flora ? FLORA_MS : CROP_MS;
-    return () => {
-      grant?.(YIELD_BY_RANK[rank]);
-      extra?.(YIELD_BY_RANK[rank]);
+    const settle = () => {
       if (!props["free"]) this.needs.pay(ctx, actorId, "gather", rank, `harvest ${name} ${flora ? "flora" : "crop"} r${rank}`, flora);
-      this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + readyMs });
-      if (kneelMs > 0) {
-        this.harvestUntil.set(actorId, Date.now() + kneelMs);
-        sendActionLock(ctx.svr as Mp, actorId, flora ? HARVEST_ANIM : CROP_ANIM, kneelMs / 1000, flora ? undefined : CROP_EXIT_ANIM);
-      }
-      return grant ? false : undefined;
+      if (kneelMs > 0) sendActionLock(mp, actorId, flora ? HARVEST_ANIM : CROP_ANIM, kneelMs / 1000, flora ? undefined : CROP_EXIT_ANIM);
     };
+    return () => {
+      if (kneelMs > 0) this.harvestUntil.set(actorId, Date.now() + kneelMs);
+      if (grant) {
+        grant(YIELD_BY_RANK[rank]);
+        settle();
+        return false;
+      }
+      // Runs once the native harvest has returned
+      setImmediate(() => {
+        if (!this.isHarvested(ctx, refrId)) {
+          this.harvestUntil.delete(actorId);
+          this.log(`[gathering] ${hex(actorId)} harvest of ${name} ${hex(refrId)} handed over nothing, no fatigue taken`);
+          return;
+        }
+        this.handOverProduce(ctx, actorId, props, name, YIELD_BY_RANK[rank]);
+        settle();
+      });
+      return undefined;
+    };
+  }
+
+  // Swaps a Hearthfire token the native harvest handed over for its produce, and adds what Adept and up get on top
+  private handOverProduce(ctx: SystemContext, actorId: number, props: Record<string, number>, name: string, count: number): void {
+    const item = props["item"];
+    if (!item) return;
+    const mp = ctx.svr as Mp;
+    const produce = props["produce"];
+    if (!produce) {
+      if (count > 1) this.addItem(ctx, actorId, this.rollItem(ctx, item), count - 1);
+      return;
+    }
+    // Tokens from harvests before the swap existed come back too
+    const tokens = countItem(mp, actorId, item);
+    const swapped = tokens > 0 && takeItemFrom(mp, actorId, item, tokens) ? tokens : 0;
+    const total = (swapped + count - 1) * props["perToken"];
+    if (total > 0) this.addItem(ctx, actorId, produce, total);
+    this.log(`[gathering] ${hex(actorId)} harvested ${name}: ${swapped} token(s) ${hex(item)} swapped, ${total}x ${hex(produce)} handed over`);
+  }
+
+  // Papyrus IsHarvested, the native flora state; false when it cannot be read
+  private isHarvested(ctx: SystemContext, refrId: number): boolean {
+    const mp = ctx.svr as Mp;
+    try {
+      return mp.callPapyrusFunction("method", "ObjectReference", "IsHarvested", { type: "form", desc: mp.getDescFromId(refrId) }, []) === true;
+    } catch (e) {
+      this.log(`[gathering] harvest state of ${hex(refrId)} unreadable: ${e}`);
+      return false;
+    }
   }
 
   private onChoppingBlock(ctx: SystemContext, blockId: number, actorId: number, props: Record<string, number>): Verdict {
@@ -756,7 +797,7 @@ export class GatheringSystem implements System {
     else if (type === "ACTI" && scripts.has("nirnrootactivatorscript")) station = { kind: "pick", props: { item: scripts.get("nirnrootactivatorscript")!["nirnroot"] || 0, harvest: 1, crop: 1 } };
     else if (type === "ACTI" && scripts.has("firefly")) station = { kind: "pick", props: { item: scripts.get("firefly")!["lootable"] || 0 } };
     else if ((type === "ACTI" || type === "FLOR") && scripts.has("defaultfakeharvestablescript")) station = { kind: "fake", props: scripts.get("defaultfakeharvestablescript")! };
-    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { regrow: this.relootMs(type), instant: this.isInstantFlora(res, baseId) ? 1 : 0, free: FREE_RACK_RE.test(String(res.record.editorId || "").toLowerCase()) ? 1 : 0, crop: this.isCrop(res) ? 1 : 0, item: espmFieldFormIds(res, "PFIG")[0] || 0 } };
+    else if ((type === "FLOR" || type === "TREE") && espmFieldFormIds(res, "PFIG").some((id) => id > 0)) station = { kind: "plant", props: { instant: this.isInstantFlora(res, baseId) ? 1 : 0, free: FREE_RACK_RE.test(String(res.record.editorId || "").toLowerCase()) ? 1 : 0, crop: this.isCrop(res) ? 1 : 0, item: espmFieldFormIds(res, "PFIG")[0] || 0, ...this.hiddenProduce(ctx, espmFieldFormIds(res, "PFIG")[0] || 0, name) } };
     const out = station ? { ...station, name } : null;
     this.stationCache.set(baseId, out);
     return out;
@@ -779,9 +820,19 @@ export class GatheringSystem implements System {
     return this.instantFlora.has(baseId) || String(res.record.editorId || "").toLowerCase().startsWith(INSTANT_PREFIX);
   }
 
-  private relootMs(type: string): number {
-    const ms = Number(this.reloot[type]);
-    return Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_PLANT_REGROW_MS;
+  // The produce and count per token of a Hearthfire harvest token, nothing for any other item
+  private hiddenProduce(ctx: SystemContext, itemId: number, plant: string): { produce?: number; perToken?: number } {
+    const script = readVmadScripts(this.lookup(ctx, itemId)).get(HIDDEN_OBJECT_SCRIPT);
+    if (!script) return {};
+    const produce = script["itemtoaddpotion"] || script["itemtoaddingredient"] || 0;
+    const type = String(this.lookup(ctx, produce)?.record.type || "");
+    if (type !== "ALCH" && type !== "INGR") {
+      this.log(`[gathering] ${plant} hands over token ${hex(itemId)} with no produce in the load order, left to the native harvest`);
+      return {};
+    }
+    const perToken = Math.max(1, Math.floor(script["itemcount"] || 1));
+    this.log(`[gathering] ${plant} hands over token ${hex(itemId)}, swapped for ${perToken}x ${hex(produce)} per token`);
+    return { produce, perToken };
   }
 
   // A station without a tool list asks for nothing.
@@ -875,7 +926,6 @@ export class GatheringSystem implements System {
   private pickMs = DEFAULT_PICK_MINUTES * 60000;
   // Actor id -> epoch ms its harvest kneel ends
   private harvestUntil = new Map<number, number>();
-  private reloot: Record<string, unknown> = {};
   // Picked nirnroot and critter refs -> epoch ms they grow back
   private picked = new Map<number, number>();
   private worldLoaded = false;

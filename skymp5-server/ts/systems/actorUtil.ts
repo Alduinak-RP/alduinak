@@ -89,6 +89,17 @@ export const holdsItem = (mp: Mp, actorId: number, match: (baseId: number) => bo
   }
 };
 
+// How many of a base item the inventory holds, every stack counted
+export const countItem = (mp: Mp, actorId: number, baseId: number): number => {
+  try {
+    const inv = mp.get(actorId, "inventory");
+    const entries: any[] = inv && Array.isArray(inv.entries) ? inv.entries : [];
+    return entries.reduce((n, e) => n + ((Number(e.baseId) >>> 0) === (baseId >>> 0) ? Math.max(0, Number(e.count) || 0) : 0), 0);
+  } catch {
+    return 0;
+  }
+};
+
 // "45 min" or "3 h 12 min", rounded up to the minute
 export const formatWait = (ms: number): string => {
   const minutes = Math.ceil(ms / 60000);

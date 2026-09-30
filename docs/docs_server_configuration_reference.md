@@ -195,7 +195,7 @@ Name of a database driver which would be used to store server data. `file` by de
 
 A time before a game object restores its original state in milliseconds. Unlike Skyrim SE, Skyrim Multiplayer doesn't have a built-in Cell Reset mechanism. The server resets every object in the world every hour instead. With this option, you can change this time interval for every kind of game object. `"CONT"`, for example, means "Container" - chests, barrels, etc. See "record types" on [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format).
 
-`FLOR` and `TREE` are the alchemy plants (flowers, bushes, mushrooms, apple trees): a harvested plant grows back after that many milliseconds, natively, and `gatheringSystem.ts` reads the same numbers for its harvest kneel. The live file sets both to `1800000` (30 minutes) since r15; without an entry the native default is one hour.
+`FLOR` and `TREE` are the alchemy plants (flowers, bushes, mushrooms, apple trees): a harvested plant grows back after that many milliseconds, natively, and `gatheringSystem.ts` reads that native harvested state (Papyrus `IsHarvested`) to decide whether a harvest is charged. The live file sets both to `1800000` (30 minutes) since r15; without an entry the native default is one hour.
 
 `DOOR` is worth a short entry too, `5000` for example: a load door is marked open on the server when a player goes through it and every client swings it open until the reloot closes it again, so without the entry a used load door stands open for an hour.
 
