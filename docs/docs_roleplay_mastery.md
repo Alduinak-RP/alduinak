@@ -588,17 +588,31 @@ their native activation. The skinner kneels over it for 5 seconds with
 send, which plays the same kneel clips (`IdleKneelEnter.hkx`, `IdleKneelIdle.hkx`)
 as the `IdleSearchBody` idle. That idle's own event, `IdleKneeling`, goes to a
 state that leaves on `IdleStop` and showed nothing on a player; its editor id is
-no behaviour event at all. The client (`RestraintService`) sends the kneel only
+no behaviour event at all. In the vanilla behaviour files (the only ones in the
+load order: no Nemesis, FNIS, DAR or OAR) `IdleKneelingEnter` is a local
+wildcard of `mt_behavior.hkx`'s root state machine, so the graph takes it only
+while `0_master.hkx`'s `Default_Behavior` is in its `MT_Behavior_State`: weapon
+and spell put away, third person, not in the air, a chair or the bleedout. The
+client (`RestraintService`) sends the kneel only
 once the skinner has stood up from a sneak, sheathed a drawn weapon (the knife
-or bow of the kill) and turned to third person, waiting at most 3 s, because
-the graph refuses an idle while sneaking or in a sheathe and a first-person
-camera shows none (the emote wheel empties the hands and forces third person
-for the same reason); a first-person camera comes back 1 s after the exit, and
-a kneel the graph refuses is sent again up to 3 times. Only a kneel the graph
-took reaches other players, through the animation sync. The client's Platform
-log names a wait (`action lock pose ... waited for ...`) and a work pose that
-has no idle playing 1.5 s after it was sent (`action lock pose ...: graph
-accepted ...`, once a minute). Then the skinner gets the pelt the
+or bow of the kill) and turned to third person, waiting at most 3 s (the emote
+wheel empties the hands and forces third person for the same reason); a
+first-person camera comes back 1 s after the exit. Every attempt is checked
+0.5 s after it was sent: the graph's answer and the graph variable the pose
+sets (`bAnimationDriven`, which the vanilla graph sets while its furniture and
+interaction idles play; `bIdlePlaying` is only set by the engine's idle system
+and stays false for an event sent straight to the graph). An attempt that shows
+nothing moves on to the same kneel played through the engine's idle path
+(`Actor.PlayIdle` with Skyrim.esm `IdleKneelingEnter` `000E8E52`), then to the
+bleedout kneel (`bleedOutStart`, checked by `IsBleedingOut`, left with
+`bleedOutStop`), a wildcard of the root graph that plays with a weapon out. A
+pose that stops playing before the lock ends is sent again, twice at most. Only
+a kneel the graph took reaches other players, through the animation sync
+(`bleedOutStart` always does). The client's Platform log has one line per
+attempt (`action lock pose <anim>, attempt <n> of <m>: graph accepted ...`),
+per wait (`action lock pose ... waited for ...`), per stop (`action lock pose
+... stopped playing ...`, with the last event the graph took) and one summary
+per lock (`action lock summary: ...`). Then the skinner gets the pelt the
 body's editor ids map to (`DEFAULT_PELT_MAP`, `huntingPeltMap` override): the
 body's own NPC_ editor id is tried first, then the race that supplies its traits
 (a Use Traits template's placeholder race is skipped), then its template NPC_s, and
@@ -622,7 +636,7 @@ and gives only its meat; players and companions are never skinned (no
 `ActorTypeAnimal`). A skinner who walks off,
 dies or logs out before the 5 seconds leaves the body skinnable. A hunter without
 the knife is told "A hunting knife would take its pelt." and the body opens.
-Non-hunters just search. The kneel's wait and re-send come with the client build.
+Non-hunters just search. The kneel's wait, checks and fallbacks come with the client build.
 
 ---
 

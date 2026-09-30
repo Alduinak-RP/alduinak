@@ -564,7 +564,7 @@ prisoner can also be carried).
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
 | `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it |
-| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting, skinning); the pose waits up to 3 s for a stand-up from a sneak, a sheathe and third person, and is re-sent up to 3 times if the graph refuses it; a mounted or swimming player skips it |
+| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting, skinning); the pose waits up to 3 s for a stand-up from a sneak, a sheathe and third person; a pose not seen playing 0.5 s later falls back to the kneel through `Actor.PlayIdle`, then to the bleedout kneel, and one that stops early is re-sent twice at most; a mounted or swimming player skips it |
 | `playerMenuState` `{ target, canRelease, givePotion, hasPotion, finishOff, prepareExecution, execute, assassinate }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 

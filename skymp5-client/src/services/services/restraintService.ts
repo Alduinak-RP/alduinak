@@ -42,16 +42,20 @@ const PAIR_END_GRACE_MS = 1500;
 const POSE_SWAP_DELAY_S = 0.1;
 // A server move reattaches the player's 3D a few frames after the packet; the held pose is sent again once that settled
 const TELEPORT_SETTLE_S = 0.5;
-// An action lock's pose should be playing this long after it was sent; one that is not is logged at most once a minute
-const LOCK_POSE_CHECK_S = 1.5;
-const LOCK_POSE_LOG_MS = 60000;
 // Master graph variable set while an idle plays
 const IDLE_PLAYING_VAR = "bIdlePlaying";
 // An action lock's pose waits at most this long for the player to stand, sheathe and turn to third person
 const LOCK_PREP_MAX_MS = SHEATHE_MAX_POLLS * SHEATHE_POLL_S * 1000;
-// A lock pose the graph refused is sent again after this long, at most this many times per lock
-const LOCK_POSE_RETRY_MS = 500;
-const LOCK_POSE_MAX_RESENDS = 3;
+// Each attempt at an action lock's pose is checked this long after it was sent
+const LOCK_POSE_VERIFY_S = 0.5;
+// A pose seen playing that stops before its lock ends is sent again at most this many times
+const LOCK_POSE_MAX_RESTARTS = 2;
+// Skyrim.esm IDLE IdleKneelingEnter, the kneel played through the engine's idle path
+const KNEEL_ANIM = "IdleKneelingEnter";
+const KNEEL_IDLE_ID = 0xe8e52;
+// Set by the vanilla graph while a furniture or interaction idle (the kneel, the hoe) plays, and while the bleedout kneel plays
+const ANIM_DRIVEN_VAR = "bAnimationDriven";
+const BLEEDING_OUT_VAR = "IsBleedingOut";
 // The first-person camera a lock left comes back this long after its exit
 const LOCK_CAMERA_RESTORE_S = 1;
 const FIRST_PERSON_CAMERA = 0;
@@ -82,11 +86,31 @@ interface CarryStats {
   nodesLogged: boolean;
 }
 
-interface ActionLock {
+interface PoseAttempt {
   anim: string;
-  exitAnim: string;
+  exit: string;
+  // Played with Actor.playIdle instead of the graph event when set
+  idleFormId: number;
+}
+
+interface ActionLock {
   since: number;
   until: number;
+  attempts: PoseAttempt[];
+  attempt: number;
+  // The graph's answer to the attempt last sent, its pose's variable just before, and whether the pose was then seen playing
+  accepted: boolean;
+  varBefore: boolean;
+  idleResult: boolean;
+  playing: boolean;
+  // The attempt first seen playing and when, for the lock's summary line
+  playedAs: string;
+  playedAtMs: number;
+  sends: number;
+  quietTicks: number;
+  restarts: number;
+  // The last other event the player's graph took during the lock, named when a playing pose stops
+  lastEvent: string;
 }
 
 const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("idle");
@@ -95,6 +119,20 @@ const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("id
 const layerOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? "bleedout" : isStateIdle(anim) ? "idle" : "offset";
 
 const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT_ANIM_STOP : isStateIdle(anim) ? IDLE_EXIT_ANIM : OFFSET_STOP_ANIM;
+
+// The kneel is a local wildcard of the vanilla MT behaviour, refused with a weapon or spell out; the bleedout kneel is taken by the root graph in any state
+const lockAttemptsFor = (anim: string, exit: string): PoseAttempt[] => [
+  { anim, exit, idleFormId: 0 },
+  { anim: KNEEL_ANIM, exit: IDLE_EXIT_ANIM, idleFormId: KNEEL_IDLE_ID },
+  { anim: BLEEDOUT_ANIM_START, exit: BLEEDOUT_ANIM_STOP, idleFormId: 0 },
+].filter((a, i, all) => all.findIndex((b) => b.anim === a.anim && b.idleFormId === a.idleFormId) === i);
+
+const playingVarOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDING_OUT_VAR : ANIM_DRIVEN_VAR;
+
+const describeAttempt = (lock: ActionLock): string => {
+  const a = lock.attempts[lock.attempt];
+  return `${a.anim}${a.idleFormId ? ` (idle ${a.idleFormId.toString(16)})` : ""}, attempt ${lock.attempt + 1} of ${lock.attempts.length}`;
+};
 
 /**
  * Applies the local player's restraint state (bound hands, being carried,
@@ -158,12 +196,15 @@ const exitOf = (anim: string): string => anim === BLEEDOUT_ANIM_START ? BLEEDOUT
  *     waits (up to 3 s) until the player has stood up from a sneak, sheathed a
  *     weapon (when its copies would sheathe) and turned to third person, since
  *     the graph refuses an idle in any of those and a first-person camera
- *     shows none; a first-person camera comes back 1 s after the exit. A pose
- *     the graph refuses is sent again, up to 3 times. Going down or dying ends
- *     it early, every other pose wins over it, and a mounted or swimming
- *     player or one another pose already holds ignores it. A wait is logged to
- *     the Platform log, and a pose with no idle playing 1.5 s after it was
- *     sent too (once a minute).
+ *     shows none; a first-person camera comes back 1 s after the exit. Each
+ *     attempt is checked 0.5 s after it was sent (the graph's answer and the
+ *     graph variable the pose sets); one that shows nothing moves on to the
+ *     kneel through the engine's idle path (Skyrim.esm IdleKneelingEnter),
+ *     then to the bleedout kneel, which the root graph takes in any state. A
+ *     pose that stops playing before the lock ends is sent again, twice at
+ *     most. Going down or dying ends it early, every other pose wins over it,
+ *     and a mounted or swimming player or one another pose already holds
+ *     ignores it. Every attempt, wait and stop is logged to the Platform log.
  *   - stagger: plays staggerStart with the magnitude on the player, whose
  *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a
@@ -190,7 +231,9 @@ export class RestraintService extends ClientListener {
         }
       },
       leave: (ctx) => {
-        if (this.lock && ctx.animEventName === this.lock.anim) this.onLockPoseSent(ctx.animationSucceeded);
+        if (!this.lock) return;
+        if (ctx.animEventName.toLowerCase() === this.lockPose.toLowerCase()) this.lock.accepted = ctx.animationSucceeded;
+        else if (ctx.animationSucceeded) this.lock.lastEvent = ctx.animEventName;
       },
     }, 0x14, 0x14);
 
@@ -242,6 +285,11 @@ export class RestraintService extends ClientListener {
   // The pose last sent to the player, "" before any
   get currentPose(): string {
     return this.appliedPose;
+  }
+
+  // The action lock's current attempt, "" without a lock
+  private get lockPose(): string {
+    return this.lock ? this.lock.attempts[this.lock.attempt].anim : "";
   }
 
   // Must run on update, right after the move; a pose the reattach swallowed is never re-sent otherwise
@@ -379,9 +427,11 @@ export class RestraintService extends ClientListener {
     if (!player) return;
     if (seconds > 0 && (player.isDead() || player.isOnMount() || player.isSwimming() || this.boundHands || this.carried || this.carrying || this.downed)) return;
     const now = Date.now();
-    this.lock = seconds > 0 ? { anim, exitAnim, since: now, until: now + seconds * 1000 } : null;
+    this.lock = seconds > 0 ? {
+      since: now, until: now + seconds * 1000, attempts: lockAttemptsFor(anim, exitAnim), attempt: 0,
+      accepted: false, varBefore: false, idleResult: false, playing: false, playedAs: "", playedAtMs: 0, sends: 0, quietTicks: 0, restarts: 0, lastEvent: "",
+    } : null;
     this.lockBlockedMs = 0;
-    this.lockPoseResends = 0;
     this.lockWaits.clear();
     this.applyStateNow();
   }
@@ -397,7 +447,7 @@ export class RestraintService extends ClientListener {
   // Death ends a bleedout, an execution pose or an action lock without the stand-up
   private onApplyDeathState(e: ApplyDeathStateEvent): void {
     if (!e.isDead || !(this.downed || this.lock || this.executionPose) || e.actor.getFormID() !== PLAYER_FORM_ID) return;
-    if ([BLEEDOUT_ANIM_START, this.lock?.anim, this.executionPose].includes(this.appliedPose)) this.appliedPose = OFFSET_STOP_ANIM;
+    if ([BLEEDOUT_ANIM_START, this.lockPose, this.executionPose].includes(this.appliedPose)) this.appliedPose = OFFSET_STOP_ANIM;
     this.downed = false;
     this.lock = null;
     this.executionPose = "";
@@ -430,9 +480,11 @@ export class RestraintService extends ClientListener {
     this.lastTickMs = now;
 
     if (this.lock && now >= this.lock.until) {
+      this.logLockSummary(this.lock, now);
       this.lock = null;
       this.applyStateNow();
     }
+    this.watchLockPose(player, now);
     // The pair lapsed without a death: a downed victim kneels again
     if (this.pairedUntil && now >= this.pairedUntil) {
       this.pairedUntil = 0;
@@ -596,8 +648,8 @@ export class RestraintService extends ClientListener {
     // Carried shows the sitting pose, downed the bleedout kneel (left for a pair), then the execution pose, bound the captive pose, then an action lock's pose, otherwise clear it; only fire on transition.
     const desiredPose = this.carried ? this.carriedAnim : this.paired && (this.downed || this.executionPose) ? OFFSET_STOP_ANIM
       : this.downed ? BLEEDOUT_ANIM_START : this.executionPose ? this.executionPose
-      : this.boundHands ? this.captiveAnim : this.lock ? this.lock.anim : OFFSET_STOP_ANIM;
-    if (this.lock && desiredPose === this.lock.anim && desiredPose !== this.appliedPose && !this.lockPoseReady(player, this.lock)) {
+      : this.boundHands ? this.captiveAnim : this.lock ? this.lockPose : OFFSET_STOP_ANIM;
+    if (this.lock && desiredPose === this.lockPose && desiredPose !== this.appliedPose && !this.lockPoseReady(player, this.lock)) {
       // The tick poses once the player stands sheathed in third person
       this.poseDirty = true;
       this.nextPoseReapplyMs = Date.now() + SHEATHE_SETTLE_MS;
@@ -656,16 +708,17 @@ export class RestraintService extends ClientListener {
   private setPose(player: Actor, desired: string): void {
     const previous = this.appliedPose;
     const previousExit = this.appliedExit;
-    if (desired === this.lock?.anim) this.checkLockPose(desired);
+    const lockPose = !!this.lock && desired === this.lockPose;
+    if (lockPose) this.logLockWaits(desired);
     this.appliedPose = desired;
-    this.appliedExit = desired === this.lock?.anim ? this.lock.exitAnim : exitOf(desired);
+    this.appliedExit = lockPose && this.lock ? this.lock.attempts[this.lock.attempt].exit : exitOf(desired);
     this.poseSentMs = Date.now();
     const token = ++this.poseToken;
     // A pose with its own exit (an action lock's exitAnim) leaves through it even on the same layer
     const crossesLayer = !!previous && previous !== OFFSET_STOP_ANIM &&
       (layerOf(previous) !== layerOf(desired) || (!!previousExit && previousExit !== exitOf(previous)));
     if (!crossesLayer) {
-      this.sp.Debug.sendAnimationEvent(player, desired);
+      this.sendPose(player, desired);
       return;
     }
     this.sp.Debug.sendAnimationEvent(player, previousExit || exitOf(previous));
@@ -676,30 +729,94 @@ export class RestraintService extends ClientListener {
       this.controller.once("update", () => {
         const p = this.sp.Game.getPlayer();
         if (p && token === this.poseToken) {
-          this.sp.Debug.sendAnimationEvent(p, desired);
+          this.sendPose(p, desired);
         }
       });
     });
   }
 
-  // Diagnostic for a work pose that shows nothing: what it waited for, whether the graph took the event and an idle still plays
-  private checkLockPose(anim: string): void {
-    this.lockPoseAccepted = false;
-    if (this.lock && this.lockWaits.size) {
-      logToPlatformLog(this, `action lock pose ${anim} sent ${Date.now() - this.lock.since} ms after the lock, waited for ${Array.from(this.lockWaits).join(", ")}`);
-      this.lockWaits.clear();
+  // An action lock's attempt may go through the engine's idle path, and is checked shortly after it was sent
+  private sendPose(player: Actor, anim: string): void {
+    const lock = this.lock;
+    if (!lock || anim !== this.lockPose) {
+      this.sp.Debug.sendAnimationEvent(player, anim);
+      return;
     }
-    this.sp.Utility.wait(LOCK_POSE_CHECK_S).then(() => {
-      this.controller.once("update", () => {
-        const player = this.sp.Game.getPlayer();
-        const now = Date.now();
-        if (!player || this.lock?.anim !== anim || now - this.lastLockPoseLogMs < LOCK_POSE_LOG_MS) return;
-        if (player.getAnimationVariableBool(IDLE_PLAYING_VAR)) return;
-        this.lastLockPoseLogMs = now;
-        logToPlatformLog(this, `action lock pose ${anim}: graph accepted ${this.lockPoseAccepted} after ${this.lockPoseResends} re-send(s), no idle playing ${LOCK_POSE_CHECK_S} s later, ` +
-          `weapon drawn ${player.isWeaponDrawn()}, sneaking ${player.isSneaking()}, camera ${this.sp.Game.getCameraState()}`);
-      });
-    });
+    const attempt = lock.attempts[lock.attempt];
+    lock.accepted = false;
+    lock.idleResult = false;
+    lock.playing = false;
+    lock.quietTicks = 0;
+    lock.sends++;
+    lock.varBefore = player.getAnimationVariableBool(playingVarOf(anim));
+    const idle = attempt.idleFormId ? this.sp.Idle.from(this.sp.Game.getFormEx(attempt.idleFormId)) : null;
+    if (idle) lock.idleResult = player.playIdle(idle);
+    else this.sp.Debug.sendAnimationEvent(player, anim);
+    const token = ++this.lockPoseToken;
+    this.sp.Utility.wait(LOCK_POSE_VERIFY_S).then(() => this.controller.once("update", () => this.verifyLockPose(token)));
+  }
+
+  // The graph's answer and the variable the pose sets decide whether the next attempt goes out
+  private verifyLockPose(token: number): void {
+    const lock = this.lock;
+    const player = this.sp.Game.getPlayer();
+    if (!player || !lock || token !== this.lockPoseToken || this.appliedPose !== this.lockPose) return;
+    const playingVar = playingVarOf(this.lockPose);
+    const varValue = player.getAnimationVariableBool(playingVar);
+    // Some poses report a refusal while they play, so a variable that only now turned true is proof enough
+    lock.playing = varValue && (!lock.varBefore || lock.accepted || lock.idleResult);
+    if (lock.playing && !lock.playedAtMs) {
+      lock.playedAs = describeAttempt(lock);
+      lock.playedAtMs = Date.now();
+    }
+    const hasNext = lock.attempt + 1 < lock.attempts.length;
+    const idle = lock.attempts[lock.attempt].idleFormId ? `, playIdle returned ${lock.idleResult}` : "";
+    const next = lock.playing ? "playing" : hasNext ? `trying ${lock.attempts[lock.attempt + 1].anim} next` : "no fallback left";
+    logToPlatformLog(this, `action lock pose ${describeAttempt(lock)}: graph accepted ${lock.accepted}${idle}, ${playingVar} ${lock.varBefore} before and ${varValue} ${LOCK_POSE_VERIFY_S} s later, ${next}; ${this.describePlayer(player)}`);
+    if (lock.playing || !hasNext) return;
+    const previous = this.lockPose;
+    lock.attempt++;
+    // A different pose leaves the refused one through its exit first; the same pose is simply sent again
+    if (this.lockPose === previous) this.appliedPose = "";
+    this.applyStateNow();
+  }
+
+  // A pose seen playing that stops before the lock ends is logged with the event the graph took last, and sent again
+  private watchLockPose(player: Actor, now: number): void {
+    const lock = this.lock;
+    if (!lock || !lock.playing || this.appliedPose !== this.lockPose) return;
+    const playingVar = playingVarOf(this.lockPose);
+    if (player.getAnimationVariableBool(playingVar)) {
+      lock.quietTicks = 0;
+      return;
+    }
+    if (++lock.quietTicks < 2) return;
+    lock.playing = false;
+    const again = lock.restarts < LOCK_POSE_MAX_RESTARTS;
+    logToPlatformLog(this, `action lock pose ${describeAttempt(lock)} stopped playing ${now - lock.since} ms into the lock (${playingVar} false), ` +
+      `last event the graph took: ${lock.lastEvent || "none"}, ${again ? "sending it again" : "not sent again"}; ${this.describePlayer(player)}`);
+    if (!again) return;
+    lock.restarts++;
+    this.appliedPose = "";
+    this.applyStateNow();
+  }
+
+  // One line per lock, so a test says which attempt played and for how long
+  private logLockSummary(lock: ActionLock, now: number): void {
+    const played = lock.playedAtMs ? `${lock.playedAs} played from ${lock.playedAtMs - lock.since} ms` : `no attempt seen playing (${lock.sends} sent)`;
+    logToPlatformLog(this, `action lock summary: ${lock.attempts[0].anim} held ${now - lock.since} ms, ${played}, ${lock.restarts} restart(s)`);
+  }
+
+  private describePlayer(player: Actor): string {
+    return `weapon drawn ${player.isWeaponDrawn()}, sneaking ${player.isSneaking()}, camera ${this.sp.Game.getCameraState()}, sit state ${player.getSitState()}, ` +
+      `left hand ${player.getEquippedItemType(0)}, in jump ${player.getAnimationVariableBool("bInJumpState")}`;
+  }
+
+  // Names what the pose waited for before it was sent
+  private logLockWaits(anim: string): void {
+    if (!this.lock || !this.lockWaits.size) return;
+    logToPlatformLog(this, `action lock pose ${anim} sent ${Date.now() - this.lock.since} ms after the lock, waited for ${Array.from(this.lockWaits).join(", ")}`);
+    this.lockWaits.clear();
   }
 
   // A sneaking or drawn graph refuses an idle and a first-person camera shows none, so those go first and the pose waits out the sheathe's blend
@@ -713,7 +830,7 @@ export class RestraintService extends ClientListener {
       this.lockCameraRestore = true;
       waits.push("third person");
     }
-    if (needsEmptyHands(lock.anim) && player.isWeaponDrawn()) {
+    if (needsEmptyHands(lock.attempts[lock.attempt].anim) && player.isWeaponDrawn()) {
       player.sheatheWeapon();
       waits.push("the sheathe");
     }
@@ -725,15 +842,6 @@ export class RestraintService extends ClientListener {
       return true;
     }
     return !waits.length && now - this.lockBlockedMs >= SHEATHE_SETTLE_MS;
-  }
-
-  // A refused pose is sent again shortly, a few times per lock
-  private onLockPoseSent(accepted: boolean): void {
-    this.lockPoseAccepted = accepted;
-    if (accepted || this.lockPoseResends >= LOCK_POSE_MAX_RESENDS) return;
-    this.lockPoseResends++;
-    this.poseDirty = true;
-    this.nextPoseReapplyMs = Date.now() + LOCK_POSE_RETRY_MS;
   }
 
   // Once no pose holds the player, the first-person camera a lock turned away from comes back after the exit has played
@@ -866,12 +974,11 @@ export class RestraintService extends ClientListener {
   private executionPose = "";
   private pairedUntil = 0;
   private lock: ActionLock | null = null;
-  private lockPoseAccepted = false;
-  private lastLockPoseLogMs = 0;
+  // Tells a stale attempt check from the current one
+  private lockPoseToken = 0;
   // When the lock's pose first found nothing to wait for (-1 while it waits), and what it waited for since it was last sent
   private lockBlockedMs = 0;
   private lockWaits = new Set<string>();
-  private lockPoseResends = 0;
   // Set when a lock turned a first-person camera to third person
   private lockCameraRestore = false;
   private cameraRestoreQueued = false;
