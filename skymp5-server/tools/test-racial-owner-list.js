@@ -21,7 +21,7 @@ const spec = require(path.join(__dirname, '..', '..', 'misc', 'proficiency-patch
 const BLOCK = {
   enabled: true,
   races: {
-    NordRace: { coldRateMult: 0, freezingWaterImmune: false },
+    NordRace: { warmth: 25, freezingWaterImmune: false },
     ArgonianRace: { coldRateMult: 1.25, rawMeatSafe: true },
     KhajiitRace: { coldRateMult: 1.25, rawMeatSafe: true },
     OrcRace: { hungerRateMult: 0.85, fatigueCostMult: 0.85, warmth: 10 },
@@ -34,7 +34,7 @@ const BLOCK = {
 }
 
 const RACE_IDS = { ArgonianRace: 0x13740, BretonRace: 0x13741, DarkElfRace: 0x13742, HighElfRace: 0x13743, ImperialRace: 0x13744, KhajiitRace: 0x13745, NordRace: 0x13746, OrcRace: 0x13747, RedguardRace: 0x13748, WoodElfRace: 0x13749 }
-const VAMPIRE_IDS = { ArgonianRaceVampire: 0x8883a, OrcRaceVampire: 0xa82b9, WoodElfRaceVampire: 0x88884 }
+const VAMPIRE_IDS = { ArgonianRaceVampire: 0x8883a, NordRaceVampire: 0x88794, OrcRaceVampire: 0xa82b9, WoodElfRaceVampire: 0x88884 }
 const EDIDS = Object.fromEntries(Object.entries({ ...RACE_IDS, ...VAMPIRE_IDS }).map(([edid, id]) => [id, edid]))
 
 const props = new Map()
@@ -110,10 +110,13 @@ test('Khajiit: claws of a steel dagger, Night Eye kept as a racial power', () =>
   assert.equal(BLOCK.powers.PowerKhajiitNightEye, undefined, 'unlimited: no cooldown entry')
 })
 
-test('Nord: 75 frost resistance, +50 stamina, immune to cold', () => {
-  assert.deepEqual(ability('NordRace'), { AbResistFrost: 75 })
+test('Nord: 75 frost resistance, +50 stamina, cold at the normal rate with 25 warmth', () => {
+  assert.deepEqual(ability('NordRace'), { AbResistFrost: 75, Survival_FortifyWarmthConstant: 25 })
   assert.deepEqual(bonus('NordRace'), { health: 0, magicka: 0, stamina: 50 })
-  assert.equal(traitsOf('NordRace').coldRateMult, 0)
+  const t = traitsOf('NordRace')
+  assert.deepEqual([t.coldRateMult, t.warmth, t.freezingWaterImmune], [1, 25, false])
+  assert.equal(traitsOf('NordRaceVampire').warmth, 25, 'the vampire race takes the entry through its alias')
+  assert.ok(!/never|immune/i.test(spec.abilities.AldRacial_Nord.description + spec.descriptions.NordRace), 'no text promises cold immunity')
 })
 
 test('Orc: resist magic 25, +50 health, 15% slower hunger and fatigue, +10 warmth', () => {

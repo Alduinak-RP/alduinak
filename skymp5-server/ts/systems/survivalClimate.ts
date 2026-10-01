@@ -36,10 +36,14 @@ export interface WarmthTable {
   maxReduction: number;
 }
 
+// Cold gain multiplier of an area class
+export type AreaRates = Record<"warm" | "cool" | "freezing" | "chillyInterior", number>;
+
 export interface ColdConfig {
   enabled: boolean;
   hoursToNumb: number;
   levelMult: number;
+  areaRate: AreaRates;
   // Cold at which stages 1 to 5 begin
   stages: number[];
   start: number;
@@ -79,6 +83,8 @@ export interface ColdConfig {
 }
 
 export const DEFAULT_COLD_LEVELS: ColdLevels = { warm: 0, cool: 3, freezing: 6, chillyInterior: 6, warmNight: 1, coolNight: 2, freezingNight: 4, rain: 3, snow: 6, blizzard: 10, freezingWater: 30 };
+// Level 20 (a freezing night in a blizzard) with no warmth takes an hour from 0 to Freezing; warm and cool areas keep the full pace
+export const DEFAULT_COLD_AREA_RATE: AreaRates = { warm: 1, cool: 1, freezing: 0.6667, chillyInterior: 0.6667 };
 // Aggressor race editor id fragment -> cold, vanilla's frostbite venom (Survival_FrostbitePoisonEffects)
 export const DEFAULT_COLD_ON_HIT: Record<string, number> = { frostbitespider: 30, falmer: 30 };
 export const DEFAULT_WARMTH: WarmthTable = { normal: [27, 18, 13, 13], warm: [54, 29, 24, 24], cold: [17, 8, 7, 7], torch: 50, cloak: 0, max: 206, maxReduction: 0.85 };
@@ -102,7 +108,7 @@ export const DEFAULT_WORLD_CLIMATE: Record<string, AreaClass> = {
   ...regions("none", ["Sovngarde", "DLC01SoulCairn", "DLC01Boneyard", "DLC2ApocryphaWorld", "BluePalaceWingWorld"]),
 };
 
-const DEFAULTS: Omit<ColdConfig, "levels" | "warmth" | "regionClimate" | "worldClimate" | "highRegions" | "coldOnHit"> = {
+const DEFAULTS: Omit<ColdConfig, "levels" | "areaRate" | "warmth" | "regionClimate" | "worldClimate" | "highRegions" | "coldOnHit"> = {
   enabled: true,
   hoursToNumb: 1.3334,
   levelMult: 50,
@@ -214,6 +220,7 @@ export const parseColdSettings = (all: Record<string, unknown>, problems: string
     stages,
     start: num("survivalColdStart", DEFAULTS.start, (v) => v >= 0 && v < COLD_MAX),
     levels: numbers("survivalColdLevels", DEFAULT_COLD_LEVELS, (v) => v >= 0),
+    areaRate: numbers("survivalColdAreaRate", DEFAULT_COLD_AREA_RATE, (v) => v >= 0),
     caps: list("survivalColdLevelCaps", DEFAULTS.caps, 5, ascending),
     night: list("survivalNightHours", DEFAULTS.night, 2, (v) => v.every((h) => h >= 0 && h <= 24)),
     regionClimate: classes("survivalRegionClimate", DEFAULT_REGION_CLIMATE),
@@ -315,7 +322,11 @@ export const coldStageOf = (cold: number, warmBonus: boolean, stages: number[]):
 
 export const warmthReduction = (warmth: number, w: WarmthTable): number => w.maxReduction * clamp(warmth, 0, w.max) / w.max;
 
-// Cold gained per real second at the level, lowered by warmth, times the race and other multipliers
+// Freezing water and the classes without a rate (interiors, no cold) keep the full pace
+export const areaRateOf = (area: AreaClass, freezingWater: boolean, rates: AreaRates): number =>
+  freezingWater ? 1 : (rates as Record<string, number>)[area] ?? 1;
+
+// Cold gained per real second at the level, lowered by warmth, times the area, race and other multipliers
 export const coldRatePerSec = (level: number, warmth: number, mult: number, cfg: Pick<ColdConfig, "levelMult" | "hoursToNumb" | "warmth">): number =>
   cfg.levelMult * level / (cfg.hoursToNumb * 3600) * (1 - warmthReduction(warmth, cfg.warmth)) * Math.max(0, mult);
 

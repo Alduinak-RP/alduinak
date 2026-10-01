@@ -8939,13 +8939,14 @@
    },
    "AldRacial_Nord": {
     "name": "Nord Blood",
-    "description": "Your Nord blood resists 75% of frost damage, and you never feel the cold.",
+    "description": "Your Nord blood resists 75% of frost damage, and you keep 25 points of warmth of your own.",
     "races": [
      "NordRace",
      "NordRaceVampire"
     ],
     "effects": {
-     "AbResistFrost": 75
+     "AbResistFrost": 75,
+     "Survival_FortifyWarmthConstant": 25
     }
    },
    "AldRacial_Orc": {
@@ -9010,7 +9011,7 @@
    "HighElfRace": "The Altmer of the Summerset Isles, long-lived and steeped in magic. High Elves have 100 more Magicka and spend 25% less fatigue on their professions, but take 25% more fire, frost and shock damage.",
    "ImperialRace": "The people of Cyrodiil, heart of the Empire, known for their discipline, trade and industry. Imperials begin their journey with 50 extra gold.",
    "KhajiitRace": "The cat-folk of Elsweyr, quick and keen-eyed. A Khajiit's claws strike as hard as a steel dagger, Night Eye lets them see in the dark and they eat raw meat safely, but they grow cold 25% faster.",
-   "NordRace": "The tall, fair-haired people of Skyrim, hardened by its long winters. Nords never feel the cold, resist 75% of frost damage and have 50 more Stamina.",
+   "NordRace": "The tall, fair-haired people of Skyrim, hardened by its long winters. Nords resist 75% of frost damage, keep 25 points of warmth of their own and have 50 more Stamina.",
    "OrcRace": "The Orsimer of Wrothgar and the mountain strongholds, famed as warriors and smiths. Orcs have 50 more Health, resist 25% of magic, grow hungry 15% slower, spend 15% less fatigue on their professions and keep 10 points of warmth of their own.",
    "RedguardRace": "The people of Hammerfell, the most naturally gifted warriors in Tamriel. Redguards resist 50% of poison and disease and have 100 more Stamina.",
    "WoodElfRace": "The Bosmer of Valenwood, nimble woodland hunters. Wood Elves resist 75% of disease and spend 25% less fatigue on their professions."

@@ -577,12 +577,16 @@ they weigh nothing again.
   classed), the walled city worlds are cool (Riften warm), the realms and Oblivion planes have no cold, and it is
   freezing above z 19000 (Fall Forest above 15150).
 - **Rate**: Survival's formula in real hours. Level 20 with no warmth fills the bar in `survivalColdHoursToNumb` (1.3334)
-  real hours, 20 times slower than single-player Survival: a new character on the Winterhold coast on a snowy night
-  (level 16) is Numb in about 75 minutes. The level also caps cold (13 or more reaches 1000, 10 up to 799, 7 up to 499,
+  real hours, 20 times slower than single-player Survival, times the area's `survivalColdAreaRate`: warm and cool
+  areas 1, freezing areas and cold interiors 0.6667, freezing water always 1. So the coldest case, a freezing area on
+  a blizzard night (level 20) with no warmth, takes an hour from no cold to Freezing and 96 minutes to Numb, and a new
+  character on the Winterhold coast on a snowy night (level 16) is Numb in about 112 minutes. The level also caps cold
+  (13 or more reaches 1000, 10 up to 799, 7 up to 499,
   4 up to 299, 1 up to 119, otherwise 49); above the cap cold falls 40 a minute, but not within 10 s of a hit.
 - **Warmth** is the rating the item cards and the inventory show: body, head, hands and feet 27/18/13/13 normal,
   54/29/24/24 with `Survival_ArmorWarm` (fur, hide), 17/8/7/7 with `Survival_ArmorCold`; a hooded body piece warms the
-  head too; a torch in hand +50; the race's `racialPassives` warmth (Orc 10); a hot meal +25 for 100 minutes. Up to 206,
+  head too; a torch in hand +50; the race's `racialPassives` warmth (Nord 25, Orc 10); a hot meal +25 for 100 minutes.
+  Up to 206,
   which cuts the rate by up to 85%. `SurvivalService` reports the engine's total 20 s after the last equip change and
   the server logs `[survival] <id> warmth mismatch: engine 60, server 54 (gear 54, race 0), worn ...` when the two
   differ.
@@ -611,9 +615,9 @@ they weigh nothing again.
   the keyword rating and adds `; gear 74 with armorWarmth.ts` when the table changes the sum. Rerun the script and
   Build server after the modlist gains armour (`python misc/gen-armor-warmth.py --dump` lists every piece with its
   rating and why); `survivalWarmthTable` false goes back to keywords only.
-- **Race**: every cold gain is times `racialPassives.races.<race>.coldRateMult`: Nords 0 (never colder than they are,
-  though freezing water still hurts them through their frost resistance), Khajiit and Argonians 1.25. Cold never reads
-  frost resistance.
+- **Race**: every cold gain is times `racialPassives.races.<race>.coldRateMult`: Khajiit and Argonians 1.25. Nords
+  grow cold at the normal rate, in freezing water too, and carry Survival's Nord bonus of 25 warmth (about 10% less
+  cold with nothing worn). Cold never reads frost resistance.
 - **Heat**: standing still (under 48 units in 6 s) within 580 units of a heat source warms 75 every 6 s: campfires,
   fireplaces, fire effects, forges, smelters (`Survival_WarmUpObjectsList`) and cooking pots and spits
   (`CraftingCookpot`, `AldCraftingKiln`). `heatSources.ts` lists them by cell and world; rerun
@@ -874,7 +878,8 @@ unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
    line of the readout (from Chilly on) and the admin panel's survival details show the server's warmth
    (54 + 20 + 8), while the item cards keep the engine's numbers. A plain mod robe (Tribunal Light Robe) counts 27.
 2. Warming: an inn takes 40 a minute, a campfire 75 every 6 s, a hot soup 200.
-3. Races: a Nord gains no cold, a Khajiit or an Argonian 25% more; an Orc's needs lines show `race x0.85`.
+3. Races: a naked Nord shows warmth 25 and gains cold about 10% slower than a Redguard, a Khajiit or an Argonian 25%
+   faster; an Orc's needs lines show `race x0.85`.
 4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.
 5. Body: carry weight 150, no regeneration, a death wakes with 1 health point: the bar is a sliver as the character
    stands up (not full for a few seconds first), the server logs `[survival] <id> respawned: health 1 of 100 sent to the

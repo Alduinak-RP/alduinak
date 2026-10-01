@@ -44,15 +44,16 @@ NPC_ offset (50 each), which is what the server and the client both use as the m
 | High Elf | weakness to fire, frost and shock 25 | 100/200/100 | 4 | fatigue x0.75 |
 | Imperial | no ability | 100/100/100 | 4 | start items: 50 gold |
 | Khajiit | no resistance (display effects only); Night Eye (lesser power, unlimited) | 100/100/100 | 7 (Steel Dagger) | cold x1.25, raw meat safe |
-| Nord | resist frost 75 | 100/100/150 | 4 | cold x0 (never cold) |
+| Nord | resist frost 75 | 100/100/150 | 4 | warmth 25 |
 | Orc | resist magic 25 | 150/100/100 | 4 | hunger x0.85, fatigue x0.85, warmth 10 |
 | Redguard | resist poison 50, resist disease 50 | 100/100/200 | 4 | none |
 | Wood Elf | resist disease 75 | 100/100/100 | 4 | fatigue x0.75 |
 
 Every race also keeps its speed ability `AldRaceSpeed_<Race>` (r24). The abilities carry Survival's display effects
-where the race has a survival rule (cold weakness, raw diet, resist hunger, resist exhaustion, and the Orc's
-`Survival_FortifyWarmthConstant 10`), so Active Effects tells the player what the race does ("Nord Blood: Your Nord
-blood resists 75% of frost damage, and you never feel the cold."). The ability replaces the vanilla racial spell it
+where the race has a survival rule (cold weakness, raw diet, resist hunger, resist exhaustion, and
+`Survival_FortifyWarmthConstant` 10 for the Orc and 25 for the Nord), so Active Effects tells the player what the race
+does ("Nord Blood: Your Nord blood resists 75% of frost damage, and you keep 25 points of warmth of your own."). The
+ability replaces the vanilla racial spell it
 supersedes (`RaceNord`, `RaceDarkElf`, `RaceRedguard`, `RaceWoodElf`, `RaceBreton`, `RaceImperial`,
 `AbHighElfMagicka`, `RaceArgonianResistDisease`, `RaceKhajiitClaws`), and the vampire race of each gets the same.
 `skymp5-server/tools/test-racial-owner-list.js` holds the owner's list line by line against the patcher spec and
@@ -61,7 +62,9 @@ record, its 20 hour gate and the client pre-gate exist, the command itself is pl
 The race menu texts follow the list; the Imperial's old promise of a fatigue discount is gone (owner decision O26).
 
 Owner decisions taken at their default (plan section 7): Nord frost resistance 75, not 50 (O1); freezing water still
-hurts Nords through that resistance, though they never grow cold from it (O2); Khajiit get no fur warmth (O3); the
+hurts Nords through that resistance (O2); Nords are not immune to cold: they grow cold at the normal rate, in
+freezing water too, and carry the 25 warmth of the base game's `Survival_abRacialNord` (owner, 2026-10-01, in place of
+the earlier `coldRateMult` 0); Khajiit get no fur warmth (O3); the
 Orc's old +50 stamina and the Wood Elf's old poison 25 are dropped (O19, O20); the stat bonuses are real server
 maximums (O21); magic resistance covers all server spell damage and hostile spell effects on the client, not
 poisons or diseases (O22); the Imperial gold is for new characters only (O23); race, flora and drink discounts
@@ -83,7 +86,7 @@ spawn and follow a race change by themselves. Where they act:
 - **Server disease rolls** (survival's raw meat, creature and contagion rolls): `abilityResist` with DiseaseResist,
   so the Argonian's and Wood Elf's 75 and the Redguard's 50 cut the chance.
 - **Cold never reads frost resistance or weakness** (O27): a High Elf does not freeze faster, and the Nord's cold
-  immunity is the `coldRateMult` 0 trait, separate from frost damage.
+  bonus is the `warmth` 25 trait, separate from frost damage.
 
 ### Magic resistance
 
@@ -142,11 +145,12 @@ x0.85`; tests in `skymp5-server/tools/test-needs-modifiers.js`.
 ### Cold, warmth, raw meat and freezing water
 
 SurvivalSystem reads `coldRateMult` (every cold gain: the cold step, the freezing water jump, frost spell and frost
-venom hits), `warmth` (added to worn warmth; the Orc ability's `Survival_FortifyWarmthConstant 10` makes the
-inventory's Warmth total agree, and the boot report warns if the two differ) and `rawMeatSafe` (no food poisoning).
+venom hits), `warmth` (added to worn warmth; the `Survival_FortifyWarmthConstant` of the Orc ability, 10, and of the Nord
+ability, 25, makes the inventory's Warmth total agree, and the boot report warns if the two differ) and `rawMeatSafe`
+(no food poisoning).
 `freezingWaterImmune` is parsed and printed in the boot report, but no system reads it in this build: freezing water
-cold follows `coldRateMult` (so Nords never chill from it), and its damage is frost damage the Nord's resistance cuts
-to a quarter (O2). See the Survival section of `docs_roleplay_creations_and_needs.md`.
+cold follows `coldRateMult` (1 for a Nord, so the water chills them like anyone), and its damage is frost damage the
+Nord's resistance cuts to a quarter (O2). See the Survival section of `docs_roleplay_creations_and_needs.md`.
 
 ### Start items (the Imperial's gold)
 
@@ -241,8 +245,8 @@ Server, `C:\logs\test\gameserver.log`:
   before r27a)
 - `[racial] magic damage entries: racialMagicResistBreton x0.5 on BretonRace, BretonRaceVampire;
   racialMagicResistOrc x0.75 on OrcRace, OrcRaceVampire`
-- one line per race, for example with r27a `[racial] NordRace: resist frost 75, base H/M/S 100/100/150, cold x0
-  (immune), freezing water hurts, fatigue x1, hunger x1, warmth 0, raw meat unsafe, start items none, claws 4 (race
+- one line per race, for example with r27a `[racial] NordRace: resist frost 75, base H/M/S 100/100/150, cold x1,
+  freezing water hurts, fatigue x1, hunger x1, warmth 25 (plugin 25), raw meat unsafe, start items none, claws 4 (race
   unarmed), magic damage x1, abilities ..., powers -, AldRacial_Nord on the race`; before r27a it ends
   `AldRacial_Nord not in plugin yet` and a warning names every such race
 - `[needs] modifier sources: race (hunger OrcRace x0.85; fatigue OrcRace x0.85, WoodElfRace x0.75, DarkElfRace x0.75,
