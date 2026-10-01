@@ -363,7 +363,10 @@ server (`loadDoorQuery`), which answers from the door's XTEL or this list
 (`loadDoorAnswer`), and a load door gets the dropped press sent at once and every
 later one straight through. A plain door stuck mid-swing takes a second press
 1.5 s after the first ignored one; an ignored press older than 5 s starts that
-wait over.
+wait over. A player carrying another player asks the same question on their
+first press on any plugin door, swinging or not: a load door is refused there
+("Set them down before going through this door."), a plain one is sent once the
+answer is in (section 10 of `docs_roleplay_survival_loop.md`).
 
 ```json5
 {

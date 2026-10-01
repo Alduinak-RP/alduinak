@@ -727,7 +727,24 @@ prisoner can also be carried).
   their carrier is still online, not downed, in the same cell and within
   `captureInteractMaxDistance` (default 256) of the parked body; otherwise the
   carry ends quietly and a bound captive stays bound.
-- **Doors**: a carrier's door activation is recorded (`onActivate`, after the
+- **Load doors**: a carrier holding a player does not go through a door that
+  teleports. The carrier's client refuses the press where it starts
+  (`ActivationService`): the first press on a plugin door while carrying a
+  player asks the server whether it teleports (`loadDoorQuery`, answered from
+  the door's XTEL or the override list and remembered per door), a load door
+  is then not sent at all, the carrier reads "Set them down before going
+  through this door." (at most once per 2 s) and the Platform log says
+  `load door <id> not used: the player carries someone`; a plain door goes
+  out as soon as the answer is in. The server guards it for a client that
+  sent the press anyway: `CaptureSystem`'s `onActivate` wrapper refuses a
+  door with an XTEL while the carrier's load is a player (after the housing
+  lock had its say, before the door override and the native teleport), sends
+  the same notice and logs
+  `[carry] <carrier> refused at load door <door> while carrying <carried>`.
+  Nobody is moved and the carry goes on. A carried pet and a passive job load
+  still go through load doors. `skymp5-server/tools/test-carry-door.js` runs
+  the server side against a stub.
+- **Doors**: any other door activation of a carrier is recorded (`onActivate`, after the
   housing lock had its say, so a locked door never counts, and before the door
   override runs, so an overridden door such as the embassy entry counts). The body only
   follows the carrier into another cell when the carrier used a door within the

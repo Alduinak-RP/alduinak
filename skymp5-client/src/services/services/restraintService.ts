@@ -203,7 +203,8 @@ const describeAttempt = (lock: ActionLock): string => {
  *     the body on their own copy of the carrier (ff_carriedBy). One summary
  *     line per carry goes to the Platform log.
  *   - carrying: plays the carry-hold pose; fighting is disabled and a drawn
- *     weapon, fists or spell is sheathed. The carrier can still walk.
+ *     weapon, fists or spell is sheathed. The carrier can still walk, but
+ *     ActivationService refuses a load door while the load is a player.
  *   - downed: kneels in the bleedout pose, cannot move, fight, sneak, activate
  *     or open menus, and is a ghost locally so no local hit lands; held in
  *     third person for the whole bleedout, the camera can still orbit.
@@ -315,6 +316,11 @@ export class RestraintService extends ClientListener {
     return this.carrying;
   }
 
+  // A carried player is not taken through a load door; a pet or a job load is
+  get isCarryingPlayer(): boolean {
+    return this.carrying && this.carriedIsPlayer;
+  }
+
   // The pose last sent to the player, "" before any
   get currentPose(): string {
     return this.appliedPose;
@@ -424,6 +430,7 @@ export class RestraintService extends ClientListener {
       // A carried player poses itself through restraintState; only an NPC's clone is posed by the carrier
       const target = typeof content["target"] === "number" ? content["target"] as number : 0;
       this.carriedNpcId = this.carrying && target >= FIRST_DYNAMIC_REMOTE_ID && !isPlayerCharacterId(this.controller, target) ? target : 0;
+      this.carriedIsPlayer = target >= FIRST_DYNAMIC_REMOTE_ID && !this.carriedNpcId;
       logTrace(this, `carryState carrying=${this.carrying} npc=${this.carriedNpcId.toString(16)}`);
       this.applyCarryAnim();
     } else if (type === "executionState" && typeof content["pose"] === "string") {
@@ -1096,6 +1103,7 @@ export class RestraintService extends ClientListener {
   private carrierAnim = CARRY_HOLD_ANIM_START;
   private appliedCarrierAnim = "";
   private carriedNpcId = 0;
+  private carriedIsPlayer = false;
   private posedNpcLocalId = 0;
   private encumbranceApplied = false;
   private fightLockApplied = false;
