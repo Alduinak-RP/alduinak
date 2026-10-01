@@ -113,9 +113,10 @@ const serverSettings = [
   { key: 'survivalDiseaseCarrierExclude', label: 'Races that carry nothing',    type: 'json',   group: 'Survival', help: 'Race editor id fragments no carrier matches. Default ["werewolf", "werebear"].' },
   { key: 'survivalDiseaseStageHours',  label: 'Disease stage hours',            type: 'json',   group: 'Survival', help: '[stage 1 to 2, stage 2 to 3] in real hours, offline included; stage 3 stays until cured. Default [84, 84] ([0.05, 0.05] only for quick tests).' },
   { key: 'survivalMaxDiseases',        label: 'Most diseases at once',          type: 'number', group: 'Survival', placeholder: '4', help: 'Diseases a character can hold at once; an admin may give more.' },
-  { key: 'survivalContagionChance',    label: 'Contagion chance',               type: 'number', group: 'Survival', placeholder: '0.05', help: 'Chance per contagious disease a client reports near the player, times (1 - disease resistance); the server rolls once per confirmed disease; 0 turns contagion off.' },
+  { key: 'survivalContagionChance',    label: 'Contagion chance',               type: 'number', group: 'Survival', placeholder: '0.05', help: 'Chance per contagious disease a client reports near the player, times (1 - disease resistance); the server rolls once per confirmed disease and pair per cooldown; 0 turns contagion off.' },
   { key: 'survivalContagionRange',     label: 'Contagion range',                type: 'number', group: 'Survival', placeholder: '150', help: 'Units within which the client counts a carrier; empty uses the chat whisper range (chatRanges.whisper).' },
   { key: 'survivalContagionCheckSeconds', label: 'Contagion check (s)',         type: 'number', group: 'Survival', placeholder: '60', help: 'Seconds between one client\'s contagion checks, 1 or more; the server accepts one report per player per this less 5 s.' },
+  { key: 'survivalContagionCooldownMinutes', label: 'Contagion cooldown (min)', type: 'number', group: 'Survival', placeholder: '30', help: 'Minutes before the same disease and pair of players roll again; 0 rolls at every report.' },
 
   // Interactions (capture / carry / search / trade tunables)
   { key: 'captureInteractMaxDistance', label: 'Capture range',                 type: 'number', group: 'Interactions', help: 'Max game-units distance to start a capture/carry. Default 256.' },

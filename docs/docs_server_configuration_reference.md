@@ -1312,15 +1312,17 @@ Diseases:
 | `survivalDiseaseCarrierExclude` | `["werewolf", "werebear"]` | Race editor id fragments no carrier matches |
 | `survivalDiseaseStageHours` | `[84, 84]` | Real hours from stage 1 to 2 and from 2 to 3, offline included; stage 3 stays until cured |
 | `survivalMaxDiseases` | `4` | Diseases a character can catch at once; an admin may give more |
-| `survivalContagionChance` | `0.05` | Chance a player catches a contagious disease they lack when their client reports a carrier in range, times (1 - disease resistance); the server rolls once per reported disease it confirms, however many carriers are near; `0` turns contagion off |
+| `survivalContagionChance` | `0.05` | Chance a player catches a contagious disease they lack when their client reports a carrier in range, times (1 - disease resistance); the server rolls once per reported disease it confirms and pair of players per `survivalContagionCooldownMinutes`; `0` turns contagion off |
 | `survivalContagionRange` | `chatRanges.whisper`, else `150` | Units (same cell or world) within which the client counts a carrier; defaults to the chat's whisper range and goes to the client in `survivalState` |
 | `survivalContagionCheckSeconds` | `60` | Seconds between one client's contagion checks, the first at a random second; the server accepts one report per player per this less 5 s (55 s), never less than half of it |
+| `survivalContagionCooldownMinutes` | `30` | Minutes before the same disease and pair of players (carrier and reporter) roll again, so one carrier beside you is one roll per disease every 30 min (about 10% an hour at 5%); kept in memory, a restart or the reporter's relog starts it over; `0` rolls at every accepted report |
 
 Contagion is a client check (the owner's call, to keep the calculations off the server): each player's `ff_contagious`
 actor property lists the contagious diseases they carry, each client reports the loaded players within range whose list
 names one it lacks, and the server checks only that the disease is contagious, that the source carries it and that the
-reporter does not, then rolls. A modified client could skip its reports and avoid catching diseases; it cannot infect
-anyone else. `ff_contagious` must be registered in the gamemode (staged in `Desktop/alduinak-r13/live/r27-SV4b/`).
+reporter does not, then rolls, at most once per disease and pair every `survivalContagionCooldownMinutes`. A modified
+client could skip its reports and avoid catching diseases; it cannot infect anyone else. `ff_contagious` must be
+registered in the gamemode (staged in `Desktop/alduinak-r13/live/r27-SV4b/`).
 
 The Test Server values are the defaults with `survivalEnabled: true` (staged with READMEs in
 `Desktop/alduinak-r13/live/r27-SV1/` to `r27-SV4/`). Quick-test values, to be removed before any Migrate settings

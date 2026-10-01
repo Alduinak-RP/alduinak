@@ -33,6 +33,7 @@ export interface ContagionConfig {
   // Where the range came from, for the boot line
   rangeFrom: string;
   checkSeconds: number;
+  cooldownMinutes: number;
 }
 
 export interface DiseaseConfig {
@@ -121,7 +122,7 @@ const DEFAULTS = {
   stageHours: [84, 84],
   max: 4,
   // The gamemode chat's whisper range (25_chat_core.js RANGE.whisper), about 2 m
-  contagion: { chance: 0.05, range: 150, checkSeconds: 60 },
+  contagion: { chance: 0.05, range: 150, checkSeconds: 60, cooldownMinutes: 30 },
 };
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -228,6 +229,7 @@ export const parseDiseaseSettings = (all: Record<string, unknown>, problems: str
       range,
       rangeFrom: all["survivalContagionRange"] === range ? "survivalContagionRange" : whisper ? "the chat whisper range, chatRanges.whisper" : "the chat whisper range",
       checkSeconds: num("survivalContagionCheckSeconds", c.checkSeconds, (v) => v >= 1),
+      cooldownMinutes: num("survivalContagionCooldownMinutes", c.cooldownMinutes, (v) => v >= 0),
     },
   };
 };

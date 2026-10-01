@@ -612,10 +612,12 @@ regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
     them and those diseases. Nobody sick near: no packet.
   - The server takes one report per player per 55 s (the check interval less 5 s). For each disease it checks only that
     the disease is contagious, that the named source carries it and that the reporter does not. Then it rolls
-    `survivalContagionChance` (5%) x (1 - disease resistance / 100) once per disease, however many sick players
-    stand near, named after the first source that carries it. It does no distance check.
-  - Every minute at whispering distance rolls again, so ten minutes beside someone sick is about a 40% chance per
-    disease and half an hour about 79%.
+    `survivalContagionChance` (5%) x (1 - disease resistance / 100) once per disease, named after the first source
+    that carries it whose pair with the reporter has not rolled that disease in the last
+    `survivalContagionCooldownMinutes` (30). It does no distance check.
+  - So one sick player at whispering distance is one roll per disease every 30 minutes, about 5% in half an hour and
+    10% in an hour (plan O12, as in SV4); two sick players are two pairs and roll a minute apart. The cooldowns live
+    in memory, so a restart or the reporter's relog starts them over; `0` rolls at every report.
   - Players only (there are no beggar NPCs). Nobody in creation, dead, in an afterlife realm (Sovngarde, the Soul
     Cairn) or in the god, ghost or invis admin mode spreads or catches it, and a player at `survivalMaxDiseases`
     rolls nothing (the rolls stop once the player reaches it). A catch is logged, a spared roll is not.
@@ -683,7 +685,8 @@ freezing area, diseases with their next stage time, afflictions, food poisoning)
   84 h more, ...; at most 4 at once; carriers ...; contagion by client report: each client checks the players it has
   loaded every 60 s (the first at a random second) and reports those within 150 units (the chat whisper range,
   chatRanges.whisper) whose ff_contagious names a disease it lacks; the server takes one report per player per 55 s and
-  rolls 5% x (1 - disease resist) once per disease it confirms ...; server factors ...` (with an older plugin `0 of 27
+  rolls 5% x (1 - disease resist) once per disease it confirms (...) and at most once per disease and pair every 30
+  min, ...; server factors ...` (with an older plugin `0 of 27
   in the plugin ..., none is given`), and
   `[needs] modifier sources: race (...); survival (diseases ...)`. With survival off: `[survival] off (survivalEnabled
   false): ...`.

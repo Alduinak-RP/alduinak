@@ -1067,9 +1067,9 @@ async function main() {
     const defs = Object.values(cfg.diseases)
     assert.equal(defs.length, 27)
     assert.equal(defs.filter((d) => d.contagious).length, 19)
-    assert.deepEqual([cfg.enabled, cfg.stageHours, cfg.max, cfg.exclude, cfg.contagion], [true, [84, 84], 4, ['werewolf', 'werebear'], { chance: 0.05, range: 150, rangeFrom: 'the chat whisper range', checkSeconds: 60 }])
-    assert.deepEqual(D.parseDiseaseSettings({ chatRanges: { whisper: 200, say: 2000 } }, []).contagion, { chance: 0.05, range: 200, rangeFrom: 'the chat whisper range, chatRanges.whisper', checkSeconds: 60 })
-    assert.deepEqual(D.parseDiseaseSettings({ chatRanges: { whisper: 200 }, survivalContagionRange: 300, survivalContagionCheckSeconds: 30 }, []).contagion, { chance: 0.05, range: 300, rangeFrom: 'survivalContagionRange', checkSeconds: 30 })
+    assert.deepEqual([cfg.enabled, cfg.stageHours, cfg.max, cfg.exclude, cfg.contagion], [true, [84, 84], 4, ['werewolf', 'werebear'], { chance: 0.05, range: 150, rangeFrom: 'the chat whisper range', checkSeconds: 60, cooldownMinutes: 30 }])
+    assert.deepEqual(D.parseDiseaseSettings({ chatRanges: { whisper: 200, say: 2000 } }, []).contagion, { chance: 0.05, range: 200, rangeFrom: 'the chat whisper range, chatRanges.whisper', checkSeconds: 60, cooldownMinutes: 30 })
+    assert.deepEqual(D.parseDiseaseSettings({ chatRanges: { whisper: 200 }, survivalContagionRange: 300, survivalContagionCheckSeconds: 30, survivalContagionCooldownMinutes: 0 }, []).contagion, { chance: 0.05, range: 300, rangeFrom: 'survivalContagionRange', checkSeconds: 30, cooldownMinutes: 0 })
     assert.deepEqual([60, 30, 4].map(D.exposureGapMs), [55000, 25000, 2000])
     assert.deepEqual(cfg.diseases.boneBreakFever.spells, ['AldDisease_BoneBreakFever1', 'AldDisease_BoneBreakFever2', 'AldDisease_BoneBreakFever3'])
     assert.deepEqual(cfg.carriers.skeever, { chance: 0.1, diseases: ['ataxia', 'bloodLung', 'feebleLimb', 'redRage', 'shakes', 'witlessPox'] })
@@ -1087,14 +1087,14 @@ async function main() {
     assert.equal(D.diseaseFactor(cfg.diseases, [{ id: 'gutworm', stage: 3 }, { id: 'brownRot', stage: 1 }], 'food'), 0.25)
     assert.equal(D.diseaseFactor(cfg.diseases, [], 'cold'), 1)
     const problems = []
-    const odd = D.parseDiseaseSettings({ survivalDiseases: { chills: false, rockjoint: { name: 'Stonejoint', stageHours: [1, 2], cure: 'x' }, plague: {} }, survivalDiseaseCarriers: { skeever: false, Spider: { chance: 0.2, diseases: ['ataxia', 'chills'] }, troll: { chance: 3 } }, survivalMaxDiseases: 0, survivalContagionChance: 2, survivalContagionRange: 0, chatRanges: { whisper: 'far' }, survivalDiseaseStageHours: [1] }, problems)
+    const odd = D.parseDiseaseSettings({ survivalDiseases: { chills: false, rockjoint: { name: 'Stonejoint', stageHours: [1, 2], cure: 'x' }, plague: {} }, survivalDiseaseCarriers: { skeever: false, Spider: { chance: 0.2, diseases: ['ataxia', 'chills'] }, troll: { chance: 3 } }, survivalMaxDiseases: 0, survivalContagionChance: 2, survivalContagionRange: 0, survivalContagionCooldownMinutes: -1, chatRanges: { whisper: 'far' }, survivalDiseaseStageHours: [1] }, problems)
     assert.equal(odd.diseases.chills, undefined)
     assert.deepEqual([odd.diseases.rockjoint.name, odd.diseases.rockjoint.stageHours, odd.diseases.ataxia.stageHours], ['Stonejoint', [1, 2], [84, 84]])
     assert.equal(odd.carriers.skeever, undefined)
     assert.deepEqual(odd.carriers.spider, { chance: 0.2, diseases: ['ataxia'] })
     assert.deepEqual(odd.carriers.icewraith.diseases, [])
     assert.deepEqual(odd.carriers.troll, { chance: 0.06, diseases: ['gutworm'] })
-    assert.deepEqual([odd.max, odd.contagion.chance, odd.contagion.range, odd.contagion.rangeFrom], [4, 0.05, 150, 'the chat whisper range'])
+    assert.deepEqual([odd.max, odd.contagion.chance, odd.contagion.range, odd.contagion.rangeFrom, odd.contagion.cooldownMinutes], [4, 0.05, 150, 'the chat whisper range', 30])
     assert.deepEqual(problems, [
       'survivalDiseaseStageHours [1] is not 2 hours above 0, the default is used',
       'survivalDiseases.rockjoint.cure "x" is not usable, ignored',
@@ -1104,6 +1104,7 @@ async function main() {
       'survivalContagionRange 0 is out of range, the default is used',
       'survivalMaxDiseases 0 is out of range, the default is used',
       'survivalContagionChance 2 is out of range, the default is used',
+      'survivalContagionCooldownMinutes -1 is out of range, the default is used',
     ])
   })
 
@@ -1309,7 +1310,7 @@ async function main() {
     assert.deepEqual(u.logs.filter((l) => l.includes('ff_contagious')), [`[survival] ff_contagious could not be written, so no client sees who is contagious (makeProperty in gamemode.js?): Error: Property 'ff_contagious' doesn't exist`])
   })
 
-  await test('contagion: a survivalExposure report rolls once per disease the named source carries and the reporter lacks, named after its source, with no distance check; one report per 55 s; a spared roll logs nothing', async () => {
+  await test('contagion: a survivalExposure report rolls once per disease the named source carries and the reporter lacks, named after its source, with no distance check; one report per 55 s; each disease and pair rolls once per 30 min; a spared roll logs nothing', async () => {
     const t = setup({ survivalEnabled: true, survivalContagionChance: 1 })
     const [a, a2, a3, b] = [actor(), actor(), actor(), actor()]
     t.join(a, NORD_RACE, coldRecord(55, { diseases: [held('collywobbles', 1, clock.now + HOUR), held('witbane', 1, clock.now + HOUR)] }))
@@ -1341,16 +1342,47 @@ async function main() {
     assert.deepEqual(t.rec(b).diseases.map((d) => d.id), ['collywobbles', 'chills', 'ataxia'])
     assert.equal(t.logs.length, 3)
     const s = setup({ survivalEnabled: true })
-    const [p, q] = [actor(), actor()]
+    const [p, p2, q] = [actor(), actor(), actor()]
     s.join(p, NORD_RACE, coldRecord(55, { diseases: [held('collywobbles', 1, clock.now + HOUR)] }))
+    s.join(p2, NORD_RACE, coldRecord(55, { diseases: [held('collywobbles', 1, clock.now + HOUR)] }))
     const userQ = s.join(q, NORD_RACE)
+    s.mp.set(p, 'appearance', { raceId: NORD_RACE, name: 'Aela' })
     later()
     await s.update()
     s.logs.length = 0
     let rolls = 0
     Math.random = () => { rolls++; return 0.5 }
-    s.sys.customPacket(userQ, 'survivalExposure', { sources: [{ actorId: p, diseases: ['collywobbles'] }] }, s.ctx)
+    const reportQ = (sources) => s.sys.customPacket(userQ, 'survivalExposure', { sources }, s.ctx)
+    const met = clock.now
+    reportQ([{ actorId: p, diseases: ['collywobbles'] }])
     assert.deepEqual([rolls, s.logs, s.rec(q).diseases], [1, [], []], 'one 5% roll, spared and not logged')
+    clock.now = met + 55000
+    reportQ([{ actorId: p, diseases: ['collywobbles', 'witbane'] }])
+    assert.deepEqual([rolls, s.logs], [1, []], 'the pair rolled collywobbles in the last 30 min, so nothing rolls and a cooling report is no refuted one')
+    clock.now = met + 110000
+    reportQ([{ actorId: p, diseases: ['collywobbles'] }, { actorId: p2, diseases: ['collywobbles'] }])
+    assert.equal(rolls, 2, 'another carrier is another pair and rolls')
+    clock.now = met + 30 * 60000 - 1
+    reportQ([{ actorId: p, diseases: ['collywobbles'] }, { actorId: p2, diseases: ['collywobbles'] }])
+    assert.equal(rolls, 2, 'both pairs still inside 30 min')
+    clock.now = met + 30 * 60000 + 60000
+    Math.random = () => { rolls++; return 0.01 }
+    reportQ([{ actorId: p2, diseases: ['collywobbles'] }, { actorId: p, diseases: ['collywobbles'] }])
+    assert.deepEqual([rolls, s.rec(q).diseases.map((d) => d.from)], [4, [`contagion ${x(p)}`]], 'the first pair rolls again after 30 min, the second still waits')
+    assert.ok(s.logs[0].startsWith(`[survival] contagion ${x(q)} from ${x(p)} [profile 1] "Aela": collywobbles 5% x (1 - disease resist 0%) = 5%, roll 0.010, caught collywobbles`), s.logs[0])
+    const every = setup({ survivalEnabled: true, survivalContagionCooldownMinutes: 0 })
+    const [e1, e2] = [actor(), actor()]
+    every.join(e1, NORD_RACE, coldRecord(55, { diseases: [held('collywobbles', 1, clock.now + HOUR)] }))
+    const userE = every.join(e2, NORD_RACE)
+    later()
+    await every.update()
+    rolls = 0
+    Math.random = () => { rolls++; return 0.5 }
+    const back = clock.now
+    every.sys.customPacket(userE, 'survivalExposure', { sources: [{ actorId: e1, diseases: ['collywobbles'] }] }, every.ctx)
+    clock.now = back + 55000
+    every.sys.customPacket(userE, 'survivalExposure', { sources: [{ actorId: e1, diseases: ['collywobbles'] }] }, every.ctx)
+    assert.equal(rolls, 2, 'cooldown 0 rolls at every report')
     const off = setup({ survivalEnabled: true, survivalContagionChance: 0 })
     const [g, h] = [actor(), actor()]
     off.join(g, NORD_RACE, coldRecord(55, { diseases: [held('collywobbles', 1, clock.now + HOUR)] }))
@@ -1472,7 +1504,7 @@ async function main() {
     assert.equal(u.sys.adminRequest(u.ctx, b, 'p', { op: 'giveDisease', disease: 'ataxia' }).text, 'Ataxia is not in the plugin yet')
     const full = t.sys.diseaseLine()
     assert.ok(full.startsWith('[survival] diseases: 27 of 27 in the plugin (19 contagious); stage 2 after 84 h and stage 3 after 84 h more, offline included, stage 3 stays until cured; at most 4 at once; carriers by race editor id, longest fragment first, never werewolf/werebear: skeever 10% ataxia/bloodLung/feebleLimb/redRage/shakes/witlessPox, wolf 10% rockjoint/helljoint, '), full)
-    assert.ok(full.endsWith('contagion by client report: each client checks the players it has loaded every 60 s (the first at a random second) and reports those within 150 units (the chat whisper range) whose ff_contagious names a disease it lacks; the server takes one report per player per 55 s and rolls 5% x (1 - disease resist) once per disease it confirms (contagious, carried by the source, not by the reporter), players only, never in creation, dead, in an afterlife realm or with god/ghost/invis, and no roll at 4 diseases; server factors Brown Rot fatigue refill x0.75/0.5/0.25, Gutworm food x0.75/0.5/0.25, Chills cold gain x1.25/1.5/1.75, Collywobbles hunger drain x1.25/1.5/1.75'), full)
+    assert.ok(full.endsWith('contagion by client report: each client checks the players it has loaded every 60 s (the first at a random second) and reports those within 150 units (the chat whisper range) whose ff_contagious names a disease it lacks; the server takes one report per player per 55 s and rolls 5% x (1 - disease resist) once per disease it confirms (contagious, carried by the source, not by the reporter) and at most once per disease and pair every 30 min, players only, never in creation, dead, in an afterlife realm or with god/ghost/invis, and no roll at 4 diseases; server factors Brown Rot fatigue refill x0.75/0.5/0.25, Gutworm food x0.75/0.5/0.25, Chills cold gain x1.25/1.5/1.75, Collywobbles hunger drain x1.25/1.5/1.75'), full)
   })
 
   Date.now = realNow

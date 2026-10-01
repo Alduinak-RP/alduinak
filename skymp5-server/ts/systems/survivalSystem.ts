@@ -59,9 +59,10 @@ type Mp = any;
 // looks at the players it has loaded every survivalContagionCheckSeconds and reports those within survivalContagionRange (the chat whisper
 // range) carrying a disease it lacks, and the server checks the report (one per player per exposureGapMs; the disease contagious, the source
 // carries it, the reporter does not; nobody in creation, dead, in an afterlife realm or with the god, ghost or invis admin mode on either
-// side; below survivalMaxDiseases) and rolls survivalContagionChance x (1 - disease resist / 100) once per disease. A client that skips its
-// reports only spares itself: a report can never give anyone but the reporter a disease. Chills, Collywobbles, Gutworm and Brown Rot also
-// scale cold gain, the hunger drain, food and the fatigue refill (the needs modifier source).
+// side; below survivalMaxDiseases) and rolls survivalContagionChance x (1 - disease resist / 100) once per disease, at most once per disease
+// and pair every survivalContagionCooldownMinutes (kept in memory on the reporter's session). A client that skips its reports only spares
+// itself: a report can never give anyone but the reporter a disease. Chills, Collywobbles, Gutworm and Brown Rot also scale cold gain, the
+// hunger drain, food and the fatigue refill (the needs modifier source).
 //
 // Wire protocol - CustomPacket JSON:
 //   Client -> Server: { customPacketType: "survivalRequest" }  state again; it, needsRequest, weatherRequest and gameTimeRequest schedule the login re-send
@@ -132,6 +133,7 @@ type Mp = any;
 //   survivalContagionChance       chance per reported disease before disease resistance, default 0.05; 0 turns contagion off
 //   survivalContagionCheckSeconds seconds between one client's checks, default 60; the server accepts a report every exposureGapMs (55 s)
 //   survivalContagionRange        units, default chatRanges.whisper (150 when unset), the chat whisper range
+//   survivalContagionCooldownMinutes minutes before the same disease and pair roll again, default 30
 
 const SURVIVAL_PROP = "private.survival";
 const HEALTH_SCALE_PROP = "private.healthScale";
@@ -333,6 +335,8 @@ interface Online {
   // Epoch ms of the last accepted exposure report and of the last unusable report line
   exposureAt: number;
   exposureLogAt: number;
+  // "source:disease" -> epoch ms of its last contagion roll
+  exposureRolls: Map<string, number>;
   // The ff_contagious ids last written, joined; null until compared with the stored value
   contagious: string | null;
 }
@@ -462,7 +466,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       `stage 2 after ${d.stageHours[0]} h and stage 3 after ${d.stageHours[1]} h more${own.length ? ` (${own.join(", ")})` : ""}, offline included, stage 3 stays until cured; at most ${d.max} at once; ` +
       `carriers by race editor id, longest fragment first${d.exclude.length ? `, never ${d.exclude.join("/")}` : ""}: ${carriers.join(", ") || "none"}, one roll per weapon or unarmed hit x (1 - disease resist), none from a player, a pet, a blocked hit or a spell; ` +
       `contagion ${c.chance > 0 ? `by client report: each client checks the players it has loaded every ${c.checkSeconds} s (the first at a random second) and reports those within ${c.range} units (${c.rangeFrom}) whose ${CONTAGIOUS_PROP} names a disease it lacks; ` +
-        `the server takes one report per player per ${exposureGapMs(c.checkSeconds) / 1000} s and rolls ${pct(c.chance)} x (1 - disease resist) once per disease it confirms (contagious, carried by the source, not by the reporter), players only, never in creation, dead, in an afterlife realm or with ${UNSEEN_MODES.join("/")}, and no roll at ${d.max} diseases` : "off"}; ` +
+        `the server takes one report per player per ${exposureGapMs(c.checkSeconds) / 1000} s and rolls ${pct(c.chance)} x (1 - disease resist) once per disease it confirms (contagious, carried by the source, not by the reporter)` +
+        `${c.cooldownMinutes > 0 ? ` and at most once per disease and pair every ${c.cooldownMinutes} min` : " at every report"}, players only, never in creation, dead, in an afterlife realm or with ${UNSEEN_MODES.join("/")}, and no roll at ${d.max} diseases` : "off"}; ` +
       `server factors ${factorLine(d.diseases) || "none"}`;
   }
 
@@ -677,7 +682,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       actorId, userId, rec, bodyDue: !isCreationPending(mp, actorId), revoked: [], coldAt: 0, heatAt: 0, heatPos: null, nearHeat: false, heatFrom: -1,
       swimming: false, flameCloak: false, inFreezingWater: false, reportAt: 0, fightAt: 0, area: "", areaWhy: "", freezingArea: false, level: 0, levelParts: [],
       temperature: 0, warmth: 0, gear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false,
-      exposureAt: 0, exposureLogAt: 0, contagious: null,
+      exposureAt: 0, exposureLogAt: 0, exposureRolls: new Map(), contagious: null,
     };
     if (stored && this.enabled && this.cold.enabled && rec.cold > this.cold.start) {
       const hours = Math.max(0, now - stored.at) / HOUR_MS;
@@ -1161,7 +1166,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     }
   }
 
-  // A client's survivalExposure, checked against the records but never the distance (a false report only hurts the reporter), one roll per disease
+  // A client's survivalExposure, checked against the records but never the distance; one roll per disease and pair per cooldown
   private onExposure(mp: Mp, userId: number, content: Content): void {
     const entry = Array.from(this.online.values()).find((e) => e.userId === userId);
     if (!entry || !this.contagionOn()) return;
@@ -1170,8 +1175,10 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (now - entry.exposureAt < exposureGapMs(c.checkSeconds)) return;
     entry.exposureAt = now;
     if (entry.rec.diseases.length >= this.dis.max || !this.canSpreadOrCatch(mp, entry)) return;
+    for (const [key, at] of entry.exposureRolls) if (now - at >= c.cooldownMinutes * 60000) entry.exposureRolls.delete(key);
     const picked = new Map<string, number>();
     const refused: string[] = [];
+    let cooling = false;
     const sources = Array.isArray(content["sources"]) ? (content["sources"] as unknown[]).slice(0, EXPOSURE_MAX_SOURCES) : [];
     for (const raw of sources) {
       const s = isObject(raw) ? raw : {};
@@ -1184,15 +1191,17 @@ export class SurvivalSystem implements System, NeedsModifierSource {
         const why = !def ? "unknown" : away || (!def.contagious || !this.hasDisease(id) ? "not contagious" : !src!.rec.diseases.some((d) => d.id === id) ? "not carried"
           : entry.rec.diseases.some((d) => d.id === id) ? "held already" : "");
         if (why) refused.push(`${hex(sourceId)} ${def ? id : "?"} ${why}`);
+        else if (entry.exposureRolls.has(`${sourceId}:${id}`)) cooling = true;
         else picked.set(id, sourceId);
       }
     }
-    if (!picked.size && refused.length && now - entry.exposureLogAt >= EXPOSURE_LOG_MS) {
+    if (!picked.size && !cooling && refused.length && now - entry.exposureLogAt >= EXPOSURE_LOG_MS) {
       entry.exposureLogAt = now;
       this.log(`[survival] contagion report from ${hex(entry.actorId)} named nothing catchable: ${refused.slice(0, 4).join(", ")}${refused.length > 4 ? ", ..." : ""}`);
     }
     for (const [id, sourceId] of picked) {
       if (entry.rec.diseases.length >= this.dis.max) break;
+      entry.exposureRolls.set(`${sourceId}:${id}`, now);
       const what = `contagion ${hex(entry.actorId)} from ${hex(sourceId)} ${describeActor(mp, sourceId)}: ${id}`;
       this.rollDisease(mp, entry, [id], c.chance, what, `contagion ${hex(sourceId)}`, " from someone near you", false);
     }
