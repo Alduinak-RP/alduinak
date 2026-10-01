@@ -188,7 +188,7 @@ public:
 
   BaseActorValues GetBaseValues();
   BaseActorValues GetMaximumValues();
-  // private.healthScale, 1 unless the gamemode set a number above 0
+  // private.healthScale, 1 unless the gamemode set a number
   float GetHealthScale() const;
   // Points a full value stands for, health scaled by private.healthScale
   float GetScaledMaximum(espm::ActorValue av);

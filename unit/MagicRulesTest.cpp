@@ -97,7 +97,7 @@ TEST_CASE("magic.resistance follows the racial entries unless it is set",
   REQUIRE(!MagicRules::NativeMagicResistance(false, true, false));
 }
 
-TEST_CASE("private.healthScale reads a positive number and nothing else",
+TEST_CASE("private.healthScale reads a number and nothing else",
           "[HealthScale]")
 {
   REQUIRE(HealthScale::FromDump("null") == 1.f);
@@ -108,9 +108,6 @@ TEST_CASE("private.healthScale reads a positive number and nothing else",
   REQUIRE_THAT(HealthScale::FromDump("0.2"), WithinAbs(0.2, 0.00001));
   REQUIRE_THAT(HealthScale::FromDump("1.5"), WithinAbs(1.5, 0.00001));
   REQUIRE_THAT(HealthScale::FromDump("6e-1"), WithinAbs(0.6, 0.00001));
-  REQUIRE(HealthScale::FromDump("0") == 1.f);
-  REQUIRE(HealthScale::FromDump("0.0") == 1.f);
-  REQUIRE(HealthScale::FromDump("-0.5") == 1.f);
   REQUIRE(HealthScale::FromDump("true") == 1.f);
   REQUIRE(HealthScale::FromDump("\"0.5\"") == 1.f);
   REQUIRE(HealthScale::FromDump("[0.5]") == 1.f);
@@ -123,6 +120,16 @@ TEST_CASE("private.healthScale reads a positive number and nothing else",
   // Kept inside its bounds
   REQUIRE(HealthScale::FromDump("0.00001") == HealthScale::kMin);
   REQUIRE(HealthScale::FromDump("250") == HealthScale::kMax);
+  REQUIRE(HealthScale::FromDump("1e-50") == HealthScale::kMin);
+  REQUIRE(HealthScale::FromDump("1e39") == HealthScale::kMax);
+  // A cold penalty of 100% writes 0: the smallest pool, not the full one
+  REQUIRE(HealthScale::FromDump("0") == HealthScale::kMin);
+  REQUIRE(HealthScale::FromDump("0.0") == HealthScale::kMin);
+  REQUIRE(HealthScale::FromDump("-0.0") == HealthScale::kMin);
+  REQUIRE(HealthScale::FromDump("-2.220446049250313e-16") == HealthScale::kMin);
+  REQUIRE(HealthScale::FromDump("-0.5") == HealthScale::kMin);
+  REQUIRE_THAT(20.f / HealthScale::Maximum(100.f, HealthScale::FromDump("0")),
+               WithinAbs(20.0, 0.001));
 }
 
 TEST_CASE("Health points count against the scaled maximum", "[HealthScale]")
