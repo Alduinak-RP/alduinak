@@ -39,6 +39,7 @@ type Mp = any;
 const DEFAULT_MAX_TRADE_DISTANCE = 1024;      // game units; both must stay within this range
 const DEFAULT_INVITE_TTL_MS = 60 * 1000;      // pending invites auto-cancel after this
 const DEFAULT_INVITE_COOLDOWN_MS = 30 * 1000; // min gap between invites per initiator->target
+const CONDITION_NOTICE = 'An offered item is no longer in the condition shown. Check the offer and lock again.';
 
 // Which server entries an offer draws on; plain[i] marks a line the server only holds without its extras
 interface Resolution {
@@ -63,6 +64,8 @@ interface Session {
   offerSeqB: number;
   shownA: string; // the worn copies a's offer drew when a locked (wornSig)
   shownB: string;
+  seenA: string; // the worn copies of b's offer as last sent to a (wornSig)
+  seenB: string;
 }
 
 // ── Pure inventory helpers (operate on the JSON shape of the inventory binding; identity lives in inventoryExtras.ts) ─
@@ -261,6 +264,7 @@ export class TradeSystem implements System {
     const myOffer = me ? s.offerA : s.offerB;
     const mine = resolveOffer(readInventory(mp, this.actorOf(mp, userId)), myOffer);
     const theirs = resolveOffer(readInventory(mp, this.actorOf(mp, partner)), me ? s.offerB : s.offerA);
+    if (me) { s.seenA = wornSig(theirs.moved); } else { s.seenB = wornSig(theirs.moved); }
     this.send(mp, userId, {
       customPacketType: 'tradeState',
       partnerName: this.nameShownTo(mp, userId, partner),
@@ -456,6 +460,7 @@ export class TradeSystem implements System {
       inviteSeq: 0,
       offerSeqA: 0, offerSeqB: 0,
       shownA: '', shownB: '',
+      seenA: '', seenB: '',
     };
     if (!this.withinRange(mp, s)) {
       this.notice(mp, userId, 'You are too far away to trade.');
@@ -529,17 +534,34 @@ export class TradeSystem implements System {
     }
     // Guard the lock with a fresh affordability check.
     this.settle(mp, userId);
+    const me = s.a === userId;
+    const partner = me ? s.b : s.a;
     const inv = readInventory(mp, this.actorOf(mp, userId));
-    const myOffer = s.a === userId ? s.offerA : s.offerB;
-    const res = resolveOffer(inv, myOffer);
+    const res = resolveOffer(inv, me ? s.offerA : s.offerB);
     if (!res.ok) {
       this.notice(mp, userId, 'You no longer have all of those items.');
-      if (s.a === userId) { s.offerA = []; } else { s.offerB = []; }
+      if (me) { s.offerA = []; } else { s.offerB = []; }
       this.resetCommitments(s);
       this.broadcastState(mp, s);
       return;
     }
-    if (s.a === userId) { s.lockedA = true; s.shownA = wornSig(res.moved); } else { s.lockedB = true; s.shownB = wornSig(res.moved); }
+    const partnerLocked = me ? s.lockedB : s.lockedA;
+    // A lock agrees to the worn copies last sent; the partner's pack may have changed since without any offer packet
+    const theirs = resolveOffer(readInventory(mp, this.actorOf(mp, partner)), me ? s.offerB : s.offerA);
+    if (wornSig(theirs.moved) !== (me ? s.seenA : s.seenB)) {
+      this.resetCommitments(s);
+      this.notice(mp, userId, CONDITION_NOTICE);
+      if (partnerLocked) this.notice(mp, partner, CONDITION_NOTICE);
+      this.broadcastState(mp, s);
+      return;
+    }
+    const shown = wornSig(res.moved);
+    // The locked partner agreed to other copies of this offer than the ones it draws now
+    if (partnerLocked && shown !== (me ? s.seenB : s.seenA)) {
+      if (me) { s.lockedB = false; s.acceptedB = false; } else { s.lockedA = false; s.acceptedA = false; }
+      this.notice(mp, partner, CONDITION_NOTICE);
+    }
+    if (me) { s.lockedA = true; s.shownA = shown; } else { s.lockedB = true; s.shownB = shown; }
     this.broadcastState(mp, s);
   }
 
@@ -619,7 +641,7 @@ export class TradeSystem implements System {
     if (wornSig(resA.moved) !== s.shownA || wornSig(resB.moved) !== s.shownB) {
       this.resetCommitments(s);
       for (const userId of [s.a, s.b]) {
-        this.notice(mp, userId, 'An offered item is no longer in the condition shown. Check the offer and lock again.');
+        this.notice(mp, userId, CONDITION_NOTICE);
       }
       this.broadcastState(mp, s);
       return;

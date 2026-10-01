@@ -71,6 +71,11 @@ and everything else works. A call that throws is logged once (`[durability] sett
   than the one shown at the lock, the swap does not happen. Both locks are released, both players read
   "An offered item is no longer in the condition shown. Check the offer and lock again." and the window shows
   the copy that would move. Offers of pristine items never take this path.
+- A lock agrees to the worn copies the window last showed. A pack can change without any offer packet (the
+  offered copy put into a container), so a lock pressed while the partner's offer would move other worn copies
+  than the ones last sent to that player is refused: any lock is released, the window is updated and the same
+  notice is shown. A lock after which the locker's own offer moves other worn copies than the ones the already
+  locked partner was last sent releases the partner's lock, with the notice to the partner.
 - `[trade]` lines and `trading.log` list the condition of each moved copy (`{condition=0.42}`).
 
 ## Crafted extras (enchanting, tempering and poison done in the vanilla menus)

@@ -233,6 +233,68 @@ test('a locked offer that would now move another copy or a more worn one is show
   assert.deepEqual(t.inv(A), [{ baseId: GOLD, count: 80 }])
 })
 
+test('a lock agrees to the worn copies last shown: a good copy put away before a lock is never swapped for a worse one unseen', async () => {
+  const NOTICE = 'An offered item is no longer in the condition shown. Check the offer and lock again.'
+  const open = async () => {
+    const t = await tradeWorld({ settings: DURABILITY, invA: [sword(0.9), sword(0.1)], invB: [{ baseId: GOLD, count: 100 }] })
+    t.send(1, 'tradeSetOffer', { items: [{ baseId: SWORD, count: 1, condition: 0.9 }], seq: 1 })
+    t.send(2, 'tradeSetOffer', { items: [{ baseId: GOLD, count: 80 }], seq: 1 })
+    assert.deepEqual(t.state(2).theirOffer, [sword(0.9)])
+    return t
+  }
+  const stash = (t) => { t.props.get(A).inventory.entries = [sword(0.1)] }
+  const notices = (t, user) => t.got(user, 'tradeNotice').map((p) => p.text).filter((text) => !text.startsWith('Trade request sent'))
+
+  // The buyer locks on the 90% sword, then the seller puts it away and locks
+  let t = await open()
+  t.send(2, 'tradeLock')
+  stash(t)
+  t.send(1, 'tradeLock')
+  assert.deepEqual(notices(t, 2), [NOTICE], 'the buyer is told')
+  assert.deepEqual(notices(t, 1), [])
+  assert.equal(t.state(2).myLocked, false, 'the buyer\'s lock is released')
+  assert.equal(t.state(2).theirLocked, true)
+  assert.deepEqual(t.state(2).theirOffer, [sword(0.1)])
+  t.send(1, 'tradeAccept'); t.send(2, 'tradeAccept')
+  assert.equal(t.got(2, 'tradeCompleted').length, 0)
+  assert.deepEqual(t.inv(B), [{ baseId: GOLD, count: 100 }])
+  // The buyer agrees to the 10% sword after seeing it
+  t.send(2, 'tradeLock'); t.send(1, 'tradeAccept'); t.send(2, 'tradeAccept')
+  assert.equal(t.got(2, 'tradeCompleted').length, 1)
+  assert.deepEqual(t.inv(B), [{ baseId: GOLD, count: 20 }, sword(0.1)])
+
+  // The seller puts it away first and the buyer locks on the window that still shows 90%
+  t = await open()
+  stash(t)
+  t.send(2, 'tradeLock')
+  assert.deepEqual(notices(t, 2), [NOTICE])
+  assert.deepEqual(notices(t, 1), [], 'the seller held no lock')
+  assert.equal(t.state(2).myLocked, false, 'the lock is refused')
+  assert.deepEqual(t.state(2).theirOffer, [sword(0.1)], 'and the window shows the copy that would arrive')
+  t.send(1, 'tradeLock'); t.send(1, 'tradeAccept'); t.send(2, 'tradeAccept')
+  assert.equal(t.got(2, 'tradeCompleted').length, 0, 'no swap without the buyer\'s lock')
+
+  // The seller locked on the 90% sword before putting it away: that lock goes too
+  t = await open()
+  t.send(1, 'tradeLock')
+  stash(t)
+  t.send(2, 'tradeLock')
+  assert.deepEqual(notices(t, 2), [NOTICE])
+  assert.deepEqual(notices(t, 1), [NOTICE])
+  assert.equal(t.state(1).myLocked, false)
+  assert.equal(t.state(2).myLocked, false)
+
+  // Pristine copies carry no signature, so a pack that changes under a lock is no reason to refuse it
+  t = await tradeWorld({ settings: DURABILITY, invA: [{ baseId: SWORD, count: 2 }], invB: [{ baseId: GOLD, count: 100 }] })
+  t.send(1, 'tradeSetOffer', { items: [{ baseId: SWORD, count: 1 }], seq: 1 })
+  t.send(2, 'tradeSetOffer', { items: [{ baseId: GOLD, count: 80 }], seq: 1 })
+  t.send(2, 'tradeLock')
+  t.props.get(A).inventory.entries = [{ baseId: SWORD, count: 1 }]
+  t.send(1, 'tradeLock'); t.send(1, 'tradeAccept'); t.send(2, 'tradeAccept')
+  assert.deepEqual(notices(t, 1).concat(notices(t, 2)), [])
+  assert.equal(t.got(2, 'tradeCompleted').length, 1)
+})
+
 test('with durability off the native is never asked and a trade runs as before', async () => {
   for (const settings of [OFF, { alduinakDamageFormulaSettings: { enabled: true, durability: { enabled: false } } }]) {
     const t = await tradeWorld({ settings, invA: [{ baseId: SWORD, count: 2, health: 1.2 }, { baseId: SWORD, count: 1 }], invB: [{ baseId: GOLD, count: 100 }] })
