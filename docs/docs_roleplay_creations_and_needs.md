@@ -488,8 +488,9 @@ spend shows nothing on the HUD, and the stage notice from stage 2 and the "too t
 `skymp5-server/ts/systems/survivalSystem.ts`, with its pure rules in `survivalClimate.ts` (cold) and
 `survivalDiseases.ts` (diseases) and the generated heat list `heatSources.ts`; registered after HuntingSystem and
 NeedsSystem. The client half is `SurvivalService` (`skymp5-client/src/services/services/survivalService.ts`). It covers
-the owner's survival list of r27: cold and warmth, clothing warmth, the race cold rules, raw meat, freezing water, no
-health regeneration with a 1 health point respawn, carry weight 150, creature diseases, Oblivion diseases, contagion, the three
+the owner's survival list of r27: cold and warmth, clothing warmth, the race cold rules, raw meat, freezing water, slow
+health regeneration (a full bar in about 30 minutes) with a 1 health point respawn, carry weight 150, creature
+diseases, Oblivion diseases, contagion, the three
 afflictions and shrines that no longer cure.
 
 No Survival Mode script runs on a client (SkyrimPlatform drops every Papyrus event but `OnUpdate`, and the plugin keeps
@@ -508,7 +509,7 @@ diseases, the cold stage ability): `[survival] <id> body rules off: respawn 100%
 older than r27 does not undo them, so a rollback first runs one session with the switch off.
 
 **Plugin r27a** (`AlduinakAdditions.esp`, proficiency patcher `survival` section) carries the records the server grants:
-`AldSurvival_AbNoHealthRegen` (0x041340), the 81 disease stage spells `AldDisease_<Id>1..3` (0x041341 to 0x041391), the
+`AldSurvival_AbNoHealthRegen` (0x041340; since plugin r29 it slows health regeneration, up to r28 it stopped it), the 81 disease stage spells `AldDisease_<Id>1..3` (0x041341 to 0x041391), the
 global `AldSurvival_FreezingArea` (0x041392) and `AldSurvival_FreezingWaterDamage` (0x041393); it strips the screen
 effects of `Survival_ColdStage0..5` (the Freezing and Numb frost shader stays), removes Cure Disease from the HearthFires
 garlic bread and moves the Cure Disease potion to Alchemist Adept. With an older plugin those records are missing: the
@@ -520,9 +521,15 @@ At each login, about 5 s after the spawn (the login delay of the shared `StageAb
 re-send as the hunger stages), and at creation finish:
 - **Carry weight 150**: `Survival_abLowerCarryWeightSpell` (Survival esl 0x887, CarryWeight -150). Satchels, pouches and
   Fortify Carry Weight still add. A character over 150 is over-encumbered at the first login after it goes on.
-- **No health regeneration**: `AldSurvival_AbNoHealthRegen` (HealRateMult -100). Potions, food and Restoration still
-  heal, since the server applies them. The server-side guard against a client that still regenerates is the native
-  `healthRegenerationMultiplier` (NV1).
+- **Slow health regeneration** (the owner's "30 minutes instead of vanilla or disabled", 2026-10-01):
+  `AldSurvival_AbNoHealthRegen`, shown as "Slow Health Regeneration" since plugin r29. Its one effect,
+  `Survival_DamageHealRate` 92, takes HealRateMult from 100 to 8, and the player races regenerate 0.7% of the maximum
+  a second, so an empty bar is full in about 30 minutes (1786 s, 3.4% of the bar a minute). The editor id and the id
+  0x041340 are kept, since the server grants the ability by that name. Up to plugin r28 the effect was 100 and health
+  did not regenerate at all. Potions, food and Restoration still heal, since the server applies them. The server
+  half is the native `healthRegenerationMultiplier` (NV1), which should be `0.08` to match: the server then accepts
+  exactly that rate and crops a client that regenerates faster. `0` refuses all regeneration (a client with r29
+  would see its bar rise and be set back), and without the key the server accepts the full race rate.
 - **Respawn with 1 health point** (the owner's "should respawn with 1 hp", 2026-10-01): every respawn after a death
   wakes with `survivalRespawnHealthPoints` (1) health: the temple respawn, the arrival in Sovngarde or the Soul Cairn,
   a death inside a realm, and the respawn a looted or skinned PK body gives its victim. A staff revive out of a realm
@@ -544,13 +551,15 @@ re-send as the hunger stages), and at creation finish:
     share, which left the health just below 0 and downed the player at the temple. The client helper
     (`getMaximumActorValue`) now rounds only float noise beside a whole maximum, which also covers a staff revive of
     a character still under the penalty.
-  - Nothing gives health back afterwards: the login and spawn sync send the stored share, the needs and cold
-    penalties move the maximum and keep the share, and `AldSurvival_AbNoHealthRegen` stops the client's regeneration.
+  - Only the slow regeneration gives health back afterwards (1 to full in about 30 minutes with plugin r29 and
+    `healthRegenerationMultiplier` 0.08; nothing with plugin r28 or the key at 0): the login and spawn sync send the
+    stored share, the needs and cold penalties move the maximum and keep the share, and
+    `AldSurvival_AbNoHealthRegen` slows the client's regeneration to 8% of the race's rate.
     NV1 is in the native source (`ea63f69a`); until a native server build with it runs with
-    `healthRegenerationMultiplier` 0, the server still accepts a client's health reports up to the race's
-    heal rate (0.7% of the maximum a second, 1 to full in about 2.5 minutes), so health regenerates on a client
-    without the ability (a plugin older than r27a, `survivalNoHealthRegen: false`) or on a modified one. Potions,
-    food, Restoration spells and the staff heal modes heal as before.
+    `healthRegenerationMultiplier` 0.08, the server still accepts a client's health reports up to the race's
+    heal rate (0.7% of the maximum a second, 1 to full in about 2.5 minutes), so health regenerates that fast on a
+    client without the ability (a plugin older than r27a, `survivalNoHealthRegen: false`) or on a modified one.
+    Potions, food, Restoration spells and the staff heal modes heal as before.
   - `survivalRespawnHealthPoints: 0` uses the share `survivalRespawnHealth` (0.01) instead, as before S3;
     `survivalRespawnHealth: 1` turns the rule off whatever the points say.
 - **Freezing water**: `AldSurvival_FreezingWaterDamage`, granted once. Its two effects (5 health a second, resisted by
@@ -883,9 +892,11 @@ unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
 3. Races: a naked Nord shows warmth 25 and gains cold about 10% slower than a Redguard, a Khajiit or an Argonian 25%
    faster; an Orc's needs lines show `race x0.85`.
 4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.
-5. Body: carry weight 150, no regeneration, a death wakes with 1 health point: the bar is a sliver as the character
+5. Body: carry weight 150, slow regeneration, a death wakes with 1 health point: the bar is a sliver as the character
    stands up (not full for a few seconds first), the server logs `[survival] <id> respawned: health 1 of 100 sent to the
-   client` (`1 of 150` for an Orc), it is still 1 a minute later and after a relog, and a healing potion raises it.
+   client` (`1 of 150` for an Orc), it is about 4 of 100 a minute later (plugin r29 with `healthRegenerationMultiplier`
+   0.08: 3.4% of the bar a minute, full after about 30 minutes; still 1 with plugin r28 or the key at 0), a relog keeps
+   it, and a healing potion raises it.
    The same after a death that leads to Sovngarde, and after a staff revive from there.
 6. Raw meat as a Nord about half the time, never as a Khajiit; a Cure Disease or healing potion cures.
 7. Creature diseases: fight skeevers and wolves; the hit lines, Active Effects shows the disease, it survives a relog,

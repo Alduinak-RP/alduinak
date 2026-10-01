@@ -1291,27 +1291,29 @@ report to what the race's rates allow. `regenerationMultiplier` (a number of 0 o
 allowance for all three: `1` is the race record's rates, `0` accepts no natural regeneration.
 
 `healthRegenerationMultiplier` (a number of 0 or more, default: not set) takes its place for health only, so health
-can stand still while magicka and stamina regenerate. `0` crops every health increase a client reports back to the
+can regenerate slower than magicka and stamina, or stand still. `0` crops every health increase a client reports back to the
 server's value; potions, food and Restoration still heal, because the server applies them itself. It is the server
-half of `survivalNoHealthRegen`: the ability stops regeneration in the client engine, this key refuses a client that
-regenerates anyway. Not set, health follows `regenerationMultiplier` and nothing changes. A value that is not a
+half of `survivalNoHealthRegen`: since plugin r29 the ability slows regeneration in the client engine to 8% of the
+race's rate (a full bar in about 30 minutes), and this key should be `0.08` to match, so the server accepts that rate
+and crops a client that regenerates faster. `0` refuses all regeneration, which is what the ability did up to plugin
+r28. Not set, health follows `regenerationMultiplier` and nothing changes. A value that is not a
 number of 0 or more logs `Unexpected value of healthRegenerationMultiplier, should be a number of 0 or more, health
 keeps regenerationMultiplier`. Protected (plan task M0): Migrate settings never carries it to live, so set it there
 by hand together with `survivalEnabled`. It needs a native server build from `ea63f69a` (plan task NV1) or later; an
 older `scam_native.node` ignores the key. Read at boot.
 
-Boot line: `healthRegenerationMultiplier is 0: health reported by clients regenerates at that share of the base
+Boot line: `healthRegenerationMultiplier is 0.08: health reported by clients regenerates at that share of the base
 rate, magicka and stamina keep regenerationMultiplier 1`, or `healthRegenerationMultiplier is not set: health
 regenerates by regenerationMultiplier 1`. While the key is set, a client that keeps reporting more health than
 allowed is logged per player, once the next refused report arrives after a minute: `OnChangeValues - <id> sent N
 health increase(s) above the allowed regeneration within a minute, largest X of full health refused
-(healthRegenerationMultiplier 0)`.
+(healthRegenerationMultiplier 0.08)`.
 
 ```json5
 {
   // ...
   "regenerationMultiplier": 1,
-  "healthRegenerationMultiplier": 0
+  "healthRegenerationMultiplier": 0.08
   // ...
 }
 ```
@@ -1594,7 +1596,7 @@ Body rules, raw meat and the cure:
 | `survivalRespawnHealthPoints` | `1` | Health points a respawn after a death wakes with (temple, afterlife arrival, a looted PK body's respawn) and a staff revive out of a realm sets, measured against the race's base health (100, an Orc 150); the client is sent the value right after the native respawn; magicka and stamina keep theirs; `0` uses the share below instead |
 | `survivalRespawnHealth` | `0.01` | Share of base health used when the points are 0 or the race cannot be read, above 0 up to 1; `1` turns the respawn rule off, whatever the points say |
 | `survivalCarryWeightSpell` | `"Survival_abLowerCarryWeightSpell"` | Editor id or desc of the carry weight ability (Survival esl 0x887, carry weight 150); `""` turns it off |
-| `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a); potions, food and Restoration still heal. The server-side refusal of client regeneration is the native `healthRegenerationMultiplier` (top level, its own section above; 0 refuses every health increase a client reports), which needs a native server build from `ea63f69a` or later |
+| `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a). Since plugin r29 the ability, shown as "Slow Health Regeneration", slows health regeneration to a full bar in about 30 minutes (HealRateMult 8 of 100); up to r28 it stopped it. Potions, food and Restoration still heal. The server half is the native `healthRegenerationMultiplier` (top level, its own section above), which should be `0.08` to match (`0` refuses all regeneration, every health increase a client reports) and needs a native server build from `ea63f69a` or later |
 | `survivalFreezingWater` | `true` | Grants `AldSurvival_FreezingWaterDamage` once (it hurts only while swimming with the client's `AldSurvival_FreezingArea` at 1) and runs the freezing water cold; `false` turns both off |
 | `survivalFoodPoisoningChance` | `0.5` | Chance raw meat (`Survival_FoodRawMeat`, the hunting meats and `survivalRawMeatExtra`) gives food poisoning, times (1 - disease resistance); 0 to 1, `0` turns it off. A race with `rawMeatSafe` never gets it |
 | `survivalFoodPoisoningHours` | `24` | Real hours food poisoning lasts, offline included |
