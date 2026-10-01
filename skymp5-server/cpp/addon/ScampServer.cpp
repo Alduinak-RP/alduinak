@@ -14,6 +14,7 @@
 #include "PapyrusUtils.h"
 #include "ScampServerListener.h"
 #include "condition_functions/ConditionFunctionFactory.h"
+#include "formulas/AlduinakDamageFormula.h"
 #include "formulas/DamageMultConditionalFormula.h"
 #include "formulas/DamageMultFormula.h"
 #include "formulas/EffectModifiers.h"
@@ -548,7 +549,26 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       serverSettings["conditionsEvaluatorSettings"];
 
     std::unique_ptr<IDamageFormula> formula;
-    formula = std::make_unique<TES5DamageFormula>();
+    // alduinakDamageFormulaSettings.enabled: the rebalance formula prices weapon hits in place of TES5, inside the same wrappers
+    if (combatSettings && combatSettings->enabled &&
+        partOne->worldState.itemRowResolver) {
+      auto alduinakFormula = std::make_unique<AlduinakDamageFormula>(
+        partOne->worldState.itemRowResolver);
+      partOne->worldState.alduinakDamageFormula = alduinakFormula.get();
+      formula = std::move(alduinakFormula);
+      logger->info(
+        "alduinakDamageFormulaSettings: the rebalance formula prices weapon "
+        "hits (row damage against worn DT, crits rolled by the server, "
+        "player hits capped at {}, health snap at {}); spells stay TES5 with "
+        "the same cap",
+        combatSettings->playerHitCap, combatSettings->healthSnap);
+    } else {
+      formula = std::make_unique<TES5DamageFormula>();
+      if (combatSettings) {
+        logger->info("alduinakDamageFormulaSettings: enabled is false, "
+                     "weapon hits are priced by TES5 as without the block");
+      }
+    }
     formula = std::make_unique<DamageMultFormula>(std::move(formula),
                                                   damageMultFormulaSettings);
     formula = std::make_unique<SweetPieDamageFormula>(

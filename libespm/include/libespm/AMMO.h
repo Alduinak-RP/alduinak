@@ -15,6 +15,7 @@ public:
     float weight;
     // Raw (file-local) PROJ id
     uint32_t projectile = 0;
+    float damage = 0.f;
   };
 
   Data GetData(CompressedFieldsCache& compressedFieldsCache) const;

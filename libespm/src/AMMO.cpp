@@ -13,6 +13,9 @@ AMMO::Data AMMO::GetData(CompressedFieldsCache& cache) const
         // NOTE: 0x10 offset is for SSE version only
         res.weight = *reinterpret_cast<const float*>(data + 0x10);
         res.projectile = *reinterpret_cast<const uint32_t*>(data);
+        if (size >= 0x0c) {
+          res.damage = *reinterpret_cast<const float*>(data + 0x08);
+        }
       }
     },
     cache);

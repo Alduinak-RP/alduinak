@@ -31,6 +31,7 @@
 #endif
 
 class MpActor;
+class AlduinakDamageFormula;
 class ItemRowResolver;
 class FormCallbacks;
 class MpChangeForm;
@@ -272,6 +273,9 @@ public:
 
   // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
   std::shared_ptr<ItemRowResolver> itemRowResolver;
+
+  // The rebalance formula inside the damage formula chain, null unless alduinakDamageFormulaSettings.enabled is true
+  const AlduinakDamageFormula* alduinakDamageFormula = nullptr;
 
   bool disableVanillaScriptsInExterior = true;
 

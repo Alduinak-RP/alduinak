@@ -18,6 +18,7 @@
 #include "gamemode_events/EatItemEvent.h"
 #include "gamemode_events/UpdateAppearanceAttemptEvent.h"
 #include "gamemode_events/UpdateEquipmentAttemptEvent.h"
+#include "formulas/AlduinakDamageFormula.h"
 #include "formulas/EffectModifiers.h"
 #include "formulas/TES5DamageFormula.h"
 #include "script_objects/EspmGameObject.h"
@@ -1376,6 +1377,12 @@ float CalculateCurrentHealthPercentage(const MpActor& actor, float damage,
   const float damagePercentage = damage / baseHealth;
   const float currentHealthPercentage = healthPercentage - damagePercentage;
 
+  if (espmProvider && espmProvider->alduinakDamageFormula) {
+    return HitMath::SnapHealth(
+      espmProvider->alduinakDamageFormula->GetSettings(),
+      currentHealthPercentage);
+  }
+
   /// TODO add check for nan and inf!
   return currentHealthPercentage <= 0.f ? 0.f : currentHealthPercentage;
 }
@@ -2020,6 +2027,9 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   float damage =
     partOne.CalculateDamage(*aggressor, *targetActorPtr, spellCastData);
   damage = damage <= 0.f ? 0.f : damage;
+  if (const auto* rebalance = partOne.worldState.alduinakDamageFormula) {
+    damage = rebalance->CapHit(*targetActorPtr, damage);
+  }
 
   const bool wardBlocked = IsWardBlocking(*aggressor, *targetActorPtr);
   // A fully blocked attack still asks the gamemode, so god mode and companions see it
@@ -2252,9 +2262,13 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     hitData.isHitBlocked && targetActor.GetProfileId() >= 0;
   const bool npcAggressor = aggressor->GetProfileId() < 0;
   const bool npcBlocked = playerBlocked && npcAggressor;
-  const float blockMult =
-    npcBlocked ? GetBlockEffectMult(targetActor, *aggressor) : 1.f;
-  const float blockedShare = npcBlocked
+  const AlduinakDamageFormula* rebalance =
+    partOne.worldState.alduinakDamageFormula;
+  // The rebalance formula prices a block itself, TES5 gets the block modifier and share from here
+  const float blockMult = npcBlocked && !rebalance
+    ? GetBlockEffectMult(targetActor, *aggressor)
+    : 1.f;
+  const float blockedShare = npcBlocked && !rebalance
     ? BlockedPassShare(partOne.worldState.npcBlockedDamageShare, blockMult)
     : 0.f;
   // The formula zeroes a blocked hit, so a leaking one is priced unblocked
@@ -2263,7 +2277,15 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   float damage =
     partOne.CalculateDamage(*aggressor, targetActor, formulaHitData);
   damage = damage < 0.f ? 0.f : damage;
-  if (blockedShare > 0.f && blockMult != 1.f) {
+  if (rebalance && playerBlocked && damage > 0.f) {
+    const auto& priced = rebalance->GetLastHit();
+    spdlog::info("OnWeaponHit - {:x} blocked {} {:x} with {:x}, {} of {} "
+                 "damage lands (share {}, npcBlockedDamageShare {})",
+                 targetActor.GetFormId(), npcAggressor ? "npc" : "player",
+                 aggressor->GetFormId(), hitData.source, damage,
+                 priced.unblockedDamage, priced.blockedShare,
+                 partOne.worldState.npcBlockedDamageShare);
+  } else if (blockedShare > 0.f && blockMult != 1.f) {
     spdlog::info("OnWeaponHit - {:x} blocked npc {:x} with {:x}, {} of {} "
                  "damage lands (npcBlockedDamageShare {}, share {} at block "
                  "modifier x{})",
@@ -2296,6 +2318,17 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   if (poisoned) {
     poison = CalculatePoisonHit(*aggressor, targetActor, *poisoned->poisonId);
     damage += poison.health;
+  }
+  if (rebalance) {
+    // Wrappers and poison included, one hit never takes more than playerHitCap from a player
+    const float capped = rebalance->CapHit(targetActor, damage);
+    if (capped < damage) {
+      spdlog::info("OnWeaponHit - {:x} hit by {:x} with {:x}: {} damage "
+                   "capped at {}",
+                   targetActor.GetFormId(), aggressor->GetFormId(),
+                   hitData.source, damage, capped);
+      damage = capped;
+    }
   }
   // A fully blocked attack still asks the gamemode, so god mode and companions see it
   if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, &targetActor,
