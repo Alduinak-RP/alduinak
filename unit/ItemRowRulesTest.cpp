@@ -274,6 +274,34 @@ TEST_CASE("A malformed block is rejected with the key it trips on",
   block["npc"]["naturalDT"]["WolfRace"] = 1;
   REQUIRE_THAT(Rejected(block),
                Catch::Matchers::ContainsSubstring("npc.naturalDT"));
+
+  block = ValidBlock();
+  block["dummyRow"] = "";
+  REQUIRE_THAT(Rejected(block),
+               Catch::Matchers::ContainsSubstring("dummyRow should be a text "
+                                                  "that is not empty"));
+
+  block = ValidBlock();
+  block["durability"]["nameTag"]["brokenLabel"] = "";
+  REQUIRE_THAT(
+    Rejected(block),
+    Catch::Matchers::ContainsSubstring("durability.nameTag.brokenLabel"));
+
+  block = ValidBlock();
+  block["durability"]["repair"]["chatCommand"] = 0;
+  REQUIRE_THAT(
+    Rejected(block),
+    Catch::Matchers::ContainsSubstring("durability.repair.chatCommand"));
+}
+
+TEST_CASE("An optional text may be empty", "[ItemRows]")
+{
+  auto block = ValidBlock();
+  block["durability"]["repair"]["chatCommand"] = "";
+  block["sneak"]["calmRuleTargets"] = "";
+  auto s = Parsed(block);
+  REQUIRE(s->durability.repair.chatCommand.empty());
+  REQUIRE(s->sneakCalmRuleTargets.empty());
 }
 
 TEST_CASE("Warnings never reject the block", "[ItemRows]")

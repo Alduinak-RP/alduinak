@@ -160,6 +160,7 @@ struct AlduinakCombatSettings
       float fatigue = 0.f;
       bool anyBench = false;
       bool menuOnActivate = true;
+      // Empty for no chat command
       std::string chatCommand = "repair";
       float lowNoticeBelow = 0.25f;
       // Kind ("weapon", "bow", "crossbow", "armor"), then row, then form key
@@ -189,6 +190,7 @@ struct AlduinakCombatSettings
 
   float sneakMinSneakSeconds = 1.f;
   float sneakTargetCalmSeconds = 10.f;
+  // Kept as written, may be empty
   std::string sneakCalmRuleTargets = "players";
 
   float powerEventWindowSeconds = 1.6f;

@@ -183,7 +183,8 @@ public:
   }
 
   void String(const json& parent, const std::string& path, const char* key,
-              std::string& out, bool required = false)
+              std::string& out, bool required = false,
+              bool allowEmpty = false)
   {
     auto it = parent.find(key);
     if (it == parent.end()) {
@@ -192,8 +193,12 @@ public:
       }
       return;
     }
-    if (!it->is_string() || it->get_ref<const std::string&>().empty()) {
+    if (!it->is_string()) {
       Problem(path + key + " should be a text, found " + Shown(*it));
+      return;
+    }
+    if (!allowEmpty && it->get_ref<const std::string&>().empty()) {
+      Problem(path + key + " should be a text that is not empty");
       return;
     }
     out = it->get<std::string>();
@@ -657,7 +662,7 @@ void ReadDurability(Reader& r, const json& block, AlduinakCombatSettings& s)
   r.Number(*repair, p, "fatigue", out.repair.fatigue);
   r.Bool(*repair, p, "anyBench", out.repair.anyBench);
   r.Bool(*repair, p, "menuOnActivate", out.repair.menuOnActivate);
-  r.String(*repair, p, "chatCommand", out.repair.chatCommand);
+  r.String(*repair, p, "chatCommand", out.repair.chatCommand, false, true);
   r.Number(*repair, p, "lowNoticeBelow", out.repair.lowNoticeBelow, 0.f, 1.f);
   const json* materials = r.Object(*repair, p, "fallbackMaterial", false);
   if (!materials) {
@@ -819,7 +824,8 @@ std::shared_ptr<AlduinakCombatSettings> Parse(
   if (const json* sneak = r.Object(block, "", "sneak", false)) {
     r.Number(*sneak, "sneak.", "minSneakSeconds", s.sneakMinSneakSeconds);
     r.Number(*sneak, "sneak.", "targetCalmSeconds", s.sneakTargetCalmSeconds);
-    r.String(*sneak, "sneak.", "calmRuleTargets", s.sneakCalmRuleTargets);
+    r.String(*sneak, "sneak.", "calmRuleTargets", s.sneakCalmRuleTargets,
+             false, true);
   }
   if (const json* power = r.Object(block, "", "power", false)) {
     r.Number(*power, "power.", "eventWindowSeconds",
