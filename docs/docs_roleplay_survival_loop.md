@@ -197,12 +197,20 @@ behaviour-graph events — no ESP required.**
   that fails too it reports it and the server kneels them in the bleedout
   pose instead (`bleedOutStart`, left with `bleedOutStop`), on which no chop
   clip plays.
-  **Execute** needs the executioner on foot, upright, sheathed and without a
-  torch in hand ("Dismount first.", "Stand up first.", "Sheathe your weapon
-  first.", "Put away your torch first."), since the MT behaviour that holds
-  these states runs only with empty hands; no weapon is needed, the axe
-  comes with the stance, and a headsman takes one prisoner at a time ("You
-  cannot do that now."). The server moves the executioner onto marker 0
+  **Execute** needs a two-handed weapon equipped (the owner's 2026-10-01
+  rule): any weapon whose animation type is two-handed, a greatsword (5) or
+  a battleaxe or warhammer (6), worn in the hand by the server's equipment
+  record; one only carried in the pack, a one-handed weapon, a bow or empty
+  hands are refused ("You need a two-handed weapon equipped to execute them,
+  such as a battleaxe, greatsword or warhammer."). The weapon stays on the
+  back: the executioner must also be on foot, upright, sheathed and without
+  a torch in hand ("Dismount first.", "Stand up first.", "Sheathe your
+  weapon first.", "Put away your torch first."), since the MT behaviour that
+  holds these states runs only with the hands free, and the swing itself
+  uses the block's axe prop the stance draws. The menu offers Execute
+  without the weapon, and the request is refused, as with the finish off. A
+  headsman takes one prisoner at a time ("You cannot do that now."). The
+  server moves the executioner onto marker 0
   (the block's origin, facing the block's yaw), sends him
   `IdleExecutionerIdle` with the exit `IdleChairExitStart` (`executionState`,
   held like the prisoner) and writes it to his `lastAnimEvent`, and sends
@@ -216,11 +224,20 @@ behaviour-graph events — no ESP required.**
   bleedout kneel when he is downed meanwhile, his logout pose) frees his
   copy to play it at once, and that copy gets no exit at the end. An
   actor whose graph refuses the chop gets its stance or kneel again and the
-  chop 1.7 s later. The prisoner dies 19.61 s after the request, at the
-  clip's `KillActor` (the head came off at `Decapitate`), and goes to
-  Sovngarde, the same PK as a finish off (`pk.log`, `pvp.log`, the `execute`
-  alert); their body is freed from the cuffs and the respawn rebuilds the
-  head. The headsman is released 24 s after the request, once his swing is
+  chop 1.7 s later. The prisoner dies when the head comes off (the owner's
+  2026-10-01 rule), 14.84 s after the request, at the clip's `Decapitate`
+  11.84 s into the chop; before that rule the kill waited for the clip's
+  `KillActor` (19.61 s), so the prisoner lived 4.8 s with the head off.
+  When a participant's client reports that the prisoner's graph refused the
+  chop, which that client sends again 1.7 s later, the kill waits those
+  1.7 s too, once, so no screen sees the death before the head comes off; a
+  prisoner in the bleedout kneel, on whom no chop clip plays, keeps the
+  14.84 s. The prisoner goes to Sovngarde, the same PK as a finish off
+  (`pk.log`, `pvp.log`, the `execute` alert); their body is freed from the
+  cuffs and the respawn rebuilds the head. The headsman's release does not
+  move with the kill: his own clip, `AOExecutionerChop`, is back in the
+  stance only 19.5 s into the chop, the one state his exit plays from, so he
+  is released 24 s after the request as before, once his swing is
   back in the stance: `IdleChairExitStart`, written to his `lastAnimEvent`
   too, and sent to every copy still in the scene; his client and each such
   copy try a refused exit again every 0.5 s (a copy whose chop needed the
@@ -239,13 +256,16 @@ behaviour-graph events — no ESP required.**
   The server logs each step: `[execution] <executor> puts <prisoner> on
   block <block> at the prisoner's mark (<x>, <y>, <z>) yaw <deg>,
   IdleExecutioneeIdle`, `[execution] <executor> executes <prisoner> at block
-  <block>: headsman moved to his mark ..., IdleExecutionerIdle; chop <seq> on
-  every client in 3000 ms (prisoner in <pose>), the kill at +19610 ms,
+  <block> with the greatsword|battleaxe equipped: headsman moved to his mark
+  ..., IdleExecutionerIdle; chop <seq> on every client in 3000 ms (prisoner
+  in <pose>), the kill at +14840 ms as the head comes off,
   IdleChairExitStart at +24000 ms`, one `[execution] block step from
   <reporter>'s client on <prisoner> (chop <seq>): <event> on the
   <headsman|prisoner> <local id>: taken|refused|ignored, already chopping`
   line for each answer of a participant's own graph and for its chop of the
-  other participant's copy, the PK line and `left block`, then `[execution]
+  other participant's copy, `[execution] the kill of <prisoner> waits 1700
+  ms more, <ms> ms from now: <reporter>'s client plays the prisoner's
+  refused chop again` when the kill moves, the PK line and `left block`, then `[execution]
   <executor> steps off the block after the chop of <prisoner>
   (IdleChairExitStart|downed|restrained|dead|offline, no
   IdleChairExitStart)`. Each client writes `ExecutionChopService: chop

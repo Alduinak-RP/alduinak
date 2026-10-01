@@ -1,6 +1,6 @@
 'use strict'
 
-// executionSystem.ts at a headsman's block against a stub mp: the marks, the vanilla block events, the chop packet, the kill and release timers and the kneel fallback: node tools/test-block-execution.js
+// executionSystem.ts at a headsman's block against a stub mp: the marks, the two-handed weapon rule, the vanilla block events, the chop packet, the kill and release timers, the kill delay and the kneel fallback: node tools/test-block-execution.js
 
 const assert  = require('node:assert/strict')
 const fs      = require('fs')
@@ -29,21 +29,33 @@ const FAR = 0xff000d01
 const BLOCK = 0xaa7cc
 const TORCH = 0x1d4ec
 const SWORD = 0x12eb7
+const GREATSWORD = 0x1359d
+const WARHAMMER = 0x13981
 const BLOCK_POS = [15671.1, -81493.4, 8203.3]
 const BLOCK_YAW = 269.3
+const NEED_TWO_HANDED = 'You need a two-handed weapon equipped to execute them, such as a battleaxe, greatsword or warhammer.'
+const DNAM = { [SWORD]: 1, [GREATSWORD]: 5, [WARHAMMER]: 6 }
 
 const timers = []
-global.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length }
-const runTimer = (ms) => {
-  const i = timers.findIndex((t) => t.ms === ms)
+let timerSeq = 0
+const realClearTimeout = global.clearTimeout
+global.setTimeout = (fn, ms) => { timers.push({ id: ++timerSeq, fn, ms }); return timerSeq }
+global.clearTimeout = (id) => {
+  const i = timers.findIndex((t) => t.id === id)
+  if (i >= 0) timers.splice(i, 1)
+  else realClearTimeout(id)
+}
+const runTimer = (ms, slack = 0) => {
+  const i = timers.findIndex((t) => Math.abs(t.ms - ms) <= slack)
   assert.notEqual(i, -1, `a timer at ${ms} ms`)
   timers.splice(i, 1)[0].fn()
 }
+const wearing = (...entries) => ({ inv: { entries: entries.map(([baseId, hand]) => ({ baseId, count: 1, ...(hand ? { [hand]: true } : {}) })) } })
 
 function stubMp () {
   const actor = (user, extra = {}) => ({ type: 'MpActor', isDead: false, profileId: user, baseDesc: '7:Skyrim.esm', worldOrCellDesc: '3c:Skyrim.esm', cell: 0x3c, angle: [0, 0, 0], equipment: { inv: { entries: [] } }, actorNeighbors: [], ...extra })
   const forms = new Map([
-    [HEADSMAN, actor(1, { pos: [15600, -81450, 8203] })],
+    [HEADSMAN, actor(1, { pos: [15600, -81450, 8203], equipment: wearing([GREATSWORD, 'worn']) })],
     [PRISONER, actor(2, { pos: [15620, -81460, 8203], 'private.restrained': { boundHands: true }, actorNeighbors: [HEADSMAN, VIEWER] })],
     [VIEWER, actor(3, { pos: [15000, -81000, 8203] })],
     [FAR, actor(4, { pos: [0, 0, 0] })],
@@ -80,7 +92,7 @@ function stubMp () {
     getIdFromDesc: ids,
     getDescFromId: (id) => id.toString(16),
     lookupEspmRecordById: (id) => id === TORCH ? { record: { type: 'LIGH' } }
-      : id === SWORD ? { record: { type: 'WEAP', fields: [{ type: 'DNAM', data: Uint8Array.from([1]) }] } } : null,
+      : DNAM[id] ? { record: { type: 'WEAP', fields: [{ type: 'DNAM', data: Uint8Array.from([DNAM[id]]) }] } } : null,
     callPapyrusFunction: (_kind, _cls, fn, self) => {
       const target = ids(self.desc)
       if (fn === 'IsWeaponDrawn') return state.drawn.has(target)
@@ -150,6 +162,12 @@ let ExecutionSystem
     assert.equal(t.forms.get(PRISONER).lastAnimEvent, 'IdleExecutioneeIdle', 'mirrored for late viewers')
     assert.match(t.lines.join('\n'), /ff000a01 puts ff000b01 on block aa7cc at the prisoner's mark \(15583, -81426, 8203\) yaw 179, IdleExecutioneeIdle/)
 
+    for (const gear of [wearing(), wearing([GREATSWORD]), wearing([SWORD, 'worn']), wearing([SWORD, 'worn'], [SWORD, 'wornLeft'])]) {
+      t.forms.get(HEADSMAN).equipment = gear
+      t.request(HEADSMAN, 'executeRequest', PRISONER)
+      assert.equal(t.notices(HEADSMAN).at(-1), NEED_TWO_HANDED, 'empty hands, a carried two-hander or a one-handed weapon is refused')
+    }
+    t.forms.get(HEADSMAN).equipment = wearing([GREATSWORD, 'worn'])
     t.state.drawn.add(HEADSMAN)
     t.request(HEADSMAN, 'executeRequest', PRISONER)
     assert.equal(t.notices(HEADSMAN).at(-1), 'Sheathe your weapon first.')
@@ -158,10 +176,10 @@ let ExecutionSystem
     t.request(HEADSMAN, 'executeRequest', PRISONER)
     assert.equal(t.notices(HEADSMAN).at(-1), 'Stand up first.')
     t.state.sneaking.delete(HEADSMAN)
-    t.forms.get(HEADSMAN).equipment = { inv: { entries: [{ baseId: TORCH, count: 1, wornLeft: true }] } }
+    t.forms.get(HEADSMAN).equipment = wearing([GREATSWORD, 'worn'], [TORCH, 'wornLeft'])
     t.request(HEADSMAN, 'executeRequest', PRISONER)
     assert.equal(t.notices(HEADSMAN).at(-1), 'Put away your torch first.')
-    t.forms.get(HEADSMAN).equipment = { inv: { entries: [{ baseId: TORCH, count: 1 }] } }
+    t.forms.get(HEADSMAN).equipment = wearing([GREATSWORD, 'worn'], [TORCH])
     assert.equal(t.sent(HEADSMAN, 'executionChop').length, 0, 'no chop on a refusal')
 
     t.request(HEADSMAN, 'executeRequest', PRISONER)
@@ -178,8 +196,8 @@ let ExecutionSystem
     assert.equal(chop.ms, 24000)
     near(chop.headsmanSpot.pos, BLOCK_POS, 'headsman spot')
     near(chop.prisonerSpot.pos, prisonerMark, 'prisoner spot')
-    assert.deepEqual(timers.map((x) => x.ms).sort((a, b) => a - b), [19610, 24000])
-    assert.match(t.lines.join('\n'), /ff000a01 executes ff000b01 at block aa7cc: headsman moved to his mark \(15671, -81493, 8203\) yaw 269, IdleExecutionerIdle; chop \d+ on every client in 3000 ms \(prisoner in IdleExecutioneeIdle\), the kill at \+19610 ms, IdleChairExitStart at \+24000 ms/)
+    assert.deepEqual(timers.map((x) => x.ms).sort((a, b) => a - b), [14840, 24000], 'the kill as the head comes off, 11.84 s into the chop')
+    assert.match(t.lines.join('\n'), /ff000a01 executes ff000b01 at block aa7cc with the greatsword equipped: headsman moved to his mark \(15671, -81493, 8203\) yaw 269, IdleExecutionerIdle; chop \d+ on every client in 3000 ms \(prisoner in IdleExecutioneeIdle\), the kill at \+14840 ms as the head comes off, IdleChairExitStart at \+24000 ms/)
 
     t.request(HEADSMAN, 'executeRequest', PRISONER)
     assert.equal(t.notices(HEADSMAN).at(-1), 'You cannot do that now.', 'one chop at a time')
@@ -189,8 +207,9 @@ let ExecutionSystem
     assert.match(t.lines.join('\n'), /block step from ff000b01's client on ff000b01 \(chop \d+\): IdleExecutionerChop on the prisoner 14 \(this player\): taken/)
     t.request(VIEWER, 'executionStep', PRISONER, { step: 'spam' })
     assert.ok(!t.lines.join('\n').includes('spam'), 'a bystander is not logged')
+    assert.ok(!t.lines.join('\n').includes('waits'), 'a taken chop keeps the kill time')
 
-    runTimer(19610)
+    runTimer(14840)
     assert.deepEqual(t.calls.slice(0, 3), [['died', PRISONER, 'executed', HEADSMAN], ['body', PRISONER], ['freed', PRISONER]])
     assert.ok(t.calls.some((c) => c[0] === 'sovngarde' && c[1] === PRISONER))
     assert.equal(t.sent(PRISONER, 'executionState').at(-1).pose, '', 'off the block')
@@ -217,6 +236,28 @@ let ExecutionSystem
     assert.match(t.lines.join('\n'), /\(prisoner in bleedOutStart\)/)
     t.request(PRISONER, 'executionStep', PRISONER, { step: 'late', fallback: 'kneel' })
     assert.equal(t.sent(PRISONER, 'executionState').length, 2, 'no fallback once the axe falls')
+    t.request(PRISONER, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner 14 (this player): refused' })
+    assert.ok(timers.some((x) => x.ms === 14840) && !t.lines.join('\n').includes('waits'), 'no chop clip plays on the bleedout kneel, so nothing to wait for')
+  }
+
+  {
+    const t = await setup()
+    t.forms.get(HEADSMAN).equipment = wearing([WARHAMMER, 'worn'])
+    t.request(HEADSMAN, 'prepareExecutionRequest', PRISONER)
+    t.request(HEADSMAN, 'executeRequest', PRISONER)
+    assert.match(t.lines.join('\n'), /executes ff000b01 at block aa7cc with the battleaxe equipped/, 'a warhammer counts by its animation type')
+    t.request(HEADSMAN, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the headsman 14 (this player): refused' })
+    t.request(HEADSMAN, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner ff000123: taken' })
+    assert.ok(timers.some((x) => x.ms === 14840), 'the headsman\'s own retry or a taken chop keeps the kill time')
+    t.request(HEADSMAN, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner ff000123: refused' })
+    assert.ok(!timers.some((x) => x.ms === 14840), 'the old kill timer is cleared')
+    const delayed = timers.find((x) => Math.abs(x.ms - 16540) < 100)
+    assert.ok(delayed, 'the kill waits for the retried chop, 1.7 s later')
+    assert.match(t.lines.join('\n'), /the kill of ff000b01 waits 1700 ms more, \d+ ms from now: ff000a01's client plays the prisoner's refused chop again/)
+    t.request(PRISONER, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner 14 (this player): refused' })
+    assert.equal(t.lines.filter((l) => l.includes('waits')).length, 1, 'the kill moves once')
+    runTimer(16540, 100)
+    assert.deepEqual(t.calls.slice(0, 1), [['died', PRISONER, 'executed', HEADSMAN]])
   }
 
   {
