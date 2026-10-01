@@ -9,6 +9,8 @@
 #include <RE/N/NiPoint3.h>
 #include <REL/Relocation.h>
 
+#include <chrono>
+
 extern CallNativeApi::NativeCallRequirements g_nativeCallRequirements;
 
 namespace TESModPlatform {
@@ -54,6 +56,39 @@ RE::BSTArray<RE::TintMask*> Clone(const RE::BSTArray<RE::TintMask*>& original)
 {
   auto mask = RE::malloc<::TintMask>();
   return mask ? ::new (mask) ::TintMask : nullptr;
+}
+
+using UpdateClock = std::chrono::steady_clock;
+constexpr auto kUpdateStall = std::chrono::seconds(5);
+UpdateClock::time_point updateWaitFrom;
+UpdateClock::time_point loadEventAt;
+std::atomic<bool> firstUpdateAfterLoad = false;
+std::atomic<uint32_t> stallRedispatches = 0;
+
+// An Add the VM dropped or never ran holds the gate shut, so it is dispatched again after kUpdateStall of unpaused game time
+bool UpdateStalled(UpdateClock::time_point now)
+{
+  const auto ui = RE::UI::GetSingleton();
+  if (!ui || ui->GameIsPaused() ||
+      ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME) ||
+      ui->IsMenuOpen(RE::MainMenu::MENU_NAME)) {
+    updateWaitFrom = now;
+    return false;
+  }
+  if (now - updateWaitFrom < kUpdateStall) {
+    return false;
+  }
+  const auto n = ++stallRedispatches;
+  if ((n & (n - 1)) == 0) {
+    spdlog::warn("TESModPlatform: no Papyrus update for {} s of game time "
+                 "after {} updates, dispatching TESModPlatform.Add again "
+                 "(re-dispatch {})",
+                 std::chrono::duration_cast<std::chrono::seconds>(
+                   now - updateWaitFrom)
+                   .count(),
+                 numPapyrusUpdates.load(), n);
+  }
+  return true;
 }
 }
 
@@ -102,6 +137,8 @@ private:
     RE::BSTEventSource<RE::TESLoadGameEvent>* eventSource) override
   {
     vmCallAllowed = true;
+    loadEventAt = UpdateClock::now();
+    firstUpdateAfterLoad = true;
     return RE::BSEventNotifyControl::kContinue;
   }
 };
@@ -115,6 +152,19 @@ int32_t TESModPlatform::Add(IVM* vm, StackID stackId, RE::StaticFunctionTag*,
   if (!papyrusUpdateAllowed)
     return 0;
   papyrusUpdateAllowed = false;
+
+  if (const auto n = stallRedispatches.exchange(0)) {
+    spdlog::info("TESModPlatform: Papyrus update resumed after {} "
+                 "re-dispatch(es)",
+                 n);
+  }
+  if (firstUpdateAfterLoad.exchange(false)) {
+    spdlog::info("TESModPlatform: first Papyrus update {} ms after the load "
+                 "event",
+                 std::chrono::duration_cast<std::chrono::milliseconds>(
+                   UpdateClock::now() - loadEventAt)
+                   .count());
+  }
 
   try {
     ++numPapyrusUpdates;
@@ -919,22 +969,19 @@ public:
 
 void TESModPlatform::Update()
 {
-  if (!vmCallAllowed) {
-    return;
-  }
-  vmCallAllowed = false;
-
-  papyrusUpdateAllowed = true;
-
-  auto console = RE::ConsoleLog::GetSingleton();
-  if (!console) {
+  const auto now = UpdateClock::now();
+  if (!vmCallAllowed && !UpdateStalled(now)) {
     return;
   }
 
   auto vm = RE::SkyrimVM::GetSingleton();
   if (!vm || !vm->impl) {
-    return console->Print("VM was nullptr");
+    return;
   }
+
+  vmCallAllowed = false;
+  papyrusUpdateAllowed = true;
+  updateWaitFrom = now;
 
   FunctionArguments args;
   RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> functor(
@@ -949,7 +996,15 @@ void TESModPlatform::Update()
     // dependencies (like Actor.pex) is missing
     FixedString className("TESModPlatform");
     FixedString funcName("Add");
-    vm->impl->DispatchStaticCall(className, funcName, &args, functor);
+    if (!vm->impl->DispatchStaticCall(className, funcName, &args, functor)) {
+      vmCallAllowed = true;
+      static std::once_flag refused;
+      std::call_once(refused, [] {
+        spdlog::warn("TESModPlatform: the VM refused the TESModPlatform.Add "
+                     "dispatch (type not loaded or no stack), retrying next "
+                     "frame");
+      });
+    }
   } catch (std::exception& e) {
     // We are not interested in crashing the game thread, so just printing
     static std::once_flag flag;

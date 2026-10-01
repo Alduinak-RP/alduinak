@@ -236,6 +236,26 @@ the first time a view goes past the buffer. Stack dumps of later culling
 crashes (ids 76553, 32189, 108600) can hold stale SkyrimPlatformImpl.dll
 addresses from these copies; that alone does not point at the guard.
 
+**Papyrus update watchdog** (`PapyrusTESModPlatform.cpp`
+`TESModPlatform::Update`): SkyrimPlatform's `update` event, and with it every
+client step that needs Papyrus (spawn, race menu, needs request, load
+handling), runs inside one `TESModPlatform.Add` call dispatched into the
+Papyrus VM per frame, and the next one is dispatched only after the last has
+run or a load event arrives. A dispatch the VM refuses, or a queued call it
+drops, used to stop `update` for the rest of the game session while the game
+and `tick` kept running: a new character on 2026-09-30 loaded into the world
+with no race menu and no sync until the game was restarted. A refused
+dispatch is now retried the next frame, and a call that has not run after 5 s
+of unpaused game time (no loading screen, no main menu) is dispatched again; a
+duplicate runs as a no-op. `skyrim-platform.log` shows
+`TESModPlatform: first Papyrus update N ms after the load event` once per
+load, `TESModPlatform: no Papyrus update for N s of game time after M updates,
+dispatching TESModPlatform.Add again (re-dispatch K)` (K = 1, 2, 4, ...) and
+`TESModPlatform: Papyrus update resumed after K re-dispatch(es)` when it
+recovers, and `TESModPlatform: the VM refused the TESModPlatform.Add dispatch`
+once a session. A postLoadGame line with no `first Papyrus update` line after
+it means the VM never ran the call at all.
+
 ---
 
 ## Gamemode patch (leadership bridge)
