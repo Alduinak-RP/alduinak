@@ -553,7 +553,7 @@
     "items": {
      "MountainFlower01Blue": 3,
      "BoneMeal": 5,
-     "Lavender": 10
+     "Lavender": 6
     }
    },
    {
@@ -563,7 +563,7 @@
     "items": {
      "MountainFlower01Blue": 5,
      "BoneMeal": 7,
-     "Lavender": 12,
+     "Lavender": 10,
      "HagravenFeathers": 2
     }
    },
@@ -572,7 +572,7 @@
     "name": "Potion of Destruction",
     "tier": "Expert",
     "items": {
-     "GlowingMushroom": 7,
+     "GlowingMushroom": 6,
      "Nightshade": 5
     },
     "proposedTier": true
@@ -593,7 +593,7 @@
     "name": "Potion of Illusion",
     "tier": "Expert",
     "items": {
-     "DragonsTongue": 7,
+     "DragonsTongue": 6,
      "MoraTapinellaBits": 4
     }
    },
@@ -611,7 +611,7 @@
     "name": "Philter of Illusion",
     "tier": "Master",
     "items": {
-     "DragonsTongue": 11,
+     "DragonsTongue": 10,
      "MoraTapinellaBits": 8,
      "DwarvenOil": 1
     }
@@ -621,7 +621,7 @@
     "name": "Elixir of Illusion",
     "tier": "Master",
     "items": {
-     "DragonsTongue": 13,
+     "DragonsTongue": 10,
      "MoraTapinellaBits": 10,
      "DwarvenOil": 2,
      "Taproot": 1
@@ -634,7 +634,7 @@
     "items": {
      "CanisRoot01": 5,
      "SpiderEgg": 3,
-     "JuniperBerries": 10
+     "JuniperBerries": 6
     }
    },
    {
@@ -643,7 +643,7 @@
     "tier": "Expert",
     "items": {
      "SabrecatTooth": 5,
-     "BirdEgg01": 8
+     "BirdEgg01": 6
     }
    },
    {
@@ -662,7 +662,7 @@
     "items": {
      "BearClaws": 2,
      "BirdEgg01": 3,
-     "HangingMoss": 10
+     "HangingMoss": 6
     }
    },
    {
@@ -672,7 +672,7 @@
     "items": {
      "BearClaws": 4,
      "BirdEgg01": 5,
-     "HangingMoss": 12,
+     "HangingMoss": 10,
      "Mushroom01": 6
     }
    },
@@ -700,8 +700,8 @@
     "tier": "Expert",
     "items": {
      "Garlic": 5,
-     "JuniperBerries": 7,
-     "Mushroom05": 10
+     "JuniperBerries": 5,
+     "Mushroom05": 6
     }
    },
    {
@@ -709,8 +709,8 @@
     "name": "Potion of Lasting Potency",
     "tier": "Expert",
     "items": {
-     "Garlic": 12,
-     "JazBay": 7
+     "Garlic": 6,
+     "JazBay": 5
     }
    },
    {
@@ -718,7 +718,7 @@
     "name": "Draught of Lasting Potency",
     "tier": "Master",
     "items": {
-     "Garlic": 14,
+     "Garlic": 10,
      "JazBay": 9,
      "SaltPile": 5
     }
@@ -728,8 +728,8 @@
     "name": "Potion of Vigor",
     "tier": "Expert",
     "items": {
-     "Mushroom01": 9,
-     "ScalyPholiotaBits": 7
+     "Mushroom01": 6,
+     "ScalyPholiotaBits": 5
     }
    },
    {
@@ -737,7 +737,7 @@
     "name": "Draught of Vigor",
     "tier": "Master",
     "items": {
-     "Mushroom01": 11,
+     "Mushroom01": 10,
      "ScalyPholiotaBits": 9,
      "MoraTapinellaBits": 5
     }
@@ -748,8 +748,8 @@
     "tier": "Expert",
     "items": {
      "BoneMeal": 5,
-     "DragonsTongue": 12,
-     "Mushroom01": 8
+     "DragonsTongue": 6,
+     "Mushroom01": 5
     }
    },
    {
@@ -758,7 +758,7 @@
     "tier": "Master",
     "items": {
      "BoneMeal": 7,
-     "DragonsTongue": 14,
+     "DragonsTongue": 10,
      "Mushroom01": 10,
      "FireSalts": 2
     }
@@ -769,8 +769,8 @@
     "tier": "Expert",
     "items": {
      "FrostMirriam": 4,
-     "Snowberry": 12,
-     "MountainFlower01Purple": 8
+     "Snowberry": 6,
+     "MountainFlower01Purple": 5
     }
    },
    {
@@ -780,7 +780,7 @@
     "items": {
      "FrostMirriam": 6,
      "FrostSalts": 1,
-     "Snowberry": 14,
+     "Snowberry": 10,
      "MountainFlower01Purple": 10
     }
    },
@@ -789,7 +789,7 @@
     "name": "Potion of Resist Magic",
     "tier": "Expert",
     "items": {
-     "Mushroom02": 7,
+     "Mushroom02": 6,
      "TundraCotton": 5
     }
    },
@@ -800,7 +800,7 @@
     "items": {
      "Mushroom02": 9,
      "TundraCotton": 7,
-     "Lavender": 12,
+     "Lavender": 10,
      "Nirnroot": 1
     }
    },
@@ -828,8 +828,8 @@
     "name": "Potion of Minor Healing",
     "tier": "Novice",
     "items": {
-     "MountainFlower01Blue": 12,
-     "Wheat": 8
+     "MountainFlower01Blue": 3,
+     "Wheat": 2
     }
    },
    {
@@ -837,8 +837,8 @@
     "name": "Potion of Healing",
     "tier": "Expert",
     "items": {
-     "MountainFlower01Blue": 14,
-     "Wheat": 10,
+     "MountainFlower01Blue": 6,
+     "Wheat": 5,
      "Mushroom04": 5
     }
    },
@@ -847,8 +847,8 @@
     "name": "Potion of Plentiful Healing",
     "tier": "Master",
     "items": {
-     "MountainFlower01Blue": 16,
-     "Wheat": 12,
+     "MountainFlower01Blue": 10,
+     "Wheat": 10,
      "Mushroom04": 7,
      "SabrecatEyeball": 2
     },
@@ -859,8 +859,8 @@
     "name": "Potion of Minor Magicka",
     "tier": "Novice",
     "items": {
-     "CreepClusterRoot": 7,
-     "ElvesEar": 8
+     "CreepClusterRoot": 2,
+     "ElvesEar": 3
     }
    },
    {
@@ -868,8 +868,8 @@
     "name": "Potion of Magicka",
     "tier": "Expert",
     "items": {
-     "CreepClusterRoot": 9,
-     "ElvesEar": 10,
+     "CreepClusterRoot": 5,
+     "ElvesEar": 6,
      "Mushroom03": 4
     }
    },
@@ -878,8 +878,8 @@
     "name": "Potion of Plentiful Magicka",
     "tier": "Master",
     "items": {
-     "CreepClusterRoot": 11,
-     "ElvesEar": 12,
+     "CreepClusterRoot": 10,
+     "ElvesEar": 10,
      "Mushroom03": 6,
      "GiantLichen": 8
     },
@@ -890,8 +890,8 @@
     "name": "Potion of Minor Stamina",
     "tier": "Novice",
     "items": {
-     "MountainFlower01Purple": 12,
-     "AntlersLarge": 5
+     "MountainFlower01Purple": 3,
+     "AntlersLarge": 2
     }
    },
    {
@@ -899,8 +899,8 @@
     "name": "Potion of Stamina",
     "tier": "Expert",
     "items": {
-     "MountainFlower01Purple": 14,
-     "AntlersLarge": 7,
+     "MountainFlower01Purple": 6,
+     "AntlersLarge": 5,
      "BearClaws": 3
     }
    },
@@ -909,7 +909,7 @@
     "name": "Potion of Plentiful Stamina",
     "tier": "Master",
     "items": {
-     "MountainFlower01Purple": 16,
+     "MountainFlower01Purple": 10,
      "AntlersLarge": 7,
      "BearClaws": 5,
      "BeeHoneyComb": 6
@@ -923,7 +923,7 @@
     "items": {
      "deathBell": 4,
      "ChaurusEggs": 5,
-     "MudcrabChitin": 7
+     "MudcrabChitin": 6
     }
    },
    {
@@ -931,7 +931,7 @@
     "name": "Potion of Cure Disease",
     "tier": "Expert",
     "items": {
-     "ChaurusEggs": 7,
+     "ChaurusEggs": 6,
      "deathBell": 6,
      "Garlic": 4
     }
@@ -941,9 +941,9 @@
     "name": "Potion of Extra Magicka",
     "tier": "Expert",
     "items": {
-     "MountainFlower01Red": 12,
-     "JazBay": 7,
-     "TundraCotton": 10
+     "MountainFlower01Red": 6,
+     "JazBay": 5,
+     "TundraCotton": 5
     }
    },
    {
@@ -951,9 +951,9 @@
     "name": "Draught of Extra Magicka",
     "tier": "Master",
     "items": {
-     "MountainFlower01Red": 14,
+     "MountainFlower01Red": 10,
      "JazBay": 9,
-     "TundraCotton": 12,
+     "TundraCotton": 10,
      "Ectoplasm": 1
     }
    },
@@ -962,8 +962,8 @@
     "name": "Potion of Enhanced Stamina",
     "tier": "Expert",
     "items": {
-     "Garlic": 8,
-     "Lavender": 11
+     "Garlic": 5,
+     "Lavender": 6
     }
    },
    {
@@ -972,7 +972,7 @@
     "tier": "Master",
     "items": {
      "Garlic": 10,
-     "Lavender": 13,
+     "Lavender": 10,
      "SlaughterfishEgg01": 5
     }
    },
@@ -982,7 +982,7 @@
     "tier": "Master",
     "items": {
      "MoonSugar": 5,
-     "Nightshade": 12,
+     "Nightshade": 10,
      "JazBay": 4
     }
    },
@@ -992,7 +992,7 @@
     "tier": "Master",
     "items": {
      "MoonSugar": 5,
-     "Nightshade": 12,
+     "Nightshade": 10,
      "JazBay": 4,
      "FireSalts": 1
     }
@@ -1003,7 +1003,7 @@
     "tier": "Expert",
     "items": {
      "GiantToes": 2,
-     "MountainFlower01Blue": 8
+     "MountainFlower01Blue": 6
     }
    },
    {
@@ -1012,7 +1012,7 @@
     "tier": "Master",
     "items": {
      "MoonSugar": 5,
-     "Nightshade": 12,
+     "Nightshade": 10,
      "Nirnroot": 6
     }
    },
@@ -1022,7 +1022,7 @@
     "tier": "Expert",
     "items": {
      "MoonSugar": 5,
-     "Nightshade": 12
+     "Nightshade": 6
     }
    },
    {
@@ -1030,8 +1030,8 @@
     "name": "Weak Poison",
     "tier": "Adept",
     "items": {
-     "Mushroom02": 5,
-     "ChaurusEggs": 7,
+     "Mushroom02": 2,
+     "ChaurusEggs": 3,
      "SpiderEgg": 2
     }
    },
@@ -1040,7 +1040,7 @@
     "name": "Weak Magicka Poison",
     "tier": "Adept",
     "items": {
-     "GiantLichen": 8,
+     "GiantLichen": 3,
      "HagravenFeathers": 2
     }
    },
@@ -1049,8 +1049,8 @@
     "name": "Weak Stamina Poison",
     "tier": "Adept",
     "items": {
-     "BoneMeal": 7,
-     "CanisRoot01": 5,
+     "BoneMeal": 3,
+     "CanisRoot01": 2,
      "SpiderEgg": 2
     }
    },
@@ -1059,8 +1059,8 @@
     "name": "Weak Aversion to Fire",
     "tier": "Adept",
     "items": {
-     "Mushroom02": 7,
-     "JuniperBerries": 5,
+     "Mushroom02": 3,
+     "JuniperBerries": 2,
      "FrostSalts": 1
     }
    },
@@ -1069,7 +1069,7 @@
     "name": "Weak Aversion to Frost",
     "tier": "Adept",
     "items": {
-     "ElvesEar": 7,
+     "ElvesEar": 3,
      "FireSalts": 1,
      "IceWraithTeeth": 2
     }
@@ -1079,9 +1079,9 @@
     "name": "Weak Aversion to Magic",
     "tier": "Adept",
     "items": {
-     "CreepClusterRoot": 7,
+     "CreepClusterRoot": 3,
      "DwarvenOil": 1,
-     "BirdEgg01": 5
+     "BirdEgg01": 2
     }
    },
    {
@@ -1091,7 +1091,7 @@
     "items": {
      "VoidSalts": 1,
      "HagravenFeathers": 2,
-     "GiantLichen": 7
+     "GiantLichen": 3
     }
    },
    {

@@ -360,7 +360,13 @@ Benches:
 - **Alchemy labs** open the crafting menu (keyword `AldCraftingAlchemy`) with
   the potion recipes; the vanilla brewing menu is gone from every lab of the
   load order. Only a brewed potion counts as Alchemist work there; opening the
-  lab earns nothing.
+  lab earns nothing. Since plugin r24 a potion asks for at most 2 to 3 of an
+  ingredient when it is minor or weak (Novice, Adept), 5 to 6 when it is a
+  plain potion (Expert) and 10 when it is plentiful, a draught, philter or
+  elixir (Master): Minor Healing is 3 Blue Mountain Flower and 2 Wheat,
+  Healing 6, 5 and 5 Imp Stool, Plentiful Healing 10, 10, 7 Imp Stool and 2
+  Eye of Sabre Cat (the owner's numbers; the whole table is in the r24
+  plugin README).
 - **Woodcrafting Bench** (`AldWoodcraftingBench`, the Hearthfire carpenter's
   workbench model, keyword `AldCraftingWoodcrafting`) is a new furniture record
   for placing in the Creation Kit; the existing Hearthfire carpenter's

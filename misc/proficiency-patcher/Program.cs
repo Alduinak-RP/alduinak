@@ -69,7 +69,7 @@ JsonObject? categories = null;
 Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
-    ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.KilnRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
+    ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
        Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
        Steps.DisableActors, categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
