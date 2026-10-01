@@ -97,8 +97,46 @@ and everything else works. A call that throws is logged once (`[durability] sett
 | Admin item spawner, kits, starting items | New pristine copies; they never join a worn stack |
 | `deploy/mongodb/restore-stripped-items.js` | A copy is matched by all its extras, so a worn copy from the backup comes back worn and beside the pristine ones |
 
+## Client: the tag in the name
+
+The client shows a condition only after the server sent the custom packet `durabilityConfig`
+(`showAtFull`, `brokenLabel`, optional `enabled`). `RepairService` stores it through
+`sync/durabilityNames.ts` and forgets it at every new connection, so on a server that never sends the
+packet no name is tagged, cut or renamed and every message is as before.
+
+| Part (`skymp5-client/src`) | What it does |
+|---|---|
+| `sync/inventory.ts` | `Extra.condition`. `extrasEqual` does not compare it, so a condition change is no inventory difference and never removes and re-adds a copy. A server copy is added through `addItemEx` under `durabilityName` ("Steel Sword (97%)"); a local copy is removed under the name it carries, the copies whose tag the server no longer holds first |
+| `sync/durabilityNames.ts` | `isDurable` (weapons except staffs and bound ones, light and heavy armor, shields), `tagFor`, `stripTag`, `conditionPercent`, and `applyDurabilityNames`, the rename pass |
+| `services/services/remoteServer.ts` | Runs the rename pass right after the player's `applyInventory`, so never with an inventory, container, favourites, magic or crafting menu open. A base the same apply still adds to or removes from waits for the next one |
+| `services/services/containersService.ts`, `dropItemService.ts` | A put, take or drop of a durable item sends the tagged name of each moved copy, one message per tag, and no `condition`; the native picks the copy by that tag |
+| `services/services/tradeService.ts` | One row per item and shown percent, the percent as a tag beside the temper tag, `condition` in the offer lines as the hint |
+| `services/services/craftedExtrasService.ts` | A reported name has no tag, and the lost line names the copy at the changed copy's tag |
+| `services/services/repairService.ts` | Stores `durabilityConfig`, mirrors `repairMenu` into the `repairMenu` widget and sends `durabilityRepair`, `durabilityImprove` and `durabilityClose` |
+
+The rename pass compares, per durable base and per group of copies with the same extras, the tags the server's
+entries ask for with the raw local copies (`getRawEntries`, one per extra list, since `getInventory` merges
+copies that differ only by name). A tag the server still holds stays where it is, on unworn copies first, so a
+changed one lands on the worn copy; the others take the nearest percent.
+
+- With `setInventoryItemName` in SkyrimPlatform (looked up on every pass, so a dll without the export only
+  loses this path) a copy is renamed in place, worn or not: no unequip, no flicker.
+- Without it an unworn copy is removed and added again under the new name, and a worn copy keeps its old tag
+  until it is unequipped. The pass never takes a worn item off. While a spawn's outfit settles nothing is
+  re-added either.
+- `skyrim-platform.log` gets one line when the server switches the tags on ("condition tags on: ..." with
+  whether the in-place rename is there), and at most one a minute while worn copies keep an old tag.
+- After durability went off in a session that wrote tags, the pass takes them out again.
+
+The quality the engine appends ("(Fine)") comes after the tag and is never part of a name the client writes.
+In the trade window a name on something that never wears is left alone, percent sign or not.
+
 ## Tests
 
 `node skymp5-server/tools/test-inventory-condition.js` runs the rules above over stub servers: identity and
 stacking, the trade draw, settle and lock guard, the craft carry-over and name cleaning, the afterlife outfit,
 the skinning hand-off, a search and the PK body.
+
+`node skymp5-server/tools/test-durability-names.js` runs the client side against a stub of the engine's
+inventory: the tags, the names of added and removed copies, the rename pass with and without the in-place
+rename, drops and container moves, the craft report, the trade rows and offer, and the repair service.

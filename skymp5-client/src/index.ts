@@ -60,6 +60,7 @@ import { NeedsService } from "./services/services/needsService";
 import { SurvivalService } from "./services/services/survivalService";
 import { AttributeBonusService } from "./services/services/attributeBonusService";
 import { BountyBoardService } from "./services/services/bountyBoardService";
+import { RepairService } from "./services/services/repairService";
 import { WritingService } from "./services/services/writingService";
 import { InteractionPromptService } from "./services/services/interactionPromptService";
 import { RestraintService } from "./services/services/restraintService";
@@ -178,6 +179,7 @@ const main = () => {
       new SurvivalService(sp, controller),
       new AttributeBonusService(sp, controller),
       new BountyBoardService(sp, controller),
+      new RepairService(sp, controller),
       new WritingService(sp, controller),
       new InteractionPromptService(sp, controller),
       new VanillaMenuService(sp, controller),

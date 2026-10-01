@@ -5,6 +5,7 @@ import { getPcInventory, holdPcInventoryApply, requestPcInventoryApply } from ".
 import {
   Entry, Inventory, getDiff, getInventory, healthStep, isBoundItem, isNamedItemBase, revertLocalExtras, sameEffects, sameItem,
 } from "../../sync/inventory";
+import { splitTag, stripTag, tagFor } from "../../sync/durabilityNames";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 import { ConnectionMessage } from "../events/connectionMessage";
@@ -42,6 +43,22 @@ const withoutWorn = (e: Entry): Entry => {
   return copy;
 };
 
+// A local name carries the condition tag, which is display and never part of the name the server records
+const withoutTag = (e: Entry): Entry => (typeof e.name === "string" ? { ...e, name: stripTag(e.name) } : e);
+
+// Of copies that differ only by condition the one the player changed is the one at its tag, so the server claims that copy
+const claimTaggedCopy = (g: Entry, sources: Entry[], server: Inventory): void => {
+  const tag = typeof g.name === "string" ? splitTag(g.name).tag : "";
+  if (!tag || sources.some((l) => tagFor(l.condition) === tag)) return;
+  for (const s of server.entries) {
+    const source = s.baseId === g.baseId && tagFor(s.condition) === tag ? sources.find((l) => l.count === 1 && sameItem(l, s)) : undefined;
+    if (!source) continue;
+    if (s.condition === undefined) delete source.condition;
+    else source.condition = s.condition;
+    return;
+  }
+};
+
 // A change vanilla pays for (enchanting, tempering, a new poison) rather than wear from use
 const isCraft = (g: Entry, sources: Entry[]): boolean =>
   (!!g.enchantmentEffects && !sources.some((s) => sameEffects(s.enchantmentEffects, g.enchantmentEffects))) ||
@@ -64,7 +81,8 @@ export const getCraftReport = (server: Inventory, local: Inventory): CraftReport
     if ((form && isBoundItem(form)) || (g.soul && !hasCraftedExtras(g)) || (!sources.length && !hasCraftedExtras(g)) || isNamedItemBase(g.baseId)) {
       continue;
     }
-    gained.push(withoutWorn(g));
+    claimTaggedCopy(g, sources, server);
+    gained.push(withoutTag(withoutWorn(g)));
     urgent = urgent || isCraft(g, sources);
   }
 
@@ -74,7 +92,7 @@ export const getCraftReport = (server: Inventory, local: Inventory): CraftReport
     if (same.length !== 1) continue;
     const from = same[0].chargePercent;
     if (typeof from === "number" && Math.abs(from - l.chargePercent) < 1) continue;
-    gained.push(withoutWorn(l));
+    gained.push(withoutTag(withoutWorn(l)));
     lost.push({ ...same[0], count: 1 });
     urgent = urgent || (typeof from === "number" && l.chargePercent > from + 1);
   }

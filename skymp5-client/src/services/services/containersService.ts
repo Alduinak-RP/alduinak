@@ -1,8 +1,9 @@
-import { Actor, ContainerChangedEvent, printConsole } from "skyrimPlatform";
+import { Actor, ContainerChangedEvent, Menu, printConsole } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { MsgType } from "../../messages";
 import { getPcInventory } from "./remoteServer";
-import { Inventory, getInventory, getDiff, hasExtras, removeSimpleItemsAsManyAsPossible, sumInventories } from "../../sync/inventory";
+import { Entry, Inventory, getInventory, getDiff, hasExtras, removeSimpleItemsAsManyAsPossible, sumInventories } from "../../sync/inventory";
+import { movedNames, noteCopies, splitTag } from "../../sync/durabilityNames";
 import { LastInvService } from "./lastInvService";
 
 import { PutItemMessage } from "../messages/putItemMessage";
@@ -19,6 +20,45 @@ export class ContainersService extends ClientListener {
         super();
         controller.on('update', () => this.covered.clear());
         controller.on('containerChanged', (e) => this.onContainerChanged(e));
+        controller.on('menuOpen', (e) => { if (e.name === Menu.Container) this.noteDurableCopies(); });
+    }
+
+    // What the pack holds copy by copy, so a move can tell the server which condition went
+    private noteDurableCopies(): void {
+        try {
+            noteCopies(this.sp.Game.getPlayer() as Actor);
+        } catch (err) {
+            logError(this, "durable copies not read", err);
+        }
+    }
+
+    // Copies of one item differ by condition only in their name tag, which a merged diff entry has lost: one message per tag
+    private splitByCondition<T extends PutItemMessage | TakeItemMessage>(msg: T, entry: Entry): T[] {
+        let names: string[] | undefined;
+        try {
+            names = movedNames(this.sp.Game.getPlayer() as Actor, entry, entry.count > 0);
+        } catch (err) {
+            logError(this, "moved copies not read", err);
+        }
+        if (!names) return [msg];
+        const msgs: T[] = [];
+        const keys: string[] = [];
+        names.forEach((name) => {
+            // A copy without a tag keeps the name the message had, which is none for the form's own name
+            const key = splitTag(name).tag ? name : "";
+            const at = keys.indexOf(key);
+            if (at >= 0) {
+                msgs[at].count++;
+                return;
+            }
+            // The tag is the one hint: the merged entry's own condition may be another copy's
+            const part: T = { ...msg, count: 1 };
+            if (key) part.name = name;
+            delete (part as { condition?: number }).condition;
+            keys.push(key);
+            msgs.push(part);
+        });
+        return msgs;
     }
 
     // One tick's diffs already cover its later events, so each event adds only what no diff covered
@@ -90,8 +130,10 @@ export class ContainersService extends ClientListener {
                             if (this.sp.Game.getFormEx(entry.baseId)?.getName() === msg.name) {
                                 delete msg.name;
                             }
-                            return msg;
-                        });
+                            return this.splitByCondition(msg, entry);
+                        })
+                        .reduce((all, part) => all.concat(part), [] as (PutItemMessage | TakeItemMessage)[]);
+                    this.noteDurableCopies();
 
                     msgs.forEach((msg) => {
                         logTrace(this, msg.t === MsgType.PutItem ? "Put" : "Take", msg.baseId.toString(16), "x" + msg.count, "target", msg.target.toString(16));

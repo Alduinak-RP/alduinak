@@ -5,7 +5,8 @@ import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { closeWidget, showUi } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, FormType, ObjectReference } from "skyrimPlatform";
-import { getInventory, Entry, EnchantmentEffect, effectsKey, isBoundItem, isNamedItemBase } from "../../sync/inventory";
+import { getInventory, getRawEntries, Entry, EnchantmentEffect, effectsKey, isBoundItem, isNamedItemBase } from "../../sync/inventory";
+import { conditionOfName, conditionPercent, getDurabilityConfig, isDurableBase, percentLabel, stripTag } from "../../sync/durabilityNames";
 import { logTrace } from "../../logging";
 
 // for the browser-side widget setters (executed inside the CEF browser)
@@ -23,7 +24,8 @@ const IDENTITY_KEYS = [
   'soul', 'poisonId', 'poisonCount', 'enchantmentEffects',
 ] as const;
 
-const OFFER_KEYS: (keyof Entry)[] = [...IDENTITY_KEYS, 'chargePercent', 'name'];
+// condition is the hint the server picks the offered copy by; the copy that changes hands keeps the server's own value
+const OFFER_KEYS: (keyof Entry)[] = [...IDENTITY_KEYS, 'chargePercent', 'name', 'condition'];
 
 const TEMPER_LABELS = ['Fine', 'Superior', 'Exquisite', 'Flawless', 'Epic', 'Legendary'];
 const SOUL_LABELS = ['Petty', 'Lesser', 'Common', 'Greater', 'Grand'];
@@ -67,6 +69,10 @@ const identityText = (k: typeof IDENTITY_KEYS[number], v: unknown): string => {
 const lineKey = (i: Item): string =>
   [i.baseId >>> 0, keyName(i), ...IDENTITY_KEYS.map((k) => identityText(k, i[k]))].join('|');
 
+// One window row: copies of a line worn down to another percent are rows of their own
+const rowKey = (i: Item): string =>
+  i.condition === undefined ? lineKey(i) : lineKey(i) + '#' + conditionPercent(i.condition);
+
 // Keeps only extras the server accepts (copyValidExtras in inventoryExtras.ts), so both sides build the same lineKey
 const toItem = (raw: any, count: number): Item => {
   const item: Item = { baseId: Number(raw?.baseId), count };
@@ -77,6 +83,11 @@ const toItem = (raw: any, count: number): Item => {
         item.enchantmentEffects = v.map((e: EnchantmentEffect) => ({
           effectId: e.effectId, magnitude: e.magnitude, area: e.area, duration: e.duration, cost: e.cost,
         }));
+      }
+    } else if (k === 'condition') {
+      // Pristine is the absence of the key, on both sides
+      if (typeof v === 'number' && v >= 0 && v < 1) {
+        item.condition = v;
       }
     } else if (typeof v === 'number' && Number.isFinite(v) && (v > 0 || (k === 'chargePercent' && v === 0))) {
       (item as any)[k] = v;
@@ -309,7 +320,7 @@ export class TradeService extends ClientListener {
       return;
     }
     const offer = this.state.myOffer.map((i) => ({ ...i }));
-    const offered = offer.find((i) => lineKey(i) === lineId);
+    const offered = offer.find((i) => rowKey(i) === lineId);
     const offeredCount = offered ? offered.count : 0;
     const owned = this.localLines().get(lineId);
 
@@ -346,11 +357,13 @@ export class TradeService extends ClientListener {
 
   // Re-send a wiped offer clamped to what the player still holds.
   private restoreOffer(offer: Item[]): void {
-    const lines = this.localLines();
+    // Counted per line, not per row: a row whose tag changed meanwhile is still offered and the server draws the nearest condition
+    const left = new Map<string, number>();
+    this.localLines().forEach(({ item }) => left.set(lineKey(item), (left.get(lineKey(item)) || 0) + item.count));
     const items: Item[] = [];
     for (const item of offer) {
-      const owned = lines.get(lineKey(item));
-      const count = Math.min(item.count, owned ? owned.item.count : 0);
+      const count = Math.min(item.count, left.get(lineKey(item)) || 0);
+      left.set(lineKey(item), (left.get(lineKey(item)) || 0) - count);
       if (count > 0) {
         items.push(toItem(item, count));
       }
@@ -362,12 +375,12 @@ export class TradeService extends ClientListener {
 
   // ── Inventory reading ──────────────────────────────────────────────────────
 
-  // Offerable lines by lineKey; equipped and loose copies count together
+  // Offerable lines by rowKey; equipped and loose copies count together
   private localLines(): Map<string, { item: Item; equipped: boolean }> {
     const lines = new Map<string, { item: Item; equipped: boolean }>();
     for (const e of this.localTradeableEntries()) {
       const item = toItem(e, e.count);
-      const id = lineKey(item);
+      const id = rowKey(item);
       let line = lines.get(id);
       if (line) {
         line.item.count += e.count;
@@ -393,10 +406,32 @@ export class TradeService extends ClientListener {
     } catch (e) {
       return [];
     }
+    // getInventory merges copies whose names differ, so items that wear are read copy by copy, each with its own tag
+    if (getDurabilityConfig().enabled) {
+      try {
+        const copies = getRawEntries(player).filter((e) => e.count > 0 && isDurableBase(e.baseId));
+        entries = entries.filter((e) => !isDurableBase(e.baseId)).concat(copies);
+      } catch (e) {
+        return [];
+      }
+    }
     // Summoned bound weapons and arrows are worn but never held by the server inventory
     return entries
-      .map((e) => this.withoutDefaultName(e))
+      .map((e) => this.withoutDefaultName(this.withCondition(e)))
       .filter((e) => e.count > 0 && !this.isSummonedBoundItem(e.baseId));
+  }
+
+  // The condition tag of a local name becomes the offer's hint and the name goes back to the one the server knows
+  private withCondition(e: Entry): Entry {
+    if (typeof e.name !== "string" || !this.wears(e.baseId) || stripTag(e.name) === e.name) {
+      return e;
+    }
+    const copy: Entry = { ...e, name: stripTag(e.name) };
+    const condition = conditionOfName(e.name);
+    if (condition !== undefined) {
+      copy.condition = condition;
+    }
+    return copy;
   }
 
   private isSummonedBoundItem(baseId: number): boolean {
@@ -436,10 +471,10 @@ export class TradeService extends ClientListener {
 
   private toUiItem(i: Item, count = i.count): UiItem {
     const ui: UiItem = {
-      lineId: lineKey(i),
+      lineId: rowKey(i),
       baseId: i.baseId,
       count,
-      name: i.name ? i.name : this.resolveName(i.baseId),
+      name: i.name ? (this.wears(i.baseId) ? stripTag(i.name) : i.name) : this.resolveName(i.baseId),
     };
     const tags = this.extraTags(i);
     if (tags.length > 0) {
@@ -448,12 +483,16 @@ export class TradeService extends ClientListener {
     return ui;
   }
 
-  // Vanilla-style labels for tempering, enchantment, charge, soul and poison
+  // Vanilla-style labels for tempering, condition, enchantment, charge, soul and poison
   private extraTags(i: Item): string[] {
     const tags: string[] = [];
     const tier = i.health ? Math.floor((i.health - 1) * 10 + 1e-3) : 0;
     if (tier >= 1) {
       tags.push(TEMPER_LABELS[Math.min(tier, TEMPER_LABELS.length) - 1]);
+    }
+    const durability = getDurabilityConfig();
+    if (durability.enabled && (i.condition !== undefined || (durability.showAtFull && this.wears(i.baseId)))) {
+      tags.push(percentLabel(conditionPercent(i.condition)));
     }
     if (i.enchantmentId || (i.enchantmentEffects && i.enchantmentEffects.length)) {
       tags.push("enchanted");
@@ -472,6 +511,14 @@ export class TradeService extends ClientListener {
       tags.push("trades as plain");
     }
     return tags;
+  }
+
+  private wears(baseId: number): boolean {
+    try {
+      return isDurableBase(baseId);
+    } catch (e) {
+      return false;
+    }
   }
 
   // Charge capacity of a weapon enchanted in its base record
@@ -526,12 +573,29 @@ export class TradeService extends ClientListener {
     }
     const offered = new Map<string, number>();
     for (const i of this.state.myOffer) {
-      const id = lineKey(i);
+      const id = rowKey(i);
       offered.set(id, (offered.get(id) || 0) + i.count);
     }
+    const lines = this.localLines();
+    // An offered row the pack has fewer copies of comes off the other rows of its line: the server draws the nearest condition
+    const spill = new Map<string, number>();
+    for (const i of this.state.myOffer) {
+      const id = rowKey(i);
+      const owned = lines.get(id);
+      const over = (offered.get(id) || 0) - (owned ? owned.item.count : 0);
+      if (over > 0) {
+        spill.set(lineKey(i), (spill.get(lineKey(i)) || 0) + over);
+        offered.set(id, owned ? owned.item.count : 0);
+      }
+    }
     const out: UiItem[] = [];
-    this.localLines().forEach(({ item, equipped }, id) => {
-      const available = item.count - (offered.get(id) || 0);
+    lines.forEach(({ item, equipped }, id) => {
+      let available = item.count - (offered.get(id) || 0);
+      const taken = Math.min(Math.max(available, 0), spill.get(lineKey(item)) || 0);
+      if (taken > 0) {
+        available -= taken;
+        spill.set(lineKey(item), (spill.get(lineKey(item)) || 0) - taken);
+      }
       if (available > 0) {
         const ui = this.toUiItem(item, available);
         if (equipped) {
