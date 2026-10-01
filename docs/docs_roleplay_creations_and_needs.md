@@ -495,9 +495,25 @@ they weigh nothing again.
 - **Warmth** is the rating the item cards and the inventory show: body, head, hands and feet 27/18/13/13 normal,
   54/29/24/24 with `Survival_ArmorWarm` (fur, hide), 17/8/7/7 with `Survival_ArmorCold`; a hooded body piece warms the
   head too; a torch in hand +50; the race's `racialPassives` warmth (Orc 10); a hot meal +25 for 100 minutes. Up to 206,
-  which cuts the rate by up to 85%. Cloaks count 0. `SurvivalService` reports the engine's total 20 s after the last
-  equip change and the server logs `[survival] <id> warmth mismatch: engine 60, server 54 (gear 54, race 0), worn ...`
-  when the two differ.
+  which cuts the rate by up to 85%. `SurvivalService` reports the engine's total 20 s after the last equip change and
+  the server logs `[survival] <id> warmth mismatch: engine 60, server 54 (gear 54, race 0), worn ...` when the two
+  differ.
+- **Warmth table** (`armorWarmth.ts`, `survivalWarmthTable`): Bethesda put the two keywords on the base game's own
+  pieces only, so the engine counts every mod piece and every enchanted copy as normal and a cloak as nothing. The
+  server rates those itself from a table `misc/gen-armor-warmth.py` makes from the load order. Of 6,343 playable
+  armours 1,107 carry a keyword and keep it. On the rated slots 674 more count as warm (461 enchanted copies of a warm
+  piece through their template, 213 mod pieces by name: fur, pelt, bear, snow, wool, quilted, padded, gambeson, hoods,
+  cowls, robes, coats, mantles, Nordic, Stalhrim, Skaal) and 26 as cold (barbarian sets, bandanas, a plate harness:
+  bare skin and thin cloth, like the base game's rags and sandals); 3,055 stay normal like iron, steel plate, leather
+  and plain clothes, a mod piece named like a base game piece taking that piece's class. 119 pieces on the back or at
+  the neck and face get points of their own: a fur cloak or pelt 20, a cloak or cape 12, a short or shoulder cape 6, a
+  fur collar or mantle 8, a scarf or neck gaiter 5 (8 when its mod marked it warm), a mask 3; the warmest on the back
+  and the warmest at the neck count once each, on top of `survivalWarmth.cloak`. Shields, jewellery, bags and
+  eyepatches (1,362) warm nothing. The item card and the inventory total are the engine's and still show the keyword
+  rating for a table piece (a mod fur hood reads 18 and counts 29); the mismatch line holds the engine's total against
+  the keyword rating and adds `; gear 74 with armorWarmth.ts` when the table changes the sum. Rerun the script and
+  Build server after the modlist gains armour (`python misc/gen-armor-warmth.py --dump` lists every piece with its
+  rating and why); `survivalWarmthTable` false goes back to keywords only.
 - **Race**: every cold gain is times `racialPassives.races.<race>.coldRateMult`: Nords 0 (never colder than they are,
   though freezing water still hurts them through their frost resistance), Khajiit and Argonians 1.25. Cold never reads
   frost resistance.
@@ -732,7 +748,9 @@ Quick-test values (remove them before any Migrate settings): `survivalColdHoursT
 { "chance": 1, "diseases": ["ataxia", "bloodLung", "feebleLimb", "redRage", "shakes", "witlessPox"] } }` so every
 unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
 1. Cold: naked on the Winterhold coast on a snowy night, the stage lines, the red end of the health bar and the
-   thermometer; fur lowers the rate and the warmth matches the inventory total.
+   thermometer; fur lowers the rate and the warmth matches the inventory total. A mod robe, a fur cloak and a scarf
+   (Tribunal Light Robe, Fur Cloak, Short Woven Scarf) lower it further than the inventory total says: the admin
+   panel's survival readout shows the server's warmth (54 + 20 + 8).
 2. Warming: an inn takes 40 a minute, a campfire 75 every 6 s, a hot soup 200.
 3. Races: a Nord gains no cold, a Khajiit or an Argonian 25% more; an Orc's needs lines show `race x0.85`.
 4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.

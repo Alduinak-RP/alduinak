@@ -13,8 +13,9 @@ import { WeatherSystem } from "./weatherSystem";
 import { gameHourNow } from "./timeSystem";
 import { AbilityGroup, LOAD_PACKETS, StageAbilityTracker } from "./stageAbilities";
 import { HEAT_INTERIORS, HEAT_SOURCE_INPUTS, HEAT_WORLDS } from "./heatSources";
+import { ARMOR_WARMTH } from "./armorWarmth";
 import {
-  AreaClass, COLD_MAX, COLD_STAGE_NAMES, ColdConfig, WeatherAdd, WornArmor, areaOf, coldCapOf, coldLevelOf, coldRatePerSec, coldStageOf, gearWarmth,
+  AreaClass, COLD_MAX, COLD_STAGE_NAMES, ColdConfig, RATED_SLOTS, WeatherAdd, WornArmor, areaOf, coldCapOf, coldLevelOf, coldRatePerSec, coldStageOf, gearWarmth,
   isFreezingWater, isNight, nearHeatPoint, parseColdSettings, stepCold, temperatureLevelOf, warmthReduction, weatherAddOf,
 } from "./survivalClimate";
 import {
@@ -112,6 +113,7 @@ type Mp = any;
 //   survivalHeatExtraBases / survivalHeatKeywords  read by misc/gen-heat-sources.py; the boot line says when heatSources.ts was made from others
 //   survivalWarmth                { normal, warm, cold: [body, head, hands, feet], torch, cloak, max, maxReduction }, default
 //                                 { [27, 18, 13, 13], [54, 29, 24, 24], [17, 8, 7, 7], 50, 0, 206, 0.85 }
+//   survivalWarmthTable           false counts Survival keywords only; default true, armorWarmth.ts (misc/gen-armor-warmth.py) rates the pieces without one
 //   survivalHotFoodWarmth / survivalHotFoodWarmthMinutes  warmth of a hot meal and for how long, default 25 / 100
 //   survivalSpellHitCold          cold of a frost spell hit (up to stage 4) and warmth of a fire one (down to stage 2), default 30
 //   survivalColdOnHit             { "<race editor id fragment>": cold } for hits by those races, default { frostbitespider: 30, falmer: 30 }
@@ -323,6 +325,8 @@ interface Online {
   temperature: number;
   warmth: number;
   gear: number;
+  // The worn pieces by keyword only, what the engine's Warmth total shows
+  engineGear: number;
   wornKey: string;
   // Offline warming applied at login, for the login line
   offline: string;
@@ -343,7 +347,23 @@ interface Online {
 
 interface ArmorInfo {
   armor: WornArmor | null;
+  // The piece by its own keywords, as the engine's Warmth total counts it
+  engine: WornArmor | null;
   torch: boolean;
+}
+
+interface TableRow {
+  kind?: "warm" | "cold";
+  extra?: number;
+}
+
+// "<local id hex>:<plugin file, lower case>" -> the armorWarmth.ts rating
+const WARMTH_TABLE = new Map<string, TableRow>();
+for (const [plugin, t] of Object.entries(ARMOR_WARMTH)) {
+  const key = (id: number): string => `${id.toString(16)}:${plugin.toLowerCase()}`;
+  for (const id of t.warm || []) WARMTH_TABLE.set(key(id), { kind: "warm" });
+  for (const id of t.cold || []) WARMTH_TABLE.set(key(id), { kind: "cold" });
+  for (const [id, points] of t.extra || []) WARMTH_TABLE.set(key(id), { extra: points });
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -548,7 +568,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     return `[survival] cold: +${c.levelMult} x level per ${c.hoursToNumb} h (level 20 bare fills the bar), stages ${c.stages.join("/")}, start ${c.start}; levels warm ${l.warm}, cool ${l.cool}, freezing ${l.freezing}, cold interior ${l.chillyInterior}, night +${l.warmNight}/+${l.coolNight}/+${l.freezingNight} (${c.night[0]}-${c.night[1]} h), rain +${l.rain}, snow +${l.snow}, blizzard +${l.blizzard} (${this.blizzard.size} blizzard weathers, ${this.ash.size} ash weathers count as no snow), freezing water ${l.freezingWater}${c.freezingWater ? ` (freezing areas, cold interiors, worlds ${c.freezingWaterWorlds.join("/") || "none"}), up to ${c.stages[2]} at once` : " off"}; caps at levels ${c.caps.join("/")}; falls ${c.warmPerMinute}/min above the cap unless fighting in the last ${FIGHT_MS / 1000} s, ${c.offlineWarmPerHour}/h offline down to ${c.start}; ` +
       `areas: ${this.oblivionAreas.size} Oblivion worlds none, ${this.interiorAreas.size} worlds as interiors, ${this.coldCells.size} cold cells and ${this.coldLocations.size} cold locations, worlds ${Object.entries(c.worldClimate).map(([k, v]) => `${k} ${v}`).join(", ")}, above ${c.freezingZ} freezing, regions ${Object.entries(classes).map(([k, n]) => `${n} ${k}`).join(", ")}, heights ${Object.entries(c.highRegions).map(([k, z]) => `${k} ${z}`).join(", ") || "none"}, anything else cool; ` +
       `heat ${heat.points} sources (${heat.interiors} interiors, ${heat.worlds} worlds${heat.unknown ? `, ${heat.unknown} cells or worlds not in the load order` : ""}) within ${c.heatRadius} warm ${c.heatRestore} every ${c.heatCheckSeconds} s to a character standing (moved under ${c.heatStillUnits} units)${genNote}; ` +
-      `warmth normal ${w.normal.join("/")}, warm ${w.warm.join("/")}, cold ${w.cold.join("/")}, torch ${w.torch}, cloak ${w.cloak}, up to ${w.max} for ${pct(w.maxReduction)} less cold, race per racialPassives warmth, hot meal ${c.hotFoodWarmth} for ${c.hotFoodMinutes} min; ` +
+      `warmth normal ${w.normal.join("/")}, warm ${w.warm.join("/")}, cold ${w.cold.join("/")}, torch ${w.torch}, cloak ${w.cloak}, ${c.warmthTable ? `armorWarmth.ts rates ${WARMTH_TABLE.size} more pieces` : "armorWarmth.ts off (survivalWarmthTable false)"}, up to ${w.max} for ${pct(w.maxReduction)} less cold, race per racialPassives warmth, hot meal ${c.hotFoodWarmth} for ${c.hotFoodMinutes} min; ` +
       `spell hits ${c.spellHitCold} (frost up to ${c.stages[3]}, fire down to ${c.stages[1]}), hits by ${Object.entries(c.coldOnHit).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}; ` +
       `stage abilities ${c.stageAbilities ? `on (${spells} of 6 in the load order)` : "off"}, health penalty ${c.healthPenalty ? `from ${c.stages[1]}, at most ${pct(c.maxHealthPenalty)}` : "off"}, health scale ${c.healthScale ? "written to private.healthScale" : "off"}, death at ${COLD_MAX} ${c.kills ? "on" : "off"}; weather regions ${this.weather?.regionOf ? "read" : "unavailable"}`;
   }
@@ -681,7 +701,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const entry: Online = {
       actorId, userId, rec, bodyDue: !isCreationPending(mp, actorId), revoked: [], coldAt: 0, heatAt: 0, heatPos: null, nearHeat: false, heatFrom: -1,
       swimming: false, flameCloak: false, inFreezingWater: false, reportAt: 0, fightAt: 0, area: "", areaWhy: "", freezingArea: false, level: 0, levelParts: [],
-      temperature: 0, warmth: 0, gear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false,
+      temperature: 0, warmth: 0, gear: 0, engineGear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false,
       exposureAt: 0, exposureLogAt: 0, exposureRolls: new Map(), contagious: null,
     };
     if (stored && this.enabled && this.cold.enabled && rec.cold > this.cold.start) {
@@ -1436,36 +1456,49 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (key !== entry.wornKey) {
       entry.wornKey = key;
       const infos = worn.map((id) => this.armorInfo(mp, id));
-      entry.gear = gearWarmth(infos.map((i) => i.armor).filter((a): a is WornArmor => !!a), infos.some((i) => i.torch), this.cold.warmth);
+      const torch = infos.some((i) => i.torch);
+      entry.gear = gearWarmth(infos.map((i) => i.armor).filter((a): a is WornArmor => !!a), torch, this.cold.warmth);
+      entry.engineGear = gearWarmth(infos.map((i) => i.engine).filter((a): a is WornArmor => !!a), torch, this.cold.warmth);
     }
     return entry.gear + this.racial.traits(actorId).warmth + (entry.rec.warmUntil > now ? this.cold.hotFoodWarmth : 0);
   }
 
-  // Slots and warmth keyword of an ARMO, or a carried light; cached per base
+  // Slots and warmth of an ARMO by its keyword, else by the armorWarmth.ts table, or a carried light; cached per base
   private armorInfo(mp: Mp, baseId: number): ArmorInfo {
     let info = this.armorCache.get(baseId);
     if (info) return info;
     let rec: any = null;
     try { rec = mp.lookupEspmRecordById(baseId); } catch { rec = null; }
     const type = String(rec?.record?.type ?? "");
-    info = { armor: null, torch: type === "LIGH" };
+    info = { armor: null, engine: null, torch: type === "LIGH" };
     if (type === "ARMO") {
       const bod = fieldData(rec, "BOD2") || fieldData(rec, "BODT");
       const kws = espmFieldFormIds(rec, "KWDA");
       const has = (id: number): boolean => !!id && kws.indexOf(id) !== -1;
-      info.armor = {
+      const own: WornArmor = {
         slots: bod && bod.byteLength >= 4 ? view(bod).getUint32(0, true) : 0,
         kind: has(this.keywords.warm) ? "warm" : has(this.keywords.cold) ? "cold" : "normal",
         bodyAndHead: has(this.keywords.bodyAndHead),
       };
+      const rated = (own.slots & RATED_SLOTS) !== 0;
+      const row = this.cold.warmthTable && (!rated || own.kind === "normal") ? this.tableRow(mp, baseId) : undefined;
+      info.engine = own;
+      info.armor = row && rated && row.kind ? { ...own, kind: row.kind } : row && !rated && row.extra ? { ...own, extra: row.extra } : own;
     }
     this.armorCache.set(baseId, info);
     return info;
   }
 
-  // The engine's Warmth total against the server's gear and race sum (a hot meal may count or not); one line per differing pair
+  private tableRow(mp: Mp, baseId: number): TableRow | undefined {
+    let desc = "";
+    try { desc = String(mp.getDescFromId(baseId) || ""); } catch { desc = ""; }
+    return WARMTH_TABLE.get(desc.toLowerCase());
+  }
+
+  // The engine's Warmth total against the server's keyword gear and race sum (a hot meal may count or not); one line per differing pair
   private checkWarmth(mp: Mp, entry: Online, engine: number, now: number): void {
-    const gear = entry.gear;
+    const gear = entry.engineGear;
+    const table = entry.gear === gear ? "" : `; gear ${entry.gear} with armorWarmth.ts`;
     const race = this.racial.traits(entry.actorId).warmth;
     const food = entry.rec.warmUntil > now ? this.cold.hotFoodWarmth : 0;
     const server = gear + race;
@@ -1473,7 +1506,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const key = `${Math.round(engine)}/${Math.round(server)}`;
     if (entry.engineSeen === key) return;
     entry.engineSeen = key;
-    this.log(`[survival] ${hex(entry.actorId)} warmth mismatch: engine ${round(engine)}, server ${round(server)} (gear ${gear}, race ${race}${food ? `, hot meal ${food} not counted` : ""}), worn ${entry.wornKey.split(",").filter((x) => x).map((id) => this.edidOf(mp, Number(id))).join(", ") || "nothing"}`);
+    this.log(`[survival] ${hex(entry.actorId)} warmth mismatch: engine ${round(engine)}, server ${round(server)} (gear ${gear}, race ${race}${food ? `, hot meal ${food} not counted` : ""}${table}), worn ${entry.wornKey.split(",").filter((x) => x).map((id) => this.edidOf(mp, Number(id))).join(", ") || "nothing"}`);
   }
 
   // Every heatCheckSeconds: a character standing still at a heat source warms by heatRestore

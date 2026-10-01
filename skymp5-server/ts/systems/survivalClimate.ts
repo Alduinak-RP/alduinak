@@ -62,6 +62,8 @@ export interface ColdConfig {
   heatExtraBases: string[];
   heatKeywords: string[];
   warmth: WarmthTable;
+  // armorWarmth.ts rates the pieces the engine leaves plain or unrated
+  warmthTable: boolean;
   hotFoodWarmth: number;
   hotFoodMinutes: number;
   spellHitCold: number;
@@ -117,6 +119,7 @@ const DEFAULTS: Omit<ColdConfig, "levels" | "warmth" | "regionClimate" | "worldC
   heatStillUnits: 48,
   heatExtraBases: [],
   heatKeywords: ["CraftingCookpot", "AldCraftingKiln"],
+  warmthTable: true,
   hotFoodWarmth: 25,
   hotFoodMinutes: 100,
   spellHitCold: 30,
@@ -226,6 +229,7 @@ export const parseColdSettings = (all: Record<string, unknown>, problems: string
     heatExtraBases: strings("survivalHeatExtraBases", DEFAULTS.heatExtraBases),
     heatKeywords: strings("survivalHeatKeywords", DEFAULTS.heatKeywords),
     warmth,
+    warmthTable: flag("survivalWarmthTable", DEFAULTS.warmthTable),
     hotFoodWarmth: num("survivalHotFoodWarmth", DEFAULTS.hotFoodWarmth, (v) => v >= 0),
     hotFoodMinutes: num("survivalHotFoodWarmthMinutes", DEFAULTS.hotFoodMinutes, (v) => v >= 0),
     spellHitCold: num("survivalSpellHitCold", DEFAULTS.spellHitCold, (v) => v >= 0),
@@ -334,26 +338,33 @@ export const temperatureLevelOf = (before: number, after: number, level: number,
 const SLOT = (n: number): number => 1 << (n - 30);
 const HEAD = SLOT(30) | SLOT(31) | SLOT(42);
 const CLOAK = SLOT(40) | SLOT(46);
+// Slots the engine rates
+export const RATED_SLOTS = HEAD | SLOT(32) | SLOT(33) | SLOT(37);
 
 export interface WornArmor {
   slots: number;
   kind: "normal" | "warm" | "cold";
   // Survival_BodyAndHead: a hooded body piece warms the head too
   bodyAndHead: boolean;
+  // armorWarmth.ts points of a piece on no rated slot (cloak, cape, collar, scarf, mask)
+  extra?: number;
 }
 
-// Engine warmth of the worn pieces: each of body, head, hands and feet counts once, at its warmest piece; a torch and a cloak add
+// Warmth of the worn pieces: body, head, hands and feet once each at the warmest piece, table points once for the back and once for the neck or face, a torch and a cloak add
 export const gearWarmth = (worn: WornArmor[], torch: boolean, w: WarmthTable): number => {
   const best = [0, 0, 0, 0];
+  const extra = [0, 0];
   let cloak = false;
   for (const a of worn) {
+    const group = (a.slots & CLOAK) !== 0 ? 0 : 1;
+    extra[group] = Math.max(extra[group], a.extra || 0);
     const row = w[a.kind];
     const body = (a.slots & SLOT(32)) !== 0;
     const covers = [body, (a.slots & HEAD) !== 0 || (body && a.bodyAndHead), (a.slots & SLOT(33)) !== 0, (a.slots & SLOT(37)) !== 0];
     covers.forEach((on, i) => { if (on) best[i] = Math.max(best[i], row[i]); });
     if (!body && (a.slots & CLOAK) !== 0) cloak = true;
   }
-  return best.reduce((s, v) => s + v, 0) + (torch ? w.torch : 0) + (cloak ? w.cloak : 0);
+  return best.reduce((s, v) => s + v, 0) + extra[0] + extra[1] + (torch ? w.torch : 0) + (cloak ? w.cloak : 0);
 };
 
 // A heat source within radius on each axis
