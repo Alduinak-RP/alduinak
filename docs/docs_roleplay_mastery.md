@@ -236,19 +236,24 @@ Robes stay parked. Sentinel's City Guards pieces, which come with no recipe, get
 recipes of the plugin's own (`AldRecipeGuard<Hold>_<item>`). Sentinel's
 Companion and Wolf armour at the Skyforge is the Companions'.
 
-**Hold gear is Expert work.** Every recipe a hold marker gates (the MCE guard
-cuirasses, helmets and shields, the Eastmarch helmet and the Stormcloak cuirass
-Eastmarch shares, both guard cape sets, Sentinel's City Guards set, Immersive
-Armors' Falkreath set and Immersive Weapons' Falkreath Blade) needs the hold's
-craft rank and an Expert: shields an Expert woodworker at the woodcrafting
-bench, cloaks and capes an Expert tailor, armour, helmets and the hold swords
-and war axes an Expert blacksmith at the forge. The leather guard cuirasses,
-boots and gauntlets moved from the tanning rack to the forge for it, so their
-hours count as smithing. Gear whose material is already Master work keeps
-Master: the Winterhold buckler and shield (ebony) and the Falkreath Warhammer.
-Their Improve entries keep the material tier. The three Great Houses (Redoran,
-Indoril, Telvanni) are hold ids in the faction system, but their gear keeps
-its own tiers.
+**Hold gear is Novice or Adept work.** Every recipe a hold marker gates (the
+MCE guard cuirasses, helmets and shields, the Eastmarch helmet and the
+Stormcloak cuirass Eastmarch shares, both guard cape sets, Sentinel's City
+Guards set, Immersive Armors' Falkreath set and Immersive Weapons' Falkreath
+Blade) needs the hold's craft rank and the matching profession at the tier its
+material has in the plain sets: Novice when it takes only iron ingots, leather,
+leather strips, linen wrap, thread or fur plate, Adept when it takes steel or
+gold ingots. Shields are the woodworker's at the woodcrafting bench, cloaks and
+capes the tailor's, armour, helmets and the hold swords and war axes the
+blacksmith's at the forge. The leather guard cuirasses, boots and gauntlets
+moved from the tanning rack to the forge, so their hours count as smithing.
+Gear whose material is Master work keeps Master: the Winterhold buckler and
+shield (ebony) and the Falkreath Warhammer. Their Improve entries follow the
+recipe's rank and keep the hold marker. From r18 to r23 every piece was Expert
+(the owner's 2026-09-23 rule), which no player had reached by launch, so the
+craft ranks saw no hold gear at all; plugin r24 lowered the 140 entries. The
+three Great Houses (Redoran, Indoril, Telvanni) are hold ids in the faction
+system, but their gear keeps its own tiers.
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in

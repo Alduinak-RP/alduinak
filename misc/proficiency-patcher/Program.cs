@@ -1971,7 +1971,12 @@ static class Steps
             var (owner, also, tier) = Current(r);
             if (owner == p.Owner && tier == p.Tier && also.SequenceEqual(p.Also)) continue;
             var cobj = c.Override(c.Mod.ConstructibleObjects, r);
+            // Faction gear keeps its markers and race group after the rank, where the factions and racial steps put them
+            var faction = cobj.Conditions.Where(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.MarkerKey && !markers.ContainsKey(hs.Spell.Link.FormKey)).ToList();
+            var kept = faction.Count == 0 ? faction : cobj.Conditions.Where(cond => faction.Contains(cond) || cond.Data is IGetIsRaceConditionDataGetter).ToList();
+            cobj.Conditions.RemoveAll(cond => kept.Contains(cond));
             SetTier(c, cobj, p.Owner!, p.Tier, p.Also);
+            cobj.Conditions.AddRange(kept);
             changed++;
             c.Report.Recipes.Add(new RecipeLine("retier", r.EditorID ?? "", c.NameOf(r.CreatedObject.FormKey), p.Owner!, p.Tier, Items(c, cobj), origin: r.FormKey.ModKey.FileName,
                                                 note: $"was {owner ?? "-"} {tier}{(p.Why.Length > 0 ? "; " + p.Why : "")}{(p.Also.Count > 0 ? "; also " + string.Join(", ", p.Also) : "")}"));

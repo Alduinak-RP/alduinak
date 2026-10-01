@@ -407,14 +407,17 @@ cuirass and the Eastmarch helmet had no recipe; the r15 plugin gives the Eastmar
 cuirass recipe and a new `AldRecipeArmorGuardHelmetFullEastmarch`. Since r17
 they also make their hold's Sentinel City Guards set (light and heavy armour,
 boots, gauntlets, helmets, shields, cloaks and the hold's sword or war axe).
-Since r18 every piece of hold gear, vanilla, MCE, Sentinel and Immersive
-Armors' Falkreath set alike, also asks for an Expert of the matching
-profession: shields an Expert woodworker, cloaks and capes an Expert tailor,
-armour, helmets and the hold weapons an Expert blacksmith at the forge (the
-leather guard cuirasses, boots and gauntlets moved there from the tanning
-rack). So the one who crafts must hold both the `craft` rank and the Expert
-rank; gear whose material is Master work (the Winterhold buckler and shield,
-the Falkreath Warhammer) stays Master.
+Every piece of hold gear, vanilla, MCE, Sentinel and Immersive Armors'
+Falkreath set alike, also asks for the matching profession at its material's
+tier: shields the woodworker, cloaks and capes the tailor, armour, helmets and
+the hold weapons the blacksmith at the forge (the leather guard cuirasses,
+boots and gauntlets moved there from the tanning rack), Novice for iron,
+leather, linen, thread and fur plate, Adept for steel and gold. So the one who
+crafts must hold both the `craft` rank and that profession rank; gear whose
+material is Master work (the Winterhold buckler and shield, the Falkreath
+Warhammer) stays Master. From r18 to r23 every piece asked for an Expert, which
+no player had reached, so the craft ranks saw none of it; plugin r24 brought
+it down.
 
 ### Rules
 
