@@ -262,11 +262,21 @@ fails it prints a direct download URL - save that zip as
     `skymp5-backend/scripts/client-package.js`) are left out, since the client
     zip delivers them. `*.log` files in mod folders and `ActorLimitFix.pdb`
     (debug symbols) are left out too, listed on the compile's `left out:`
-    line: SKSE plugins such as Actor Limit Fix write their log next to their
-    dll on every game start, which changed the mod folder's size and made the
-    launcher repair and re-download the mod on every launch. The launcher
-    leaves the same files out of its folder size check (`mo2::is_unverified`),
-    and its repair line names the files that differ. When several downloads
+    line, and the launcher leaves the same files out of its folder size check
+    (`mo2::is_unverified`, launchers after 3.0.5). Its repair line names
+    the files that differ: `[install] Actor Limit Fix: folder is A bytes,
+    manifest expects B (unlisted X n bytes, Y n bytes, not m, missing Z) -
+    repairing`. Actor Limit Fix writes `ActorLimitFix.log` next to its dll on
+    every game start; that lands in the mod folder only when the folder
+    already has the file (an install from a manifest older than C22, which
+    shipped it empty), otherwise MO2 puts it in `overwrite`. Leaving the pdb
+    out changes the mod's hash, so every install rebuilds it once after the
+    next Update Modlist; a launcher after 3.0.5 keeps the unchanged dll and
+    json and downloads nothing, 3.0.5 downloads the archive again (by hand on
+    a free Nexus account). Both servers use one MO2 folder, so while the test
+    and live manifests differ a PC that plays both rebuilds it on each switch,
+    and the switch to live downloads the archive for the pdb, until Migrate
+    client. When several downloads
     hold the same file, a mod takes it from the newest archive of its own
     Nexus mod. A mod built from several archives (Alduinak Client Files takes
     the client archive and the DynDOLOD Files archive) is reinstalled as a
