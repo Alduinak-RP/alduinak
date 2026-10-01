@@ -1161,8 +1161,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     }
   }
 
-  // A client's survivalExposure: each named disease is checked against the records, never the distance, since a false report can only
-  // make the reporter sick; then one roll per confirmed disease, named after the first source that carries it
+  // A client's survivalExposure, checked against the records but never the distance (a false report only hurts the reporter), one roll per disease
   private onExposure(mp: Mp, userId: number, content: Content): void {
     const entry = Array.from(this.online.values()).find((e) => e.userId === userId);
     if (!entry || !this.contagionOn()) return;
