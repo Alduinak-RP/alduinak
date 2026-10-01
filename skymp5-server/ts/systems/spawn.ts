@@ -10,6 +10,7 @@ import { REALMS, afterlifeOf, isFallen, maxCharactersFor, profileMaxCharacters, 
 import { adminTierFor } from "./adminRoles";
 import { GOLD_BASE_ID, STARTER_GOLD_PROP, chainMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
+import { packSummary } from "./goldWatchSystem";
 import { isOutsideBorder, insideSpot } from "./worldBorder";
 
 type Mp = any;
@@ -240,22 +241,22 @@ export class Spawn implements System {
     try {
       const actorId = ctx.svr.getUserActor(userId);
       if (actorId !== 0) {
-        this.logGold(ctx.svr as unknown as Mp, actorId, "logs out");
+        this.logInventory(ctx.svr as unknown as Mp, actorId, "logs out");
         this.schedulePark(ctx, actorId);
       }
     } catch { /* form vanished */ }
   }
 
-  // Gold at logout, at the grace despawn and at login, so a reported loss lands in one of those windows
-  private logGold(mp: Mp, actorId: number, what: string): void {
-    let gold = 0;
+  // Gold and the pack at logout, at the grace despawn and at login, so a reported loss lands in one of those windows
+  private logInventory(mp: Mp, actorId: number, what: string): void {
+    let pack: ReturnType<typeof packSummary>;
     let profileId: unknown = "?";
     try {
-      const entries: any[] = mp.get(actorId, "inventory")?.entries ?? [];
-      gold = entries.reduce((n, e) => n + ((Number(e?.baseId) >>> 0) === GOLD_BASE_ID ? Number(e?.count) || 0 : 0), 0);
+      pack = packSummary(mp.get(actorId, "inventory")?.entries);
       profileId = mp.get(actorId, "profileId");
     } catch { return; }
-    this.log(`[gold] ${hex(actorId)} (profile ${profileId}) ${what} with ${gold} gold`);
+    this.log(`[gold] ${hex(actorId)} (profile ${profileId}) ${what} with ${pack.gold} gold`);
+    this.log(`[pack] ${hex(actorId)} (profile ${profileId}) ${what} with ${pack.items.length} kind(s): ${pack.items.join(", ") || "nothing"}`);
   }
 
   // Disable the body after the logout grace unless re-selected first; also detaches a still-connected owner when firing, since re-selecting a DISABLED actor while still mapped would stream CreateActor(isMe) twice
@@ -265,7 +266,7 @@ export class Spawn implements System {
       this.parkTimers.delete(actorId);
       const wasParked = this.parked.delete(actorId);
       try {
-        this.logGold(ctx.svr as unknown as Mp, actorId, "despawned");
+        this.logInventory(ctx.svr as unknown as Mp, actorId, "despawned");
         ctx.svr.setEnabled(actorId, false);
         this.detachUser(ctx, actorId);
         this.log("Logout grace expired, actor", actorId.toString(16), "despawned");
@@ -362,7 +363,7 @@ export class Spawn implements System {
         try {
           const actorId = ctx.svr.getUserActor(userId);
           if (actorId !== 0) {
-            this.logGold(ctx.svr as unknown as Mp, actorId, "quits to the menu");
+            this.logInventory(ctx.svr as unknown as Mp, actorId, "quits to the menu");
             this.schedulePark(ctx, actorId);
             ctx.gm.emit(USER_MENU_QUIT_EVENT, userId, actorId);
           }
@@ -567,7 +568,7 @@ export class Spawn implements System {
       this.log("Creating character", actorId.toString(16), "in slot", slot, loc ? `at ${loc.id}` : "at a start point");
     } else {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
-      this.logGold(mp, actorId, "logs in");
+      this.logInventory(mp, actorId, "logs in");
     }
     this.scheduleKit(ctx, actorId, EQUIP_KIT_SPAWN_DELAY_MS);
 
@@ -938,7 +939,7 @@ export class Spawn implements System {
       .find((a) => !this.isPermaDead(mp, a));
     if (actorId) {
       this.log("Loading character", actorId.toString(16));
-      this.logGold(mp, actorId, "logs in");
+      this.logInventory(mp, actorId, "logs in");
       this.cancelPark(actorId); // reconnected within the logout grace
       this.unpark(ctx, actorId);
       this.releaseSeat(ctx, actorId);
