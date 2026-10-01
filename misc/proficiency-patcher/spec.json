@@ -1211,6 +1211,18 @@
     "IngotIron": 1,
     "LeatherStrips": 1
    }
+  },
+  {
+   "edid": "AldRecipeCommon_Torch01",
+   "formId": "0x0413E0",
+   "bench": "AldCraftingWoodcrafting",
+   "output": "Torch01",
+   "count": 1,
+   "tier": "Anyone",
+   "items": {
+    "Firewood01": 1,
+    "Charcoal": 1
+   }
   }
  ],
  "cooking": {
@@ -8071,7 +8083,7 @@
   ]
  },
  "overrides": {
-  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). moves sets a placed reference's position by form key, keeping everything else it wins with (the SMdETraCon01 seam piece 00B444 of Digitus Quintus' House, The Great City of Solitude cell 00B213, one unit down from (321,-1296,0): one unit off the kit grid like 00B448, its beam lies inside the top beam of the wall 00B28C on the same seam with both undersides, its ceiling strip and its floor strip on the planes of 00B28C and the floor 00B221, which z-fights; disabling it instead leaves the atrium side of that beam and the ceiling under the balcony 00B446 open). globals sets a global's value by form key (Immersive Armors' IAGRemoveSpell to 0: IAStartupQuestScript adds the Configure Auxiliary Armors power to the player at every game start while it is not 0 and SkyUI.esp is absent, and SkyUI SE is SkyUI_SE.esp; the shield painting activator, the other script that adds it, is in disableReferences). Runs in the hotfix list too. A moves entry may also set a scale. flags clears (clear) or sets (set) record flags of a placed reference (ref) or an armour (item) by form key: the Castle Dour jail door 05E922 loses Inaccessible (0x100), as Alduinak925.esp has it, and the four Tied Linen Pouches of Nirn Necessities, the hip pouches the tailor makes at Adept, lose Non-Playable (0x4), which hid a crafted pouch from the inventory. The nudges of Alduinak925.esp are under moves too: the Thalmor Embassy raw beef and dog meat, the Moorside Inn cask (moved aside for the new oven, scale 0.6), a snow drift on the path to the Throat of the World and the thicket sunk among the new torches at Hammerfell Gate.",
+  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). moves sets a placed reference's position by form key, keeping everything else it wins with (the SMdETraCon01 seam piece 00B444 of Digitus Quintus' House, The Great City of Solitude cell 00B213, one unit down from (321,-1296,0): one unit off the kit grid like 00B448, its beam lies inside the top beam of the wall 00B28C on the same seam with both undersides, its ceiling strip and its floor strip on the planes of 00B28C and the floor 00B221, which z-fights; disabling it instead leaves the atrium side of that beam and the ceiling under the balcony 00B446 open). globals sets a global's value by form key (Immersive Armors' IAGRemoveSpell to 0: IAStartupQuestScript adds the Configure Auxiliary Armors power to the player at every game start while it is not 0 and SkyUI.esp is absent, and SkyUI SE is SkyUI_SE.esp; the shield painting activator, the other script that adds it, is in disableReferences). Runs in the hotfix list too. A moves entry may also set a scale. flags clears (clear) or sets (set) record flags of a placed reference (ref) or an armour (item) by form key: the Castle Dour jail door 05E922 loses Inaccessible (0x100), as Alduinak925.esp has it, and the four Tied Linen Pouches of Nirn Necessities, the hip pouches the tailor makes at Adept, lose Non-Playable (0x4), which hid a crafted pouch from the inventory. The nudges of Alduinak925.esp are under moves too: the Thalmor Embassy raw beef and dog meat, the Moorside Inn cask (moved aside for the new oven, scale 0.6), a snow drift on the path to the Throat of the World and the thicket sunk among the new torches at Hammerfell Gate. lights sets the burn time (DATA Time, the seconds the engine lets a held light burn) of a carryable light by form key: the four carryable lights of the load order, Torch01, Torch01Shadow and SovngardeWarmLight of Skyrim.esm (240) and DLC1Torch of Dawnguard.esm (180), at 36000 (10 h), so the engine never burns a held torch out and the server alone does after torchBurnMinutes of use (TorchSystem).",
   "misc": [
    {
     "item": "0012C8:Saltdeposits.esp",
@@ -8244,6 +8256,28 @@
     "item": "000DF6:evgnnsmpaccessories.esp",
     "name": "Tied Linen Pouch (Right) (evgsmpbasicpouchRDARKarmor)",
     "clear": "0x4"
+   }
+  ],
+  "lights": [
+   {
+    "item": "01D4EC:Skyrim.esm",
+    "name": "Torch (Torch01)",
+    "time": 36000
+   },
+   {
+    "item": "036343:Skyrim.esm",
+    "name": "Torch (Torch01Shadow)",
+    "time": 36000
+   },
+   {
+    "item": "0C82C7:Skyrim.esm",
+    "name": "Torch (SovngardeWarmLight)",
+    "time": 36000
+   },
+   {
+    "item": "015374:Dawnguard.esm",
+    "name": "Torch (DLC1Torch)",
+    "time": 36000
    }
   ]
  },

@@ -69,7 +69,7 @@ JsonObject? categories = null;
 Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
-    ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
+    ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.KilnRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
        Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.Races, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
        Steps.DisableActors, categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
@@ -1532,6 +1532,15 @@ static class Steps
             var from = global.RawFloat;
             global.RawFloat = value;
             c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): value {from} -> {value}");
+        }
+        foreach (var l in Entries(o["lights"]))
+        {
+            var key = FormKey.Factory(l["item"]!.GetValue<string>());
+            if (!cache.TryResolveContext<ILight, ILightGetter>(key, out var ctx)) { c.Error($"overrides: light {key} not found"); continue; }
+            var time = l["time"]!.GetValue<int>();
+            var from = ctx.Record.Time;
+            ctx.GetOrAddAsOverride(c.Mod).Time = time;
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): time {from} -> {time}");
         }
         foreach (var mv in Entries(o["moves"]))
             MoveReference(c, mv, "overrides");

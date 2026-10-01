@@ -303,12 +303,13 @@ Lighting and putting out log `[torch] <actor> lights <base>, <x> of 15 min burne
 and `[torch] <actor> torch <base> unequipped|offline at <x> of 15 min`; boot logs
 `[torch] a held torch burns out after 15 min of use`. The engine has its own
 burn timer, the `LIGH` record's Time (240 s for `Torch01`, `Torch01Shadow` and
-`SovngardeWarmLight`, 180 s for `DLC1Torch`); `AlduinakAdditions.esp` overrides
-those four records with Time 36000 (10 h) so only the server burns a torch
-out, which keeps the setting meaningful up to 600. With a plugin that lacks
-the override the engine takes the torch out of the hand after 3 or 4 minutes,
-the next inventory apply gives it back unequipped, the server logs it as
-`unequipped` and the player has to light it again to use up the rest.
+`SovngardeWarmLight`, 180 s for `DLC1Torch`); `AlduinakAdditions.esp` (from
+r24, `overrides.lights` of the patcher spec) overrides those four records with
+Time 36000 (10 h) so only the server burns a torch out, which keeps the setting
+meaningful up to 600. With a plugin that lacks the override the engine takes
+the torch out of the hand after 3 or 4 minutes, the next inventory apply gives
+it back unequipped, the server logs it as `unequipped` and the player has to
+light it again to use up the rest.
 
 ```json5
 {
