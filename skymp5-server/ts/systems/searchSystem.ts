@@ -18,6 +18,7 @@ type Mp = any;
 // A bound player is searched without consent too; startSession tells them who is searching, and such a search ends once they are freed. A player who is only carried is asked as usual.
 // A restrained (bound or carried) player cannot search anyone.
 // A dead player's body gives up a limited number of distinct items (a stack counts once); the take that reaches the limit closes the window and respawns the player, which removes the body.
+// Property keys and writings stay put in every window but a PK body's (BodySystem), which lists them by name so they move like any other item.
 // A living server NPC is never searched: only its body is. Its owner is pointed at the pet menu, anyone else is refused.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
@@ -27,7 +28,7 @@ type Mp = any;
 //     { customPacketType: "searchEnd" }                              // searcher closed the window
 //   Server -> Client:
 //     { customPacketType: "searchConsentRequest", requestId, text }  // -> target
-//     { customPacketType: "searchApproved", target, body, entries }  // -> searcher: open the window
+//     { customPacketType: "searchApproved", target, body, entries }  // -> searcher: open the window; entries [{ baseId, count, name? }]
 //     { customPacketType: "searchClose" }                            // -> searcher: close it
 //     { customPacketType: "searchNotice", text }                     // corner toast
 
@@ -78,6 +79,8 @@ export class SearchSystem implements System {
   bodyAction?: (ctx: SystemContext, searcherActorId: number, bodyActorId: number) => boolean;
   // Set by index.ts: why a searcher may not open this body, "" when they may
   bodyRefusal?: (searcherActorId: number, bodyActorId: number) => string;
+  // Set by index.ts: true for a body whose window lists property keys and writings by name
+  namedLoot?: (bodyActorId: number) => boolean;
 
   // targetActorId -> session (a target is searched by at most one player)
   private sessions = new Map<number, SearchSession>();
@@ -120,10 +123,14 @@ export class SearchSystem implements System {
     this.installPutHook(ctx);
   }
 
-  // The window lists stacks without names, so property keys and writings stay put, and a stack the window never showed is not there to move
+  // A window without names would move the wrong key or letter, so they stay put there, and a stack the window never showed is not there to move
   private stuck(ctx: SystemContext, targetActorId: number, actorId: number, baseId: number): boolean {
     return this.isSearching(targetActorId, actorId)
-      && (isNamedItemBase(baseId) || this.hidden(ctx, actorId, targetActorId, baseId));
+      && ((isNamedItemBase(baseId) && !this.namesListed(targetActorId)) || this.hidden(ctx, actorId, targetActorId, baseId));
+  }
+
+  private namesListed(targetActorId: number): boolean {
+    return this.sessions.get(targetActorId)?.body === true && this.namedLoot?.(targetActorId) === true;
   }
 
   // A worn stack the searcher's copy still shows after another looter took it is not on the body
@@ -683,14 +690,17 @@ export class SearchSystem implements System {
     }
   }
 
-  // Plain {baseId, count} stacks without extra data, mirroring what TakeItem can move
-  private simpleEntriesOf(ctx: SystemContext, actorId: number): { baseId: number, count: number }[] {
+  // Plain {baseId, count} stacks without extra data, mirroring what TakeItem can move; with names, a key or writing keeps its name
+  private simpleEntriesOf(ctx: SystemContext, actorId: number, names = false): { baseId: number, count: number, name?: string }[] {
     try {
       const inv = (ctx.svr as Mp).get(actorId, "inventory");
       const entries: any[] = inv && Array.isArray(inv.entries) ? inv.entries : [];
       return entries
         .filter((e) => e && typeof e.baseId === "number" && (e.count | 0) > 0)
-        .map((e) => ({ baseId: e.baseId >>> 0, count: e.count | 0 }));
+        .map((e) => {
+          const named = names && isNamedItemBase(e.baseId >>> 0) && typeof e.name === "string" && e.name !== "";
+          return named ? { baseId: e.baseId >>> 0, count: e.count | 0, name: e.name } : { baseId: e.baseId >>> 0, count: e.count | 0 };
+        });
     } catch {
       return [];
     }
@@ -701,8 +711,8 @@ export class SearchSystem implements System {
   }
 
   // On a body the client drops the stacks the server left out, so a hidden item is simply not in the window
-  private visibleEntriesOf(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): { baseId: number, count: number }[] {
-    const entries = this.simpleEntriesOf(ctx, targetActorId);
+  private visibleEntriesOf(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): { baseId: number, count: number, name?: string }[] {
+    const entries = this.simpleEntriesOf(ctx, targetActorId, this.namesListed(targetActorId));
     if (!body || !this.hidesItem) {
       return entries;
     }

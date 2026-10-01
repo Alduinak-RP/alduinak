@@ -299,8 +299,11 @@ Consequences:
   Dropped items vanish after two minutes and lose their name on a restart.
 - **Search and pet windows refuse writings** (`searchSystem.ts` `stuck()`),
   in both directions, because those windows list stacks without names and a
-  take could move the wrong letter. Couriers cannot be robbed of letters at
-  launch.
+  take could move the wrong letter, so a living courier cannot be robbed of
+  letters. The one exception is the body a PK leaves: the victim's writings
+  and property keys go onto it with the rest of the pack, and its window
+  lists them by name, so a looter takes them, document and all
+  (`docs_roleplay_survival_loop.md` section 8).
 - **Trade and chests** move the named copy intact; the trade window shows the
   name, never the text.
 - **A forgotten pet** (its body removed, vanished, or its dead record dropped
@@ -574,7 +577,7 @@ In this order:
 - A letter written before K8 reads as before, on the note texture.
 - At 1280x720 the composer, the note and the spread fit the screen.
 - Dropping a writing puts it back with the message; the search and pet windows
-  refuse it.
+  refuse it, except a PK body's, which lists it by name and lets it be taken.
 - Finish a book, copy it onto a Blank Book, read the copy ("A copy").
 - Relog and restart: names and text persist.
 - Staff Read, Rename and Destroy from the Personal Menu, each in `admin.log`.

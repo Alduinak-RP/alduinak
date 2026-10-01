@@ -338,11 +338,18 @@ behaviour-graph events — no ESP required.**
   takeable through the search window. A worn piece taken from the body stops
   showing on it at the next 2 s check (the body's equipment keeps a worn
   entry while the pack still holds one of its base; `[body] <id> no longer
-  shows N worn piece(s) taken from it, M still shown`). The fallen character keeps only the
-  named items (property keys and writings, `isNamedItemBase`), which the
-  window never moves anyway, so on a body they could never be taken and would
-  go with it, and wakes in the afterlife with nothing else:
-  gold and worn gear included. Their server-side equipment is emptied as well
+  shows N worn piece(s) taken from it, M still shown`). The fallen
+  character's property keys and writings (`isNamedItemBase`) go to the body
+  with everything else, each copy under its own name, so for whoever loots
+  it a house key still opens its door and a letter still reads its
+  document: the PK body's window, alone of all search windows, lists them by
+  name (`SearchSystem.namedLoot`; the `searchApproved` entries carry `name`
+  and the client puts each copy into its copy of the body under that name,
+  `searchService.ts` `restock`, so a take or a put sends the name the native
+  `FindEntriesFor` matches). A client older than this change lists them
+  without names, and its take of one fails on the server and snaps back. The
+  victim wakes in the afterlife with nothing: gold, worn gear, keys and
+  letters included. Their server-side equipment is emptied as well
   (spells kept), so no copy of them goes on wearing what the body holds; the
   realm's own outfit is then handed out and put on 5 s after the respawn
   (`AfterlifeSystem.dress`, `afterlifeLooks`). The victim's own dead actor
@@ -375,15 +382,21 @@ behaviour-graph events — no ESP required.**
   is registered in `bodies.json` next to `companions.json`
   and re-adopted, and put on the grid again, after a restart while its
   actor still exists (the clone is an ordinary `ff` actor saved in the world
-  database with `spawnDelay` 1e9, so it stays dead); every 2 s a
-  body whose loose stacks are gone and that has lain at least 60 s since
-  the death (one emptied later goes at that next check), one older than `bodyMaxSeconds`
-  (default 0 = never), or one that has been taken from or put into but then
-  left alone for `bodyIdleSeconds` (default 7200; the last touch is kept in
-  `bodies.json` as `touchedAt`, and a body nobody has touched is not
-  affected) is removed (`[body] <id> of <victim> removed: emptied
-  | lay too long | left alone | gone`, followed by `, went with it: <base>
-  x<count>, ...` when stacks were still in it, which are then gone for good). The body carries the neighbor-visible `ff_body`
+  database with `spawnDelay` 1e9, so it stays dead). The clone also carries
+  its own record (`private.pkBody`: victim, profile and time of death) and
+  index (`private.indexed.pkBody`), so a restart adopts a body that
+  `bodies.json` lost as well (`[body] N/M body(ies) of the previous run
+  kept, K more missing from ./bodies.json found by private.indexed.pkBody:
+  <ids>`). A body has no lifetime (the owner's rule of 2026-10-01;
+  `bodyMaxSeconds` and `bodyIdleSeconds` are no longer read): every 2 s a
+  body with no stack left that a search window can show and that has lain
+  at least 60 s since the death is removed, one emptied later at that next
+  check, after a restart too (`[body] <id> of <victim> removed: emptied |
+  gone`, followed by `, went with it: <base> x<count>, ...` when stacks
+  were still in it, which are then gone for good). Keys and writings count
+  as loot like any other stack; a stack whose base the load order no longer
+  holds counts as none, since no window can show it, and goes with the
+  body. The body carries the neighbor-visible `ff_body`
   property, registered in the test gamemode's
   `build/dist/testserver/gamemode_extensions/50_properties.js` (gitignored;
   manager Build gamemode only, and Migrate server carries it to live) with
@@ -394,10 +407,11 @@ behaviour-graph events — no ESP required.**
   their pack (`failed setting ff_body`). From 2026-09-24 to the r34 test
   gamemode every PK ended that way. Logged as `[body] <victim> <how> by
   <killer>: body <id> holds N item(s) in M stack(s) moved from the victim (W
-  shown worn), the victim keeps K named stack(s); moved: <base> x<count>, ...`,
-  the record staff restore from. `skymp5-server/tools/test-bodies.js` runs
-  the move, the failures, the worn pieces, the removals and a restart against
-  a stub `mp`.
+  shown worn, K named); moved: <base> x<count>, <base> "<name>" x<count>,
+  ...`, the record staff restore from (a key or writing carries its name). `skymp5-server/tools/test-bodies.js` runs
+  the move, the failures, the worn pieces, the removals and the restarts
+  against a stub `mp`, `skymp5-server/tools/test-search-named.js` the PK
+  body's window with the key against a player's own body.
 - **A player's own body**: every death leaves the player's own actor dead
   where they fell until the engine respawns it after its `spawnDelay`, which
   the gamemode's `70_admin_loop.js` holds at `respawnSeconds` (15) for every

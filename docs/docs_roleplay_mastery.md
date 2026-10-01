@@ -831,7 +831,7 @@ checks always come first and every refusal shows once. If the victim respawns
 during the 5 s on their own body, the skinner is stood up (an `actionLock` of 0 s) and told "The
 body is gone before you could finish."; a skinner who goes offline, dies, goes
 down, is restrained or ends up out of reach leaves the body skinnable again,
-and a PK body removed meanwhile (emptied, left alone) gives nothing (`the body
+and a PK body removed meanwhile (emptied) gives nothing (`the body
 is gone`). A downed player is alive, so neither
 the client (it opens the X menu on a living player) nor the server offers it.
 A PK body is known through `BodySystem.bodyOf` (the bodies it registered,

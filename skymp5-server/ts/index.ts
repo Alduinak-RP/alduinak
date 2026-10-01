@@ -290,6 +290,8 @@ const main = async () => {
   const bodySystem = new BodySystem(log);
   // A player's own body is not searched from its skinning until the respawn, a PK body only while it is skinned
   searchSystem.bodyRefusal = (searcherId, bodyId) => huntingSystem.searchRefusal(bodyId) || bodySystem.refusalFor(searcherId, bodyId);
+  // A PK body holds the victim's keys and writings, taken from its window like any other item
+  searchSystem.namedLoot = (bodyId) => !!bodySystem.bodyOf(bodyId);
   huntingSystem.leftBody = (victimId) => bodySystem.hasBodyFor(victimId);
   huntingSystem.pkBodyOf = (bodyId) => bodySystem.bodyOf(bodyId);
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
