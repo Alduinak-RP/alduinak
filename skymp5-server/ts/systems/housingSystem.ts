@@ -4,10 +4,10 @@ import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
-import { addItemTo, holdsItem, takeItemFrom, userSlotCount } from "./actorUtil";
+import { addItemTo, holdsItem, isIntroduced, takeItemFrom, userSlotCount } from "./actorUtil";
 import { FactionDef, factionLand, holdRanksOf, managesHold } from "./factionRules";
 import { Hold, holdName, holdOfRefs, isHoldLand, isOutdoors, loadHolds } from "./holdOf";
-import { describeActor, profileIdOf, realNameOf } from "./playerText";
+import { describeActor, profileIdOf, realNameOf, titledName } from "./playerText";
 import { adminAudit } from "./discordAlerts";
 import { WRITING_ID } from "./writingStore";
 
@@ -64,9 +64,9 @@ type Mp = any;
 // character), the owner, a key holder or an admin takes it down into their own pack, and on an unclaimed door only the
 // poster or an admin. The server acts on the half the user last opened the menu at, never on an id from the packet.
 //
-// Knocking. Every viewer of a door, strangers and faction outsiders included, may knock once per KNOCK_COOLDOWN_MS; the
-// gamemode's chat delivers "<name> knocks on the door." ("Someone" to listeners the knocker is not introduced to) at
-// say range around the door's other half, or around the door itself when it has none.
+// Knocking. Every viewer of a door, strangers and faction outsiders included, may knock once per KNOCK_COOLDOWN_MS; every
+// player within say range (chatRanges.say) of either half reads the notice "<name> knocks on the door." ("Someone" to
+// listeners the knocker is not introduced to), the same propertyNotice every other housing line uses.
 //
 // Faction claims. A member whose rank manages property (the rank's housing flag, a leader or an acting regent) claims an
 // unclaimed door or container for the faction with a lock, or hands their own claim to it. The record keeps owner
@@ -101,6 +101,10 @@ const DEFAULT_MAX_DISTANCE = 512;
 const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
 const KNOCK_COOLDOWN_MS = 10000;
+// The chat's say range in game units when server-settings chatRanges.say is not set
+const DEFAULT_SAY_RANGE = 2000;
+// Set by FactionSystem while Show Title is on
+const TITLE_PROP = "ff_factionTitle";
 // What a hold official may do to someone else's claim
 const MANAGER_ACTIONS = new Set(["abandon", "breaklock", "revoke", "rename", "revokekeys", "transfer", "grantcontainer"]);
 // What only the owner, or a faction claim's managing ranks, may do
@@ -204,6 +208,8 @@ export class HousingSystem implements System {
 
     const maxDistance = Number(all?.["housingMaxDistance"]);
     if (Number.isFinite(maxDistance) && maxDistance > 0) this.maxDistance = maxDistance;
+    const sayRange = Number((all?.["chatRanges"] as Record<string, unknown> | undefined)?.["say"]);
+    if (Number.isFinite(sayRange) && sayRange > 0) this.sayRange = sayRange;
 
     this.roleCfg = readAdminRoleConfig(all);
     this.keySplitOnLogin = all?.["keySplitOnLogin"] === true;
@@ -877,7 +883,7 @@ export class HousingSystem implements System {
 
   // ── Knocking ────────────────────────────────────────────────────────────────
 
-  // Anyone at a door may knock; the chat's say range around its other half hears it, around the door itself for a door without one
+  // Anyone at a door may knock; every player within say range of either half reads it
   private doKnock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord): void {
     const door = this.menuDoorInReach(ctx, userId, actorId, primary, "knock");
     if (!door) return;
@@ -891,29 +897,44 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, `You knocked a moment ago. Wait ${Math.ceil(wait / 1000)} s.`);
       return;
     }
-    // The gamemode's chat (33_chat_at_ref.js) owns the say range, the names each listener knows and the chat line
-    const emoteAt = (globalThis as any).__alduinakEmoteAt;
-    if (typeof emoteAt !== "function") {
-      this.refuse(ctx, userId, actorId, "knock", door, "Knocking is not available yet.");
-      this.log("[housing] knock needs the gamemode's __alduinakEmoteAt (33_chat_at_ref.js): run Build gamemode");
-      return;
-    }
     if (this.lastKnockMs.size > 256) {
       for (const [id, at] of this.lastKnockMs) if (now - at >= KNOCK_COOLDOWN_MS) this.lastKnockMs.delete(id);
     }
     this.lastKnockMs.set(actorId, now);
-    const far = this.partnerOf(ctx, door) || door;
-    let heard = 0;
-    try {
-      heard = Number(emoteAt(far, actorId, "knocks on the door.")) || 0;
-    } catch (e) {
-      this.log(`[housing] knock on door ${door.toString(16)} by ${this.who(ctx, actorId)} was not delivered: ${e}`);
-      this.notice(ctx, userId, CHANGE_FAILED);
-      return;
-    }
-    const whereHeard = far === door ? "the door itself" : this.doorLabel(ctx, primary, rec, far, false);
-    this.log(`[housing] knock on ${this.doorLabel(ctx, primary, rec, door)} by ${this.who(ctx, actorId)}: heard by ${heard} within talking range of ${whereHeard}`);
+    const mp = ctx.svr as Mp;
+    let title = "";
+    try { title = String(mp.get(actorId, TITLE_PROP) || ""); } catch { /* no title shown */ }
+    const name = titledName(title, this.nameOf(ctx, actorId));
+    const line = (listenerId: number) => `${isIntroduced(mp, listenerId, actorId) ? name : "Someone"} knocks on the door.`;
+    const told = new Set<number>([actorId]);
+    const here = this.noticeAround(ctx, door, told, line);
+    const far = this.partnerOf(ctx, door);
+    const beyond = far ? `${this.noticeAround(ctx, far, told, line)} at ${this.doorLabel(ctx, primary, rec, far, false)}` : "no other half";
+    this.log(`[housing] knock on ${this.doorLabel(ctx, primary, rec, door)} by ${this.who(ctx, actorId)}: read within talking range by ${here} at that door, ${beyond}`);
     this.notice(ctx, userId, "You knock on the door.");
+  }
+
+  // A notice for every player not yet told within say range of a ref, in its cell or worldspace; returns how many it reached
+  private noticeAround(ctx: SystemContext, refrId: number, told: Set<number>, line: (listenerId: number) => string): number {
+    const mp = ctx.svr as Mp;
+    let reached = 0;
+    for (const userId of this.onlineUsers(ctx)) {
+      const listenerId = this.actorOf(ctx, userId);
+      if (!listenerId || told.has(listenerId)) continue;
+      try {
+        if (String(mp.get(listenerId, "worldOrCellDesc")) !== String(mp.get(refrId, "worldOrCellDesc"))) continue;
+        const a = mp.get(listenerId, "pos");
+        const b = mp.get(refrId, "pos");
+        const d2 = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+        if (!(d2 <= this.sayRange * this.sayRange)) continue;
+      } catch {
+        continue;
+      }
+      told.add(listenerId);
+      this.notice(ctx, userId, line(listenerId));
+      reached++;
+    }
+    return reached;
   }
 
   // ── Pets ────────────────────────────────────────────────────────────────────
@@ -1552,6 +1573,7 @@ export class HousingSystem implements System {
   private lastKnockMs = new Map<number, number>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private maxDistance = DEFAULT_MAX_DISTANCE;
+  private sayRange = DEFAULT_SAY_RANGE;
   private keySplitOnLogin = false;
   private lockBaseId = LOCK_BASE_ID_FALLBACK;
   private decorDirty = false;
