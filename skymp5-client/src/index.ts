@@ -38,6 +38,7 @@ import { DisableSkillAdvanceService } from "./services/services/disableSkillAdva
 import { DisableFastTravelService } from "./services/services/disableFastTravelService";
 import { DisableDifficultySelectionService } from "./services/services/disableDifficultySelectionService";
 import { DisableKillCamService } from "./services/services/disableKillCamService";
+import { DisableNpcWeaponPickupService } from "./services/services/disableNpcWeaponPickupService";
 import { WorldCleanerService } from "./services/services/worldCleanerService";
 import { CompanionService } from "./services/services/companionService";
 import { LoadOrderVerificationService } from "./services/services/loadOrderVerificationService";
@@ -151,6 +152,7 @@ const main = () => {
       new DisableFastTravelService(sp, controller),
       new DisableDifficultySelectionService(sp, controller),
       new DisableKillCamService(sp, controller),
+      new DisableNpcWeaponPickupService(sp, controller),
       new WorldCleanerService(sp, controller),
       new CompanionService(sp, controller),
       new LoadOrderVerificationService(sp, controller),

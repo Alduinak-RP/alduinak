@@ -316,6 +316,29 @@ has been loaded for a second.
 `server-settings.json`. Every switch logs
 `HostingSystem: <npc> hosted by <player> (aggro|nearest|owner|nobody in range)`.
 
+### No weapon pickup
+
+Every client turns off the combat AI's weapon pickup at startup
+(`disableNpcWeaponPickupService.ts`), since any of them may host NPCs. In
+combat the engine's Acquire Weapon behaviour has a disarmed or unarmed NPC,
+or one whose weapon scores lower than one lying nearby, search the loaded
+world weapons and walk over to pick one up, then the arrows or bolts around a
+bow it chose. It skips every weapon at or past the maximum distance of the
+NPC's case, read from four game setting pairs (close 256 to 768 units,
+disarmed 512 to 2048, ranged 512 to 2048, unarmed 256 to 2048), so the client
+sets all eight and `fCombatAcquireWeaponFindAmmoDistance` (384) to 0 and no
+weapon is ever a candidate: a dropped or disarmed weapon stays where it lies.
+The `fPickupWeapon*`, `fCombatFindBetterWeaponTime` and
+`fCombatDisarmedFindBetterWeapon*` settings have no reader in SkyrimSE.exe 1.6.1179.
+The package Acquire procedure is left alone: its radius,
+`fAIAcquireObjectDistance`, is the default radius of every package search,
+and the vanilla packages that use it (eating, a few quest archers, the
+dropped item bystanders) never reach a weapon a player dropped, which the
+client deletes at once and the server places again. One line in
+`skyrim-platform.log`: `DisableNpcWeaponPickupService: NPC weapon pickup off:
+fCombatAcquireWeaponCloseDistanceMax 768 -> 0, ...` with each value before and
+read back after.
+
 ### Placement
 
 NPCs spawn on the navmesh, the walkable ground the game's own AI paths on,
