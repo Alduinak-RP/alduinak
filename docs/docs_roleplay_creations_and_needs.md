@@ -642,7 +642,9 @@ regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
     10% x (1 - disease resist 0%) = 10%, roll 0.412, spared`. Nine skeever bites in ten end that way, so a short fight
     with no disease and a `spared` line per bite is the system working. No line at all means the hit never reached the
     roll: survival or diseases off, the hit blocked or a spell, the target in creation, dead or in god, ghost or invis
-    mode, or the attacker's race no carrier.
+    mode, the attacker's race no carrier or the attacker a pet, every disease of that carrier already held (a wolf has
+    two), the character not settled yet in the seconds after a login or respawn, or the hit dropped natively before the
+    event (a second unarmed hit within about 0.77 s).
   - On a catch the player reads "You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming
     days. A Cure Disease potion or a healing potion cures it.", the fatigue readout gains a Sick line and Active Effects
     lists the disease.
