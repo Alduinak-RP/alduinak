@@ -205,7 +205,7 @@ multiclassing off: the primary then works exactly as before. The Test value:
   native source since `ea63f69a`: the cap follows the recipe's own profession), which is why the Test Server adds
   `masterySlots` only once NV1 is built.
 - **Tempers the client reports.** A temper the native craft did not record reaches the server as a `craftedExtras`
-  report (`craftedExtrasSystem.ts`), and since R2 it follows the same rules as the native one: the station must offer
+  report (`craftedExtrasSystem.ts`), and while the temper rules are on it follows the same rules as the native one: the station must offer
   the recipe and its materials must be among the reported losses; a recipe that asks for a rank marker needs a slot
   that holds it; the result is capped by that slot's rank (`MasterySystem.temperCap`, the TS twin of the native
   `TemperCap`: for an ungated recipe the best slot that works the bench; Free tempers to Fine, every rank one step
@@ -215,9 +215,14 @@ multiclassing off: the primary then works exactly as before. The Test value:
   that craft cannot improve the item any further.", "You are too tired to improve that item. Rest a while."). Such a
   temper earns no hours. Log: `[crafted] <actor> <item>: tempered to 1.2 (recipe <id>, cap Novice blacksmith, asked
   1.6)` and `... refused {...} from {...} (rank)` or `(tired)`. The recipe index both this and the repair menu read
-  is `systems/temperRecipes.ts`. `craftedExtrasTemperRules: false` in `server-settings.json` puts such a temper back
-  to materials alone (no gate, no cap, no fatigue), as it was before R2; the boot line `[crafted] a reported temper
-  ...` says which is in force.
+  is `systems/temperRecipes.ts`. The rules are on while `alduinakDamageFormulaSettings` has `enabled` or
+  `durability.enabled` true; a server without the block, or with both off, tempers such a report by materials alone
+  (no gate, no cap, no fatigue), as it was before R2. `craftedExtrasTemperRules: true` or `false` in
+  `server-settings.json` decides whatever the block says; the boot line `[crafted] a reported temper ...` says
+  which is in force and why. While the rules are on, a report that claims a temper within 3 s of one the native
+  craft recorded for that item is the client's view from before that craft's inventory reached it, not a second
+  temper: nothing is tempered, taken, charged or refused (`[crafted] <actor> <item>: the reported temper is the one
+  the craft already recorded, nothing changed`), once per native temper.
 - **Kits.** A sub-slot pick hands over that craft's kit items (`masteryKits`), never gold, once per craft per
   character, and none when the primary's kit was that craft's (`masterySlotKits`, default on; the crafts that got
   one are listed in `private.masterySlots.kits`).

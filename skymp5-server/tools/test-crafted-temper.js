@@ -1,7 +1,8 @@
 'use strict'
 
 // CraftedExtrasSystem tempers (path B) over a stub mp with the real MasterySystem and NeedsSystem: the recipe's rank gates, the rank cap
-// of the recipe's profession across multiclass slots, fatigue through needs.pay, the off switch and the shared recipe index: node tools/test-crafted-temper.js
+// of the recipe's profession across multiclass slots, fatigue through needs.pay, the switch and its default, the report of a temper the native
+// craft already recorded and the shared recipe index: node tools/test-crafted-temper.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -13,7 +14,8 @@ const load = () => {
   const dir = path.join(__dirname, '..', 'ts', 'systems')
   const source = path.join(dir, 'test-crafted-temper-entry.ts')
   const contents = [
-    'export { CraftedExtrasSystem } from "./craftedExtrasSystem";',
+    'export { CraftedExtrasSystem, __test as craftedTest } from "./craftedExtrasSystem";',
+    'export { Settings } from "../settings";',
     'export { MasterySystem } from "./masterySystem";',
     'export { NeedsSystem, fatigueCost } from "./needsSystem";',
     'export { parseSlots } from "./masterySlots";',
@@ -29,7 +31,7 @@ const load = () => {
   return compiled.exports
 }
 
-const { CraftedExtrasSystem, MasterySystem, NeedsSystem, fatigueCost, parseSlots, recipes } = load()
+const { CraftedExtrasSystem, craftedTest, Settings, MasterySystem, NeedsSystem, fatigueCost, parseSlots, recipes } = load()
 
 const ACTOR = 0xff000100
 const USER = 7
@@ -180,15 +182,18 @@ const setup = ({ slots = THREE } = {}) => {
 const near = (actual, expected, what) => assert.ok(Math.abs(actual - expected) < 1e-9, `${what}: ${actual} != ${expected}`)
 
 const results = []
+const pending = []
 function test(name, fn) {
-  try {
-    now = 1e12
-    fn()
-    results.push([true, name])
-  } catch (err) {
-    results.push([false, name, err])
-  }
+  pending.push([name, fn])
 }
+
+// initAsync as the server runs it, over these settings
+const boot = async (t, allSettings) => {
+  Settings.get = async () => ({ allSettings })
+  await t.crafted.initAsync(t.ctx)
+  return t
+}
+const REBALANCE = { alduinakDamageFormulaSettings: { enabled: true, durability: { enabled: false } } }
 
 test('the index lists every recipe of an item and the temper ones by bench; the cap step follows the native HealthOfRank', () => {
   const lines = []
@@ -367,10 +372,129 @@ test('craftedExtrasTemperRules false tempers by materials alone: no gate, no cap
   assert.deepEqual([t.reverted(), t.notices()], [[], []])
 })
 
-let failed = 0
-for (const [ok, name, err] of results) {
-  console.log(`${ok ? 'pass' : 'FAIL'}  ${name}`)
-  if (!ok) { failed++; console.log(err) }
-}
-console.log(`${results.length - failed}/${results.length} passed`)
-process.exit(failed ? 1 : 0)
+test('the rules follow the rebalance block unless craftedExtrasTemperRules is set: a server without the block tempers by materials as before', async () => {
+  const { temperRulesOn } = craftedTest
+  const on = { enabled: true }
+  const wear = { enabled: false, durability: { enabled: true } }
+  const off = { enabled: false, durability: { enabled: false } }
+  assert.deepEqual([{}, { alduinakDamageFormulaSettings: off }, { alduinakDamageFormulaSettings: 'on' }, { alduinakDamageFormulaSettings: null }].map(temperRulesOn), [false, false, false, false])
+  assert.deepEqual([{ alduinakDamageFormulaSettings: on }, { alduinakDamageFormulaSettings: wear }].map(temperRulesOn), [true, true])
+  assert.equal(temperRulesOn({ craftedExtrasTemperRules: true }), true)
+  assert.equal(temperRulesOn({ craftedExtrasTemperRules: true, alduinakDamageFormulaSettings: off }), true)
+  assert.equal(temperRulesOn({ craftedExtrasTemperRules: false, alduinakDamageFormulaSettings: on }), false)
+  assert.equal(temperRulesOn({ craftedExtrasTemperRules: 'yes' }), false, 'only true or false set it')
+
+  // No block: no craft hook, and a tired character with no profession tempers the gated sword for the ingot alone
+  const plain = await boot(setup(), {})
+  assert.equal(plain.crafted.temperRules, false)
+  assert.equal(plain.mp.onCraft, undefined)
+  assert.deepEqual(plain.lines.filter((l) => l.startsWith('[crafted] a reported temper')),
+    ['[crafted] a reported temper takes materials only: craftedExtrasTemperRules is not set and alduinakDamageFormulaSettings is absent or off'])
+  plain.setFatigue(0)
+  plain.hold({ baseId: SWORD, count: 1 }, { baseId: INGOT, count: 1 })
+  plain.report(WHEEL_REF, [{ baseId: SWORD, count: 1, health: 1.6 }], [{ baseId: SWORD, count: 1 }, { baseId: INGOT, count: 1 }])
+  assert.deepEqual([plain.copy(SWORD, 1.6), plain.count(INGOT), plain.fatigue()], [1, 0, 0], JSON.stringify(plain.held()))
+  assert.deepEqual([plain.reverted(), plain.notices()], [[], []])
+
+  const rebalance = await boot(setup(), REBALANCE)
+  assert.equal(rebalance.crafted.temperRules, true)
+  assert.equal(typeof rebalance.mp.onCraft, 'function')
+  assert.deepEqual(rebalance.lines.filter((l) => l.startsWith('[crafted] a reported temper')),
+    ["[crafted] a reported temper follows its recipe's rank gates and rank cap and costs a craft of fatigue: craftedExtrasTemperRules is not set and alduinakDamageFormulaSettings is on"])
+  const forced = await boot(setup(), { craftedExtrasTemperRules: false, ...REBALANCE })
+  assert.equal(forced.mp.onCraft, undefined)
+  assert.ok(forced.lines.includes('[crafted] a reported temper takes materials only: craftedExtrasTemperRules is false'), forced.lines.join('\n'))
+})
+
+test('a report built before the native temper reached the client is no second temper: nothing tempered, taken, charged or refused', async () => {
+  const stale = [[{ baseId: SWORD, count: 1, health: 1.2 }], [{ baseId: SWORD, count: 1 }, { baseId: INGOT, count: 1 }]]
+  const price = fatigueCost('craft', 1)
+  const smith = async () => {
+    const t = await boot(setup(), REBALANCE)
+    t.choose('blacksmith', 0)
+    return t
+  }
+  // The craft hook, then what the native does when no hook refuses: one copy tempered for one ingot
+  const nativeTemper = (t, ...after) => {
+    assert.notEqual(t.mp.onCraft(ACTOR, SWORD, 1, TEMPER_SWORD), false)
+    t.hold(...after)
+  }
+
+  let t = await smith()
+  t.hold({ baseId: SWORD, count: 2 }, { baseId: INGOT, count: 2 })
+  nativeTemper(t, { baseId: SWORD, count: 1 }, { baseId: INGOT, count: 1 }, { baseId: SWORD, count: 1, health: 1.2 })
+  now += 400
+  t.report(WHEEL_REF, ...stale)
+  assert.deepEqual([t.copy(SWORD, 1.2), t.copy(SWORD, 1), t.count(INGOT), t.fatigue()], [1, 1, 1, 1], JSON.stringify(t.held()))
+  assert.deepEqual([t.reverted(), t.notices()], [[], []])
+  assert.ok(t.lines.some((l) => l === '[crafted] ff000100 13989: the reported temper is the one the craft already recorded, nothing changed'), t.lines.join('\n'))
+  // One native temper answers one report: the next one is a temper of the second copy
+  t.report(WHEEL_REF, ...stale)
+  assert.deepEqual([t.copy(SWORD, 1.2), t.count(INGOT)], [2, 0], JSON.stringify(t.held()))
+  near(1 - t.fatigue(), price, 'one Novice craft')
+
+  // The only copy: no "server did not accept" for the temper that was made
+  t = await smith()
+  t.hold({ baseId: SWORD, count: 1 }, { baseId: INGOT, count: 1 })
+  nativeTemper(t, { baseId: SWORD, count: 1, health: 1.2 })
+  t.report(WHEEL_REF, ...stale)
+  assert.deepEqual([t.copy(SWORD, 1.2), t.fatigue()], [1, 1])
+  assert.deepEqual([t.reverted(), t.notices()], [[], []])
+
+  // A craft another hook refused changed nothing, so its report is judged as any other: too tired
+  t = await smith()
+  t.setFatigue(price * 0.5)
+  t.hold({ baseId: SWORD, count: 2 }, { baseId: INGOT, count: 2 })
+  nativeTemper(t, { baseId: SWORD, count: 2 }, { baseId: INGOT, count: 2 })
+  t.report(WHEEL_REF, ...stale)
+  assert.deepEqual([t.copy(SWORD, 1), t.count(INGOT)], [2, 2])
+  assert.deepEqual(t.reverted(), [SWORD])
+  assert.deepEqual(t.notices(), ['You are too tired to improve that item. Rest a while.'])
+
+  // Two clicks in one report, the second refused by the native: the first is known, the second is refused
+  t = await smith()
+  t.hold({ baseId: SWORD, count: 2 }, { baseId: INGOT, count: 2 })
+  nativeTemper(t, { baseId: SWORD, count: 1 }, { baseId: INGOT, count: 1 }, { baseId: SWORD, count: 1, health: 1.2 })
+  t.setFatigue(price * 0.5)
+  nativeTemper(t, { baseId: SWORD, count: 1 }, { baseId: INGOT, count: 1 }, { baseId: SWORD, count: 1, health: 1.2 })
+  t.report(WHEEL_REF, [{ baseId: SWORD, count: 2, health: 1.2 }], [{ baseId: SWORD, count: 2 }, { baseId: INGOT, count: 2 }])
+  assert.deepEqual([t.copy(SWORD, 1.2), t.copy(SWORD, 1), t.count(INGOT)], [1, 1, 1], JSON.stringify(t.held()))
+  near(t.fatigue(), price * 0.5, 'nothing charged')
+  assert.deepEqual(t.reverted(), [SWORD])
+
+  // Later than a report can lag, the same lines are a temper of their own
+  t = await smith()
+  t.hold({ baseId: SWORD, count: 2 }, { baseId: INGOT, count: 2 })
+  nativeTemper(t, { baseId: SWORD, count: 1 }, { baseId: INGOT, count: 1 }, { baseId: SWORD, count: 1, health: 1.2 })
+  now += 3001
+  t.report(WHEEL_REF, ...stale)
+  assert.deepEqual([t.copy(SWORD, 1.2), t.count(INGOT)], [2, 0], JSON.stringify(t.held()))
+
+  // A poison on the copy just tempered is no temper claim, and a forge craft leaves no note
+  t = await smith()
+  t.hold({ baseId: SWORD, count: 1 }, { baseId: INGOT, count: 3 }, { baseId: POISON, count: 1 })
+  nativeTemper(t, { baseId: SWORD, count: 1, health: 1.2 }, { baseId: INGOT, count: 2 }, { baseId: POISON, count: 1 })
+  t.report(0, [{ baseId: SWORD, count: 1, health: 1.2, poisonId: POISON, poisonCount: 1 }], [{ baseId: SWORD, count: 1, health: 1.2 }, { baseId: POISON, count: 1 }])
+  assert.equal(t.held().find((e) => e.baseId === SWORD).poisonId, POISON, JSON.stringify(t.held()))
+  t.mp.onCraft(ACTOR, SWORD, 1, FORGE_SWORD)
+  assert.equal(t.crafted.nativeTempers.get(ACTOR).length, 1, 'only the temper is noted')
+})
+
+;(async () => {
+  for (const [name, fn] of pending) {
+    try {
+      now = 1e12
+      await fn()
+      results.push([true, name])
+    } catch (err) {
+      results.push([false, name, err])
+    }
+  }
+  let failed = 0
+  for (const [ok, name, err] of results) {
+    console.log(`${ok ? 'pass' : 'FAIL'}  ${name}`)
+    if (!ok) { failed++; console.log(err) }
+  }
+  console.log(`${results.length - failed}/${results.length} passed`)
+  process.exit(failed ? 1 : 0)
+})()

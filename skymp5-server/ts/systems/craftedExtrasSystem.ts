@@ -1,9 +1,10 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
+import { chainMpHook } from "./actorUtil";
 import { espmFieldFormIds, readFormIdField, toFormId } from "./formIdUtil";
 import { MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
-import { LEGENDARY_STEP, TemperRecipe, espmRecordIds, qualityName, recipesAt, temperCapStep } from "./temperRecipes";
+import { LEGENDARY_STEP, TemperRecipe, espmRecordIds, qualityName, recipesAt, temperCapStep, temperRecipesOf } from "./temperRecipes";
 import {
   EnchantmentEffect, Inventory, InventoryEntry, Item, addEntries, byNearestCondition, copyValidExtras, describeExtras, healthStep,
   isEnchanted, isSet, readInventory, sameBase, sameEffects, sameFloat, sameItem, withCount,
@@ -23,7 +24,8 @@ type Mp = any;
 // Server -> Client: { customPacketType: "notification", text } when a crafted change is refused
 // Server -> Client: { customPacketType: "craftedExtrasRefused", baseIds } so the client reverts those items to the server copy
 //
-// server-settings.json: craftedExtrasTemperRules, default true; false tempers by materials alone, up to Legendary and free of fatigue
+// server-settings.json: craftedExtrasTemperRules, true or false; not set, the rules are on while alduinakDamageFormulaSettings has
+// enabled or durability.enabled true. Off tempers by materials alone, up to Legendary and free of fatigue
 
 const PACKET = "craftedExtras";
 const NOTICE_PACKET = "notification";
@@ -67,6 +69,9 @@ const POISON_CREDIT_MS = 10 * 60 * 1000;
 const MAX_POISON_CREDITS = 8;
 // Concentrated Poison puts a second dose on the weapon the apply already poisoned, reported soon after
 const POISON_RAISE_MS = 15 * 1000;
+// A report built before the inventory of a native temper reached the client arrives within this long of the craft
+const NATIVE_TEMPER_MS = 3000;
+const MAX_NATIVE_TEMPERS = 8;
 
 interface Cap {
   magnitude: number;
@@ -116,6 +121,13 @@ interface PoisonCredit {
   raiseUntil?: number;
 }
 
+// A temper the native craft was asked for, and the quality steps the actor's copies of the item held right before it
+interface NativeTemper {
+  baseId: number;
+  at: number;
+  steps: number;
+}
+
 // A temper the crafter's rank and fatigue bar allow: the health step it reaches and what it costs
 interface Temper {
   recipe: TemperRecipe;
@@ -157,6 +169,17 @@ const chargeOf = (e: InventoryEntry): number => (typeof e.chargePercent === "num
 const formulaCost = (baseCost: number, e: EnchantmentEffect): number =>
   baseCost * Math.pow(Math.max(e.magnitude, 1), 1.1) * Math.pow(Math.max(e.duration / 10, 1), 1.1);
 
+// Quality steps above plain over every copy of the item, which only a temper raises
+const temperSteps = (inv: Inventory, baseId: number): number =>
+  inv.entries.reduce((n, e) => ((e.baseId >>> 0) === (baseId >>> 0) ? n + (healthStep(e.health) - 10) * e.count : n), 0);
+
+// craftedExtrasTemperRules when it is set, else on with the rebalance or durability
+const temperRulesOn = (all: Record<string, unknown>): boolean => {
+  const set = all["craftedExtrasTemperRules"];
+  if (typeof set === "boolean") return set;
+  return durabilityTags(all).enabled || (all["alduinakDamageFormulaSettings"] as { enabled?: unknown } | null | undefined)?.enabled === true;
+};
+
 // conditionTag is the " (97%)" or " (Broken)" a durability client shows after a name, null with durability off
 const cleanName = (name: unknown, conditionTag: RegExp | null): string | undefined => {
   if (typeof name !== "string") return undefined;
@@ -178,10 +201,17 @@ export class CraftedExtrasSystem implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
     const all = ((await Settings.get()).allSettings || {}) as Record<string, unknown>;
-    this.temperRules = all["craftedExtrasTemperRules"] !== false;
+    this.temperRules = temperRulesOn(all);
     const tags = durabilityTags(all);
     this.conditionTag = tags.enabled ? conditionTagPattern(tags.brokenLabel) : null;
-    this.log(`[crafted] a reported temper ${this.temperRules ? "follows its recipe's rank gates and rank cap and costs a craft of fatigue" : "takes materials only, craftedExtrasTemperRules is false"}`);
+    const why = typeof all["craftedExtrasTemperRules"] === "boolean" ? `craftedExtrasTemperRules is ${this.temperRules}`
+      : `craftedExtrasTemperRules is not set and alduinakDamageFormulaSettings is ${this.temperRules ? "on" : "absent or off"}`;
+    this.log(`[crafted] a reported temper ${this.temperRules ? "follows its recipe's rank gates and rank cap and costs a craft of fatigue" : "takes materials only"}: ${why}`);
+    if (this.temperRules) {
+      chainMpHook(mp, "onCraft", (actorId: number, craftedId: number, _count: number, recipeId: number) => {
+        this.noteNativeTemper(ctx, Number(actorId) >>> 0, Number(craftedId) >>> 0, Number(recipeId) >>> 0);
+      });
+    }
     const previous = typeof mp.onEatItem === "function" ? mp.onEatItem : null;
     mp.onEatItem = (...args: unknown[]) => {
       const verdict = previous ? previous.apply(mp, args) : undefined;
@@ -246,6 +276,10 @@ export class CraftedExtrasSystem implements System {
       if (emptiedGems.has(g)) continue;
       for (let unit = 0; unit < Math.min(g.count, MAX_UNITS); unit++) {
         crafter.refusals.clear();
+        if (this.takeNativeTemper(actorId, inv, g, pool)) {
+          this.log(`[crafted] ${hex(actorId)} ${hex(g.baseId)}: the reported temper is the one the craft already recorded, nothing changed`);
+          continue;
+        }
         const plan = this.findPlan(ctx, crafter, g, pool, souls, station, credits);
         if (!plan) {
           if (this.isCraftClaim(g, pool)) {
@@ -262,6 +296,7 @@ export class CraftedExtrasSystem implements System {
         // Paid at once, so the next unit of the report is checked against the bar that is left
         if (t?.price) this.needs.pay(ctx, actorId, "craft", t.price.rank, `temper ${hex(plan.entry.baseId)} by ${hex(t.recipe.id)} r${t.price.rank}${t.price.half ? " half" : ""} (crafted extras)`, t.price.half);
         if (t?.capped) capped.set(plan.entry.baseId >>> 0, t.step);
+        if (t) this.forgetNativeTempers(actorId, plan.entry.baseId);
         this.log(`[crafted] ${hex(actorId)} ${hex(plan.entry.baseId)}: ${plan.notes.join(", ")} {${describeExtras(plan.entry).join(", ")}}`);
       }
     }
@@ -502,6 +537,37 @@ export class CraftedExtrasSystem implements System {
     } catch (e) {
       this.log(`[crafted] poisoning the worn weapon of ${hex(actorId)} failed: ${e}`);
     }
+  }
+
+  // The craft hook runs before the native tempers, so whether it did is read from the copies when the report comes
+  private noteNativeTemper(ctx: SystemContext, actorId: number, baseId: number, recipeId: number): void {
+    const mp = ctx.svr as Mp;
+    if (!temperRecipesOf(mp, baseId, this.log).some((r) => r.id === recipeId)) return;
+    const now = Date.now();
+    const list = (this.nativeTempers.get(actorId) || []).filter((t) => now - t.at < NATIVE_TEMPER_MS);
+    list.push({ baseId, at: now, steps: temperSteps(readInventory(mp, actorId), baseId) });
+    this.nativeTempers.set(actorId, list.slice(-MAX_NATIVE_TEMPERS));
+  }
+
+  // True once per temper the native craft just recorded, for a line that claims a temper of that item: the report predates that craft's inventory
+  private takeNativeTemper(actorId: number, inv: Inventory, g: InventoryEntry, pool: PoolEntry[]): boolean {
+    const noted = this.nativeTempers.get(actorId);
+    if (!noted || healthStep(g.health) <= 10) return false;
+    if (pool.some((p) => p.left > 0 && sameBase(p.entry, g) && healthStep(p.entry.health) === healthStep(g.health))) return false;
+    const now = Date.now();
+    const list = noted.filter((t) => now - t.at < NATIVE_TEMPER_MS);
+    const at = list.findIndex((t) => t.baseId === (g.baseId >>> 0) && temperSteps(inv, g.baseId) > t.steps);
+    if (at !== -1) list.splice(at, 1);
+    if (list.length) this.nativeTempers.set(actorId, list);
+    else this.nativeTempers.delete(actorId);
+    return at !== -1;
+  }
+
+  // A temper this system records raises the steps as well, so older notes of the item no longer tell the two apart
+  private forgetNativeTempers(actorId: number, baseId: number): void {
+    const list = (this.nativeTempers.get(actorId) || []).filter((t) => t.baseId !== (baseId >>> 0));
+    if (list.length) this.nativeTempers.set(actorId, list);
+    else this.nativeTempers.delete(actorId);
   }
 
   // Something vanilla pays for (an enchantment, tempering, a new poison) rather than wear from use or Soul Siphon charge
@@ -750,10 +816,11 @@ export class CraftedExtrasSystem implements System {
   private lastReportAt = new Map<number, number>();
   private lastNoticeAt = new Map<number, number>();
   private poisonCredits = new Map<number, PoisonCredit[]>();
+  private nativeTempers = new Map<number, NativeTemper[]>();
   private itemCache = new Map<number, ItemInfo>();
   private keywordCache = new Map<number, number[]>();
   private caps: Map<string, Cap> | null = null;
 }
 
 // Exported for unit testing of the name rules.
-export const __test = { cleanName };
+export const __test = { cleanName, temperRulesOn };
