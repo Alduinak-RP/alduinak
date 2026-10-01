@@ -385,11 +385,11 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
   never ask.
 
 **HUD:** as in vanilla Survival, the penalty shows as a red segment at the end of the stamina bar (hunger) and the
-magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. Fatigue itself has a
-small front widget (`features/fatigueReadout`, widget id 39): one line above the magicka bar, bottom left, reading
-`FATIGUE <fatigue>%` and the `fatigueStageName` ("Refreshed", "Tired", ...), shown while `fatigue` is below 100 and
-`survivalMode` is on (`needsSurvivalModeFlag`), and gone at 100 or with the flag off. It follows every `needsState`
-and hides with the rest of the browser (menus, hidden interface). `needsService.ts` writes the share into the
+magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. The magicka bar is the
+only fatigue display: the `FATIGUE <fatigue>%` line above it (`features/fatigueReadout`, widget id 39) was removed in
+r31 (K1), and `needsState` still carries `fatigue` and `fatigueStageName`, which the client no longer reads. While the
+Crafting Menu is open the magicka bar shows at the stamina bar's place (`docs_roleplay_frostfall_client.md`, Vanilla
+menus). `needsService.ts` writes the share into the
 Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
 (0x2EDF, `SRHP`) and `Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100 (the penalty share times
 100, nothing else), `Survival_ColdAttributePenaltyPercent` (0x2EDE, `SRCP`) at 0. With `needsSurvivalModeFlag` on (default on since r15) it also sets the Creation's
@@ -416,8 +416,8 @@ Survival switched itself on. A load resets the engine's HUD cache, so the servic
 The live `server-settings.json` carries the key explicitly (the manager Settings tab lists it under Gameplay as
 "Survival mode flag on clients"); it is read at boot, so restart the game service after a change.
 `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
-The segments follow Survival's curve, starting at stage 2; below that, the fatigue readout and the stage notices are
-the cue.
+The segments follow Survival's curve, starting at stage 2 (exhaustion 160 of 960, fatigue below about 83%); a lighter
+spend shows nothing on the HUD, and the stage notice from stage 2 and the "too tired" notice are the other cues.
 
 ## Deploy runbook
 
@@ -483,8 +483,9 @@ None of these has been run yet.
   Drained, Tired, Weary, then Debilitated, and magicka stops regenerating at Debilitated; after the sixth, max magicka
   is 1 point, spells fail to cast, and the client log shows no errors; resting 10 minutes restores 16% of the bar and
   part of the magicka maximum.
-- Spend the bar to about 50%, log out for 15 minutes and log back in: the readout shows about 75% at once and the server
-  log has `[needs] <id> rested offline 15 min: fatigue 50% -> 75%`; out for an hour or more, the bar is full.
+- Spend the bar to about 50% (a red end of about 40% on the magicka bar), log out for 15 minutes and log back in: the
+  red end is about 10% at once and the server log has `[needs] <id> rested offline 15 min: fatigue 50% -> 75%`; out
+  for an hour or more, the bar is full.
 - With a stamina or magicka penalty on, stop the game service for over a minute (the client returns to the main menu)
   or change character, then rejoin: the maximum matches the red segment again, never shorter or longer than before. A
   client hot reload leaves it unchanged.
@@ -514,13 +515,13 @@ None of these has been run yet.
   sets `GlobalVariable.from(Game.getFormFromFile(0x2EDF, 'Update.esm'))` to 30 and on F10 sets 0x828 of
   `ccQDRSSE001-SurvivalMode.esl` to 1; SkyrimPlatform loads `PluginsDev`, the launcher never deletes it, and the value
   holds until the next `needsState` (sent on change only). Delete the file after the test.
-- Fatigue readout: with a rested character, mine one vein or craft once; a line `FATIGUE <n>%` with the stage name
-  appears above the magicka bar, the magicka bar stays full with no red end (a mage's full magicka reads full), and the
-  line goes once fatigue is back at 100. From stage 2 the red end grows by the penalty share, not the fatigue spent.
+- No fatigue readout: with a rested character, mine one vein or craft once; no `FATIGUE <n>%` line shows above the
+  magicka bar, and the bar stays full with no red end (a mage's full magicka reads full). From stage 2 the red end
+  grows by the penalty share, not the fatigue spent.
 - Crafting at a forge as a Free (non-blacksmith) character costs 33.2%; from a full bar the third craft closes the menu
   with the "too tired" notice and all three items stay. A Novice blacksmith makes six. A click that slips in before the
   close is refused: the refused item must be absent and its inputs present. Ten minutes online refill 16.7%.
-- Eat any food with a partly spent bar: the fatigue readout must not move.
+- Eat any food with fatigue past stage 2: the magicka bar's red end must not move.
 - Chopping: sit at a block and wait; the axe keeps swinging, 2 firewood land every 10 seconds, and the player stands up
   only with the "too tired" notice. Stand up (move key) about 5 seconds into a swing: no firewood for it and no fatigue
   spent.

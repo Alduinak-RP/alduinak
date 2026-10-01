@@ -26,7 +26,6 @@ import Writing from './features/writing';
 import InteractPrompt from './features/interactPrompt';
 import PetPrompt from './features/petPrompt';
 import PetList from './features/petList';
-import FatigueReadout from './features/fatigueReadout';
 import CreationHint from './features/creationHint';
 
 const styles = [
@@ -250,8 +249,6 @@ const Constructor = props => {
       return <PetPrompt data={rend} />;
     case 'petList':
       return <PetList data={rend} />;
-    case 'fatigueReadout':
-      return <FatigueReadout data={rend} />;
     case 'creationHint':
       return <CreationHint data={rend} />;
     case 'death':
