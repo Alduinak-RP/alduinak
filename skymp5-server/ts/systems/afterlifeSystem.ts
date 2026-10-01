@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, AFTERLIFE_EVENT } from "./system";
+import { System, Log, SystemContext, AFTERLIFE_EVENT, AFTERLIFE_REVIVED_EVENT } from "./system";
 import { addItemTo, addSpellTo, chainMpHook, hex, holdsItem, isAlive, isPlayerActor, notifyActor, removeSpellFrom, userOf } from "./actorUtil";
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { readInventory, sameExtras } from "./inventoryExtras";
@@ -283,6 +283,7 @@ export class AfterlifeSystem implements System {
     this.clearLook(mp, actorId);
     this.undress(mp, actorId);
     notifyActor(mp, actorId, "You have been returned to the living.");
+    ctx.gm.emit(AFTERLIFE_REVIVED_EVENT, actorId);
     this.log(`[afterlife] ${hex(actorId)} of profile ${profileId} revived by ${by}`);
     return "";
   }

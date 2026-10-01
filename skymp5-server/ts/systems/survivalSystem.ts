@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CREATION_FINISHED_EVENT } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CREATION_FINISHED_EVENT, AFTERLIFE_REVIVED_EVENT } from "./system";
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
 import { ActorValue, SpellType, abilityResist, actorRaceId, fieldData, hasCureDisease, learnedSpells, potionHealing, spellEffects, spellInfo, view } from "./espmMagic";
@@ -29,8 +29,9 @@ type Mp = any;
 // Survival: the server keeps every Survival Mode rule (no Survival Papyrus runs on a client): the body rules, raw meat food poisoning,
 // the cure, the shrines and cold.
 //
-// Body rules, at each login once the client's load settled and at creation finish: respawnPercentages.health = survivalRespawnHealth
-// (the native respawn wakes the character at 1%), and the abilities Survival_abLowerCarryWeightSpell (carry weight 300 -> 150),
+// Body rules, at each login once the client's load settled and at creation finish: respawnPercentages.health = survivalRespawnHealthPoints
+// (1) of the race's base health, which the client is sent right after each native respawn and afterlife revive (the character wakes with
+// 1 health point), and the abilities Survival_abLowerCarryWeightSpell (carry weight 300 -> 150),
 // AldSurvival_AbNoHealthRegen (no health regeneration on the client) and AldSurvival_FreezingWaterDamage (freezing water damage while
 // swimming, inert until the client sets AldSurvival_FreezingArea) through the StageAbilityTracker, each with its own switch; a record the
 // plugin lacks is skipped with a log line. With survivalEnabled false, or a switch off, what an earlier session granted is undone at login.
@@ -86,7 +87,8 @@ type Mp = any;
 //
 // server-settings.json keys (all optional):
 //   survivalEnabled               true runs survival, default false; one of the manager's PROTECTED_SETTINGS, so Migrate settings leaves it
-//   survivalRespawnHealth         health share a respawn wakes with, in (0, 1], default 0.01; 1 turns the rule off
+//   survivalRespawnHealthPoints   health points a respawn wakes with, default 1; 0 uses the share below
+//   survivalRespawnHealth         share used with 0 points or an unreadable race, in (0, 1], default 0.01; 1 turns the respawn rule off
 //   survivalCarryWeightSpell      editor id or desc of the carry weight ability, default "Survival_abLowerCarryWeightSpell"; "" turns it off
 //   survivalNoHealthRegen         false grants no AldSurvival_AbNoHealthRegen, default true
 //   survivalFreezingWater         false grants no AldSurvival_FreezingWaterDamage and no freezing water cold, default true
@@ -165,6 +167,7 @@ const GRID = 4096;
 const EPSILON = 1e-4;
 
 const DEFAULT_RESPAWN_HEALTH = 0.01;
+const DEFAULT_RESPAWN_POINTS = 1;
 const DEFAULT_CARRY_SPELL = "Survival_abLowerCarryWeightSpell";
 const NO_REGEN_SPELL = "AldSurvival_AbNoHealthRegen";
 const FREEZING_WATER_SPELL = "AldSurvival_FreezingWaterDamage";
@@ -398,6 +401,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     }
     const counts = await this.resolveForms(ctx, extraMeat, s.dataDir, s.loadOrder, problems);
     ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.onCreationFinished(actorId >>> 0));
+    ctx.gm.on(AFTERLIFE_REVIVED_EVENT, (actorId: number) => this.wake(ctx.svr as Mp, actorId >>> 0, "revived"));
     ctx.gm.on(SURVIVAL_RESET_EVENT, (actorId: number, by: string, done?: (ok: boolean) => void) => done?.(this.resetBy(ctx, actorId >>> 0, by)));
     ctx.gm.on(SURVIVAL_ADMIN_EVENT, (actorId: number, by: string, request: SurvivalAdminRequest, done?: (result: SurvivalAdminResult) => void) => done?.(this.adminRequest(ctx, actorId >>> 0, by, request)));
     ctx.gm.on(NEEDS_STAGE_EVENT, (actorId: number, hunger: number, fatigue: number) => this.onNeedsStage(ctx, actorId >>> 0, hunger, fatigue));
@@ -405,7 +409,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const heat = this.buildHeatIndex(ctx.svr as Mp);
     const bodyLine = this.body.map((b) => `${b.label} ${!b.name ? "off" : b.id ? `${b.name} (${hex(b.id)})` : `${b.name} not in the load order, skipped`}`).join(", ");
     const cureLine = this.cureMode === "cureDiseaseOrHealth" ? `Cure Disease potions and potions restoring ${this.cureMinHealth}+ health (those also remove every Disease spell)` : "Cure Disease potions only";
-    this.log(`[survival] ready: body rules respawn health ${pct(this.respawnHealth)}, ${bodyLine}; raw meat ${this.rawMeat.size} foods (${counts.list} ${RAW_MEAT_LIST}, ${counts.hunting} hunting, ${counts.extra} extra), food poisoning ${pct(this.poisonChance)} x (1 - disease resist) for ${this.poisonMs / HOUR_MS} h ${this.foodPoison ? `(${hex(this.foodPoison)})` : "(spell not in the load order, never given)"}, races safe from raw meat per racialPassives rawMeatSafe; cure by ${cureLine}, clearing food poisoning and ${this.afflictions.filter((a) => a.id).length} affliction abilities; shrines ${this.altars.size} altar bases, no cure, a notice at most once a minute; afflictions ${this.afflictionLine()}`);
+    this.log(`[survival] ready: body rules respawn health ${this.respawnLine()}, ${bodyLine}; raw meat ${this.rawMeat.size} foods (${counts.list} ${RAW_MEAT_LIST}, ${counts.hunting} hunting, ${counts.extra} extra), food poisoning ${pct(this.poisonChance)} x (1 - disease resist) for ${this.poisonMs / HOUR_MS} h ${this.foodPoison ? `(${hex(this.foodPoison)})` : "(spell not in the load order, never given)"}, races safe from raw meat per racialPassives rawMeatSafe; cure by ${cureLine}, clearing food poisoning and ${this.afflictions.filter((a) => a.id).length} affliction abilities; shrines ${this.altars.size} altar bases, no cure, a notice at most once a minute; afflictions ${this.afflictionLine()}`);
     this.log(this.coldLine(heat));
     this.log(this.diseaseLine());
     if (problems.length) this.log(`[survival] settings ignored: ${problems.join("; ")}`);
@@ -423,6 +427,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     };
     this.enabled = all["survivalEnabled"] === true;
     this.respawnHealth = num("survivalRespawnHealth", DEFAULT_RESPAWN_HEALTH, (v) => v > 0 && v <= 1);
+    this.respawnPoints = num("survivalRespawnHealthPoints", DEFAULT_RESPAWN_POINTS, (v) => v >= 0);
     this.poisonChance = num("survivalFoodPoisoningChance", DEFAULT_POISON_CHANCE, (v) => v >= 0 && v <= 1);
     this.poisonMs = num("survivalFoodPoisoningHours", DEFAULT_POISON_HOURS, (v) => v > 0) * HOUR_MS;
     this.cureMinHealth = num("survivalCureMinHealth", DEFAULT_CURE_MIN_HEALTH, (v) => v >= 0);
@@ -838,7 +843,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       rec.coldSpell = "";
     }
     if (!(this.enabled && this.cold.enabled && this.cold.healthScale)) this.setHealthScale(mp, entry, 1);
-    const respawn = this.enabled ? this.respawnHealth : 1;
+    const { share: respawn, text: respawnText } = this.respawnRule(actorId);
     const respawnChanged = this.setRespawn(mp, actorId, respawn);
     rec.body = { spells: wantDescs, respawn };
     if (this.enabled) this.expire(ctx, actorId, entry, now);
@@ -851,7 +856,36 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const afflicted = this.afflictions.filter((a) => rec.afflictions[a.key]).map((a) => `, ${a.key} until ${clock(rec.afflictions[a.key].until)}`).join("");
     const sick = rec.diseases.map((d) => `, ${d.id} ${d.stage} (${d.nextAt ? `stage ${d.stage + 1} at ${when(d.nextAt)}` : "until cured"})`).join("");
     const cold = this.startCold(ctx, actorId, entry, now);
-    this.log(`[survival] ${hex(actorId)} body: ${parts.join(", ")}, respawn health ${pct(respawn)}${respawnChanged ? " (set)" : ""}${removed.length ? `, removed ${removed.join(", ")}` : ""}, ${poisoned}${afflicted}${sick}; ${cold}`);
+    this.log(`[survival] ${hex(actorId)} body: ${parts.join(", ")}, respawn health ${respawnText}${respawnChanged ? " (set)" : ""}${removed.length ? `, removed ${removed.join(", ")}` : ""}, ${poisoned}${afflicted}${sick}; ${cold}`);
+  }
+
+  // The health share a respawn wakes with and how the log names it: the points of the race's base health, else the share; 1 when off
+  private respawnRule(actorId: number): { share: number; text: string } {
+    if (!this.enabled || this.respawnHealth >= 1) return { share: 1, text: "100%" };
+    const max = this.respawnPoints > 0 ? this.racial.maxHealth(actorId) : 0;
+    if (max > 0) return { share: Math.min(1, this.respawnPoints / max), text: `${this.respawnPoints} of ${round(max)}` };
+    return { share: this.respawnHealth, text: pct(this.respawnHealth) };
+  }
+
+  private respawnLine(): string {
+    if (this.respawnHealth >= 1) return "100% (off)";
+    return this.respawnPoints > 0 ? `${this.respawnPoints} point(s) of the race's base health` : pct(this.respawnHealth);
+  }
+
+  // The native respawn tells the client full health and sends only a changed value, so full is written first and then the respawn health
+  private wake(mp: Mp, actorId: number, why: string): void {
+    const { share, text } = this.respawnRule(actorId);
+    if (share >= 1 || !this.online.has(actorId) || !isAlive(mp, actorId)) return;
+    try {
+      const held = mp.get(actorId, "percentages");
+      mp.set(actorId, "percentages", { ...held, health: 1 });
+      mp.set(actorId, "percentages", { ...held, health: share });
+      this.setRespawn(mp, actorId, share);
+      const was = Number(held?.health);
+      this.log(`[survival] ${hex(actorId)} ${why}: health ${text} sent to the client${Math.abs(was - share) > EPSILON ? ` (was ${pct(was)})` : ""}`);
+    } catch (e) {
+      this.log(`[survival] ${hex(actorId)} ${why}: setting the respawn health failed: ${e}`);
+    }
   }
 
   // True when the stored share changed; magicka and stamina keep theirs
@@ -1587,11 +1621,13 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.sendState(mp, entry, false);
   }
 
-  // A respawn wakes at the new-character cold
+  // A respawn wakes with the respawn health and at the new-character cold
   private onRespawn(ctx: SystemContext, actorId: number): void {
     const entry = this.online.get(actorId);
     const mp = ctx.svr as Mp;
-    if (!entry || !entry.coldAt || !this.cold.enabled) return;
+    if (!entry) return;
+    this.wake(mp, actorId, "respawned");
+    if (!entry.coldAt || !this.cold.enabled) return;
     const before = entry.rec.cold;
     entry.rec.warmBonus = false;
     entry.killed = false;
@@ -1830,6 +1866,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
 
   private enabled = false;
   private respawnHealth = DEFAULT_RESPAWN_HEALTH;
+  private respawnPoints = DEFAULT_RESPAWN_POINTS;
   private poisonChance = DEFAULT_POISON_CHANCE;
   private poisonMs = DEFAULT_POISON_HOURS * HOUR_MS;
   private cureMode: CureMode = "cureDiseaseOrHealth";

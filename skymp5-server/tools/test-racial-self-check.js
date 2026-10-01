@@ -200,15 +200,19 @@ test('racialBase: one packet with the race\'s base health and stamina for an acc
     t.racial.queueBase(id, 'creation')
     flush()
     assert.deepEqual(t.packets.pop(), { u: 1, customPacketType: 'racialBase', raceId: NORD, health: 100, stamina: 150 })
+    assert.equal(t.racial.maxHealth(id), 100, 'the base health SurvivalSystem measures the respawn health point against')
     t.mp.set(id, 'private.creationPending', true)
     t.racial.queueBase(id, 'creation')
     flush()
     assert.equal(t.packets.length, 1, 'nothing while creation is pending')
+    t.racial.forget(id)
+    assert.equal(t.racial.maxHealth(id), 0, 'no race while creation is pending')
     const off = setup({ enabled: false })
     off.actor(1, 0xff000001, NORD)
     off.racial.queueBase(0xff000001, 'creation')
     flush()
     assert.equal(off.packets.length, 0)
+    assert.equal(off.racial.maxHealth(0xff000001), 100, 'read from the records, block on or off')
   } finally {
     global.setImmediate = realImmediate
   }

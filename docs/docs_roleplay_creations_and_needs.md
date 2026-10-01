@@ -427,7 +427,7 @@ the cue.
 `survivalDiseases.ts` (diseases) and the generated heat list `heatSources.ts`; registered after HuntingSystem and
 NeedsSystem. The client half is `SurvivalService` (`skymp5-client/src/services/services/survivalService.ts`). It covers
 the owner's survival list of r27: cold and warmth, clothing warmth, the race cold rules, raw meat, freezing water, no
-health regeneration with a 1% respawn, carry weight 150, creature diseases, Oblivion diseases, contagion, the three
+health regeneration with a 1 health point respawn, carry weight 150, creature diseases, Oblivion diseases, contagion, the three
 afflictions and shrines that no longer cure.
 
 No Survival Mode script runs on a client (SkyrimPlatform drops every Papyrus event but `OnUpdate`, and the plugin keeps
@@ -441,7 +441,7 @@ one of the manager's protected settings (plan task M0), so Migrate settings neve
 own switch: `survivalColdEnabled`, `survivalDiseasesEnabled`, `survivalAfflictions: false`,
 `survivalCarryWeightSpell: ""`, `survivalNoHealthRegen: false`, `survivalFreezingWater: false`,
 `survivalRespawnHealth: 1`, `survivalFoodPoisoningChance: 0`. Switching survival or a part off undoes, at each
-character's next login, what an earlier session granted (the abilities, the 1% respawn, food poisoning, afflictions,
+character's next login, what an earlier session granted (the abilities, the respawn health, food poisoning, afflictions,
 diseases, the cold stage ability): `[survival] <id> body rules off: respawn 100%, abilities removed: ...`. Server code
 older than r27 does not undo them, so a rollback first runs one session with the switch off.
 
@@ -461,14 +461,36 @@ re-send as the hunger stages), and at creation finish:
 - **No health regeneration**: `AldSurvival_AbNoHealthRegen` (HealRateMult -100). Potions, food and Restoration still
   heal, since the server applies them. The server-side guard against a client that still regenerates is the native
   `healthRegenerationMultiplier` (NV1).
-- **Respawn at 1%**: `respawnPercentages.health` = `survivalRespawnHealth` (0.01), so a temple respawn, an afterlife
-  arrival and an admin revive wake at 1% health; magicka and stamina keep their share.
+- **Respawn with 1 health point** (the owner's "should respawn with 1 hp", 2026-10-01): every respawn after a death
+  wakes with `survivalRespawnHealthPoints` (1) health: the temple respawn, the arrival in Sovngarde or the Soul Cairn,
+  a death inside a realm, and the respawn a looted or skinned PK body gives its victim. A staff revive out of a realm
+  (Players tab, a living character) sets the same health. Being helped up from a bleedout by another player is not a
+  respawn and keeps `bleedoutHealedHealth`. Magicka and stamina keep their share.
+  - The point is measured against the base health the server's damage math uses (`RacialSystem.maxHealth`: the RACE
+    starting health plus the Player offset, 100, an Orc 150), so the stored share `respawnPercentages.health` is 0.01
+    for most and 1/150 for an Orc, written at login and creation finish and again at each respawn (a race changed
+    since, a polymorph included, is followed). A client whose maximum differs (Fortify Health gear, the cold penalty)
+    shows the same share of its own bar, a little above or below 1.
+  - The native respawn tells the client full health and keeps the share to itself; an untouched client showed a full
+    bar until its first report 7.5 s later and was then corrected to the share plus one second of regeneration (1.7%).
+    SurvivalSystem therefore writes `percentages` right after the native respawn, full first and then the share (the
+    native sends only a changed value), so the client stands up with the true health and the regeneration clock starts
+    at the respawn: `[survival] <id> respawned: health 1 of 100 sent to the client`, after a revive `[survival] <id>
+    revived: health 1 of 100 sent to the client (was 35%)`.
+  - Nothing gives health back afterwards: the login and spawn sync send the stored share, the needs and cold
+    penalties move the maximum and keep the share, and `AldSurvival_AbNoHealthRegen` stops the client's regeneration.
+    Until NV1 (`healthRegenerationMultiplier` 0) the server still accepts a client's health reports up to the race's
+    heal rate (0.7% of the maximum a second, 1 to full in about 2.5 minutes), so health regenerates on a client
+    without the ability (a plugin older than r27a, `survivalNoHealthRegen: false`) or on a modified one. Potions,
+    food, Restoration spells and the staff heal modes heal as before.
+  - `survivalRespawnHealthPoints: 0` uses the share `survivalRespawnHealth` (0.01) instead, as before S3;
+    `survivalRespawnHealth: 1` turns the rule off whatever the points say.
 - **Freezing water**: `AldSurvival_FreezingWaterDamage`, granted once. Its two effects (5 health a second, resisted by
   frost resistance, and no health regeneration) run only while the engine says `IsSwimming` and the client holds
   `AldSurvival_FreezingArea` at 1, which `SurvivalService` sets from `survivalState.freezingArea`, so a region border
   never costs a spell change (critique A.14).
 - One line per login: `[survival] <id> body: carry weight Survival_abLowerCarryWeightSpell granted, no regen
-  AldSurvival_AbNoHealthRegen granted, freezing water AldSurvival_FreezingWaterDamage granted, respawn health 1% (set),
+  AldSurvival_AbNoHealthRegen granted, freezing water AldSurvival_FreezingWaterDamage granted, respawn health 1 of 100 (set),
   no food poisoning, weakened until 14:05, rockjoint 2 (stage 3 at 10-04 14:00); cold 55 (Comfortable), level 16
   (freezing, night, snow; region coast), warmth 71 (29.3% less cold), freezing water area yes, cold ability
   Survival_ColdStage1` (later logins read `held`; a record the plugin lacks reads `not in the plugin yet, skipped`).
@@ -754,7 +776,10 @@ unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
 2. Warming: an inn takes 40 a minute, a campfire 75 every 6 s, a hot soup 200.
 3. Races: a Nord gains no cold, a Khajiit or an Argonian 25% more; an Orc's needs lines show `race x0.85`.
 4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.
-5. Body: carry weight 150, no regeneration, a death wakes at 1% health.
+5. Body: carry weight 150, no regeneration, a death wakes with 1 health point: the bar is a sliver as the character
+   stands up (not full for a few seconds first), the server logs `[survival] <id> respawned: health 1 of 100 sent to the
+   client` (`1 of 150` for an Orc), it is still 1 a minute later and after a relog, and a healing potion raises it.
+   The same after a death that leads to Sovngarde, and after a staff revive from there.
 6. Raw meat as a Nord about half the time, never as a Khajiit; a Cure Disease or healing potion cures.
 7. Creature diseases: fight skeevers and wolves; the hit lines, Active Effects shows the disease, it survives a relog,
    and with the quick-test stage hours it worsens offline. At the default 10% each bite logs `spared` or `caught`; with

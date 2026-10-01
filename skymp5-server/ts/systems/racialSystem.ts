@@ -435,6 +435,12 @@ export class RacialSystem implements System, NeedsModifierSource {
     return start ? { health: start[0] - COMMON_START, magicka: start[1] - COMMON_START, stamina: start[2] - COMMON_START } : NO_BONUS;
   }
 
+  // The character's base health as the server's damage math reads it (GetBaseActorValues), 0 when its race is unreadable or in creation
+  maxHealth(actorId: number): number {
+    const base = this.baseValues(this.raceOf(actorId >>> 0));
+    return base && base[0] > 0 ? base[0] : 0;
+  }
+
   hungerDrainMult(actorId: number): number {
     return this.traits(actorId).hungerRateMult;
   }

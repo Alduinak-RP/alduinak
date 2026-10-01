@@ -1245,7 +1245,7 @@ Migrate settings never carries it to live. Each part has its own switch: `surviv
 `survivalDiseasesEnabled`, `survivalAfflictions: false`, `survivalCarryWeightSpell: ""`, `survivalNoHealthRegen:
 false`, `survivalFreezingWater: false`, `survivalRespawnHealth: 1` and `survivalFoodPoisoningChance: 0`. A master or
 part switch turned off undoes, at each character's next login, what an earlier session granted (the body abilities,
-the 1% respawn, food poisoning, afflictions, diseases and the cold stage ability); server code older than r27 does not,
+the respawn health, food poisoning, afflictions, diseases and the cold stage ability); server code older than r27 does not,
 so a rollback runs one session with the switch off first. An unusable value keeps its default and is named in
 `[survival] settings ignored: ...`. The records the server grants come with plugin r27a (`AldSurvival_*`,
 `AldDisease_*`); with an older plugin they are logged as skipped and the rest runs.
@@ -1255,7 +1255,8 @@ Body rules, raw meat and the cure:
 | Key | Default | Meaning |
 |---|---|---|
 | `survivalEnabled` | `false` | The master switch. Protected (plan task M0): set it on live by hand once survival is signed off |
-| `survivalRespawnHealth` | `0.01` | Share of maximum health a respawn wakes with (temple, afterlife arrival, admin revive), above 0 up to 1; magicka and stamina keep theirs; `1` turns the rule off |
+| `survivalRespawnHealthPoints` | `1` | Health points a respawn after a death wakes with (temple, afterlife arrival, a looted PK body's respawn) and a staff revive out of a realm sets, measured against the race's base health (100, an Orc 150); the client is sent the value right after the native respawn; magicka and stamina keep theirs; `0` uses the share below instead |
+| `survivalRespawnHealth` | `0.01` | Share of base health used when the points are 0 or the race cannot be read, above 0 up to 1; `1` turns the respawn rule off, whatever the points say |
 | `survivalCarryWeightSpell` | `"Survival_abLowerCarryWeightSpell"` | Editor id or desc of the carry weight ability (Survival esl 0x887, carry weight 150); `""` turns it off |
 | `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a); potions, food and Restoration still heal. The server-side refusal of client regeneration is the native `healthRegenerationMultiplier` of plan task NV1, which this build does not have |
 | `survivalFreezingWater` | `true` | Grants `AldSurvival_FreezingWaterDamage` once (it hurts only while swimming with the client's `AldSurvival_FreezingArea` at 1) and runs the freezing water cold; `false` turns both off |
