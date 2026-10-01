@@ -212,8 +212,19 @@ async function setup (settings = {}) {
   }
 
   {
+    const t = await setup()
+    t.state.sneaking.add(HUNTER)
+    assert.equal(t.mp.onActivate(VICTIM, HUNTER), true, 'the native activation never skins a player body')
+    assert.deepEqual(t.notices(HUNTER), [])
+    assert.deepEqual(t.locks(HUNTER), [])
+    assert.equal(t.sys.searchRefusal(VICTIM), '')
+    assert.equal(t.mp.onActivate(WOLF, HUNTER), false, 'it still skins an animal')
+  }
+
+  {
     const t = await setup({ huntingSkinPlayers: 'interact', huntingHumanHeart: '', huntingHumanHeartChance: 0.5 })
     assert.match(t.lines.join('\n'), /players skinned on interact for 1016b3, no heart/)
+    assert.equal(t.mp.onActivate(VICTIM, HUNTER), true, 'only the search request skins a player body')
     assert.equal(t.skin(HUNTER), true, 'interact skins standing')
     roll = 0
     runTimers()

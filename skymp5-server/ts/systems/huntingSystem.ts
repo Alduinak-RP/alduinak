@@ -17,7 +17,7 @@ type Mp = any;
 // more cut. The skinner also takes what else the carcass carries, then the body disappears for everyone: a zone corpse on the
 // corpseConsumed event (NpcSpawnSystem), any other body disabled for good, as no other NPC respawns (placed ones never do and the
 // gamemode's death hook gives the rest a 1e9 s delay). A pet's body stays and gives only its meat. Skinning costs half a kill of fatigue by hunter rank and credits hunter hours.
-// A player character's own body, which lies dead until its respawn (respawnSeconds), is skinned the same way once per death for
+// A player character's own body, which lies dead until its respawn (respawnSeconds), is skinned the same way, only through bodyAction, once per death for
 // Human Flesh and a chance of a Human Heart; nothing of the victim's pack goes to the skinner, the body stays where it lies, and
 // SearchSystem refuses every search of it from the start of the skinning until the respawn. The clone a PK leaves is only searched.
 //
@@ -122,7 +122,7 @@ export class HuntingSystem implements System {
     const itemName = (raw: unknown, fallback: string): string => typeof raw === "string" ? raw.trim() : fallback;
     const human = [itemName(all?.["huntingHumanFlesh"], DEFAULT_HUMAN_FLESH), itemName(all?.["huntingHumanHeart"], DEFAULT_HUMAN_HEART)];
     await this.resolveItems(ctx, meats, peltMap, meatMap, human, s.dataDir, s.loadOrder);
-    chainMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => !this.trySkin(ctx, casterId >>> 0, targetId >>> 0));
+    chainMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => !this.trySkin(ctx, casterId >>> 0, targetId >>> 0, false));
     chainMpHook(ctx.svr as Mp, "onRespawn", (actorId: number) => { this.onRespawn(ctx, actorId >>> 0); });
     const players = this.playerSkinMode === "off" || !this.humanFleshId ? "players not skinned"
       : `players skinned on ${this.playerSkinMode} for ${hex(this.humanFleshId)}${this.humanHeartId ? ` and the heart ${hex(this.humanHeartId)} at ${Math.round(this.heartChance * 100)}%` : ", no heart"}`;
@@ -170,10 +170,11 @@ export class HuntingSystem implements System {
   }
 
   // True when the interaction became a skinning, so the body is not opened this time; decided from reads, everything else runs after the hook
-  trySkin(ctx: SystemContext, actorId: number, bodyId: number): boolean {
+  // players is false for the native activation, which skips SearchSystem's checks of who is searching the body
+  trySkin(ctx: SystemContext, actorId: number, bodyId: number, players = true): boolean {
     const mp = ctx.svr as Mp;
     if (!isPlayerActor(mp, actorId) || !this.isBody(mp, bodyId)) return false;
-    if (isPlayerActor(mp, bodyId)) return this.trySkinPlayer(ctx, actorId, bodyId);
+    if (isPlayerActor(mp, bodyId)) return players && this.trySkinPlayer(ctx, actorId, bodyId);
     const rank = this.mastery.rankOf(ctx, actorId, "hunter");
     if (!rank || this.skinning.has(bodyId) || !this.isAnimal(ctx, bodyId) || this.isSkinned(mp, bodyId)) return false;
     const names = this.namesOf(ctx, bodyId);

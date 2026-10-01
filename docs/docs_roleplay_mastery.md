@@ -736,7 +736,11 @@ pack." and respawns with everything as after any death.
 A body is skinned once per death: the marks live in memory and the respawn
 (`onRespawn`) clears them, so the next death is a fresh body. A second hunter
 is refused through the same search refusal, and a body someone is searching
-cannot be skinned ("... is already being searched."). If the victim respawns
+cannot be skinned ("... is already being searched."). Only that search
+request skins a player's body: the native activation the same key press also
+sends (`mp.onActivate`, the path of plugin-placed animals) passes it over
+(`trySkin` with `players` false), so the search session and pending prompt
+checks always come first and every refusal shows once. If the victim respawns
 during the 5 s, the skinner is stood up (an `actionLock` of 0 s) and told "The
 body is gone before you could finish."; a skinner who goes offline, dies, goes
 down, is restrained or ends up out of reach leaves the body skinnable again.
