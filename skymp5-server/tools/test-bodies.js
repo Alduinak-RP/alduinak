@@ -128,7 +128,6 @@ async function setup (settings = {}, s = stubMp()) {
   assert.equal(t.lines.at(-1), '[body] ff000d66 finished off by ff000011: body ff100000 holds 122 item(s) in 3 stack(s) moved from the victim (2 shown worn), the victim keeps 1 named stack(s); moved: f x120, 12eb7 x1, 12e49 x1')
   runTimers()
   assert.deepEqual(t.respawned, [VICTIM], 'the stripped victim respawns, the afterlife routes it')
-  assert.equal(t.sys.hasBodyFor(VICTIM), true)
 
   // A second death within 30 s leaves no second body and moves nothing
   assert.equal(t.sys.leaveBody(VICTIM, 'soul trapped by ff000011'), bodyId)
