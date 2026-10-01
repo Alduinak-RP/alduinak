@@ -388,6 +388,13 @@ async fn write_directive(f: &Value, dest_root: &Path, extracted: &HashMap<String
     let to = f["to"].as_str().unwrap_or("");
     let dest = join_rel(dest_root, to);
     if let Some(parent) = dest.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
+    // A kept file was sha256-verified when planned: hard-linked into a new mod folder, left alone when already in place
+    if let Some(keep) = f.get("keep").and_then(|v| v.as_str()).map(PathBuf::from) {
+        if keep != dest && fs::hard_link(&keep, &dest).is_err() {
+            tokio::fs::copy(&keep, &dest).await.map_err(|e| format!("could not keep {}: {e}", keep.display()))?;
+        }
+        return Ok(());
+    }
     if let Some(inline) = f.get("inline").and_then(|v| v.as_str()) {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD.decode(inline).map_err(|e| e.to_string())?;
@@ -437,7 +444,8 @@ pub async fn apply_mod(name: &str, files: &[Value], extracted: &HashMap<String, 
             return Err(e.to_string());
         }
         rmrf(&stale);
-        log(format!("[mo2] installed {folder} ({} file(s))", files.len()));
+        let kept = files.iter().filter(|f| f.get("keep").is_some()).count();
+        log(format!("[mo2] installed {folder} ({} file(s), {kept} kept from the previous install)", files.len()));
         Ok(())
     }.await;
     if result.is_err() { rmrf(&build); }
@@ -974,4 +982,23 @@ pub fn mo2_open() -> Value {
 pub fn mo2_status() -> Value {
     let mod_count = fs::read_dir(mods_dir()).map(|rd| rd.flatten().filter(|e| e.path().is_dir()).count()).unwrap_or(0);
     json!({ "installed": is_installed(), "version": MO2_VERSION, "root": root().to_string_lossy(), "modCount": mod_count })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A kept file lands in the new mod folder and outlives the old folder's removal
+    #[tokio::test]
+    async fn kept_file_survives_the_old_folder() {
+        let base = std::env::temp_dir().join(format!("alduinak-keep-link-{}", std::process::id()));
+        let (old, build) = (base.join("old"), base.join("build"));
+        fs::create_dir_all(old.join("meshes")).unwrap();
+        fs::write(old.join("meshes/lod.nif"), b"lod").unwrap();
+        let f = json!({ "to": "meshes/lod.nif", "archive": "a1", "keep": old.join("meshes/lod.nif").to_string_lossy() });
+        write_directive(&f, &build, &HashMap::new()).await.unwrap();
+        rmrf(&old);
+        assert_eq!(fs::read(build.join("meshes/lod.nif")).unwrap(), b"lod");
+        rmrf(&base);
+    }
 }

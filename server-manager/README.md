@@ -268,7 +268,14 @@ fails it prints a direct download URL - save that zip as
     leaves the same files out of its folder size check (`mo2::is_unverified`),
     and its repair line names the files that differ. When several downloads
     hold the same file, a mod takes it from the newest archive of its own
-    Nexus mod. The settings sync keeps
+    Nexus mod. A mod built from several archives (Alduinak Client Files takes
+    the client archive and the DynDOLOD Files archive) is reinstalled as a
+    whole when any file changes, but the launcher keeps every file already on
+    disk with the manifest's size and sha256 and downloads only the archives
+    the changed files come from, so a new client archive no longer pulls the
+    DynDOLOD archive again; `install.log` reads `[install] <mod>: keeping N
+    of M file(s) ...` and `[install] skipping archive <name> ...`, and Repair
+    Modlist still rebuilds everything from the archives. The settings sync keeps
     `server-settings.json.prev`; the data sync deletes only unmodified files a
     previous manifest or sync put there, sha256-verifies copies and never
     touches vanilla masters; the purge refuses on an unreadable light flag or

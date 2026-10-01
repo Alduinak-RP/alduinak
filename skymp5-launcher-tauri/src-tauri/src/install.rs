@@ -214,10 +214,30 @@ fn complete(payload: Value) {
     send("install:complete", payload);
 }
 
-// Every archive a list of directives uses, deduplicated in order
+// Every archive a list of directives still extracts from (kept files need none), deduplicated in order
 fn archive_ids(files: &[Value]) -> Vec<String> {
     let mut seen = HashSet::new();
-    files.iter().filter_map(|f| mo2::archive_id(&f["archive"])).filter(|id| seen.insert(id.clone())).collect()
+    files.iter().filter(|f| f.get("keep").is_none()).filter_map(|f| mo2::archive_id(&f["archive"])).filter(|id| seen.insert(id.clone())).collect()
+}
+
+// Marks each file of a mod to install that is already on disk with the manifest's size and sha256 as kept; returns their count and bytes
+async fn keep_unchanged_files(m: &mut Value, game: &Path, direct: bool, on_percent: impl Fn(u64)) -> (usize, u64) {
+    let dir = if direct { game.join("Data") } else { mo2::mods_dir().join(mo2::sanitize(m["name"].as_str().unwrap_or(""))) };
+    let Some(files) = m["files"].as_array_mut().filter(|_| dir.is_dir()) else { return (0, 0) };
+    let total: u64 = files.iter().filter_map(|f| f["size"].as_u64()).sum::<u64>().max(1);
+    let (mut kept, mut bytes, mut seen, mut shown) = (0, 0u64, 0u64, u64::MAX);
+    for f in files.iter_mut() {
+        let (Some(to), Some(want), Some(size)) = (f["to"].as_str(), f["sha256"].as_str(), f["size"].as_u64()) else { continue };
+        seen += size;
+        let p = mo2::join_rel(&dir, to);
+        if !fs::metadata(&p).is_ok_and(|md| md.is_file() && md.len() == size) { continue; }
+        if seen * 100 / total != shown { shown = seen * 100 / total; on_percent(shown); }
+        if !mo2::sha256_file(&p).await.is_ok_and(|h| h.eq_ignore_ascii_case(want)) { continue; }
+        f["keep"] = json!(p.to_string_lossy());
+        kept += 1;
+        bytes += size;
+    }
+    (kept, bytes)
 }
 
 struct Replay {
@@ -392,9 +412,26 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
         return Ok(json!({ "success": true, "upToDate": true, "modsTotal": mods.len(), "warning": warning(None) }));
     }
 
-    // 3b. Acquire only the archives the mods to install (and root files) reference, verified by sha256
+    // Files a mod to install already has on disk stay, so an archive that only supplies unchanged files is never fetched (Repair Modlist rebuilds all)
+    if !force {
+        let total = to_install.len();
+        for (i, m) in to_install.iter_mut().enumerate() {
+            let name = m["name"].as_str().unwrap_or("").to_string();
+            let (kept, bytes) = keep_unchanged_files(m, &game, direct, |pct| progress("mods", format!("Checking {name} for unchanged files… {pct}%"), i + 1, total)).await;
+            if kept == 0 { continue; }
+            let files = m["files"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+            let from: Vec<&str> = archive_ids(files).iter().filter_map(|id| archives.iter().find(|a| mo2::archive_id(&a["id"]).as_ref() == Some(id))).filter_map(|a| a["name"].as_str()).collect();
+            log(format!("[install] {name}: keeping {kept} of {} file(s) ({} MB) unchanged on disk, {} changed or new from {}", files.len(), bytes / 1048576, files.len() - kept, if from.is_empty() { "no archive".to_string() } else { from.join(", ") }));
+        }
+    }
+
+    // 3b. Acquire only the archives the mods to install (and root files) still extract from, verified by sha256
     let mut needed: HashSet<String> = to_install.iter().flat_map(|m| archive_ids(m["files"].as_array().map(Vec::as_slice).unwrap_or(&[]))).collect();
     if needs_root { needed.extend(archive_ids(&root_files)); }
+    let referenced: HashSet<String> = to_install.iter().flat_map(|m| m["files"].as_array().into_iter().flatten().filter_map(|f| mo2::archive_id(&f["archive"]))).collect();
+    for a in archives.iter().filter(|a| mo2::archive_id(&a["id"]).is_some_and(|id| referenced.contains(&id) && !needed.contains(&id))) {
+        log(format!("[install] skipping archive {} ({} MB): every file the mods to install take from it is unchanged on disk", a["name"].as_str().unwrap_or(""), a["size"].as_u64().unwrap_or(0) / 1048576));
+    }
     let token = auth::nexus_auth().await;
     let premium = token.is_some() && store().get("nexusUser")["isPremium"].as_bool().unwrap_or(false);
     let mut replay = Replay { archive_paths: HashMap::new(), extracted: HashMap::new(), ref_count: HashMap::new(), pending: to_install.clone(), failed: vec![], installed: 0, total: to_install.len() };
@@ -709,5 +746,35 @@ mod tests {
         }
         assert!(files > 1000 && !m["order"].as_array().unwrap().is_empty() && !m["plugins"].as_array().unwrap().is_empty());
         println!("mods {} files {} archives {} root {}", mods.len(), files, m["archives"].as_array().unwrap().len(), m["root"].as_array().unwrap().len());
+    }
+
+    // A changed mod keeps its unchanged files and needs only the archive of the changed one
+    #[tokio::test]
+    async fn keeps_unchanged_files() {
+        use serde_json::json;
+        let sha = |b: &[u8]| hex::encode(<sha2::Sha256 as sha2::Digest>::digest(b));
+        let game = std::env::temp_dir().join(format!("alduinak-keep-test-{}", std::process::id()));
+        let fresh = game.join("fresh");
+        std::fs::create_dir_all(game.join("Data/textures")).unwrap();
+        std::fs::create_dir_all(&fresh).unwrap();
+        std::fs::write(game.join("Data/textures/lod.dds"), b"lod").unwrap();
+        std::fs::write(game.join("Data/client.js"), b"old").unwrap();
+        std::fs::write(game.join("Data/same-size.esp"), b"abc").unwrap();
+        std::fs::write(fresh.join("client.js"), b"new!").unwrap();
+        std::fs::write(fresh.join("same-size.esp"), b"xyz").unwrap();
+        let mut m = json!({ "name": "Client", "hash": "h2", "files": [
+            { "to": "textures/lod.dds", "archive": "lod", "from": "textures/lod.dds", "sha256": sha(b"lod"), "size": 3 },
+            { "to": "client.js", "archive": "client", "from": "client.js", "sha256": sha(b"new!"), "size": 4 },
+            { "to": "same-size.esp", "archive": "client", "from": "same-size.esp", "sha256": sha(b"xyz"), "size": 3 },
+        ] });
+        assert_eq!(super::keep_unchanged_files(&mut m, &game, true, |_| {}).await, (1, 3));
+        assert_eq!(super::archive_ids(m["files"].as_array().unwrap()), vec!["client".to_string()]);
+        let extracted = std::collections::HashMap::from([("client".to_string(), fresh.clone())]);
+        crate::mo2::apply_mod_direct(&game, &m, &extracted).await.unwrap();
+        for (rel, want) in [("textures/lod.dds", "lod"), ("client.js", "new!"), ("same-size.esp", "xyz")] {
+            assert_eq!(std::fs::read_to_string(game.join("Data").join(rel)).unwrap(), want, "{rel}");
+        }
+        assert!(crate::mo2::direct_mod_problem(&game, &m).await.is_none());
+        let _ = std::fs::remove_dir_all(&game);
     }
 }
