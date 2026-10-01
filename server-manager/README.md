@@ -260,11 +260,15 @@ fails it prints a direct download URL - save that zip as
     A `skymp5-client-settings.txt` in any mod folder and the SkyMP client package
     (`Platform/**` and the dlls and pex files listed in
     `skymp5-backend/scripts/client-package.js`) are left out, since the client
-    zip delivers them. `*.log` files in mod folders are left out too: SKSE
-    plugins such as Actor Limit Fix rewrite them on every game start, so a
-    shipped copy changed the mod folder's size and the launcher repaired the
-    mod on every launch. When several downloads hold the same file, a mod takes
-    it from the newest archive of its own Nexus mod. The settings sync keeps
+    zip delivers them. `*.log` files in mod folders and `ActorLimitFix.pdb`
+    (debug symbols) are left out too, listed on the compile's `left out:`
+    line: SKSE plugins such as Actor Limit Fix write their log next to their
+    dll on every game start, which changed the mod folder's size and made the
+    launcher repair and re-download the mod on every launch. The launcher
+    leaves the same files out of its folder size check (`mo2::is_unverified`),
+    and its repair line names the files that differ. When several downloads
+    hold the same file, a mod takes it from the newest archive of its own
+    Nexus mod. The settings sync keeps
     `server-settings.json.prev`; the data sync deletes only unmodified files a
     previous manifest or sync put there, sha256-verifies copies and never
     touches vanilla masters; the purge refuses on an unreadable light flag or

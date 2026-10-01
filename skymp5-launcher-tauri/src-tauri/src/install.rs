@@ -530,11 +530,11 @@ async fn mod_changed(m: &Value, game: &Path, direct: bool) -> bool {
     if !dir.exists() || hash.is_empty() || mo2::read_mod_hash(name) != hash { return true; }
     let files = m["files"].as_array().cloned().unwrap_or_default();
     if !files.is_empty() && files.iter().all(|f| f["size"].is_u64()) {
-        let expected: u64 = files.iter().filter_map(|f| f["size"].as_u64()).sum();
+        let expected: u64 = files.iter().filter(|f| !mo2::is_unverified(f["to"].as_str().unwrap_or(""))).filter_map(|f| f["size"].as_u64()).sum();
         match mo2::mod_folder_size(name) {
             // Unreadable mid-scan (AV holding a handle): never wipe a mod over a transient lock
             None => log(format!("[install] {name}: folder unreadable during verify - skipping size check")),
-            Some(actual) if actual != expected => { log(format!("[install] {name}: folder is {actual} bytes, manifest expects {expected} - repairing")); return true; }
+            Some(actual) if actual != expected => { log(format!("[install] {name}: folder is {actual} bytes, manifest expects {expected} ({}) - repairing", mo2::size_mismatches(name, &files))); return true; }
             _ => {}
         }
     }

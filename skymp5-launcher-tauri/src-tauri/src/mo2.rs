@@ -612,6 +612,12 @@ pub fn is_risky(name: &str) -> bool {
     [".dll", ".exe", ".esp", ".esm", ".esl", ".pex"].iter().any(|e| l.ends_with(e))
 }
 
+// Logs SKSE plugins write while the game runs and ActorLimitFix.pdb, never sized; compile-manifest's UNSHIPPED_FILE_RE is the twin
+pub fn is_unverified(rel: &str) -> bool {
+    let l = rel.to_lowercase();
+    l.ends_with(".log") || l.rsplit('/').next() == Some("actorlimitfix.pdb")
+}
+
 // Why a mod installed straight into Data differs from the manifest, None when it matches
 pub async fn direct_mod_problem(game_dir: &Path, m: &Value) -> Option<String> {
     let record = read_direct_record(game_dir);
@@ -619,6 +625,7 @@ pub async fn direct_mod_problem(game_dir: &Path, m: &Value) -> Option<String> {
     if !rec.is_object() || rec["hash"].as_str().unwrap_or("") != m["hash"].as_str().unwrap_or("") { return Some("not installed at this version".into()); }
     for f in m["files"].as_array().into_iter().flatten() {
         let to = f["to"].as_str().unwrap_or("");
+        if is_unverified(to) { continue; }
         let p = join_rel(&game_dir.join("Data"), to);
         let Ok(meta) = fs::metadata(&p) else { return Some(format!("missing file {to}")) };
         if f["size"].as_u64().is_some_and(|s| s != meta.len()) { return Some(format!("resized file {to}")); }
@@ -643,16 +650,35 @@ pub async fn risky_file_problem(dir: &Path, files: &[Value]) -> Result<Option<St
     Ok(expected.keys().find(|to| !have.contains(*to)).map(|to| format!("missing file {to}")))
 }
 
-// Byte size of an installed mod folder without the launcher's meta.ini; None when missing or unreadable
+// Files of an installed mod folder that count toward its size: all but the launcher's meta.ini and unverified files
+fn sized_files(dir: &Path) -> Vec<String> {
+    list_files_rel(dir).into_iter().filter(|rel| !rel.eq_ignore_ascii_case("meta.ini") && !is_unverified(rel)).collect()
+}
+
+// Byte size of an installed mod folder; None when missing or unreadable
 pub fn mod_folder_size(name: &str) -> Option<u64> {
     let dir = mods_dir().join(sanitize(name));
     if !dir.exists() { return None; }
     let mut total = 0;
-    for rel in list_files_rel(&dir) {
-        if rel.eq_ignore_ascii_case("meta.ini") { continue; }
-        total += fs::metadata(join_rel(&dir, &rel)).ok()?.len();
-    }
+    for rel in sized_files(&dir) { total += fs::metadata(join_rel(&dir, &rel)).ok()?.len(); }
     Some(total)
+}
+
+// The files behind a folder size mismatch: unlisted, resized or missing
+pub fn size_mismatches(name: &str, files: &[Value]) -> String {
+    let dir = mods_dir().join(sanitize(name));
+    let mut want: HashMap<String, u64> = files.iter().filter_map(|f| Some((f["to"].as_str()?.to_lowercase(), f["size"].as_u64()?))).filter(|(to, _)| !is_unverified(to)).collect();
+    let mut out = vec![];
+    for rel in sized_files(&dir) {
+        let size = fs::metadata(join_rel(&dir, &rel)).map(|m| m.len()).unwrap_or(0);
+        match want.remove(&rel.to_lowercase()) {
+            None => out.push(format!("unlisted {rel} {size} bytes")),
+            Some(s) if s != size => out.push(format!("{rel} {size} bytes, not {s}")),
+            _ => {}
+        }
+    }
+    out.extend(want.keys().map(|to| format!("missing {to}")));
+    out.join(", ")
 }
 
 fn is_plugin(n: &str) -> bool { let l = n.to_lowercase(); l.ends_with(".esp") || l.ends_with(".esm") || l.ends_with(".esl") }
