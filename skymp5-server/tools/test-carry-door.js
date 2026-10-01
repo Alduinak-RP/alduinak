@@ -145,6 +145,20 @@ test('the load door opens again once the captive is set down', () => {
   assert.deepEqual(t.chained, [[LOAD_DOOR, CARRIER]])
 })
 
+test('carryState tells the client of the carrier that the load is a player, and only then', () => {
+  const t = setup()
+  const state = (carrying, target) => {
+    t.packets.length = 0
+    t.sys.sendCarryState({ svr: t.mp }, CARRIER, carrying, target)
+    const { player, target: npc } = t.packets[0]
+    return { player, npc }
+  }
+  assert.deepEqual(state(true, CAPTIVE), { player: true, npc: 0 })
+  assert.deepEqual(state(true, PET), { player: false, npc: PET })
+  assert.deepEqual(state(false, CAPTIVE), { player: false, npc: 0 })
+  assert.deepEqual(state(false), { player: false, npc: 0 })
+})
+
 let failed = 0
 for (const [ok, name, err] of results) {
   console.log(`${ok ? 'pass' : 'FAIL'}  ${name}`)

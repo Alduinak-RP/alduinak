@@ -436,8 +436,9 @@ export class RestraintService extends ClientListener {
       // A carried player poses itself through restraintState; only an NPC's clone is posed by the carrier
       const target = typeof content["target"] === "number" ? content["target"] as number : 0;
       this.carriedNpcId = this.carrying && target >= FIRST_DYNAMIC_REMOTE_ID && !isPlayerCharacterId(this.controller, target) ? target : 0;
-      this.carriedIsPlayer = target >= FIRST_DYNAMIC_REMOTE_ID && !this.carriedNpcId;
-      logTrace(this, `carryState carrying=${this.carrying} npc=${this.carriedNpcId.toString(16)}`);
+      // The server leaves a carried player out of target, so it says so itself; a job load carries no such field
+      this.carriedIsPlayer = this.carrying && content["player"] === true;
+      logTrace(this, `carryState carrying=${this.carrying} npc=${this.carriedNpcId.toString(16)} player=${this.carriedIsPlayer}`);
       this.applyCarryAnim();
     } else if (type === "executionState" && typeof content["pose"] === "string") {
       this.executionPose = content["pose"];

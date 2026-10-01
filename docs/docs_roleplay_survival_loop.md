@@ -729,8 +729,10 @@ prisoner can also be carried).
   carry ends quietly and a bound captive stays bound.
 - **Load doors**: a carrier holding a player does not go through a door that
   teleports. The carrier's client refuses the press where it starts
-  (`ActivationService`): the first press on a plugin door while carrying a
-  player asks the server whether it teleports (`loadDoorQuery`, answered from
+  (`ActivationService`). It knows the load is a player from the server's
+  `carryState`, which says `player: true` for one (the packet's `target`
+  names only a carried NPC, and a job load has no such field). The first
+  press on a plugin door while carrying a player asks the server whether it teleports (`loadDoorQuery`, answered from
   the door's XTEL or the override list and remembered per door), a load door
   is then not sent at all, the carrier reads "Set them down before going
   through this door." (at most once per 2 s) and the Platform log says
@@ -743,7 +745,7 @@ prisoner can also be carried).
   `[carry] <carrier> refused at load door <door> while carrying <carried>`.
   Nobody is moved and the carry goes on. A carried pet and a passive job load
   still go through load doors. `skymp5-server/tools/test-carry-door.js` runs
-  the server side against a stub.
+  the server side against a stub, the `carryState` flag included.
 - **Doors**: any other door activation of a carrier is recorded (`onActivate`, after the
   housing lock had its say, so a locked door never counts, and before the door
   override runs, so an overridden door such as the embassy entry counts). The body only

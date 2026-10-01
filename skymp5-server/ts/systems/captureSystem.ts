@@ -41,7 +41,7 @@ type Mp = any;
 //   Server -> Client:
 //     { customPacketType: "playerMenuState", target, canRelease, ...flags } // -> the requester only: whether their Release applies, plus menuFlagProviders' flags
 //     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
-//     { customPacketType: "carryState",      carrying, anim, target, carriedAnim, carryForward, carryUp, carryYaw } // -> carrier's RestraintService (pose, and where and how a carried NPC is held)
+//     { customPacketType: "carryState",      carrying, anim, target, player, carriedAnim, carryForward, carryUp, carryYaw } // -> carrier's RestraintService (pose, where and how a carried NPC is held, and whether the load is a player)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
 //     { customPacketType: "captureNotice",   text }                        // -> corner notification
 //   Neighbour-visible property on the carried actor, registered in the gamemode's 50_properties.js:
@@ -920,6 +920,8 @@ export class CaptureSystem implements System {
       carrying,
       anim: this.carrierAnim,
       target: npcTarget,
+      // The carrier's client refuses load doors while the load is a player
+      player: carrying && !!target && !npcTarget,
       carriedAnim: this.carriedAnim,
       carryForward: this.carryForward,
       carryUp: this.carryUp,
