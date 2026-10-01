@@ -20,6 +20,12 @@ inline float BlockedPassShare(float passShare, float blockMult)
   return std::clamp(1.f - (1.f - passShare) * blockMult, 0.f, 1.f);
 }
 
+// effectModifiers key of a present block: absent is on, a value that is not true or false is off
+inline bool EffectModifiersSetting(bool keyPresent, bool isBoolean, bool value)
+{
+  return !keyPresent || (isBoolean && value);
+}
+
 // effectModifiers of the settings block counts only while the formula or durability is on
 inline bool EffectModifiersActive(bool blockPresent, bool enabled,
                                   bool durabilityEnabled, bool effectModifiers)

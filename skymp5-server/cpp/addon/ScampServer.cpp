@@ -399,7 +399,18 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       const bool enabled = flag(*it, "enabled", false);
       const bool durabilityEnabled = durability != it->end() &&
         durability->is_object() && flag(*durability, "enabled", false);
-      const bool effectModifiers = flag(*it, "effectModifiers", true);
+      auto modifiers = it->find("effectModifiers");
+      const bool modifiersPresent = modifiers != it->end();
+      const bool modifiersBoolean =
+        modifiersPresent && modifiers->is_boolean();
+      if (modifiersPresent && !modifiersBoolean) {
+        spdlog::error("Unexpected value of "
+                      "alduinakDamageFormulaSettings.effectModifiers, should "
+                      "be true or false, effect modifiers stay off");
+      }
+      const bool effectModifiers = EffectModifiersSetting(
+        modifiersPresent, modifiersBoolean,
+        modifiersBoolean && modifiers->get<bool>());
       partOne->worldState.effectModifiers = EffectModifiersActive(
         true, enabled, durabilityEnabled, effectModifiers);
       logger->info("alduinakDamageFormulaSettings: effect modifiers are {} "

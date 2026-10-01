@@ -63,3 +63,15 @@ TEST_CASE("Effect modifiers need the settings block and one of its switches",
   REQUIRE(EffectModifiersActive(true, false, true, true));
   REQUIRE(EffectModifiersActive(true, true, true, true));
 }
+
+TEST_CASE("A malformed effectModifiers key switches the modifiers off",
+          "[EffectModifiers]")
+{
+  REQUIRE(EffectModifiersSetting(false, false, false));
+  REQUIRE(EffectModifiersSetting(true, true, true));
+  REQUIRE(!EffectModifiersSetting(true, true, false));
+  REQUIRE(!EffectModifiersSetting(true, false, false));
+  REQUIRE(!EffectModifiersSetting(true, false, true));
+  REQUIRE(!EffectModifiersActive(true, true, true,
+                                 EffectModifiersSetting(true, false, false)));
+}
