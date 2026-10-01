@@ -1,4 +1,4 @@
-// Fatigue left, cold and sickness, stacked above the vanilla magicka bar (bottom left). Never interactive.
+// Cold and sickness, stacked above the vanilla magicka bar (bottom left). Never interactive.
 
 $gold: #c8b48a;
 $text: #e8e0d0;
@@ -6,7 +6,7 @@ $frost: #a9cde6;
 $frost-severe: #d8ecfb;
 $sick: #b9c48a;
 
-.fatigueReadout {
+.survivalReadout {
   position: fixed;
   left: 3.6%;
   bottom: 9.5%;
@@ -36,11 +36,7 @@ $sick: #b9c48a;
     text-transform: uppercase;
   }
 
-  &__value {
-    color: $text;
-  }
-
-  &__stage {
+  &__warmth {
     color: $gold;
   }
 

@@ -86,12 +86,13 @@ interface FactionTabProps {
 type Tab = FactionType | 'main' | 'regency';
 
 const TYPE_TABS: Array<{ id: FactionType; label: string }> = [
-  { id: 'hold', label: 'Hold' },
+  { id: 'hold', label: 'Territory' },
   { id: 'military', label: 'Military' },
   { id: 'guild', label: 'Guild' },
 ];
 
-export const TYPE_LABEL: Record<FactionType, string> = { hold: 'Hold', military: 'Military', guild: 'Guild' };
+// The hold type reads Territory everywhere a player or staff member sees it
+export const TYPE_LABEL: Record<FactionType, string> = { hold: 'Territory', military: 'Military', guild: 'Guild' };
 
 interface MenuState {
   x: number;

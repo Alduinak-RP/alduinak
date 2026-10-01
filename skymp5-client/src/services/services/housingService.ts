@@ -24,6 +24,8 @@ const NOT_PROPERTY_TEXT = "That cannot be claimed.";
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
   claim: 'housing:claim',
+  // Carries the faction id: claim for it, or hand the viewer's own claim to it
+  claimFaction: 'housing:claimfaction',
   abandon: 'housing:abandon',
   breakLock: 'housing:breaklock',
   lock: 'housing:lock',
@@ -38,6 +40,9 @@ const events = {
   revokeKeys: 'housing:revokekeys',
   grantContainer: 'housing:grantcontainer',
   pets: 'housing:pets',
+  pinNote: 'housing:pinnote',
+  takeNote: 'housing:takenote',
+  knock: 'housing:knock',
   cancel: 'housing:cancel',
   // The rename field took focus
   typing: 'housing:typing',
@@ -58,6 +63,59 @@ const keyPromptEvents = {
 // The server's cleanName rule for a key label
 const keyNameRule = { chars: "A-Za-z0-9 '_-", maxLength: 32, hint: "Letters, numbers, spaces, ' _ and - only." };
 
+// A letter pinned to the door half the menu was opened at, as this viewer reads it
+interface DoorNoteInfo {
+  title: string;
+  text: string;
+  byline: string;
+  signFaction: string;
+  brokenSeals: string[];
+  mine: boolean;
+  canTakeDown: boolean;
+}
+
+const WRITING_ID = /^W[0-9A-Z]{5}$/;
+
+const parseNote = (raw: unknown): DoorNoteInfo | null => {
+  const n = raw as Record<string, unknown> | null;
+  if (!n || typeof n !== "object" || typeof n.title !== "string" || typeof n.text !== "string") return null;
+  return {
+    title: n.title,
+    text: n.text,
+    byline: typeof n.byline === "string" ? n.byline : "",
+    signFaction: typeof n.signFaction === "string" ? n.signFaction : "",
+    brokenSeals: Array.isArray(n.brokenSeals) ? n.brokenSeals.filter((s): s is string => typeof s === "string") : [],
+    mine: n.mine === true,
+    canTakeDown: n.canTakeDown === true,
+  };
+};
+
+const parseLetters = (raw: unknown): Array<{ id: string; title: string }> =>
+  (Array.isArray(raw) ? raw : [])
+    .filter((l) => l && typeof l.id === "string" && WRITING_ID.test(l.id) && typeof l.title === "string")
+    .map((l) => ({ id: l.id as string, title: l.title as string }));
+
+// "hold:the-rift", "faction:companions"
+const FACTION_ID = /^[a-z]+:[a-z0-9-]+$/;
+
+// The faction owning a faction claim, and the viewer's standing in it
+interface ClaimFaction {
+  id: string;
+  name: string;
+  role: 'manager' | 'member' | '';
+}
+
+const parseFaction = (raw: unknown): ClaimFaction | null => {
+  const f = raw as Record<string, unknown> | null;
+  if (!f || typeof f !== "object" || typeof f.id !== "string" || typeof f.name !== "string") return null;
+  return { id: f.id, name: f.name, role: f.role === 'manager' || f.role === 'member' ? f.role : '' };
+};
+
+const parseFactionList = (raw: unknown): Array<{ id: string; name: string }> =>
+  (Array.isArray(raw) ? raw : [])
+    .filter((f) => f && typeof f.id === "string" && FACTION_ID.test(f.id) && typeof f.name === "string")
+    .map((f) => ({ id: f.id as string, name: f.name as string }));
+
 // The server's propertyMenu reply that drives which menu we render.
 interface PropertyMenuInfo {
   target: number;
@@ -77,6 +135,15 @@ interface PropertyMenuInfo {
   pets: string;
   // The hold the property lies in, "" outside every hold
   hold: string;
+  note: DoorNoteInfo | null;
+  // Letters this viewer may pin here now, empty when pinning is not offered
+  letters: Array<{ id: string; title: string }>;
+  // A door anyone may knock on
+  canKnock: boolean;
+  // The owning faction of a faction claim, null on a personal one
+  faction: ClaimFaction | null;
+  // The factions this viewer may claim this for, or hand their own claim to
+  claimFactions: Array<{ id: string; name: string }>;
 }
 
 // The server's petList reply: the pets storable at a door
@@ -89,7 +156,8 @@ interface PetListInfo {
 // Module-level state shared with the browser-side widget setter via runtime injection
 let info: PropertyMenuInfo = {
   target: 0, view: 'denied', owned: false, name: null, locked: false, lockedEntrance: false, lockedExit: false, sides: false,
-  canLock: false, hasKeys: false, canGrantContainers: false, ownerName: null, pets: '', hold: '',
+  canLock: false, hasKeys: false, canGrantContainers: false, ownerName: null, pets: '', hold: '', note: null, letters: [], canKnock: false,
+  faction: null, claimFactions: [],
 };
 let targetLabel = '';
 let petList: PetListInfo = { door: 0, category: '', pets: [] };
@@ -116,9 +184,9 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  *   Client -> Server: { "customPacketType": "propertyInfoRequest", "target": <id> }
  *   Server -> Client: { "customPacketType": "propertyMenu", "target", "view", "owned", "name", "locked",
  *                       "lockedEntrance", "lockedExit", "sides", "canLock", "hasKeys", "canGrantContainers",
- *                       "ownerName", "pets", "hold" }
+ *                       "ownerName", "pets", "hold", "note", "letters", "canKnock", "faction", "claimFactions" }
  *   Client -> Server: { "customPacketType": "propertyRequest", "action", "target",
- *                       "recipient"?, "name"? }  (createkey names the key)
+ *                       "recipient"?, "name"?, "id"?, "faction"? }  (createkey names the key, pinnote names the letter)
  *   Server -> Client: { "customPacketType": "propertyNotice", "text" }
  *   Client -> Server: { "customPacketType": "petRequest", "action": "list", "door" }
  *   Server -> Client: { "customPacketType": "petList", "door", "category", "pets" }
@@ -136,6 +204,14 @@ export function isPropertyRef(ref: ObjectReference): boolean {
  * for the key's name in a prompt over the menu and sends createkey with it. A
  * non-empty pets category adds the Pets option: it swaps the menu for the
  * petList widget of the pets kept at that door, each with a Summon button.
+ * `note` is the letter pinned to the half the menu was opened at, shown to
+ * every view; `letters` lists the letters this viewer may pin there (pinnote
+ * with the letter's id), and a note with canTakeDown offers takenote.
+ * `canKnock` offers Knock (knock) to every view of a door. `claimFactions`
+ * adds Claim for <faction> to an unclaimed property and Give to <faction> to
+ * the viewer's own personal claim (claimfaction with the faction id); on a
+ * faction claim `faction` names the owner, and its managing ranks get the
+ * owner view and its members with door access the key holder view.
  */
 export class HousingService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -229,6 +305,11 @@ export class HousingService extends ClientListener {
           ownerName: typeof content["ownerName"] === "string" ? content["ownerName"] as string : null,
           pets: typeof content["pets"] === "string" ? content["pets"] as string : "",
           hold: typeof content["hold"] === "string" ? content["hold"] as string : "",
+          note: parseNote(content["note"]),
+          letters: parseLetters(content["letters"]),
+          canKnock: content["canKnock"] === true,
+          faction: parseFaction(content["faction"]),
+          claimFactions: parseFactionList(content["claimFactions"]),
         };
         this.openMenu();
         break;
@@ -297,7 +378,9 @@ export class HousingService extends ClientListener {
       case events.unlockEntrance:
       case events.lockExit:
       case events.unlockExit:
-      case events.revokeKeys: {
+      case events.revokeKeys:
+      case events.takeNote:
+      case events.knock: {
         const action = key.slice("housing:".length);
         sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action, target });
         break;
@@ -315,6 +398,20 @@ export class HousingService extends ClientListener {
         const name = typeof e.arguments[1] === "string" ? (e.arguments[1] as string).trim() : "";
         if (name) {
           sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action: "rename", target, name });
+        }
+        break;
+      }
+      case events.pinNote: {
+        const id = typeof e.arguments[1] === "string" ? e.arguments[1] as string : "";
+        if (WRITING_ID.test(id)) {
+          sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action: "pinnote", target, id });
+        }
+        break;
+      }
+      case events.claimFaction: {
+        const faction = typeof e.arguments[1] === "string" ? e.arguments[1] as string : "";
+        if (FACTION_ID.test(faction)) {
+          sendCustomPacket(this.controller, { customPacketType: "propertyRequest", action: "claimfaction", target, faction });
         }
         break;
       }
@@ -403,6 +500,11 @@ export class HousingService extends ClientListener {
       ownerName: info.ownerName,
       pets: info.pets,
       hold: info.hold,
+      note: info.note,
+      letters: info.letters,
+      canKnock: info.canKnock,
+      faction: info.faction,
+      claimFactions: info.claimFactions,
       events: events,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);

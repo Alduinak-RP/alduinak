@@ -202,7 +202,7 @@ compares nothing, `"log"` writes the lines below and never resyncs, `"resync"` (
 race's spell; the client then runs the race sync again with the server's race and reports once more. An extra spell or
 a base value alone is only logged ("the client's plugins differ from the server's"), since that means other plugin
 files on the client. A report within 2 s of the last one is dropped. A character a GM polymorph holds
-(`private.polymorph`, main's Polymorph tab) is not checked (`race check after <reason> skipped: a polymorph holds the
+(`private.polymorph`, the admin panel's Polymorph tab) is not checked (`race check after <reason> skipped: a polymorph holds the
 character (private.polymorph)`), and its traits follow the race it wears while the cached race is kept for the revert.
 
 The race speed spell counts as on while `AldRaceSpeedEffect` runs on the character; the client line still shows the

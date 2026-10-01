@@ -524,6 +524,7 @@ export const applyInventory = (
   const diff = getDiff(target, getInventory(refr), ignoreWorn, "apply", reverted).entries;
 
   let res = true;
+  let queueNiNodeUpdateNeeded = false;
 
   diff.sort((a, b) => (a.count < b.count ? -1 : 1));
   diff.forEach((e, i) => {
@@ -532,8 +533,6 @@ export const applyInventory = (
       return;
     }
     let absCount = Math.abs(e.count);
-
-    let queueNiNodeUpdateNeeded = false;
 
     let worn = !!e.worn;
     let wornLeft = !!e.wornLeft;
@@ -626,30 +625,17 @@ export const applyInventory = (
         e.poisonCount ? e.poisonCount : 0
       ];
 
-      const argsToPrint = addItemExArgs.map((arg) => {
-        if (arg instanceof ObjectReference) {
-          return `ObjectReference(${arg.getFormID().toString(16)})`;
-        } else if (arg instanceof Form) {
-          return `Form(${arg.getFormID().toString(16)})`;
-        } else {
-          return JSON.stringify(arg);
-        }
-      });
-
-      printConsole(
-        `TESModPlatform.addItemEx(${argsToPrint.join(", ")})`
-      );
-
       TESModPlatform.addItemEx(...addItemExArgs);
     }
-
-    if (queueNiNodeUpdateNeeded) {
-      const ac = Actor.from(refr);
-      if (ac) {
-        ac.queueNiNodeUpdate();
-      }
-    }
   });
+
+  // One 3D rebuild covers every worn change of the apply
+  if (queueNiNodeUpdateNeeded) {
+    const ac = Actor.from(refr);
+    if (ac) {
+      ac.queueNiNodeUpdate();
+    }
+  }
 
   return res;
 };

@@ -56,23 +56,83 @@ const COUNTER_PROP = "private.writings";
 const LOG_FILE = "writing.log";
 const ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const TAG = /\((W[0-9A-Z]{5})\)$/;
+// The list row that writes on a blank of the base read; never a document id
+const NEW_ROW_ID = "new";
 const OPEN_COOLDOWN_MS = 1000;
 const SAVE_COOLDOWN_MS = 2000;
 const DAY_MS = 24 * 3600000;
+const MAX_PINNABLE_LISTED = 100;
+const CHANGE_FAILED = "That cannot be changed right now.";
 
-// Factions with a mark in skymp5-front/src/img/seals, guilds and the Legion before the hold courts
+// Factions with a mark in skymp5-front/src/img/seals
 const SEAL_FACTIONS = [
   "faction:dark-brotherhood", "faction:college-of-winterhold", "faction:imperial-legion",
   "hold:haafingar", "hold:the-reach", "hold:falkreath", "hold:hjaalmarch", "hold:eastmarch",
   "hold:winterhold", "hold:the-rift", "hold:the-pale", "hold:whiterun",
+  "faction:house-telvanni", "faction:house-redoran", "faction:house-dres", "faction:house-indoril",
+  "faction:house-sadras", "faction:morag-tong",
+  // The Great Houses as territories after deploy/mongodb/migrate-morrowind-houses.js
+  "hold:telvanni", "hold:redoran", "hold:dres", "hold:indoril", "hold:sadras",
 ];
+
+// The front's markup tags (skymp5-front/src/features/writing/markup.tsx TAG); those its parser honours do not count toward a page's length
+const MARKUP_TAG = /\[(\/?)(b|bold|i|italic|u|s|color|head|bullet|font|fancy|center|right|hr)(?:=("?)([^\]"\n]{1,24})\3)?\/?\]/gi;
+// Room for tags on top of the visible characters, and a bound on how many a page may carry
+const MARKUP_ROOM = 2;
+const MAX_TAGS_PER_PAGE = 400;
+// The front parser's rules (markup.tsx parse): depth, aliases, ink keys, and font keys and labels compared as letters only
+const MARKUP_MAX_DEPTH = 8;
+const MARKUP_ALIAS: Record<string, string> = { bold: "b", italic: "i" };
+const MARKUP_INKS = new Set(["black", "brown", "red", "blue", "green", "purple", "gold", "grey", "gray"]);
+const MARKUP_FONTS = new Set(["hand", "handwritten", "book", "plain", "daedric", "dragon", "dwemer", "falmer", "mage", "magescript", "unreadable", "symbols"]);
+
+const markupKey = (s: string): string => s.toLowerCase().replace(/[^a-z]/g, "");
+
+const markupArgOk = (tag: string, raw: string | undefined): boolean => {
+  if (tag === "color") return raw !== undefined && (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw.trim()) || MARKUP_INKS.has(markupKey(raw)));
+  if (tag === "head") return raw !== undefined && /^[1-3]$/.test(raw);
+  if (tag === "font") return raw !== undefined && MARKUP_FONTS.has(markupKey(raw));
+  return raw === undefined;
+};
+
+// The characters a reader sees: a tag the front shows as written counts like any text; test-writing-markup.js holds it to the front's plainText
+export const markupVisibleLength = (text: string): number => {
+  const open: string[] = [];
+  const re = new RegExp(MARKUP_TAG.source, "gi");
+  let hidden = 0;
+  let tags = 0;
+  let fancySeen = false;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (++tags > MAX_TAGS_PER_PAGE) break;
+    const tag = MARKUP_ALIAS[m[2].toLowerCase()] || m[2].toLowerCase();
+    const raw = m[4];
+    let done = false;
+    if (m[1] === "/") {
+      const i = open.lastIndexOf(tag);
+      if (i >= 0) open.splice(i, 1);
+      done = i >= 0 || (tag === "fancy" && fancySeen);
+    } else if (tag === "bullet" || tag === "hr") {
+      done = raw === undefined;
+    } else if (tag === "fancy") {
+      if (raw === undefined && /[a-z]/i.test(text.charAt(re.lastIndex))) {
+        re.lastIndex += 1;
+        fancySeen = done = true;
+      }
+    } else if (markupArgOk(tag, raw) && open.length < MARKUP_MAX_DEPTH && !(tag === "head" && open.includes("head"))) {
+      open.push(tag);
+      done = true;
+    }
+    if (done) hidden += m[0].length;
+  }
+  return text.length - hidden;
+};
 
 type View = "compose" | "read" | "sealed" | "list";
 
 interface Session {
   view: View;
   kind?: WritingKind;
-  // The blank base the composer writes on
+  // The blank base the composer, or the list's new row, writes on
   blank?: number;
 }
 
@@ -81,6 +141,18 @@ interface Carried {
   id: string;
   key: BaseKey;
 }
+
+// A letter pinned to a door as one viewer reads it in the housing menu
+export interface PinnedNoteView {
+  title: string;
+  text: string;
+  byline: string;
+  signFaction: string;
+  brokenSeals: string[];
+}
+
+// Why a pinned letter can no longer be read
+type NoteGone = "missing" | "destroyed";
 
 // Creation times: made keeps documents within the window that still exist, recent every document of the last day
 interface Counter {
@@ -92,6 +164,9 @@ const tagOf = (name: unknown): string => {
   const m = typeof name === "string" ? TAG.exec(name) : null;
   return m ? m[1] : "";
 };
+
+// The id anywhere in a name the client read off its inventory list; titles hold no brackets
+const pickedTag = (name: string): string => /\((W[0-9A-Z]{5})\)/.exec(name)?.[1] || "";
 
 // Printable Latin-1 without the brackets the name tag relies on
 const cleanTitle = (raw: unknown, max: number): string =>
@@ -160,8 +235,8 @@ export class WritingSystem implements System {
     }
     const id = String(content["id"] ?? "");
     switch (type) {
-      case "writingUse": return this.onUse(mp, userId, actorId, toFormId(content["baseId"]));
-      case "writingOpen": return this.cooled(this.lastOpenMs, userId, OPEN_COOLDOWN_MS) ? this.openDoc(mp, userId, actorId, id) : undefined;
+      case "writingUse": return this.onUse(mp, userId, actorId, toFormId(content["baseId"]), content["name"]);
+      case "writingOpen": return this.cooled(this.lastOpenMs, userId, OPEN_COOLDOWN_MS) ? this.onOpen(mp, userId, actorId, id) : undefined;
       case "writingCreate": return this.onCreate(mp, userId, actorId, content);
       case "writingSave": return this.onSave(mp, userId, actorId, id, content);
       case "writingFinish": return this.onFinish(mp, userId, actorId, id);
@@ -195,17 +270,23 @@ export class WritingSystem implements System {
 
   // ── Opening ─────────────────────────────────────────────────────────────────
 
-  private onUse(mp: Mp, userId: number, actorId: number, baseId: number): void {
+  // picked is the inventory entry the player read as the client names it, absent when the client cannot tell
+  private onUse(mp: Mp, userId: number, actorId: number, baseId: number, picked: unknown): void {
     const key = this.keyOf.get(baseId);
     const kind = key ? KIND_OF[key] : undefined;
     if (!key || !kind || !this.cooled(this.lastOpenMs, userId, OPEN_COOLDOWN_MS)) return;
-    if (this.plainCount(mp, actorId, baseId) > 0 && !this.carried(mp, actorId).some((c) => c.entry.baseId >>> 0 === baseId)) {
-      this.openCompose(mp, userId, kind, baseId);
-      return;
-    }
+    const name = typeof picked === "string" ? picked.slice(0, 256) : "";
+    const tag = pickedTag(name);
+    const blanks = this.plainCount(mp, actorId, baseId);
     const written = this.carried(mp, actorId).filter((c) => c.entry.baseId >>> 0 === baseId);
-    if (written.length === 1) this.openDoc(mp, userId, actorId, written[0].id);
-    else if (written.length > 1) this.openList(mp, userId, written);
+    // An entry read without an id is a blank; unnamed, a lone written copy opens only when no blank shares its base
+    const open = written.find((c) => c.id === tag)?.id || (written.length === 1 && !blanks ? written[0].id : "");
+    const compose = !open && !tag && blanks > 0 && (!!name || !written.length);
+    if (open) this.openDoc(mp, userId, actorId, open);
+    else if (compose) this.openCompose(mp, userId, kind, baseId);
+    else if (written.length) this.openList(mp, userId, written, kind, blanks > 0 ? baseId : 0);
+    const shown = open || (compose ? "the composer" : written.length ? `a list of ${written.length}${blanks > 0 ? " and a new one" : ""}` : "nothing");
+    this.log(`[writing] ${hex(actorId)} reads ${hex(baseId)} ${JSON.stringify(name)}: ${shown}, carrying ${blanks} blank and ${written.length} written of that base`);
   }
 
   // A written item without a name counts as a blank of its kind
@@ -214,16 +295,24 @@ export class WritingSystem implements System {
     this.sendMenu(mp, userId, { view: "compose", compose: { kind, blankName: BLANK_LABEL[kind] } });
   }
 
-  private openList(mp: Mp, userId: number, written: Carried[]): void {
-    this.sessions.set(userId, { view: "list" });
-    this.sendMenu(mp, userId, {
-      view: "list",
-      list: written.map((c) => {
-        const kind = KIND_OF[c.key] || "letter";
-        const sealed = c.key === "sealed";
-        return { id: c.id, kind, title: sealed ? "Sealed Letter" : this.store.load(c.id)?.title || KIND_LABEL[kind], sealed };
-      }),
+  // The written copies of one base, led by a row that writes on a blank of it when one is carried
+  private openList(mp: Mp, userId: number, written: Carried[], kind: WritingKind, blank: number): void {
+    this.sessions.set(userId, { view: "list", kind, blank });
+    const rows = written.map((c) => {
+      const rowKind = KIND_OF[c.key] || "letter";
+      const sealed = c.key === "sealed";
+      return { id: c.id, kind: rowKind, title: sealed ? "Sealed Letter" : this.store.load(c.id)?.title || KIND_LABEL[rowKind], sealed };
     });
+    if (blank) rows.unshift({ id: NEW_ROW_ID, kind, title: `Write a new ${KIND_LABEL[kind].toLowerCase()}`, sealed: false });
+    this.sendMenu(mp, userId, { view: "list", list: rows });
+  }
+
+  private onOpen(mp: Mp, userId: number, actorId: number, id: string): void {
+    if (id !== NEW_ROW_ID) return this.openDoc(mp, userId, actorId, id);
+    const session = this.sessions.get(userId);
+    if (session?.view !== "list" || !session.kind || !session.blank) return;
+    if (this.plainCount(mp, actorId, session.blank) < 1) return this.notice(mp, userId, `You have no ${BLANK_LABEL[session.kind]} left.`);
+    this.openCompose(mp, userId, session.kind, session.blank);
   }
 
   private openDoc(mp: Mp, userId: number, actorId: number, id: string): void {
@@ -349,7 +438,7 @@ export class WritingSystem implements System {
     doc.seal = { ...this.person(mp, actorId), at: Date.now() };
     this.persist(doc);
     this.appendLog(`${describeActor(mp, actorId)} sealed letter ${id} ${JSON.stringify(doc.title)}${doc.seal.factionId ? ` as ${doc.seal.factionId}` : ""}`);
-    this.notice(mp, userId, "You press your seal into the wax.");
+    this.notice(mp, userId, doc.seal.title ? "You press your seal into the wax." : "You press a plain seal into the wax. Show a faction title to press its mark.");
     this.openDoc(mp, userId, actorId, id);
   }
 
@@ -487,6 +576,65 @@ export class WritingSystem implements System {
     return out;
   }
 
+  // ── Door notes (HousingSystem) ──────────────────────────────────────────────
+
+  available(): boolean {
+    return this.enabled && this.ready;
+  }
+
+  // Unsealed written letters the character carries, titled as the pack shows them
+  lettersOf(mp: Mp, actorId: number): Array<{ id: string; title: string }> {
+    if (!this.available()) return [];
+    return this.carried(mp, actorId).filter((c) => c.key === "letter").slice(0, MAX_PINNABLE_LISTED)
+      .map((c) => ({ id: c.id, title: String(c.entry.name || "").replace(TAG, "").trim() || KIND_LABEL.letter }));
+  }
+
+  // Takes one carried open letter out of the pack for a door; null once the player was told why not
+  takeLetterToPin(mp: Mp, userId: number, actorId: number, id: string): { id: string; title: string } | null {
+    if (!this.available()) {
+      this.notice(mp, userId, "Writing is not available yet.");
+      return null;
+    }
+    const found = this.reconcile(mp, userId, actorId, id);
+    if (!found) return null;
+    if (found.carried.key !== "letter") {
+      this.notice(mp, userId, found.carried.key === "sealed" ? "Only an open letter can be pinned." : "Only a letter can be pinned.");
+      return null;
+    }
+    if (!this.rewrite(mp, actorId, [[found.carried.entry, 1]], [])) {
+      this.notice(mp, userId, CHANGE_FAILED);
+      return null;
+    }
+    return { id, title: found.doc.title || KIND_LABEL.letter };
+  }
+
+  // Puts a pinned letter into a pack under its current title
+  returnPinnedLetter(mp: Mp, actorId: number, id: string): "given" | "failed" | NoteGone {
+    if (!this.available()) return "failed";
+    const doc = this.pinnedDoc(id);
+    if (typeof doc === "string") return doc;
+    return this.rewrite(mp, actorId, [], [{ baseId: this.base("letter"), count: 1, name: this.nameOf(doc, false) }]) ? "given" : "failed";
+  }
+
+  // A pinned letter as this viewer reads it, null while writing is off
+  pinnedNoteView(mp: Mp, viewerId: number, id: string): PinnedNoteView | NoteGone | null {
+    if (!this.available()) return null;
+    const doc = this.pinnedDoc(id);
+    if (typeof doc === "string") return doc;
+    const { byline, brokenSeals } = this.readerLines(mp, viewerId, doc, false);
+    return { title: doc.title || KIND_LABEL.letter, text: doc.pages[0] || "", byline, signFaction: doc.signed ? doc.author.factionId : "", brokenSeals };
+  }
+
+  logDoorNote(text: string): void {
+    this.appendLog(text);
+  }
+
+  private pinnedDoc(id: string): WritingDoc | NoteGone {
+    const doc = WRITING_ID.test(id) ? this.store.load(id) : null;
+    if (!doc || doc.kind !== "letter") return "missing";
+    return doc.destroyedAt ? "destroyed" : doc;
+  }
+
   // ── Menu ────────────────────────────────────────────────────────────────────
 
   private sendMenu(mp: Mp, userId: number, body: Record<string, unknown>): void {
@@ -503,13 +651,11 @@ export class WritingSystem implements System {
     });
   }
 
-  // What this reader may see and do; staff see real names and never act on the item
-  private sendDoc(mp: Mp, userId: number, actorId: number, doc: WritingDoc, carried: Carried | null, staff: boolean): void {
-    const sealed = carried?.key === "sealed";
-    const hidden = sealed && !staff;
+  // Names on a document under the introductions rule; staff see real names and profiles
+  private readerLines(mp: Mp, viewerId: number, doc: WritingDoc, staff: boolean) {
     const nameFor = (who: WritingPerson): string => {
       if (staff) return `${who.realName || "someone unrecorded"} (profile ${who.profileId})`;
-      const known = who.actorId === actorId || (!!who.actorId && isIntroduced(mp, actorId, who.actorId));
+      const known = who.actorId === viewerId || (!!who.actorId && isIntroduced(mp, viewerId, who.actorId));
       return known ? titledName(who.title, who.shownName) : "";
     };
     const sealName = (seal: WritingSeal): string => {
@@ -517,7 +663,19 @@ export class WritingSystem implements System {
       return name ? `the seal of ${name}` : "an unfamiliar seal";
     };
     const author = doc.signed ? nameFor(doc.author) : "";
-    const byline = !doc.signed ? "" : author ? `Signed, ${author}` : "Signed in an unfamiliar hand";
+    return {
+      nameFor,
+      sealName,
+      byline: !doc.signed ? "" : author ? `Signed, ${author}` : "Signed in an unfamiliar hand",
+      brokenSeals: doc.brokenSeals.map((b) => capitalise(`${sealName(b.seal)} was broken.`)),
+    };
+  }
+
+  // What this reader may see and do; staff see real names and never act on the item
+  private sendDoc(mp: Mp, userId: number, actorId: number, doc: WritingDoc, carried: Carried | null, staff: boolean): void {
+    const sealed = carried?.key === "sealed";
+    const hidden = sealed && !staff;
+    const { nameFor, sealName, byline, brokenSeals } = this.readerLines(mp, actorId, doc, staff);
     const staffLines = staff ? [
       `Scribe: ${describePerson(doc.scribe)}`,
       `Written ${new Date(doc.createdAt).toISOString()}, last changed ${new Date(doc.updatedAt).toISOString()}`,
@@ -539,7 +697,7 @@ export class WritingSystem implements System {
         // Heraldry is public: the marks show to every reader, only the names follow the introductions rule
         sealFaction: hidden ? doc.seal?.factionId || "" : "",
         signFaction: !hidden && doc.signed ? doc.author.factionId : "",
-        brokenSeals: doc.brokenSeals.map((b) => capitalise(`${sealName(b.seal)} was broken.`)),
+        brokenSeals,
         canEdit: editable,
         canFinish: editable && doc.kind === "book",
         canSeal: !staff && carried?.key === "letter",
@@ -577,7 +735,12 @@ export class WritingSystem implements System {
       // Bound the work before sanitize walks the payload
       if (typeof page !== "string" || page.length > maxLen * 4) return null;
       const text = sanitize(page);
-      if (text.length > maxLen) {
+      const tags = text.match(MARKUP_TAG)?.length ?? 0;
+      if (text.length > maxLen * MARKUP_ROOM || tags > MAX_TAGS_PER_PAGE) {
+        this.notice(mp, userId, "That page carries too much formatting.");
+        return null;
+      }
+      if (markupVisibleLength(text) > maxLen) {
         this.notice(mp, userId, `A page holds ${maxLen} characters at most.`);
         return null;
       }
@@ -719,12 +882,10 @@ export class WritingSystem implements System {
     return { actorId: 0, profileId: -1, realName: "", shownName: "", title: "", factionId: "" };
   }
 
-  // The faction whose title the character shows, else the first of theirs with a mark
+  // The faction of the title the character shows, "" with no title shown or a title of a faction without a mark
   private sealFactionOf(actorId: number): string {
-    const mine = this.factions.membershipsOfActor(actorId).map((m) => m.factionId);
-    const shown = this.factions.titleFactionOf(actorId);
-    if (SEAL_FACTIONS.includes(shown) && mine.includes(shown)) return shown;
-    return SEAL_FACTIONS.find((id) => mine.includes(id)) || "";
+    const shown = this.factions.titleOfActor(actorId) ? this.factions.titleFactionOf(actorId) : "";
+    return SEAL_FACTIONS.includes(shown) && this.factions.membershipsOfActor(actorId).some((m) => m.factionId === shown) ? shown : "";
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

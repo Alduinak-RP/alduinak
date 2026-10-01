@@ -5,8 +5,8 @@ import { AccessPayload, FactionBackend, RosterRow, factionBackendOf, filterAcces
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { isNear, isPlayerActor, nameShownTo, userOf, userSlotCount } from "./actorUtil";
 import { formIdFromConfig } from "./formIdUtil";
-import { HousingSystem } from "./housingSystem";
-import { holdName, holdOfActor } from "./holdOf";
+import { FactionRight, HousingSystem } from "./housingSystem";
+import { holdName, holdOfActor, isHoldLand } from "./holdOf";
 import { RELEASED_PROP, isFallen } from "./afterlifeSystem";
 import * as rules from "./factionRules";
 import { adminAudit } from "./discordAlerts";
@@ -14,13 +14,15 @@ import { adminAudit } from "./discordAlerts";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Factions: hold courts, armies and guilds whose ranks live in the backend (skymp5-backend data/faction-whitelist.json, one row per
+// Factions: territories (type hold), armies and guilds whose ranks live in the backend (skymp5-backend data/faction-whitelist.json, one row per
 // character and slot). A character joins at most one faction of each type, leads at most one faction anywhere, and shows at most one
 // faction title. This system runs the rules in game: the Personal Menu Faction tabs, recruiting with consent, rank changes, removals,
-// regency, faction-only doors and containers, and releasing a deleted or perma-dead character's ranks. Hold uniforms are crafted
-// by the ranks carrying craft (FactionCraftSystem), never issued here. A hold court's powers reach only inside its own hold
-// (territoryRefusal): rank changes, regency, its doors and chests, hold property and executions; recruiting, removing and crafting
-// work anywhere, and admins are exempt.
+// regency, faction-only doors and containers, the ranks' rights on faction claims (HousingSystem), and releasing a deleted or
+// perma-dead character's ranks. Hold uniforms are crafted by the ranks carrying craft (FactionCraftSystem), never issued here.
+// A territory's powers reach only inside its own hold (territoryRefusal): rank changes, regency, its doors and chests, hold
+// property, its faction claims and executions; recruiting, removing and crafting work anywhere, and admins are exempt.
+// A territory whose hold has no land in the load order (the Morrowind houses) has no border until it is given land.
+// A converted faction's old id leads to its new one (the definitions' successors), so its claims, titles and door entries follow.
 // Docs: docs/docs_roleplay_property_factions.md section 6.
 //
 // Client -> server:
@@ -63,6 +65,8 @@ const REGENCY_CHECK_MS = 5000;
 const RELEASE_RETRIES = 5;
 const RELEASE_RETRY_MS = 30000;
 const MAX_QUEUED = 3;
+// A housing request waits this long for fresh ranks, then goes on with the cached ones
+const FRESH_RANKS_WAIT_MS = 1500;
 const TITLE_PROP = "private.factionTitle";
 const TITLE_FF = "ff_factionTitle";
 // One border refusal line per actor this often
@@ -154,6 +158,9 @@ export class FactionSystem implements System {
     this.housing.factionGate = (actorId, refrId, action) => this.gate(actorId, refrId, action);
     this.housing.factionDef = (factionId) => (this.definitionsLoaded ? this.defs.get(factionId) ?? null : undefined);
     this.housing.territoryRefusal = (actorId, factionId, action) => this.territoryRefusal(actorId, factionId, action);
+    this.housing.factionSuccessor = (factionId) => this.currentFactionId(factionId);
+    this.housing.factionRights = (actorId) => this.propertyRights(actorId);
+    this.housing.factionFresh = (userId, job) => this.withFreshRanks(userId, job);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => { void this.onAssign(userId, actorId >>> 0); });
     ctx.gm.on(CHARACTER_LIST_EVENT, (profileId: number, entries: CharacterListEntry[]) => this.onCharacterList(profileId, entries));
@@ -325,7 +332,7 @@ export class FactionSystem implements System {
       return this.notice(userId, `They already belong to ${faction.name}.`);
     }
     const sameType = held.map((m) => this.defs.get(m.factionId)).find((f) => f && f.type === faction.type);
-    if (sameType) return this.notice(userId, `They already belong to ${sameType.name}; nobody joins two ${faction.type} factions.`);
+    if (sameType) return this.notice(userId, `They already belong to ${sameType.name}; nobody joins two ${rules.TYPE_LABELS[faction.type]} factions.`);
     if (rank.capacity !== null && (await this.roster(faction.id, true)).filter((m) => m.rankSlug === rank.slug).length >= rank.capacity) {
       return this.notice(userId, `${rank.name} is full.`);
     }
@@ -532,7 +539,12 @@ export class FactionSystem implements System {
   // ── Titles ──────────────────────────────────────────────────────────────────
 
   titleFactionOf(actorId: number): string {
-    try { return String(this.mp.get(actorId, TITLE_PROP) ?? ""); } catch { return ""; }
+    try { return this.currentFactionId(String(this.mp.get(actorId, TITLE_PROP) ?? "")); } catch { return ""; }
+  }
+
+  // The faction an id names now; a converted faction's old id leads to its new one
+  currentFactionId(factionId: string): string {
+    return factionId ? rules.currentFactionId(factionId, this.successors) : factionId;
   }
 
   private storeTitleChoice(actorId: number, factionId: string): void {
@@ -759,12 +771,13 @@ export class FactionSystem implements System {
     if (!this.accessByRef.size) return null;
     const entry = this.housing.doorSides(this.ctx, refrId).map((id) => this.accessByRef.get(id)).find(Boolean);
     if (!entry) return null;
-    const name = entry.label || entry.factions.map((id) => this.defs.get(id)?.name || id).join(" or ");
+    const name = entry.label || entry.factions.map((id) => this.defs.get(this.currentFactionId(id))?.name || id).join(" or ");
     if (!isPlayerActor(this.mp, actorId)) return { name, allowed: true, refusal: "" };
     // A rank list on the entry names who may pass; without one every rank with the faction access flag may
     const admitted = this.membershipsOfActor(actorId).filter((m) => {
-      if (!entry.factions.includes(m.factionId)) return false;
-      const ranks = Array.isArray(entry.ranks) ? entry.ranks : entry.ranks ? entry.ranks[m.factionId] : null;
+      const listed = entry.factions.find((id) => this.currentFactionId(id) === m.factionId);
+      if (!listed) return false;
+      const ranks = Array.isArray(entry.ranks) ? entry.ranks : entry.ranks ? entry.ranks[listed] : null;
       if (ranks) return ranks.includes(m.rankSlug);
       if (!this.definitionsLoaded) return true;
       const faction = this.defs.get(m.factionId);
@@ -897,6 +910,7 @@ export class FactionSystem implements System {
         this.definitionsSignature = signature;
         const reload = this.definitionsLoaded && changed;
         this.defs = rules.buildFactions(raw);
+        this.successors = rules.buildSuccessors(raw.successors);
         this.definitionsLoaded = true;
         this.acting.clear();
         if (had !== this.defs.size) this.log(`[factions] ${this.defs.size} faction(s) loaded from the backend`);
@@ -950,6 +964,18 @@ export class FactionSystem implements System {
     if (!self) return this.cachedAccess(actorId);
     this.applyAccess(self.profileId, await this.backend()!.fetchAccess(self.profileId));
     return this.cachedAccess(actorId);
+  }
+
+  // Housing's menu and faction claim requests, after the player's earlier faction requests and with their ranks reloaded
+  private withFreshRanks(userId: number, job: () => void): void {
+    void this.queued(userId, async () => {
+      const actorId = this.actorOf(userId);
+      if (actorId && this.backend()) {
+        const fetched = this.refreshActorAccess(actorId).catch((e) => this.log(`[factions] ranks not reloaded for a property request, the cached ones apply: ${e}`));
+        await Promise.race([fetched, new Promise((done) => setTimeout(done, FRESH_RANKS_WAIT_MS))]);
+      }
+      job();
+    });
   }
 
   // Every online character of the profile gets its narrowed copy; Spawn keeps the full payload for the next character select
@@ -1009,6 +1035,21 @@ export class FactionSystem implements System {
       .filter((id) => !here || !this.territoryRefusal(actorId, id));
   }
 
+  // Faction claims follow the character's own rank: housing manages them, factionAccess uses them, a leader or acting regent does both
+  propertyRights(actorId: number): FactionRight[] {
+    const access = this.cachedAccess(actorId);
+    const out: FactionRight[] = [];
+    for (const m of rules.membershipsOf(access)) {
+      const faction = this.defs.get(m.factionId);
+      if (!faction || out.some((f) => f.id === faction.id)) continue;
+      const auth = { ...this.authorityOf(actorId, faction, access), staff: false };
+      if (!auth.rank) continue;
+      const manage = rules.hasPermission(auth, "housing");
+      out.push({ id: faction.id, name: faction.name, use: manage || rules.hasFullAuthority(auth) || auth.rank.factionAccess, manage });
+    }
+    return out;
+  }
+
   // "" when a rank carrying the permission reaches where the actor stands (or none carries it), else the first one's border notice
   borderRefusal(actorId: number, key: rules.Permission, action: string): string {
     const granting = this.factionsWith(actorId, key);
@@ -1016,9 +1057,9 @@ export class FactionSystem implements System {
     return this.territoryRefusal(actorId, granting[0], action);
   }
 
-  // "" inside the court's own hold, for an army or a guild, and for admins; with an action the refusal is logged
+  // "" inside the territory's own hold, for a territory without land, an army or a guild, and for admins; with an action the refusal is logged
   territoryRefusal(actorId: number, factionId: string, action = ""): string {
-    const hold = rules.factionHold(factionId);
+    const hold = rules.factionLand(factionId, isHoldLand);
     if (!hold || adminTierOf(this.mp, actorId, this.roleCfg) !== null) return "";
     const here = holdOfActor(this.mp, actorId);
     if (here?.key === hold) return "";
@@ -1145,6 +1186,7 @@ export class FactionSystem implements System {
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private inviteDistance = DEFAULT_INVITE_DISTANCE;
   private defs = new Map<string, rules.FactionDef>();
+  private successors = new Map<string, string>();
   private definitionsDueAt = 0;
   private definitionsLoading: Promise<void> | null = null;
   private definitionsLoaded = false;

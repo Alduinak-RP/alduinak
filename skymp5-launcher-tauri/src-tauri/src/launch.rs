@@ -191,10 +191,11 @@ pub async fn launch_skse() -> Value {
     match result { Ok(_) => json!({ "success": true }), Err(e) => json!({ "success": false, "error": e }) }
 }
 
-// Also adopts an in-game FOV change once the game closes, and follows the game with Discord presence
+// Also adopts an in-game FOV change once the game closes, frees the cursor when its window goes, and follows the game with Discord presence
 #[tauri::command]
 pub async fn game_is_running() -> bool {
     let running = proc::game_running().await;
+    if running { proc::watch_game_window(); }
     if GAME_WAS_RUNNING.swap(running, Ordering::SeqCst) && !running { crate::settings::adopt_chat_fov(); }
     crate::presence::set_running(running);
     running

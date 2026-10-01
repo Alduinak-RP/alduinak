@@ -13,7 +13,7 @@ const compiled = new Module(source)
 compiled._compile(outputFiles[0].text, source)
 const rules = compiled.exports
 
-const seed = require('../../skymp5-backend/seeds/faction-whitelist.json')
+const seed = require('../../skymp5-backend/test/fixtures/faction-whitelist.json')
 
 // The ladders of the 2026-09-19 spec, craft on the Captain only since r15: rank slug -> [capacity, permissions the rank carries]
 const HOLD_LADDER = [
@@ -202,6 +202,22 @@ test('regency seats and the enabled switch survive the definitions round trip', 
   assert.deepEqual(court.regents, [{ profileId: 7, slot: 0 }, { profileId: 9, slot: null }])
   assert.equal(factions.get('hold:the-rift').regencyEnabled, false)
   assert.deepEqual(factions.get('hold:the-rift').regents, [])
+})
+
+test('a territory without land in the load order has no border, and converted ids lead to the new faction', () => {
+  const skyrim = key => ['rift', 'eastmarch', 'whiterun'].includes(key)
+  assert.equal(rules.factionLand('hold:the-rift', skyrim), 'rift')
+  assert.equal(rules.factionLand('hold:indoril', skyrim), '')
+  assert.equal(rules.factionLand('faction:house-indoril', skyrim), '')
+  assert.equal(rules.TYPE_LABELS.hold, 'territory')
+  const successors = rules.buildSuccessors({ 'faction:house-indoril': 'hold:indoril', 'faction:a': 'faction:b', 'faction:b': 'faction:c', bad: 7, same: 'same' })
+  assert.deepEqual([...successors.keys()].sort(), ['faction:a', 'faction:b', 'faction:house-indoril'])
+  assert.equal(rules.currentFactionId('faction:house-indoril', successors), 'hold:indoril')
+  assert.equal(rules.currentFactionId('faction:a', successors), 'faction:c')
+  assert.equal(rules.currentFactionId('hold:whiterun', successors), 'hold:whiterun')
+  assert.equal(rules.buildSuccessors(null).size, 0)
+  const loop = rules.buildSuccessors({ 'faction:x': 'faction:y', 'faction:y': 'faction:x' })
+  assert.ok(['faction:x', 'faction:y'].includes(rules.currentFactionId('faction:x', loop)), 'a loop stops after a few hops')
 })
 
 let failed = 0

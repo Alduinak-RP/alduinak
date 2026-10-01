@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, WORLD_LOADED_EVENT } from "./system";
 import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForRequest, missingCap } from "./adminRoles";
 import { NpcSpawnSystem, pick } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
@@ -16,6 +16,7 @@ import { addItemTo, userOf, userSlotCount } from "./actorUtil";
 import { adminAudit } from "./discordAlerts";
 import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
+import { Polymorph } from "./polymorph";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -59,8 +60,10 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "weatherList", catalog? }  answered with adminWeather; catalog false leaves the weather list out
 //                     { customPacketType: "adminAction", action: "weatherSet", region, weather, minutes }  region "" = the admin's own; weather: catalog desc or editor id; minutes null = until cleared, else 1..1440
 //                     { customPacketType: "adminAction", action: "weatherClear", region }  rolls a normal weather again
+//                     { customPacketType: "adminAction", action: "raceList" }  answered with adminRaces
+//                     { customPacketType: "adminAction", action: "polymorph", target, race } | { action: "polymorphRevert", target }  target: actor id hex, "" = the admin; race: catalog desc
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?, av?, sv?, f?, ok?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather}, mastery, survival }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?, av?, sv?, f?, ok?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather, polymorph}, mastery, survival }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
 //                       sv: the online row's SurvivalSummary {cold, stage, area, level, warmth, freezingArea, diseases: [{id, name, stage, nextAt}], afflictions: [{name, until}], foodPoisonUntil} once survival settled on it
 //                       survival: SurvivalCatalog {diseases: [{id, name, contagious}], coldMax, coldStages} for the survival row, null with survival off or without the players cap
@@ -75,7 +78,8 @@ type Mp = any;
 //                     { customPacketType: "adminJobs", jobs: [JobSummary] }  after jobList and after every job mutation
 //                     { customPacketType: "adminWeather", regions: [WeatherRegionRow], weathers?: [{desc, edid, kind}], at }  after weatherList (with the catalog) and after every weather change; at: server epoch ms
 //                     { customPacketType: "adminItems", query, kind, page, pages, ready, total, items: [{desc, name, edid, type, plugin}] }  at most 50 rows; ready is false while the catalog builds
-//                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's success (teleportTo, teleportLoc, npcZoneTp, jobTp), which closes the menu, and on every npcZoneAdd answer, which the Add form waits for
+//                     { customPacketType: "adminRaces", ready, races: [RaceRow], active: [{a, n, race, since, by}] }  after raceList, when the catalog is built and after every polymorph change; active: the online transformed characters
+//                     { customPacketType: "adminActionResult", ok, text, action? }  action: echoed on a self teleport's or self polymorph's success (teleportTo, teleportLoc, npcZoneTp, jobTp, polymorph, polymorphRevert), which closes the menu, and on every npcZoneAdd answer, which the Add form waits for
 // The roster merges online actors with the backend's full player list (GET /:key/players);
 // ips are masked to the first two octets before leaving the server (full ip stays in the backend).
 // Non-admin requests are ignored silently; every Personal Menu open sends adminMenuRequest, so that refusal is logged once per user slot.
@@ -197,6 +201,7 @@ export class AdminSystem implements System {
   private catalogByDesc = new Map<string, CatalogItem>();
   private catalogBuild: Promise<void> | null = null;
   private spawnAt = new Map<number, number>();
+  private polymorph: Polymorph | null = null;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -204,6 +209,7 @@ export class AdminSystem implements System {
     this.serverName = typeof s.name === "string" ? s.name : "";
     this.dataDir = s.dataDir;
     this.loadOrder = s.loadOrder;
+    this.polymorph = new Polymorph((line) => this.log(line), s.dataDir, s.loadOrder);
     this.masterUrl = typeof s.master === "string" ? s.master.replace(/\/+$/, "") : "";
     this.masterKey = typeof s.masterKey === "string" ? s.masterKey : "";
     this.authToken = typeof all?.["masterApiAuthToken"] === "string" ? all["masterApiAuthToken"] : "";
@@ -236,12 +242,22 @@ export class AdminSystem implements System {
         const actorId = mp.getUserActor(userId);
         if (!actorId) return;
         mp.set(actorId, "consoleCommandsAllowed", false);
+        // Logout and restart already put the original look back; this catches a character a crash left transformed
+        this.autoRevert(mp, actorId, "on actor assign");
         this.resyncModes(mp, userId, actorId, this.isAdminActor(mp, actorId));
         // A spawn re-reads the base attributes from the plugins, so the stored change is applied again
         this.sendAttrBonus(mp, userId, actorId);
       } catch (e) {
         this.log(`AdminSystem: assign hook failed: ${e}`);
       }
+    });
+
+    ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.autoRevert(ctx.svr as Mp, actorId >>> 0, "on character select", false));
+    ctx.gm.once(WORLD_LOADED_EVENT, () => {
+      const mp = ctx.svr as Mp;
+      const left = this.polymorph?.transformedActors(mp) ?? [];
+      for (const actorId of left) this.autoRevert(mp, actorId, "at boot");
+      this.log(`AdminSystem: polymorph boot check, ${left.length} character(s) left transformed were reverted`);
     });
 
     const { tierRoles, adminRoleIds, adminProfileIds } = this.roleCfg;
@@ -493,10 +509,14 @@ export class AdminSystem implements System {
     }
   }
 
-  // Slots are reused, so the next player in this slot gets the refusal diagnostic again
-  disconnect(userId: number): void {
+  // Slots are reused, so the next player in this slot gets the refusal diagnostic again; a transformed character is put back while its body waits out the logout grace
+  disconnect(userId: number, ctx: SystemContext): void {
     this.menuRefusalLogged.delete(userId);
     this.spawnAt.delete(userId);
+    try {
+      const actorId = ctx.svr.getUserActor(userId);
+      if (actorId) this.autoRevert(ctx.svr as Mp, actorId >>> 0, "on logout");
+    } catch { }
   }
 
   // The tag follows the admin's current character; the property persists, so a stale one is cleared on assign
@@ -622,6 +642,10 @@ export class AdminSystem implements System {
       this.weatherAction(mp, userId, myActorId, adminProfile, tier, action, content);
       return;
     }
+    if (action === "raceList" || action.startsWith("polymorph")) {
+      this.polymorphAction(mp, userId, myActorId, adminProfile, tier, action, content);
+      return;
+    }
     if (action === "revive") {
       this.revive(ctx, userId, adminProfile, String(content["target"] ?? ""));
       return;
@@ -685,7 +709,7 @@ export class AdminSystem implements System {
           this.adminLog(`profile ${adminProfile} was refused a PK of ${target.name} (profile ${target.profileId}): ${refusal}`, false);
           return this.reply(mp, userId, false, refusal);
         }
-        this.adminLog(`profile ${adminProfile} PK'd ${target.name} (profile ${target.profileId}), their soul goes to Sovngarde`);
+        this.adminLog(`profile ${adminProfile} PK'd ${target.name} (profile ${target.profileId}), their soul goes to Sovngarde`, false);
         this.reply(mp, userId, true, `PK'd ${target.name}`);
       } else if (action === "masteryGrant") {
         const amount = Number(content["amount"]);
@@ -875,6 +899,80 @@ export class AdminSystem implements System {
     this.log(`AdminSystem: ${text}`);
     this.adminLog(text);
     this.reply(mp, userId, true, `Gave ${count} x ${entry.name} to ${target.actorId === myActorId ? "you" : target.name}`);
+  }
+
+  private autoRevert(mp: Mp, actorId: number, reason: string, notify = true): void {
+    if (this.polymorph?.revert(mp, actorId, reason, notify)) this.adminLog(`the polymorph of actor ${actorId.toString(16)} was reverted ${reason}`, false);
+  }
+
+  // The race rows are empty until the catalog is built; the online transformed characters come with every reply
+  private sendRaces(mp: Mp, userId: number, adminActorId: number): void {
+    const pm = this.polymorph;
+    try {
+      if (!pm || mp.getUserActor(userId) !== adminActorId) return;
+      const active = this.onlinePlayers(mp).flatMap((p) => {
+        const rec = pm.recordOf(mp, p.actorId);
+        return rec ? [{ a: p.actorId.toString(16), n: p.name || "(no name)", race: pm.raceName(rec.race), since: rec.since, by: rec.by }] : [];
+      });
+      mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminRaces", ready: pm.ready, races: pm.rows(), active }));
+    } catch (e) {
+      this.log(`AdminSystem: adminRaces reply failed: ${e}`);
+    }
+  }
+
+  // Polymorph: the race list, a transform of the admin or an online player, and the revert to the stored look
+  private polymorphAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, tier: AdminTier, action: string, content: Content): void {
+    const pm = this.polymorph;
+    if (!pm) {
+      this.reply(mp, userId, false, "Server not ready");
+      return;
+    }
+    if (action === "raceList") {
+      pm.ensureCatalog(() => this.sendRaces(mp, userId, myActorId));
+      this.sendRaces(mp, userId, myActorId);
+      return;
+    }
+    const hexId = String(content["target"] ?? "");
+    const targetId = hexId ? parseInt(hexId, 16) >>> 0 : myActorId;
+    const target = this.onlinePlayers(mp).find(p => p.actorId === targetId);
+    if (!target) {
+      this.reply(mp, userId, false, "Target is no longer online");
+      return;
+    }
+    const self = target.actorId === myActorId;
+    const who = `${JSON.stringify(target.name)} (profile ${target.profileId}, actor ${target.actorId.toString(16)})`;
+    const by = `profile ${adminProfile} (${tier})`;
+    const subject = self ? "You are" : `${target.name} is`;
+    if (action === "polymorphRevert") {
+      const rec = pm.revert(mp, target.actorId, `by ${by}`);
+      if (rec) this.adminLog(`${by} reverted the polymorph of ${who}`);
+      this.reply(mp, userId, !!rec, rec ? `${subject} back in ${self ? "your" : "their"} own form` : `${subject} not transformed`, rec && self ? action : undefined);
+      this.sendRaces(mp, userId, myActorId);
+      return;
+    }
+    if (action !== "polymorph") {
+      this.reply(mp, userId, false, `Unknown action '${action}'`);
+      return;
+    }
+    let result: ReturnType<Polymorph["transform"]>;
+    try {
+      result = pm.transform(mp, target.actorId, String(content["race"] ?? ""), adminProfile);
+    } catch (e) {
+      this.log(`AdminSystem: polymorph of ${who} by ${by} failed: ${e}`);
+      this.reply(mp, userId, false, "Polymorph failed, see server log");
+      return;
+    }
+    if (typeof result === "string") {
+      this.log(`AdminSystem: polymorph of ${who} by ${by} refused: ${result}`);
+      this.reply(mp, userId, false, result);
+      return;
+    }
+    const e = result.entry;
+    const text = `${by} polymorphed ${who} from ${result.from} into ${e.name} (${e.edid}) [${e.desc} ${e.group}], ${result.female ? "female" : "male"}${result.swapped ? " (the only skeleton the race has)" : ""}, ${result.face}, ${result.gearOff ? "gear taken off" : "gear kept"}${result.noDraw ? `, weapons stay sheathed (no shield biped object)${result.gearOff ? `, ${result.attacks} attack event(s) on the attack key` : ""}` : ""}`;
+    this.log(`AdminSystem: ${text}`);
+    this.adminLog(text);
+    this.reply(mp, userId, true, `${subject} now ${e.name} (${e.edid})${result.noDraw && !result.gearOff ? ", a form that cannot draw weapons" : ""}`, self ? action : undefined);
+    this.sendRaces(mp, userId, myActorId);
   }
 
   // Pets: the grantable bases, and a stored pet for the admin's own character to hand to a stablemaster

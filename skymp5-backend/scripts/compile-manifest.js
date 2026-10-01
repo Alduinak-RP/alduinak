@@ -69,8 +69,8 @@ const CREATION_TITLES = {
 
 // The launcher writes the client settings on every launch; a mod copy would shadow it under MO2
 const CLIENT_SETTINGS_FILE = 'skymp5-client-settings.txt'
-// Written by SKSE plugins while the game runs (ActorLimitFix.log): a shipped copy changes size and fails the launcher's check
-const RUNTIME_FILE_RE = /\.log$/i
+// Logs SKSE plugins write while the game runs and ActorLimitFix.pdb; the launcher's twin is mo2::is_unverified
+const UNSHIPPED_FILE_RE = /(\.log|(^|\/)ActorLimitFix\.pdb)$/i
 
 let sources = { urls: {}, rootInclude: [] }
 try {
@@ -280,10 +280,14 @@ async function main() {
   }
 
   const built = []                    // { name, modId, version, used, flat }
+  const unshipped = []
   for (const modName of order) {
     const modDir = path.join(MODS, modName)
     if (!fs.existsSync(modDir)) continue
-    const rels = walk(modDir).filter(r => r.toLowerCase() !== 'meta.ini' && path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE && !RUNTIME_FILE_RE.test(r))
+    const rels = walk(modDir).filter(r => {
+      if (UNSHIPPED_FILE_RE.test(r)) { unshipped.push(`${modName}/${r}`); return false }
+      return r.toLowerCase() !== 'meta.ini' && path.posix.basename(r).toLowerCase() !== CLIENT_SETTINGS_FILE
+    })
     if (rels.length === 0) continue
     const meta = readModMeta(modDir)
     const used = new Set()
@@ -376,6 +380,7 @@ async function main() {
   console.log(`files:      ${built.reduce((n, b) => n + b.flat.length, 0)} (${extras.length} in the extras archive)`)
   console.log(`game files: ${gameFlat.length}`)
   console.log(`creations:  ${creations ? creations.files.length : 0}`)
+  console.log(`left out:   ${unshipped.length} log/symbol file(s)${unshipped.length ? `: ${unshipped.join(', ')}` : ''}`)
   if (manual.length) {
     console.warn('\nReferenced archives with NO download source - add a URL for each in data/manifest-sources.json ("urls"):')
     for (const a of manual) console.warn(`  - ${a.name}`)

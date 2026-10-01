@@ -37,6 +37,9 @@ import { SweetTaffySweetCantDropService } from "./services/services/sweetTaffySw
 import { DisableSkillAdvanceService } from "./services/services/disableSkillAdvanceService";
 import { DisableFastTravelService } from "./services/services/disableFastTravelService";
 import { DisableDifficultySelectionService } from "./services/services/disableDifficultySelectionService";
+import { DisableKillCamService } from "./services/services/disableKillCamService";
+import { DisableNpcWeaponPickupService } from "./services/services/disableNpcWeaponPickupService";
+import { NpcTorchCheckService } from "./services/services/npcTorchCheckService";
 import { WorldCleanerService } from "./services/services/worldCleanerService";
 import { CompanionService } from "./services/services/companionService";
 import { LoadOrderVerificationService } from "./services/services/loadOrderVerificationService";
@@ -52,6 +55,7 @@ import { RefDecorService } from "./services/services/refDecorService";
 import { PlayerActionService } from "./services/services/playerActionService";
 import { EmoteService } from "./services/services/emoteService";
 import { MasteryService } from "./services/services/masteryService";
+import { SneakBlockSpeedService } from "./services/services/sneakBlockSpeedService";
 import { NeedsService } from "./services/services/needsService";
 import { SurvivalService } from "./services/services/survivalService";
 import { AttributeBonusService } from "./services/services/attributeBonusService";
@@ -60,12 +64,14 @@ import { WritingService } from "./services/services/writingService";
 import { InteractionPromptService } from "./services/services/interactionPromptService";
 import { RestraintService } from "./services/services/restraintService";
 import { PairedIdleService } from "./services/services/pairedIdleService";
+import { ExecutionChopService } from "./services/services/executionChopService";
 import { JobService } from "./services/services/jobService";
 import { CaptureConsentService } from "./services/services/captureConsentService";
 import { SearchService } from "./services/services/searchService";
 import { VoiceService } from "./services/services/voiceService";
 import { AdminMenuService } from "./services/services/adminMenuService";
 import { AdminModeService } from "./services/services/adminModeService";
+import { PolymorphService } from "./services/services/polymorphService";
 import { AfterlifeLookService } from "./services/services/afterlifeLookService";
 import { ChatService } from "./services/services/chatService";
 import { FactionService } from "./services/services/factionService";
@@ -149,6 +155,9 @@ const main = () => {
       new DisableSkillAdvanceService(sp, controller),
       new DisableFastTravelService(sp, controller),
       new DisableDifficultySelectionService(sp, controller),
+      new DisableKillCamService(sp, controller),
+      new DisableNpcWeaponPickupService(sp, controller),
+      new NpcTorchCheckService(sp, controller),
       new WorldCleanerService(sp, controller),
       new CompanionService(sp, controller),
       new LoadOrderVerificationService(sp, controller),
@@ -164,6 +173,7 @@ const main = () => {
       new PlayerActionService(sp, controller),
       new EmoteService(sp, controller),
       new MasteryService(sp, controller),
+      new SneakBlockSpeedService(sp, controller),
       new NeedsService(sp, controller),
       new SurvivalService(sp, controller),
       new AttributeBonusService(sp, controller),
@@ -173,6 +183,7 @@ const main = () => {
       new VanillaMenuService(sp, controller),
       new RestraintService(sp, controller),
       new PairedIdleService(sp, controller),
+      new ExecutionChopService(sp, controller),
       new JobService(sp, controller),
       new CaptureConsentService(sp, controller),
       new SearchService(sp, controller),
@@ -184,6 +195,7 @@ const main = () => {
       new FurnitureAnimationsService(sp, controller),
       new AdminMenuService(sp, controller),
       new AdminModeService(sp, controller),
+      new PolymorphService(sp, controller),
       new AfterlifeLookService(sp, controller),
       new FactionService(sp, controller),
       new TradeService(sp, controller),

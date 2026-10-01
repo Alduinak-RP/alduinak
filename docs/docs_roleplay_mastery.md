@@ -200,7 +200,8 @@ multiclassing off: the primary then works exactly as before. The Test value:
   that holds the profession, so a secondary Adept Blacksmith mines, pays fatigue and crafts like any Adept
   Blacksmith; `craftCost` also names the profession that priced a craft, which the drink rule reads
   (`needsAlcoholDiscount`). `professionOf` still returns the primary and gains no callers. The native temper cap
-  still takes the best marker of any profession until plan task NV1, which is why the Test Server adds
+  still takes the best marker of any profession until a native server build with plan task NV1 runs (in the
+  native source since `ea63f69a`: the cap follows the recipe's own profession), which is why the Test Server adds
   `masterySlots` only once NV1 is built.
 - **Kits.** A sub-slot pick hands over that craft's kit items (`masteryKits`), never gold, once per craft per
   character, and none when the primary's kit was that craft's (`masterySlotKits`, default on; the crafts that got
@@ -244,7 +245,7 @@ tab shows the same list under a Free sub-slot's rank):
 | Warrior | any kill of a person or creature |
 | Mage | any spell cast; characters start without spells (`playersInheritBaseSpells` false), so a mage slot needs a tome first |
 
-The war horns and the broom (`AldRecipeCommon_*`) count for nobody. Campfire cooking (the Fishing Creation's
+The war horns, the broom and the torch (`AldRecipeCommon_*`) count for nobody. Campfire cooking (the Fishing Creation's
 `Camping_CampfireCookingShared`) is no cook work, so no free work either; `masteryActivities.cook.craftKeywords` can add
 it (owner decision O44). A background read of every recipe after boot logs `[mastery] free recipes by bench: ...`; on
 the r22 and r27a plugins it should read AldCraftingAlchemy 1, AldCraftingMead 3, AldCraftingWoodcrafting 3,
@@ -268,16 +269,16 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 
 | Profession | Free (Anyone) | Novice | Adept | Expert | Master | Legendary |
 |---|---|---|---|---|---|---|
-| Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions | the weak poisons and the weak aversions, and Cure Disease (from plugin r27a, so a secondary alchemist can brew it; Expert before) | the plain Potions of each school, attribute and resistance, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma | - |
-| Blacksmith | the two war horns, nails, iron fittings, locks and hinges | iron and corundum at the forge, iron, corundum and steel ingots at the smelter (shared with the miner), the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver; gold and silver ingots at the smelter (shared with the miner); Steel Smithing, Advanced Armors | orichalcum, dwarven, moonstone, and the gear of the smith's own people; orichalcum and moonstone ingots at the smelter; Dwarven, Orcish, Elven Smithing | malachite, quicksilver, ebony, stalhrim, and the Skyforge; malachite, quicksilver and ebony ingots at the smelter; Ebony, Glass Smithing, Arcane Blacksmith | daedric (Daedra Heart) and dragon (bone, scales) gear, taken off the hidden list; Daedric Smithing, Dragon Armor |
+| Alchemist | honey from a honeycomb, and every drink at a meadery boiler | the three Minor potions, the Sealing Wax at every crafting station (shared with the blacksmith, miner, tailor, hunter, woodworker and cook: `docs/docs_roleplay_writing.md`) | the weak poisons and the weak aversions, and Cure Disease (from plugin r27a, so a secondary alchemist can brew it; Expert before) | the plain Potions of each school, attribute and resistance, Cure Poison, Holy Water, the three salts and Skooma | the Draughts, Philters and Elixirs, the Plentiful potions, Balmora Blue, Redwater and Double-Distilled Skooma | - |
+| Blacksmith | the two war horns, nails, iron fittings, locks and hinges | iron and corundum at the forge, iron, corundum and steel ingots at the smelter (shared with the miner), the hoe, the woodcutter's axe and the pickaxe (the forge copies are open to a Novice woodworker too) | gold, steel, silver; gold and silver ingots at the smelter (shared with the miner); the Nord Hero weapons and bow at the Skyforge (Companions, Nords); Steel Smithing, Advanced Armors | orichalcum, dwarven, moonstone, and the gear of the smith's own people; orichalcum and moonstone ingots at the smelter; Dwarven, Orcish, Elven Smithing | malachite, quicksilver, ebony, stalhrim, and the Skyforge; malachite, quicksilver and ebony ingots at the smelter; Ebony, Glass Smithing, Arcane Blacksmith | daedric (Daedra Heart) and dragon (bone, scales) gear, taken off the hidden list; Daedric Smithing, Dragon Armor |
 | Cook | salmon steak, rabbit haunch, pheasant roast, chicken breast, honey | the other steaks, roasts and fish (each needs a Salt Pile) | soups and stews | baking: bread, sweet rolls, dumplings | pies, crostatas, Elsweyr Fondue | - |
 | Farmer | - | `AldPerk_NoviceFarmer` | `AldPerk_AdeptFarmer` | `AldPerk_ExpertFarmer` | `AldPerk_MasterFarmer` | `AldPerk_LegendaryFarmer` |
 | Hunter | - | the only one who sees and takes pelts off dead animals; tans leather at the tanning rack, shared with the tailor | Quick Shot, Ranger | Eagle Eye, Butcher (25% extra meat per kind) | Over Draw (bows +20% against NPCs, a damage rule), Trophy Hunter (15% extra pelt per kind) | - |
 | Mage | - | magicka only (server) | | | | |
 | Miner | iron veins, the sea salt deposits | corundum veins; iron, corundum and steel ingots at the smelter (every smelter ore recipe is open to a blacksmith of the same rank) | gold and silver veins; gold and silver ingots | orichalcum, moonstone and quicksilver veins; orichalcum and moonstone ingots | malachite and ebony veins; malachite, quicksilver and ebony ingots | - |
 | Tailor | leather strips, the fur armour (the Bandit fur set) and the Stormcloak boots and gauntlets, thread and the roughspun tunic at the loom, the blank parchment, journal and book | hide (`ArmorMaterialHide`), Fur Plate from a pelt or hide at the tanning rack, cloaks and capes (the Leather Cape by rule), everyday clothing, the Common Robes and Common Clothes of CommonClothes.esp (4 Thread at the loom) and its leather doublets, boiled leather cuirass and robed iron armour at the rack (by rule) | studded (`ArmorMaterialStudded`), the College of Winterhold robes, hoods and boots but the Master Robes (the College marker stays where it is, the school skill the robes asked for is gone), the Tied Linen Pouches (the hip pouches) and Patchwork Satchels, and other clothing tagged `AldKeyword_FineClothing` | leather (`ArmorMaterialLeather`), Fine Clothes, Fine Raiment and the Embroidered Garment, the College Master Robes, Reinforced Satchels and Reinforced Backpacks (by rule) | scaled (`ArmorMaterialScaled`), the Trader's Resource (carry weight 80), Toothlock Satchels, Sturdy Pouches (by rule) and noble clothing (`AldKeyword_NobleClothing`) | daedric clothing and light armour |
-| Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster | - |
-| Woodworker | charcoal, the broom, the blank parchment, journal and book | Roll of Paper (4 from 1 Firewood), the Long Bow, the crossbow, the hide, iron and banded iron shields, iron arrows and bolts, the tools (pickaxe, woodcutter's axe, hoe, hunting knife), Forsworn arrows | the Hunting Bow, steel shields, arrows and bolts, silver bolts, the Ancient Nord bow and arrows (Nords), Corkbulb arrows and bolts | dwarven, elven, chitin, bonemold, nordic and orcish shields, bows, arrows and bolts (race locks kept), the Skyforge bows and shields | glass, ebony and stalhrim bows, arrows and shields (stalhrim: the Skaal), the Nord Hero arrow and the Supple Ancient Bow at the Skyforge | daedric and dragon bows, arrows and shields |
+| Warrior | - | Fighting Stance, Champion's Stance, +25 stamina | Dual Flurry 1, Block Runner, Power Bash, Unhindered, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, Conditioning, +25 stamina | Sweep, Dual Flurry 2, Warmaster, +25 stamina, +50 carry weight | +100 stamina, +50 carry weight |
+| Woodworker | charcoal, the broom, the torch, the blank parchment, journal and book | Roll of Paper (4 from 1 Firewood), the Long Bow, the crossbow, the hide, iron and banded iron shields, iron arrows and bolts, the tools (pickaxe, woodcutter's axe, hoe, hunting knife), Forsworn arrows | the Hunting Bow, steel shields, arrows and bolts, silver bolts, the Ancient Nord bow and arrows (Nords), Corkbulb arrows and bolts | dwarven, elven, chitin, bonemold, nordic and orcish shields, bows, arrows and bolts (race locks kept), the Skyforge bows and shields | glass, ebony and stalhrim bows, arrows and shields (stalhrim: the Skaal), the Nord Hero arrow and the Supple Ancient Bow at the Skyforge | daedric and dragon bows, arrows and shields |
 
 The tanning rack lists every Leather and Fur Plate recipe to a Novice tailor (Leather
 to a Novice hunter too) whether or not the pelt is in the bag: the plugin drops the
@@ -349,19 +350,24 @@ Robes stay parked. Sentinel's City Guards pieces, which come with no recipe, get
 recipes of the plugin's own (`AldRecipeGuard<Hold>_<item>`). Sentinel's
 Companion and Wolf armour at the Skyforge is the Companions'.
 
-**Hold gear is Expert work.** Every recipe a hold marker gates (the MCE guard
-cuirasses, helmets and shields, the Eastmarch helmet and the Stormcloak cuirass
-Eastmarch shares, both guard cape sets, Sentinel's City Guards set, Immersive
-Armors' Falkreath set and Immersive Weapons' Falkreath Blade) needs the hold's
-craft rank and an Expert: shields an Expert woodworker at the woodcrafting
-bench, cloaks and capes an Expert tailor, armour, helmets and the hold swords
-and war axes an Expert blacksmith at the forge. The leather guard cuirasses,
-boots and gauntlets moved from the tanning rack to the forge for it, so their
-hours count as smithing. Gear whose material is already Master work keeps
-Master: the Winterhold buckler and shield (ebony) and the Falkreath Warhammer.
-Their Improve entries keep the material tier. The three Great Houses (Redoran,
-Indoril, Telvanni) are hold ids in the faction system, but their gear keeps
-its own tiers.
+**Hold gear is Novice or Adept work.** Every recipe a hold marker gates (the
+MCE guard cuirasses, helmets and shields, the Eastmarch helmet and the
+Stormcloak cuirass Eastmarch shares, both guard cape sets, Sentinel's City
+Guards set, Immersive Armors' Falkreath set and Immersive Weapons' Falkreath
+Blade) needs the hold's craft rank and the matching profession at the tier its
+material has in the plain sets: Novice when it takes only iron ingots, leather,
+leather strips, linen wrap, thread or fur plate, Adept when it takes steel or
+gold ingots. Shields are the woodworker's at the woodcrafting bench, cloaks and
+capes the tailor's, armour, helmets and the hold swords and war axes the
+blacksmith's at the forge. The leather guard cuirasses, boots and gauntlets
+moved from the tanning rack to the forge, so their hours count as smithing.
+Gear whose material is Master work keeps Master: the Winterhold buckler and
+shield (ebony) and the Falkreath Warhammer. Their Improve entries follow the
+recipe's rank and keep the hold marker. From r18 to r23 every piece was Expert
+(the owner's 2026-09-23 rule), which no player had reached by launch, so the
+craft ranks saw no hold gear at all; plugin r24 lowered the 140 entries. The
+three Great Houses (Redoran, Indoril, Telvanni) are hold ids in the faction
+system, but their gear keeps its own tiers.
 
 Every tiered recipe also loses the vanilla conditions this server cannot
 evaluate: `HasPerk` and the quest, stage and global gates (`stripConditions` in
@@ -455,6 +461,14 @@ too, not at the woodcrafting bench: blacksmith Adept work (steel and
 corundum), open to every people. Their Improve entries ask for the same rank,
 and the Nord rule's "Skyforge" match no longer gates them (`racial.clear`).
 
+The Nord Hero Bow (the Skyforge Bow) is on the Skyforge list for the smith as
+well: `AldRecipeSmith_SkyforgeNordHeroBow` (one Ancient Nord Bow and three
+Steel Ingots, the vanilla recipe's cost) is blacksmith Adept work for the
+Companions' Nords, like the Nord Hero sword, war axe, greatsword and battle
+axe beside it. The vanilla `RecipeWeaponSkyforgeBow` stays the woodworker's at
+Expert, so a character holding both ranks sees the bow twice. Its Improve
+entry stays the woodworker's (Adept).
+
 Stalhrim, the Blades armour and the Skyforge Bow stay craftable at their mastery
 tier. Every crossbow and bolt, the Dawnguard ones and the Curios bolts alike, is
 the Dawnguard's (see Race and faction). Tempering is untouched: a parked
@@ -465,7 +479,13 @@ Benches:
 - **Alchemy labs** open the crafting menu (keyword `AldCraftingAlchemy`) with
   the potion recipes; the vanilla brewing menu is gone from every lab of the
   load order. Only a brewed potion counts as Alchemist work there; opening the
-  lab earns nothing.
+  lab earns nothing. Since plugin r24 a potion asks for at most 2 to 3 of an
+  ingredient when it is minor or weak (Novice, Adept), 5 to 6 when it is a
+  plain potion (Expert) and 10 when it is plentiful, a draught, philter or
+  elixir (Master): Minor Healing is 3 Blue Mountain Flower and 2 Wheat,
+  Healing 6, 5 and 5 Imp Stool, Plentiful Healing 10, 10, 7 Imp Stool and 2
+  Eye of Sabre Cat (the owner's numbers; the whole table is in the r24
+  plugin README).
 - **Woodcrafting Bench** (`AldWoodcraftingBench`, the Hearthfire carpenter's
   workbench model, keyword `AldCraftingWoodcrafting`) is a new furniture record
   for placing in the Creation Kit; the existing Hearthfire carpenter's
@@ -486,10 +506,16 @@ Benches:
 - **Meadery boilers**: the three boilers of the north row in Honningbrew
   Meadery's boiler room and the two in Black-Briar Meadery's basement brew
   mead, see below.
-- **Common recipes** make the broom at the Woodcrafting Bench and the Imperial
+- **Common recipes** make the broom and the torch (one Firewood and one
+  Charcoal, the smelter's charcoal) at the Woodcrafting Bench and the Imperial
   and Nord war horns at the forge (costs in `docs_roleplay_emote_wheel.md`). Any
   character makes them, and they earn no hours: `masterySystem.ts` skips every
-  recipe named `AldRecipeCommon_*`. In the spec they are `kilnRecipes` entries
+  recipe named `AldRecipeCommon_*`. They are priced like any craft at their
+  bench, though: a character who is not a woodworker (a blacksmith for the
+  horns) pays the Free price, a third of the fatigue bar, and below 33% the
+  bench refuses them, so a Free character pays about half the bar for one torch
+  with its charcoal (a sixth at the half-cost smelter), for 15 minutes of
+  light. In the spec they are `kilnRecipes` entries
   without a `profession`, tiered `Anyone`. The lute, flute and drum are no
   longer common: they are the woodworker's Master, Expert and Adept work.
 - **Armour table and grindstone**: the Improve tab shows only what the character
@@ -524,12 +550,15 @@ helps here too.
 | Black-Briar `000A6310`, `000A6311` | Black-Briar Mead | 2 Snowberries, 1 Honey, 1 Salt Pile, 2 Red Mountain Flower |
 
 Each boiler offers only its own mead (keywords `AldCraftingMeadHonningbrew`
-and `AldCraftingMeadBlackBriar`). Brewing is free: the recipes carry no rank
-condition, so any character brews, at a craft's fatigue like any other bench.
-An Alchemist and a Cook earn hours
-there, under the usual one-per-hour rule: `AldCraftingMead` is a `craftStations`
-keyword of both (owner decision O45), which also makes brewing free work for a
-Free secondary or tertiary of either. Nord Mead stays at the alchemy lab.
+and `AldCraftingMeadBlackBriar`); Ale, Nord Mead and wine are brewed at every
+boiler on the shared `AldCraftingMead`. Brewing is free: the recipes carry no
+rank condition, so any character brews. An Alchemist or a Cook pays the craft
+fatigue of their own rank for every drink there, the two branded meads
+included, and a steadying drink takes its share off that; anyone else pays the
+Free cost, a third of the bar. All three keywords are alchemist and cook
+`craftStations` (`MEAD_STATIONS` in `masterySystem.ts`; owner decision O45), so
+both earn hours there under the usual one-per-hour rule, and brewing is free
+work for a Free secondary or tertiary of either.
 
 Where the ingredients come from on this server, where placed loose items and
 container loot are off:
@@ -588,12 +617,102 @@ container loot are off:
 
 The blacksmith, hunter, warrior and the new profession perks ride the marker abilities: each is a magic effect
 with **Perk to Apply**, so the game grants the vanilla perk locally while the
-ability is held and takes it away with the ability. Dual Flurry rank 1 carries
+ability is held and takes it away with the ability (not yet confirmed in game
+for any rank perk; the warrior test at the end of this section checks the
+mechanism). Dual Flurry rank 1 carries
 a condition `HasSpell(Warrior Master) == 0`, so it switches off once rank 2
 arrives. The +25 stamina is a constant Fortify Stamina effect; the server only
 exchanges percentages, so it needs nothing server-side. Quick Shot, Ranger and
-Block Runner drive animation graph variables, which vanilla never applies
-through an effect: check them in game after the first deploy.
+Block Runner drive animation graph variables, which the engine sets from the
+perks only when it builds the character's behaviour graph (the Set Boolean
+Graph Variable entry point runs from the graph setup alone), so a perk an
+ability grants later counts only after the next 3D rebuild: check Quick Shot
+and Ranger in game. Block Runner's `bPerkShieldCharge` is kept by the client
+(`sneakBlockSpeedService.ts`): true while the player holds the perk, crouched
+or not, checked once a second. A Block Runner's block therefore always starts
+in the Shield Charge state, so one raised crouched and kept up after standing
+has the 370 at once (it stayed at 81 while the variable was switched off for
+the crouch).
+
+**A crouched block is never faster than crouching.** The behaviour graph's
+`iState` picks the movement type, and a block state outranks the sneak state:
+`BlockDefault_iStateGen` sets 4 (`NPC_Blocking_MT`) at priority 15 and
+`BlockShieldCharge_iStateGen` sets 17 (`NPC_Blocking_ShieldCharge_MT`) at
+priority 16, against the sneak state's 2 (`NPC_Sneaking_MT`) at priority 12.
+Bethesda gave the drawn bow a sneak state of its own (priority 22) and the
+block none, so a sneak block moves like a standing one. At SpeedMult 100
+(Skyrim.esm, no plugin in the load order overrides a MOVT):
+
+| Movement type | walk forward, sideways, back | run forward, sideways, back |
+|---|---|---|
+| `NPC_Sneaking_MT` | 47.2, 41.44, 43.38 | 222, 200, 150 |
+| `NPC_Blocking_MT` | 81, 81, 71 | 81, 81, 71 |
+| `NPC_Blocking_ShieldCharge_MT` | 81, 81, 71 | 370, 370, 205.25 |
+
+So with the walk toggle on, raising the shield took a crouched walk from 47 to
+81 for everyone, and a Block Runner's block (`BlockBehavior` reads
+`bPerkShieldCharge` as its start state, once, when the block starts) kept the
+370 through the crouch. While the player sneaks with a
+block up, the client reads `iState` and the run flag every frame (an
+over-encumbered player, or one carrying a body, counts as walking: the engine
+walks them whatever the run flag says) and damages
+SpeedMult by the share that brings the block's movement type down to the sneak
+speeds in every direction (x0.51 for a walk, x0.54 for a Block Runner run,
+nothing for a run in `NPC_Blocking_MT`, which is already slower than a sneak
+run), restores it when the block or the crouch ends, and re-reads the movement
+speed both times. A crouched block walked forward is therefore a little slower
+than a crouched walk (41 against 47). The cut follows a SpeedMult that changes
+under it (checked once a second). When a sneak block with movement ends the
+client logs `SneakBlockSpeedService: sneak block top speed <n>: iState <i>,
+walking|running, SpeedMult <held> of <full> (...)`, the graph's `Speed` at its
+highest; it should not pass the sneak speed of the same mode x full SpeedMult /
+100 (x the character's height). A change of the perk logs
+`SneakBlockSpeedService: bPerkShieldCharge true|false: Block Runner held|not
+held`.
+
+**The warrior's perks** (plugin r24, the owner's "give warriors more perks to
+even things out with the weapon and armor balancing") keep to effects the
+player's own client runs, because the server prices every hit itself
+(`TES5DamageFormula`: the weapon's base damage, the target's armour rating read
+from the records, x2 for a power attack, x1.3 for a sneak attack, nothing when
+blocked) and holds no perk data. What a warrior gets therefore runs on the
+client:
+both stances (power attacks with one-handed or two-handed weapons cost 25% less
+stamina, and the server charges no attack stamina of its own without
+SweetPie.esp), Dual Flurry's attack speed, the moves a perk unlocks (Power
+Bash, the sprinting power attacks of Critical Charge and Great Critical Charge,
+Sweep, whose sideways sweep the attacker's client turns into one hit per
+target), Block Runner, Unhindered and Conditioning (worn light or heavy armour
+weighs nothing, for the inventory weight and the slowdown the engine gives
+armour; the server checks neither), the stamina pool (+25 a rank to Master,
++100 at Legendary, +200 in all; the server exchanges percentages) and the
+carry weight (+50 at Master and at Legendary; encumbrance is the client's own,
+and with r27's Survival carry limit of 150 a warrior's armour and pack matter
+most). Left out: the damage, armour rating, block and critical perks (Armsman,
+Barbarian, Savage Strike, Devastating Blow, Dual Savagery, Juggernaut, Agile
+Defender, Well Fitted, Custom Fit, Matching Set, Shield Wall, Deadly Bash,
+Fists of Steel, Reflect Blows, Deft Movement and the bleed and crit trees),
+which change nothing the server computes and only matter once the combat
+rebalance gives warrior ranks a rule of its own, like the hunter's Over Draw;
+stamina regeneration (Wind Walker), since the server crops a regeneration
+faster than the race's base rate and sends the bar back; and Tower of Strength,
+since a player is staggered on their own client only by a native hit from an
+NPC that client runs or by the server's `stagger` packet, which sets its own
+magnitude. Shield Charge's knock-down, Warmaster's paralysis and Power Bash's
+stagger likewise land only on actors the warrior's own client runs: a bashed
+player is not staggered (the server sends `stagger` only for a block made
+without stamina), so in PvP a power bash is an ordinary hit. A mage of the same
+rank holds 125 to 500 magicka; a warrior holds 25 to 200 stamina more than the
+race gives.
+
+In game, the proof for every perk an ability grants: a Novice warrior's
+two-handed power attack costs 25% less stamina than a Free character's
+(Champion's Stance), and so does a one-handed one (Fighting Stance, the older
+perk); an Adept bashes with a power attack (Power Bash), and worn light armour
+weighs 0 in the inventory (Unhindered); if the Skills menu opens, Power Bash
+shows as taken in the Block tree. If none of this holds, no rank perk works
+through its ability, while the stamina and carry weight bonuses, plain value
+modifiers, still do.
 
 Over Draw is server-side: a `damageMultConditionalFormulaSettings` rule keyed
 on the Hunter Master marker, bows or crossbows, and a non-player target
@@ -662,20 +781,27 @@ rose from three to six) is read as full.
 Harvesting a crop hoes the field for 5 seconds (the `IdleHoe` farming idle, left
 through `IdleStop` so the hoe prop goes away) and flora kneels the picker 2 seconds,
 whatever the rank; a farmer's or alchemist's yield doubles at Adept and triples at Master.
-Crops (flora whose editor id holds wheat, gourd, nirnroot, cabbage or potato, and
-the nirnroot activators) need the plugin hoe `AldToolHoe` in the inventory: "You
-need a hoe to harvest this crop." Tree fruit, mushrooms and flowers need nothing
-and cost half the fatigue. Fish and hanging
+Crops (flora whose editor id holds wheat, gourd, cabbage or potato) need the
+plugin hoe `AldToolHoe` in the inventory: "You need a hoe to harvest this crop."
+Tree fruit, mushrooms, flowers and nirnroot (the wild `TreeFloraNirnroot01`, the
+crimson `TreeFloraNirnrootRed01` and Hearthfire's `BYOHHouseIngrdNirnroot01`
+planter) need nothing, kneel 2 seconds and cost half the fatigue. Fish and hanging
 clutter never kneel. Picking credits farmer and alchemist hours and costs a
-gathering action of fatigue by the better of those ranks. An alchemist (Novice
-or better) pays half of that again for alchemy flora, a plant that is not a
-crop and hands over an ingredient: flowers, mushrooms, herbs, berries, eggs,
-pearls, barnacles and the Hearthfire herb planters, not the food plants (apples,
-vegetables, cheese, fish, meat) or nirnroot, a crop
-(`gatheringAlchemistFloraDiscount`, 0.5). A Novice alchemist's flower costs 1%
-of the bar where a Novice farmer's costs 2.1% and a Free picker's 4.2%; the
-charge line reads `[needs] <id> harvest <plant> flora r<rank>, alchemist -50%:
--N%, fatigue F%`.
+gathering action of fatigue. Flora is priced by the farmer or alchemist rank,
+so an alchemist pays what a farmer of the same rank pays for a flower (2.1% at
+Novice and Adept, 1.4% from Expert, where a Free picker pays 4.2%). A crop is
+priced by the farmer rank alone: an alchemist of any rank pays the Free crop
+price, 8.3%, and the charge line reads `[needs] <id> harvest <plant> crop r0,
+alchemist r<rank> pays the Free crop price: -8.3%, fatigue F%`. The alchemist's
+yield still follows their rank on both.
+
+`gatheringAlchemistFloraDiscount` (default 0, off) takes that share off again
+for an alchemist (Novice or better) on alchemy flora, a plant that is not a crop
+and hands over an ingredient: flowers, mushrooms, herbs, berries, eggs, pearls,
+barnacles, nirnroot and the Hearthfire herb planters, not the food plants
+(apples, vegetables, cheese, fish, meat) or crops. Set to 0.5, a Novice
+alchemist's flower costs 1% and the charge line reads `[needs] <id> harvest
+<plant> flora r<rank>, alchemist -50%: -N%, fatigue F%`.
 
 The plant itself comes from the native harvest. The fatigue, the kneel and the
 Adept and Master extra follow only once the plant reads harvested (Papyrus
@@ -741,7 +867,7 @@ client (`RestraintService`) sends the kneel only
 once the skinner has stood up from a sneak, sheathed a drawn weapon (the knife
 or bow of the kill) and turned to third person, waiting at most 3 s (the emote
 wheel empties the hands and forces third person for the same reason); a
-first-person camera comes back 1 s after the exit. Every attempt is checked
+first-person camera comes back 1 s after the pose is left. Every attempt is checked
 0.5 s after it was sent: the graph's answer and the graph variable the pose
 sets (`bAnimationDriven`, which the vanilla graph sets while its furniture and
 interaction idles play; `bIdlePlaying` is only set by the engine's idle system
@@ -750,7 +876,37 @@ nothing moves on to the same kneel played through the engine's idle path
 (`Actor.PlayIdle` with Skyrim.esm `IdleKneelingEnter` `000E8E52`), then to the
 bleedout kneel (`bleedOutStart`, checked by `IsBleedingOut`, left with
 `bleedOutStop`), a wildcard of the root graph that plays with a weapon out. A
-pose that stops playing before the lock ends is sent again, twice at most. A
+pose that stops playing before the lock ends is sent again, twice at most.
+The exit is checked as well (N1, 2026-10-01). The server ends every skinning
+with an `actionLock` of 0 s, whether it gave anything or not, and after the
+exit the client reads the pose's graph variable every 0.1 s. While the graph
+still holds the pose the exit goes out again 1 s after the last one, 5 exits
+at most. The bleedout kneel gets it only while it rests (`IsBleedingOut` true,
+`bAnimationDriven` false), since its fall (`BlleedOut_TransIn.hkx`, 2.37 s)
+and its get-up (`BleedOut_TransOut.hkx`, 2.03 s) are animation-driven clips,
+and a bleedout kneel that outlasts all five exits is ended 2.5 s later by the
+engine's knock-down (`PushActorAway` on the player), whose get-up returns the
+root graph to its default state. A bleedout kneel still held 4 s after an
+exit, longer than either clip, counts as stuck whatever `bAnimationDriven`
+reads: it gets one more exit, and the knock-down 4 s after that, so the watch
+always ends and writes its line, 8 s after the lock for a kneel that never rests. The kneel's watch stops at the first other
+event the graph takes. The first-person camera waits until the pose is left.
+Before this the lock sent `bleedOutStop` once and never looked again: in the
+test of 2026-10-01 a skinner who had crouched with a dagger out in first
+person had both kneels refused, got the bleedout kneel 2.5 s into the lock,
+and the single stop went out 0.15 s after the 2.37 s fall clip had ended,
+inside its 0.2 s blend into the kneel (`bleedOut_TransInEnd`,
+`DefaultBlend_FromAnimDriven`); the graph kept the kneel and
+the skinner knelt until a teleport reloaded their 3D. Which state the graph
+was left in is not in that log (the resting `BleedOut_Main_State`, or the
+transition state with `bAnimationDriven` still true), so the resend covers
+both and its line now says which. Platform log:
+`action lock exit: <pose> still held <ms> ms after the lock (<variable> true)
+after <n> exit(s), <exit> sent again; ...` (the bleedout kneel adds
+`, bAnimationDriven <bool>` after `IsBleedingOut true`), `action lock exit: <pose> left
+<ms> ms after the lock, <n> exit(s) sent` (always for the bleedout kneel, for
+another pose only after a second exit), `..., not sent again` and `..., the
+player is knocked down so the get-up ends the kneel`. A
 player who already kneels (the emote wheel's Kneel) when the lock starts keeps
 that kneel: the graph refuses an idle to itself, so a refused kneel with
 `bAnimationDriven` true before and after, and `IdleKneelingEnter` the last
@@ -783,11 +939,154 @@ body (an admin- or console-placed animal) is disabled for good (`[hunting] body
 1e9 s `spawnDelay` and the gamemode's death hook (`55_death.js`) gives every
 other killed NPC the same, and plugin-placed NPCs are not loaded while
 `npcEnabled` is false. Only zone animals come back. A pet's body stays
-and gives only its meat; players and companions are never skinned (no
-`ActorTypeAnimal`). A skinner who walks off,
-dies or logs out before the 5 seconds leaves the body skinnable. A hunter without
-the knife is told "A hunting knife would take its pelt." and the body opens.
-Non-hunters just search. The kneel's wait, checks and fallbacks come with the client build.
+and gives only its meat; companions are never skinned (no
+`ActorTypeAnimal`), players only as below. A skinner who walks off,
+dies, goes down, is restrained or logs out before the 5 seconds leaves the body skinnable. For a hunter without
+the knife, or too tired to skin, the body simply opens: the skinning writes nothing to the chat (the owner's
+"hide skin chats" of 2026-10-01); only the butcher's eye line, a mastery notice, still shows.
+Non-hunters just search. The kneel's wait, checks, fallbacks and exit watch come with the client build.
+
+#### Skinning a player's body
+
+A player character who dies lies where they fell until the engine respawns
+them after `respawnSeconds` (15 s; `docs_roleplay_survival_loop.md` section 8,
+"A player's own body"). During that wait a hunter may skin the body instead of
+searching it (`huntingSkinPlayers`, default `crouch`), and the body a PK
+leaves in the victim's place (`BodySystem`, section 8, "The body") is skinned
+the same way for as long as it lies. A hunter of any rank who holds the
+Hunting Knife gets a small menu on the body instead of the search window
+(the interact key or Activate, the menu a living player opens): Search and
+Skin (N1, 2026-10-01, the owner's "add to interact"). The client
+(`PlayerActionService`) asks only when the player carries the knife and the
+body is a player's: it sends `playerMenuRequest`, and
+`HuntingSystem.menuFlags` adds `skin` to the `playerMenuState` answer while a
+chosen Skin would start (a hunter with the knife, in reach, the body not
+skinned or being skinned and not the PK body of the asker's own account) and
+`skinTired` while only the fatigue refuses it, which greys the row out as
+"Skin (too tired)". Without the flag, or with no answer within 0.5 s, the
+body opens at once as before. Skin sends the search request with `skin:
+true`, which reaches `HuntingSystem.trySkin` through
+`SearchSystem.bodyAction` as for an animal, behind the same search checks.
+The menu's Search sends `skin: false` and never skins, so a crouched hunter
+who picks it loots the body. A request without the field skins for a
+crouched hunter as before: that is all a client older than the menu can
+send, and what this one sends when no answer came within 0.5 s. `interact` makes every press skin, as on an
+animal, with no menu, and `off` turns it off. Nothing of it is written to
+the chat: a skinning that cannot start just opens the search. The skinning
+is the animal one: the same 5 s kneel (`actionLock` `IdleKneelingEnter`) and
+stand-up, half a kill of fatigue by hunter rank and hunter hours.
+Then the skinner gets one Human Flesh (`huntingHumanFlesh`, Skyrim.esm
+`HumanFlesh` `001016B3`) and, when the server's roll is under
+`huntingHumanHeartChance` (0.1), one Human Heart (`huntingHumanHeart`, Skyrim.esm
+`HumanHeart` `000B18CD`); no plugin in the load order overrides either record.
+On a body that looks Khajiit a second roll under `huntingKhajiitPeltChance`
+(0.2) adds one Khajiit Pelt (`huntingKhajiitPelt`, `AldKhajiitPelt`, a MISC
+the Alduinak plugin r24 adds at `0x0413E1`, global `0x330413E1`, a copy of the
+Sabre Cat Pelt `0003AD6D` with its model, value 25, weight 2 and keyword
+`VendorItemAnimalHide`; the vanilla pelt has no inventory art or sounds of its
+own). The look decides: the `raceId` of the
+body's `appearance` is `KhajiitRace` (`00013745`) or its vampire form
+`KhajiitRaceVampire` (`00088845`, both Skyrim.esm, resolved by editor id at
+boot), so a PK body counts by the appearance it copied from the victim and a
+polymorphed character by the race they show. Until the plugin carries the
+record the boot logs `[hunting] not in the load order, ignored: ...,
+AldKhajiitPelt` once, the boot line reads `no Khajiit pelt`, and a Khajiit
+body gives only the flesh and the heart roll; a server restart with the new
+plugin picks it up. Khajiit NPCs are not skinned (only animals and players
+are). The butcher's eye does not apply. During the 5 s every search of the
+body is refused for everyone through `SearchSystem.bodyRefusal` ("A hunter is
+skinning this body."). What happens next follows the owner's rules of
+2026-10-01. A player's own body (a death that left no PK body) then goes the
+way a looted one does: the server respawns the victim at once
+(`mp.respawnActor`, as the take that reaches `searchPlayerBodyTakeLimit`
+does), so the body disappears for everyone and the victim keeps their whole
+pack; the skinner gets only the flesh, heart and pelt rolls. The onRespawn
+hooks route the respawn to a temple or a realm as after any death, and no
+chat line tells the victim. Should that respawn fail (`[hunting]
+respawning player <victim> after the skinning failed, the body lies until its
+respawn: <error>`), the body lies until `respawnSeconds` and every search of
+it is refused ("This body has been skinned. Nothing can be taken from it."),
+like a body looted to its limit. A PK body hands the skinner everything it
+holds besides the rolls: gold, gear, property keys and writings, each key or
+writing under its own name, so it still opens its door or reads its document
+(`BodySystem.emptyInto`, which merges the stacks into the skinner's inventory
+record like the pet system's key rescue; the body is emptied first and the
+skinner filled after, so no stack ever has two owners, and if the skinner
+cannot take it the body gets it back). There is no carry weight or inventory
+size check on the server, so a full pack may leave the skinner
+over-encumbered, as looting it by hand would. Neither the skinner nor the
+victim is told in the chat; the `[hunting]` and `[body]` log lines carry
+it. The emptied body then goes by the PK body rule (`docs_roleplay_survival_loop.md`
+section 8, "The body"): at the next 2 s check it stops showing its worn
+pieces, and it is removed at the first check that comes 60 s or more after
+the death, so within 2 s when it is skinned later than that. Until then it
+opens for a search like any emptied PK body. The victim's own account never skins their PK body: a
+hunter of that account is passed over silently and the search refusal says
+"You cannot loot the body of your own fallen character."
+
+A body is skinned once per death. On a player's own body the mark lives in
+memory and the respawn the skinning starts (`onRespawn`) clears it, so the
+next death is a fresh body. A PK body carries the mark as `private.skinned` (the skinner's actor
+id), which is saved with it, so it is skinned once for as long as it lies,
+across restarts too. One death is never skinned through both bodies: once a
+PK body is left, the victim's own stripped actor is passed over while that
+body is recent (`BodySystem.hasBodyFor`, 30 s, longer than the own body ever
+lies: 4 s after the PK, `respawnSeconds` at most), and an own-body skinning
+already under way when a PK body is left for the same death (a soul trap PK is
+noticed up to 100 ms after the death) gives nothing, as the PK body now holds
+that death: the victim's stripped actor respawns 4 s after the PK body is
+left, before the 5 s skinning ends, so the skinning stops with `... they
+respawned` and the skinner stands up; `... a PK body
+took their pack` shows only when that respawn failed. A player's own body is
+gone once skinned, so a second hunter finds nothing to skin (if the respawn
+failed, the search refusal turns them away). On a PK body
+already skinned the menu has no Skin row, and a crouched interact goes on into the search window under the PK
+body rules (empty unless someone put something in since), with no flesh and
+no `skins the PK body` line. A body someone is searching
+cannot be skinned ("... is already being searched."). Only that search
+request skins a player's body: the native activation the same key press also
+sends (`mp.onActivate`, the path of plugin-placed animals) passes it over
+(`trySkin` with `players` false), so the search session and pending prompt
+checks always come first and every refusal shows once. If the victim respawns
+during the 5 s on their own body, the skinner is stood up (an `actionLock` of 0 s); a skinner who goes offline, dies, goes
+down, is restrained or ends up out of reach leaves the body skinnable again,
+and a PK body removed meanwhile (emptied) gives nothing (`the body
+is gone`). A downed player is alive, so neither
+the client (it opens the X menu on a living player) nor the server offers it.
+A PK body is known through `BodySystem.bodyOf` (the bodies it registered,
+re-adopted after a restart), which gives the victim and their profile id; any
+other dead actor without a profile id is passed over. Without the `ff_body`
+registration no PK body is left and a PK victim's own actor keeps the pack for
+the whole wait, so it is skinned like any other death; the afterlife routing
+still takes the respawn to the realm. Staff and admin modes change nothing on
+either side: skinning takes nothing a living character carries (a PK body's
+pack left the victim when the body was left), and god and ghost mode never
+die from damage.
+
+Log lines: `[hunting] <skinner> skins the body of player <victim> (profile
+<id>)` (`the PK body <body> of player <victim>` for a PK body, the same in
+every line below), `[hunting] <skinner> skinned the body of player <victim>
+(profile <id>): 1016b3 x1, heart b18cd|no heart (10% chance)[, Khajiit pelt
+<id>|no Khajiit pelt (20% chance)], <pack>` (the pelt part only on a Khajiit
+body while the pelt resolves; `<pack>` is `nothing of the pack taken, the
+victim respawns now` on an own body, and on a PK body `the pack went to the
+skinner: N item(s) in M stack(s)`, `the body held nothing` or `the body keeps
+its pack, the hand-off failed: <error>`), on a PK body before it `[body]
+<body> of <victim> skinned: N item(s) in M stack(s) moved to <skinner> (K
+named); moved: <base> x<count>, db0e2 "<key name>" x1, ...` (the record
+staff restore from) or `[body] <body> of <victim> skinned: moving the pack to
+<skinner> failed, the body keeps it: <error>`, `[hunting] respawning player
+<victim> after the skinning failed, the body lies until its respawn:
+<error>`, `[hunting] <skinner> stopped skinning the body of player <victim>:
+offline|dead|downed|restrained|out of reach|they respawned|the body is
+gone|a PK body took their pack` (the last only when a PK victim's 4 s
+respawn failed; a PK during an own-body skinning normally ends it with `they
+respawned`), and the boot line ends `players skinned on
+crouch for 1016b3 and the heart b18cd at 10%, the Khajiit pelt <id> at 20% for
+race 13745, 88845` (`, no Khajiit pelt` without the record; `players not
+skinned` when off or when the flesh is not in the load order). The tests: `node
+skymp5-server/tools/test-player-skinning.js` and, for the PK body's hand-off,
+`node skymp5-server/tools/test-bodies.js`.
 
 ---
 

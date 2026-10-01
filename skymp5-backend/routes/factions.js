@@ -40,6 +40,7 @@ router.get('/:scope/:group/members', canView, reply(200, req => ({ members: stor
 router.post('/', canDefine, reply(201, req => store.createFaction(body(req), req.actor)))
 router.patch('/:scope/:group', canDefine, reply(200, req => store.updateFaction(factionId(req), body(req), req.actor)))
 router.delete('/:scope/:group', canDefine, reply(200, req => store.deleteFaction(factionId(req), body(req), req.actor)))
+router.post('/:scope/:group/convert', canDefine, reply(200, req => store.convertFaction(factionId(req), body(req), req.actor)))
 
 router.post('/:scope/:group/ranks', canDefine, reply(201, req => store.createRank(factionId(req), body(req), req.actor)))
 router.put('/:scope/:group/ranks', canDefine, reply(200, req => store.reorderRanks(factionId(req), body(req), req.actor)))

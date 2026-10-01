@@ -105,10 +105,10 @@ export const SHORT_DESC: Record<string, string[]> = {
   ],
   warrior: [
     'Basic Combat',
-    'A surer footing in a fight.',
-    'A faster off hand, a shield carried at speed, and deeper wind.',
-    'The charge: with a shield, a blade or a greatsword.',
-    "The full stance, the sweeping blow, and a warmaster's reach.",
+    'Lighter power attacks with one hand or two, and deeper wind.',
+    'A faster off hand, the power bash, a shield carried at speed, and light armour that weighs nothing.',
+    'The charge, and heavy armour that weighs nothing.',
+    "The sweeping blow, a warmaster's reach, and a heavier pack.",
     'Legend of the Field'
   ]
 };

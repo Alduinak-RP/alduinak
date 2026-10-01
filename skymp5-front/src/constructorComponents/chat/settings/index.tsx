@@ -189,7 +189,7 @@ const Settings = (props: {
         {tab === 'ui' && <>
           <SkyrimSlider text={'field of view'} name={'fov'} min={70} max={170} setValue={(value) => props.setFov(value)} sliderValue={props.fov ?? 80} marks={[70, 90, 110, 130, 150, 170]}/>
           <CheckBox text={'show player names'} initialValue={props.showPlayerNames} setChecked={props.setShowPlayerNames} disabled={false} />
-          <CheckBox text={'show form ids'} initialValue={props.showFormIds} setChecked={props.setShowFormIds} disabled={false} />
+          <CheckBox text={'show form ids (staff)'} initialValue={props.showFormIds} setChecked={props.setShowFormIds} disabled={false} />
         </>}
         {tab === 'controls' && <>
           {KEY_ROWS.map(([name, label]) => (

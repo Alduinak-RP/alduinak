@@ -59,7 +59,7 @@ export interface CharacterReport {
 export interface FactionBackend {
   fetchAccess(profileId: number): Promise<AccessPayload>;
   // null: unchanged since the previous call
-  fetchDefinitions(): Promise<{ factions: unknown[]; requirements: unknown[] } | null>;
+  fetchDefinitions(): Promise<{ factions: unknown[]; requirements: unknown[]; successors: unknown } | null>;
   fetchRoster(factionId: string): Promise<RosterRow[]>;
   assign(profileId: number, requirementId: string, playerName: string, slot: number | null, by: string): Promise<AccessPayload>;
   // Rewrites one faction's regency; an absent field is left alone
@@ -170,6 +170,7 @@ export function attachBackendFactionApi(server: Mp, settings: Settings): void {
       return {
         factions: Array.isArray(data?.factions) ? data.factions : [],
         requirements: Array.isArray(data?.requirements) ? data.requirements : [],
+        successors: data?.successors ?? null,
       };
     },
 

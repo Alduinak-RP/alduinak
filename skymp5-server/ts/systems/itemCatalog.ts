@@ -21,10 +21,10 @@ export interface CatalogItem {
   hay: string;
 }
 
-const fieldOf = (rec: EspmRecord, type: string): Buffer | undefined => rec.fields.find((f) => f.type === type)?.data;
+export const fieldOf = (rec: EspmRecord, type: string): Buffer | undefined => rec.fields.find((f) => f.type === type)?.data;
 
 // FULL of a record, read through the owner's string tables when the plugin is localized
-const fullName = (rec: EspmRecord, strings: ReturnType<typeof createStringsReader>): string => {
+export const fullName = (rec: EspmRecord, strings: ReturnType<typeof createStringsReader>): string => {
   const full = fieldOf(rec, "FULL");
   if (!full) return "";
   if (!rec.localized) return cstr(full);

@@ -18,16 +18,17 @@ type Mp = any;
 // A bound player is searched without consent too; startSession tells them who is searching, and such a search ends once they are freed. A player who is only carried is asked as usual.
 // A restrained (bound or carried) player cannot search anyone.
 // A dead player's body gives up a limited number of distinct items (a stack counts once); the take that reaches the limit closes the window and respawns the player, which removes the body.
+// Property keys and writings stay put in every window but a PK body's (BodySystem), which lists them by name so they move like any other item.
 // A living server NPC is never searched: only its body is. Its owner is pointed at the pet menu, anyone else is refused.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
-//     { customPacketType: "searchRequest", target: <actorFormId> }
+//     { customPacketType: "searchRequest", target: <actorFormId> }   // skin: the interact menu's choice on a body, true Skin and false Search (bodyAction's chosen)
 //     { customPacketType: "searchConsentResult", requestId, accepted }
 //     { customPacketType: "searchEnd" }                              // searcher closed the window
 //   Server -> Client:
 //     { customPacketType: "searchConsentRequest", requestId, text }  // -> target
-//     { customPacketType: "searchApproved", target, body, entries }  // -> searcher: open the window
+//     { customPacketType: "searchApproved", target, body, entries }  // -> searcher: open the window; entries [{ baseId, count, name? }]
 //     { customPacketType: "searchClose" }                            // -> searcher: close it
 //     { customPacketType: "searchNotice", text }                     // corner toast
 
@@ -75,9 +76,11 @@ export class SearchSystem implements System {
   ownedBy?: (actorId: number) => number;
   isAnimal?: (ctx: SystemContext, actorId: number) => boolean;
   // Set by index.ts: true when the interaction with a body became something else (skinning), so it is not opened
-  bodyAction?: (ctx: SystemContext, searcherActorId: number, bodyActorId: number) => boolean;
+  bodyAction?: (ctx: SystemContext, searcherActorId: number, bodyActorId: number, chosen?: boolean) => boolean;
   // Set by index.ts: why a searcher may not open this body, "" when they may
   bodyRefusal?: (searcherActorId: number, bodyActorId: number) => string;
+  // Set by index.ts: true for a body whose window lists property keys and writings by name
+  namedLoot?: (bodyActorId: number) => boolean;
 
   // targetActorId -> session (a target is searched by at most one player)
   private sessions = new Map<number, SearchSession>();
@@ -120,10 +123,14 @@ export class SearchSystem implements System {
     this.installPutHook(ctx);
   }
 
-  // The window lists stacks without names, so property keys and writings stay put, and a stack the window never showed is not there to move
+  // A window without names would move the wrong key or letter, so they stay put there, and a stack the window never showed is not there to move
   private stuck(ctx: SystemContext, targetActorId: number, actorId: number, baseId: number): boolean {
     return this.isSearching(targetActorId, actorId)
-      && (isNamedItemBase(baseId) || this.hidden(ctx, actorId, targetActorId, baseId));
+      && ((isNamedItemBase(baseId) && !this.namesListed(targetActorId)) || this.hidden(ctx, actorId, targetActorId, baseId));
+  }
+
+  private namesListed(targetActorId: number): boolean {
+    return this.sessions.get(targetActorId)?.body === true && this.namedLoot?.(targetActorId) === true;
   }
 
   // A worn stack the searcher's copy still shows after another looter took it is not on the body
@@ -154,9 +161,27 @@ export class SearchSystem implements System {
       if (allowed && taken) {
         this.recordTake(ctx, sourceId >>> 0, actorId >>> 0, taken, baseId >>> 0, count);
       }
-      if (allowed) this.log(`[take] ${(actorId >>> 0).toString(16)} takes ${(baseId >>> 0).toString(16)} x${count} from ${(sourceId >>> 0).toString(16)}`);
+      if (allowed && !this.watchNamedMove(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0, count, true)) {
+        this.log(`[take] ${(actorId >>> 0).toString(16)} takes ${(baseId >>> 0).toString(16)} x${count} from ${(sourceId >>> 0).toString(16)}`);
+      }
       return allowed;
     };
+  }
+
+  // The native side finds a PK body's key or writing by its name alone, so a move whose client sent none fails there; the mover's pack is resynced either way
+  private watchNamedMove(ctx: SystemContext, bodyId: number, actorId: number, baseId: number, count: number, take: boolean): boolean {
+    if (!isNamedItemBase(baseId) || !this.isSearching(bodyId, actorId) || !this.namesListed(bodyId)) return false;
+    const held = this.heldCount(ctx, bodyId, baseId);
+    this.resyncInventory(ctx, actorId);
+    const [who, base, body] = [actorId, baseId, bodyId].map((id) => id.toString(16));
+    setImmediate(() => {
+      if (this.heldCount(ctx, bodyId, baseId) === held) {
+        this.log(`[${take ? "take" : "put"}] ${who} ${take ? "take" : "put"} of ${base} x${count} ${take ? "from" : "into"} ${body} refused natively: no copy under the name the client sent, the pack is resynced`);
+      } else if (take) {
+        this.log(`[take] ${who} takes ${base} x${count} from ${body}`);
+      }
+    });
+    return true;
   }
 
   // The same gate on the way in, so what a searcher may not take back never reaches the target
@@ -169,14 +194,12 @@ export class SearchSystem implements System {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
-      if (!previous) {
-        return true;
+      let allowed = true;
+      if (previous) {
+        try { allowed = previous.call(mp, targetId, actorId, baseId, count) !== false; } catch { /* keep allowed */ }
       }
-      try {
-        return previous.call(mp, targetId, actorId, baseId, count) !== false;
-      } catch {
-        return true;
-      }
+      if (allowed) this.watchNamedMove(ctx, targetId >>> 0, actorId >>> 0, baseId >>> 0, count, false);
+      return allowed;
     };
   }
 
@@ -245,12 +268,21 @@ export class SearchSystem implements System {
     if (asTarget) {
       this.endSession(ctx, asTarget, "They disconnected.");
     }
+    this.dropPending((pend) => pend.searcherActorId === actorId || pend.targetActorId === actorId);
+  }
+
+  private dropPending(match: (pend: PendingConsent) => boolean): void {
     for (const [id, pend] of Array.from(this.pending)) {
-      if (pend.searcherActorId === actorId || pend.targetActorId === actorId) {
+      if (match(pend)) {
         clearTimeout(pend.timer);
         this.pending.delete(id);
       }
     }
+  }
+
+  // A death voids a prompt: the body opens through a fresh request with its own checks, and the dead do not search
+  private promptVoid(ctx: SystemContext, pend: PendingConsent): boolean {
+    return this.isDead(ctx, pend.targetActorId) || this.isDead(ctx, pend.searcherActorId);
   }
 
   // ── Incoming requests ───────────────────────────────────────────────────────
@@ -292,6 +324,7 @@ export class SearchSystem implements System {
       this.notice(ctx, userId, "You are already searching someone.");
       return;
     }
+    this.dropPending((pend) => this.promptVoid(ctx, pend));
     for (const pend of this.pending.values()) {
       if (pend.targetActorId === targetActorId || pend.searcherActorId === searcherActorId) {
         this.notice(ctx, userId, "A search request is already pending.");
@@ -304,7 +337,7 @@ export class SearchSystem implements System {
       this.log(`[search] ${searcherActorId.toString(16)} refused living npc ${targetActorId.toString(16)}`);
       return;
     }
-    if (body && this.bodyAction?.(ctx, searcherActorId, targetActorId)) return;
+    if (body && this.bodyAction?.(ctx, searcherActorId, targetActorId, typeof content.skin === "boolean" ? content.skin : undefined)) return;
     const bodyRefusal = body ? this.bodyRefusal?.(searcherActorId, targetActorId) : "";
     if (bodyRefusal) {
       this.notice(ctx, userId, bodyRefusal);
@@ -368,6 +401,11 @@ export class SearchSystem implements System {
     clearTimeout(pend.timer);
 
     const searcherUser = this.userOf(ctx, pend.searcherActorId);
+    if (this.promptVoid(ctx, pend)) {
+      this.log(`[search] ${pend.targetActorId.toString(16)} answered ${pend.searcherActorId.toString(16)}'s prompt after a death, ignored`);
+      this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} can no longer answer.`);
+      return;
+    }
     if (content.accepted !== true) {
       this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} refused the search.`);
       return;
@@ -668,14 +706,17 @@ export class SearchSystem implements System {
     }
   }
 
-  // Plain {baseId, count} stacks without extra data, mirroring what TakeItem can move
-  private simpleEntriesOf(ctx: SystemContext, actorId: number): { baseId: number, count: number }[] {
+  // Plain {baseId, count} stacks without extra data, mirroring what TakeItem can move; with names, a key or writing keeps its name
+  private simpleEntriesOf(ctx: SystemContext, actorId: number, names = false): { baseId: number, count: number, name?: string }[] {
     try {
       const inv = (ctx.svr as Mp).get(actorId, "inventory");
       const entries: any[] = inv && Array.isArray(inv.entries) ? inv.entries : [];
       return entries
         .filter((e) => e && typeof e.baseId === "number" && (e.count | 0) > 0)
-        .map((e) => ({ baseId: e.baseId >>> 0, count: e.count | 0 }));
+        .map((e) => {
+          const named = names && isNamedItemBase(e.baseId >>> 0) && typeof e.name === "string" && e.name !== "";
+          return named ? { baseId: e.baseId >>> 0, count: e.count | 0, name: e.name } : { baseId: e.baseId >>> 0, count: e.count | 0 };
+        });
     } catch {
       return [];
     }
@@ -686,8 +727,8 @@ export class SearchSystem implements System {
   }
 
   // On a body the client drops the stacks the server left out, so a hidden item is simply not in the window
-  private visibleEntriesOf(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): { baseId: number, count: number }[] {
-    const entries = this.simpleEntriesOf(ctx, targetActorId);
+  private visibleEntriesOf(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean): { baseId: number, count: number, name?: string }[] {
+    const entries = this.simpleEntriesOf(ctx, targetActorId, this.namesListed(targetActorId));
     if (!body || !this.hidesItem) {
       return entries;
     }

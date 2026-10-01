@@ -98,6 +98,39 @@ void InstallCreateSourceVoiceGuard()
   Hooks::write_thunk_call<CreateSourceVoiceGuard>(call);
 }
 
+// A process killed before its window is destroyed (Engine Fixes' safe exit) leaves Display Tweaks' cursor clip behind
+struct ShutdownCursorRelease
+{
+  static void thunk(RE::Main* a_main)
+  {
+    const bool unclipped = ClipCursor(nullptr) != 0;
+    CEFUtils::DInputHook::Get().Unacquire();
+    int shown = ShowCursor(TRUE);
+    for (int i = 0; shown < 0 && i < 64; ++i) {
+      shown = ShowCursor(TRUE);
+    }
+    logger::info("Exit: cursor clip released {}, DirectInput devices "
+                 "unacquired, cursor display count {}, shutting down",
+                 unclipped, shown);
+    func(a_main);
+  }
+  static inline REL::Relocation<decltype(&thunk)> func;
+};
+
+// WinMain's Main::Shutdown call, where Engine Fixes puts its TerminateProcess
+void InstallShutdownCursorRelease()
+{
+  const auto call =
+    Offsets::WinMain.address() + REL::Relocate(0x35, 0x1AE);
+  if (*reinterpret_cast<const std::uint8_t*>(call) != 0xE8) {
+    logger::warn("Main::Shutdown call not found, the cursor is not released "
+                 "at exit");
+    return;
+  }
+  Hooks::write_thunk_call<ShutdownCursorRelease>(call);
+  logger::info("Exit: the cursor is released before Main::Shutdown");
+}
+
 // BSCompoundFrustum fields that SaveState and RestoreState touch
 struct CompoundFrustum
 {
@@ -352,6 +385,7 @@ void Hooks::Install()
   // InstallOnFrameUpdateHook();
   InstallOnConsoleVPrintHook();
   InstallCreateSourceVoiceGuard();
+  InstallShutdownCursorRelease();
   InstallCompoundFrustumStateGuard();
   InstallTextDisplayDataIsNotEqualHook();
   CarryHold::Install();

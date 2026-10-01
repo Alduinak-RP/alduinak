@@ -7,7 +7,7 @@ import { WRITTEN_KEYWORD } from "../../sync/inventory";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode, EquipEvent, Form, Menu } from "skyrimPlatform";
-import { logTrace } from "../../logging";
+import { logToPlatformLog } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -21,6 +21,8 @@ const BOOK_MENU_WINDOW_MS = 1500;
 const OPEN_WAIT_MS = 5000;
 // Vanilla menus that hide the browser and are closed for the widget
 const COVERING_MENUS: string[] = [Menu.Book, Menu.Inventory, Menu.Tween];
+// SkyUI's inventory list selection; formId is the base, text the item's name
+const SELECTED_ENTRY = "_root.Menu_mc.inventoryLists.itemList.selectedEntry";
 
 const events = {
   create: "writing:create",
@@ -84,8 +86,20 @@ export class WritingService extends ClientListener {
       }
     });
     if (fromChest) return;
-    logTrace(this, "Reading writing", baseId.toString(16));
-    sendCustomPacket(this.controller, { customPacketType: "writingUse", baseId });
+    const name = this.pickedName(baseId);
+    logToPlatformLog(this, `reading ${baseId.toString(16)} from the pack, ${name ? `selected entry ${JSON.stringify(name)}` : "selected entry unread"}`);
+    sendCustomPacket(this.controller, { customPacketType: "writingUse", baseId, name });
+  }
+
+  // The inventory list entry the player read, so the server opens that copy; "" when the list shows another form or cannot be read
+  private pickedName(baseId: number): string {
+    try {
+      const ui = this.sp.Ui;
+      if (!ui.isMenuOpen(Menu.Inventory) || ui.getInt(Menu.Inventory, `${SELECTED_ENTRY}.formId`) >>> 0 !== baseId >>> 0) return "";
+      return ui.getString(Menu.Inventory, `${SELECTED_ENTRY}.text`) || "";
+    } catch {
+      return "";
+    }
   }
 
   private isWriting(form: Form): boolean {

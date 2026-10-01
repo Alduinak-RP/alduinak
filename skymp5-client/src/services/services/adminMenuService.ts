@@ -17,10 +17,12 @@ declare const window: any;
 // Personal Menu: the interact key (default X) on nothing opens it through PlayerActionService, with Admin, Faction, Skills and Debug tabs.
 // Faction, Skills and Debug show at once; the Admin tab appears only when the server answers adminMenuRequest (Discord roles / profile ids) and each sub-tab follows its server cap.
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
-// Admin sub-tabs: Players (also mastery grants and the survival row: adminAction survivalReset / survivalInfo / survivalCold / survivalDisease / survivalCure), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), the Item Spawner (adminAction itemSearch / itemSpawn) and Weather (adminAction weatherList / weatherSet / weatherClear); the Skills tab embeds the mastery menu.
+// Admin sub-tabs: Players (also mastery grants and the survival row: adminAction survivalReset / survivalInfo / survivalCold / survivalDisease / survivalCure), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), the Item Spawner (adminAction itemSearch / itemSpawn), Weather (adminAction weatherList / weatherSet / weatherClear) and Polymorph (adminAction raceList / polymorph / polymorphRevert, applied by PolymorphService); the Skills tab embeds the mastery menu.
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
+// The server leaves the Player base (7:Skyrim.esm) out of createActor
+const PLAYER_BASE_ID = 0x7;
 const DEBUG_REFRESH_MS = 5000;
 const TARGET_REFRESH_MS = 250;
 // Looking around off the crosshair raises no event, so the facing scan runs on its own beat
@@ -84,6 +86,9 @@ const events = {
   weatherSet: "admin::weatherset",
   weatherClear: "admin::weatherclear",
   survival: "admin::survival",
+  polymorphList: "admin::polymorphlist",
+  polymorph: "admin::polymorph",
+  polymorphRevert: "admin::polymorphrevert",
 };
 
 // Per-zone buttons -> adminAction; the target is the zone name
@@ -98,8 +103,8 @@ const ZONE_ACTIONS: Record<string, string> = {
 // The survival row's actions, forwarded as adminAction
 const SURVIVAL_ACTIONS = ["survivalReset", "survivalInfo", "survivalCold", "survivalDisease", "survivalCure"];
 
-// Actions that move the admin; their success reply closes the menu
-const SELF_TELEPORTS = ["teleportTo", "teleportLoc", "npcZoneTp", "jobTp"];
+// Actions that move or transform the admin; their success reply closes the menu
+const SELF_ACTIONS = ["teleportTo", "teleportLoc", "npcZoneTp", "jobTp", "polymorph", "polymorphRevert"];
 
 interface DebugServer {
   name: string;
@@ -107,15 +112,16 @@ interface DebugServer {
   tzOffsetMin: number;
 }
 
-// Crosshair target read-outs; player marks another player's character or body
+// Crosshair target read-outs; player marks another player's character or body, refId is the server's id unless clientOnly
 interface DebugTarget {
   name: string;
   dist: number;
   live: boolean;
   player: boolean;
+  body: boolean;
   refId: string;
   refDesc: string;
-  serverId: string;
+  clientOnly: boolean;
   baseId: string;
   baseDesc: string;
   localBaseId: string;
@@ -147,7 +153,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, weather: null, survival: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, weather: null, races: null, survival: null, events };
 
 function hex(id: number): string {
   return id ? id.toString(16) : "";
@@ -194,6 +200,21 @@ function parseItems(content: Record<string, unknown>) {
     rows: rows
       .filter((r) => r && typeof r === "object")
       .map((r: any) => ({ desc: str(r.desc), name: str(r.name), edid: str(r.edid), type: str(r.type), plugin: str(r.plugin) })),
+  };
+}
+
+// The server's adminRaces reply, reduced to the strings and flags the Polymorph tab renders
+function parseRaces(content: Record<string, unknown>) {
+  const rows = Array.isArray(content["races"]) ? content["races"] : [];
+  const active = Array.isArray(content["active"]) ? content["active"] : [];
+  return {
+    ready: content["ready"] === true,
+    rows: rows
+      .filter((r) => r && typeof r === "object")
+      .map((r: any) => ({ d: str(r.d), n: str(r.n), e: str(r.e), g: str(r.g), r: str(r.r), m: r.m === true, f: r.f === true })),
+    active: active
+      .filter((x) => x && typeof x === "object")
+      .map((x: any) => ({ a: str(x.a), n: str(x.n), race: str(x.race), by: Number(x.by) || 0 })),
   };
 }
 
@@ -277,6 +298,7 @@ export class AdminMenuService extends ClientListener {
         faction: panelData.faction,
         jobs: panelData.jobs,
         weather: panelData.weather,
+        races: panelData.races,
         events,
       };
       if (panelData.debug) panelData.debug.target = this.shownTarget();
@@ -284,6 +306,8 @@ export class AdminMenuService extends ClientListener {
       // The Pets sub-tab needs the grantable bases; only a server that resolves caps knows the action
       if (panelData.caps.npcs === true) sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "petBases" });
       if (panelData.caps.weather === true) this.requestWeather();
+      // A Polymorph tab remembered from the last open shows without a tab click, so the list is asked for until it arrived built
+      if (panelData.caps.polymorph === true && !(panelData.races && panelData.races.ready)) sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "raceList" });
     } else if (content["customPacketType"] === "masteryMenu") {
       if (!this.menuOpen) return;
       panelData.skills = parseMasteryMenu(content);
@@ -293,6 +317,9 @@ export class AdminMenuService extends ClientListener {
       this.pushData();
     } else if (content["customPacketType"] === "adminItems") {
       panelData.items = parseItems(content);
+      this.pushData();
+    } else if (content["customPacketType"] === "adminRaces") {
+      panelData.races = parseRaces(content);
       this.pushData();
     } else if (content["customPacketType"] === "debugInfo") {
       // Natives throw in the packet-handler context; only data is stored here and the update loop reads the game
@@ -346,7 +373,7 @@ export class AdminMenuService extends ClientListener {
       this.pushData();
     } else if (content["customPacketType"] === "adminActionResult") {
       notifyNextUpdate(this.controller, this.sp, String(content["text"] ?? ""));
-      if (content["ok"] === true && this.menuOpen && SELF_TELEPORTS.includes(String(content["action"] ?? ""))) this.closeMenu();
+      if (content["ok"] === true && this.menuOpen && SELF_ACTIONS.includes(String(content["action"] ?? ""))) this.closeMenu();
       // The Add form keeps its values until the server accepted them
       if (content["action"] === "npcZoneAdd") {
         panelData.npcZoneResult = { ok: content["ok"] === true, at: Date.now() };
@@ -365,6 +392,7 @@ export class AdminMenuService extends ClientListener {
     panelData.petBases = null;
     panelData.jobs = null;
     panelData.weather = null;
+    panelData.races = null;
   }
 
   // The catalog is about a hundred rows, so it is only asked for until the first reply carried it
@@ -483,16 +511,19 @@ export class AdminMenuService extends ClientListener {
       return;
     }
     const descOf = (id: number): string => (id && formDesc(id)) || "";
-    const refId = safe(() => ref.getFormID(), 0) >>> 0;
-    const serverId = safe(() => localIdToRemoteId(refId), 0) >>> 0;
+    // A clone's local ff id differs on every client, so only the server's id is shown
+    const localId = safe(() => ref.getFormID(), 0) >>> 0;
+    const serverId = safe(() => localIdToRemoteId(localId), 0) >>> 0;
+    const refId = serverId || localId;
     const character = safe(() => isPlayerCharacterId(this.controller, serverId), false);
     // Refs created in game read their base from the server's world model
-    const serverBase = serverId >= FIRST_DYNAMIC_ID
-      ? safe(() => this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === serverId)?.baseId, 0) >>> 0
-      : 0;
+    const form = serverId >= FIRST_DYNAMIC_ID ? safe(() => this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === serverId), undefined) : undefined;
+    const serverBase = form ? (form.baseId || (character ? PLAYER_BASE_ID : 0)) >>> 0 : 0;
+    // The body a PK leaves wears the victim's look under an id of its own
+    const body = character && (form as Record<string, unknown> | undefined)?.["ff_body"] === true;
     const localBase = safe(() => ref.getBaseObject()?.getFormID(), 0) >>> 0;
     const baseId = serverBase || localBase;
-    const localBaseId = localBase !== baseId ? localBase : 0;
+    const localBaseId = localBase !== baseId && localBase < FIRST_DYNAMIC_ID ? localBase : 0;
     let name = safe(() => ref.getDisplayName(), "") || safe(() => ref.getBaseObject()?.getName(), "");
     if (character) name = safe(() => introducedName(ref, serverId, sp.Actor.from(ref)?.isDead() === true), "Stranger");
     this.target = {
@@ -500,9 +531,10 @@ export class AdminMenuService extends ClientListener {
       dist: Math.round(safe(() => player.getDistance(ref), 0)),
       live: true,
       player: character,
+      body,
       refId: hex(refId),
       refDesc: descOf(refId),
-      serverId: hex(serverId),
+      clientOnly: !serverId,
       baseId: hex(baseId),
       baseDesc: descOf(baseId),
       localBaseId: hex(localBaseId),
@@ -554,10 +586,10 @@ export class AdminMenuService extends ClientListener {
     this.pushData();
   }
 
-  // A player character's ref and server ids stay the same across masks and sessions, so only staff see them
+  // A player character's id stays the same across masks and sessions, so only staff see it
   private shownTarget(): DebugTarget | null {
     const t = this.target;
-    return t && t.player && !panelData.admin ? { ...t, refId: "", refDesc: "", serverId: "" } : t;
+    return t && t.player && !panelData.admin ? { ...t, refId: "", refDesc: "" } : t;
   }
 
   private onBrowserMessage(e: BrowserMessageEvent) {
@@ -676,6 +708,16 @@ export class AdminMenuService extends ClientListener {
     }
     if (kind === events.weatherClear) {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "weatherClear", region: str(e.arguments[1]) });
+      return;
+    }
+    if (kind === events.polymorphList) {
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "raceList" });
+      return;
+    }
+    if (kind === events.polymorph || kind === events.polymorphRevert) {
+      // target "" is the admin's own character; the server pushes adminRaces after every change
+      const action = kind === events.polymorph ? "polymorph" : "polymorphRevert";
+      sendCustomPacket(this.controller, { customPacketType: "adminAction", action, target: str(e.arguments[1]), race: str(e.arguments[2]) });
       return;
     }
     if (kind === events.jobSave) {

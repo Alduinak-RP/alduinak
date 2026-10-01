@@ -15,7 +15,8 @@ key carries its property:
 - Server piece: `skymp5-server/ts/systems/writingSystem.ts` (rules, packets, staff tools) and `writingStore.ts` (storage)
 - Client piece: `skymp5-client/src/services/services/writingService.ts` (widget 33)
 - Front piece: `skymp5-front/src/features/writing/`, built on the paper widgets in `features/parchment/` that the missive board uses too
-- Seal artwork: `skymp5-front/src/img/seals/<faction-slug>.png`, 256 px on the long side, made from the owner's `Graphics\Seals` set by `misc/seal-icons.py`
+- Seal artwork: `skymp5-front/src/img/seals/<faction-slug>.png`, 256 px on the long side, made from the owner's `Graphics\Seals` set by `misc/seal-icons.py` (the Dunmer house marks from `Graphics\writing` by `misc/writing-art.ps1`)
+- Paper art, illuminated capitals and fonts: `skymp5-front/src/img/writing/` and `skymp5-front/src/fonts/writing/`, made from the owner's `Graphics\writing` set by `misc/writing-art.ps1` and `misc/writing-fonts.py` (see Markup)
 - Plugin records: the `writing` section of `misc/proficiency-patcher/spec.json`
 
 The feature stays off until `writingEnabled` is `true` in
@@ -42,20 +43,49 @@ never by form id.
 | `AldSealingWax` (MISC) | Sealing Wax | `GlazedCandles01` | |
 
 Recipes: anyone makes the blanks (tier `Anyone`), at the tanning rack or at
-the woodcrafting bench, from Roll of Paper (the vanilla `PaperRoll`) with
-leather and strips; a Novice woodworker makes the paper from firewood; the
-Sealing Wax is Novice blacksmith work:
+the woodcrafting bench, from Roll of Paper (the vanilla `PaperRoll`), a
+journal or book with leather and one Leather Strips; a Novice woodworker makes
+the paper from firewood; the Sealing Wax is Novice work at every crafting
+station (plugin r26), see the second table:
 
 | Output | Bench | Ingredients |
 |---|---|---|
 | Roll of Paper (4) | woodcrafting bench | 1 Firewood (woodworker Novice) |
-| Blank Parchment | tanning rack | 1 Roll of Paper, 1 Leather Strips |
-| Blank Parchment | woodcrafting bench | 1 Roll of Paper, 1 Leather Strips |
-| Blank Journal | tanning rack | 2 Roll of Paper, 1 Leather, 2 Leather Strips |
+| Blank Parchment | tanning rack | 1 Roll of Paper |
+| Blank Parchment | woodcrafting bench | 1 Roll of Paper |
+| Blank Journal | tanning rack | 2 Roll of Paper, 1 Leather, 1 Leather Strips |
 | Blank Journal | woodcrafting bench | 2 Roll of Paper, 1 Leather, 1 Leather Strips |
-| Blank Book | tanning rack | 4 Roll of Paper, 2 Leather, 4 Leather Strips |
+| Blank Book | tanning rack | 4 Roll of Paper, 2 Leather, 1 Leather Strips |
 | Blank Book | woodcrafting bench | 4 Roll of Paper, 1 Leather, 1 Leather Strips |
-| Sealing Wax | smelter | 1 Beehive Husk, 1 Charcoal |
+| Sealing Wax | every crafting station | 1 Beehive Husk, 1 Charcoal (Novice, see below) |
+
+The Sealing Wax has one recipe per station, all with the same ingredients
+and the same makers: a Novice of any of the seven professions that work a
+crafting station (blacksmith, alchemist, miner, tailor, hunter, woodworker,
+cook) sees it at every one of them, whichever station their own craft works:
+
+| Station | Recipe |
+|---|---|
+| smelter | `AldRecipeWriting_SealingWax` |
+| forge, anvil, Skyforge | `AldRecipeWriting_SealingWaxForge` |
+| tanning rack | `AldRecipeWriting_SealingWaxTanningRack` |
+| loom | `AldRecipeWriting_SealingWaxLoom` |
+| woodcrafting bench | `AldRecipeWriting_SealingWaxWoodcrafting` |
+| cooking pot, spit | `AldRecipeWriting_SealingWaxCookpot` |
+| oven | `AldRecipeWriting_SealingWaxOven` |
+| alchemy lab | `AldRecipeWriting_SealingWaxAlchemy` |
+| meadery boilers | `AldRecipeWriting_SealingWaxMead` |
+| grain mill | `AldRecipeWriting_SealingWaxGrainMill` |
+
+Plugin r25 let only the blacksmith and the alchemist make it everywhere and
+each other profession only at its own stations, so a hunter saw it at the
+tanning rack and at none of the smelter, forge and woodcrafting bench (the
+stations the owner's hunter used in the test of 2026-10-01); r26 names all
+seven on every recipe. Farmers, warriors and mages work no station and make
+none, and neither does a character without a profession. The armour
+workbench and the grindstone list only Improve entries, so no recipe can show
+there. Each maker pays the fatigue of their own rank and the wax counts as
+their work (`SHARED_RECIPES` in `masterySystem.ts`).
 
 No quill or inkwell is needed. Only the server creates the written items
 (Letter, Sealed Letter, Journal, Book). A written item without a name, for
@@ -70,17 +100,137 @@ the client answers "Take the writing into your pack to read it."
 Reading an item in the inventory fires the game's equip event. The client
 recognises the two keywords, closes the vanilla Book Menu and the inventory
 (the browser is hidden while either is open), and sends `writingUse` with
-the base id. The server answers from what the player carries:
+the base id and `name`, the name of the entry the player read. The equip
+event carries only the base, so the client reads SkyUI's selection
+(`_root.Menu_mc.inventoryLists.itemList.selectedEntry`, `text` when its
+`formId` is that base) and sends `""` when it cannot tell. The server answers
+from what the player carries:
 
-- a blank: the composer for that kind;
-- a written item of that base, one copy: its document;
-- several copies of that base: a list to pick from.
+- the entry read carries a document id the pack holds: that document;
+- the entry read has no id (a Blank Parchment, Journal or Book, or an unnamed
+  written item) and a blank of that base is carried: the composer;
+- no name: the composer when nothing written of that base is carried; the
+  document when one written copy is carried and no blank of that base;
+  otherwise a list to pick from, led by **Write a new letter** (journal,
+  book) while an unnamed copy of that base is carried. That row sends
+  `writingOpen` with id `new` and opens the composer on it.
+
+Before K4 (2026-09-30) the server saw only the base, and the composer opened
+only when no written copy of that base was carried, so an unnamed Letter from
+the Item Spawner read beside a received letter opened that letter, or a list
+without it, until the letters left the pack.
+The server logs every read: `[writing] <actor> reads <base> "<name>": <id> |
+the composer | a list of N [and a new one] | nothing, carrying B blank and W
+written of that base`, and skyrim-platform.log `WritingService: reading <base>
+from the pack, selected entry "<name>"` (or `selected entry unread`).
+`node tools/test-writing-use.js` in `skymp5-server` covers these cases.
 
 The composer has a title field (40 characters) and pages: a letter is one
 page of 2,000 characters, a journal up to 50 and a book up to 100 pages of
-1,500 characters each. **Sign it** is on by default. Writing uses up the
+1,500 characters each. Tags the page honours (see Markup) do not count toward
+a page's length; a tag shown as written counts like any text.
+**Sign it** is on by default. Writing uses up the
 blank and gives the written item, named `<title> (<id>)` or `<Kind> (<id>)`
 without a title.
+
+### Markup (2026-09, K8)
+
+The text is stored as plain text with tags in square brackets, after Space
+Station 14's paper. The front renders them as React elements only (no HTML is
+ever injected), so anything else in the text, `<b>` included, shows as typed.
+
+| Tag | Shows |
+|---|---|
+| `[b]..[/b]` or `[bold]..[/bold]` | bold |
+| `[i]..[/i]` or `[italic]..[/italic]` | italic |
+| `[u]..[/u]`, `[s]..[/s]` | underlined, struck through |
+| `[color=red]..[/color]` | an ink: black, brown, red, blue, green, purple, gold, grey, or any `#rgb` / `#rrggbb` |
+| `[head=1]..[/head]` (1 to 3) | a heading on its own line, 1 the largest and centred |
+| `[center]..[/center]`, `[right]..[/right]` | lines centred or set right |
+| `[bullet]` (or `[bullet/]`) | a bullet point |
+| `[hr]` | a dividing line |
+| `[font=daedric]..[/font]` (or `[font="Mage Script"]`) | that font, by key or name: `hand` Handwritten, `book` Book, `plain` Plain (Georgia), `daedric`, `dragon`, `dwemer`, `falmer`, `mage` Mage Script, `unreadable`, `symbols` |
+| `[fancy]A` | an illuminated capital for the letter that follows; a `[/fancy]` after it is dropped |
+
+Rules: tag names ignore case; an unknown tag (`[sic]`), a closing tag with
+nothing open, a tag with a wrong value (`[head=4]`, `[color=url(x)]`,
+`[font=comic]`) and `[fancy]` before anything but a letter are shown as
+written; tags still open at the end of a page close there; a closing tag
+closes the tags opened inside it and opens them again right after it, so
+overlapping formats both hold (`[b]Hel[font=daedric]lo[/b] wor[/font]ld` is
+bold Hel, bold Daedric lo, Daedric wor); a heading inside a heading shows as
+written; nesting stops at 8 levels and a page honours
+400 tags, the rest shows as text. One line break right after a heading,
+centre or right block or a dividing line is dropped, since they start and end
+their own lines. There is no escape character. Each page is rendered on its
+own, so a tag never runs over a page turn.
+
+Fonts: letters and journals are written in Handwritten and books in Book by
+default (the vanilla note and book faces, `SkyrimBooks_Handwritten_Bold` and
+`SkyrimBooks_Gaelic`, kept to Latin-1 by `misc/writing-fonts.py`, 83 KB and 28
+KB as WOFF instead of 9.1 MB and 3.5 MB). Dragon, Falmer and Mage Script only
+have capitals, so their text is drawn in capitals; Unreadable only has digits,
+so its letters become scribbles (each letter is drawn as a digit, its char
+code modulo 10); Symbols draws the keyboard symbols (`! # $ % & @` and so on)
+as Skyrim glyphs and leaves letters in Georgia. Any glyph a font lacks falls
+back to Georgia.
+
+Illuminated capitals: `img/writing/fancy/<LETTER>.png`, 128 px on the long
+side, from the owner's `Graphics\writing\fancy` set (all 26 letters as of
+2026-09-30). A letter with no image is drawn three lines tall in the Book face
+in wax red, so a missing file never breaks a page.
+
+Limits (server, `readPages`): the visible text (the page without the tags,
+`MARKUP_TAG` in `writingSystem.ts`, the same pattern as `TAG` in the front's
+`markup.tsx`) holds `writingLetterMaxLen` or `writingPageMaxLen` characters
+("A page holds N characters at most."); the raw text, tags included, holds
+twice that and at most 400 tags ("That page carries too much formatting.").
+`tools/test-writing-markup.js` checks that the two patterns are equal, the
+parser and the limits.
+
+### The composer and the readers
+
+- Composer: a dark panel with the title and a toolbar over the paper, and a
+  bar under it with the pager, **Sign it**, **Write it** and **Cancel**. The
+  page is raw text with its tags; selecting words and pressing **B**, **I**,
+  **U**, **S**, **H1** to **H3**, **Centre** or **Right** wraps them in the
+  tag, **Ink** and **Font** open a list and wrap the selection in the chosen
+  ink or font (several fonts can share a page), the bullet button bullets
+  every selected line, **Line** inserts `[hr]`, **Capital** puts `[fancy]`
+  before the next letter outside a tag (nothing when that letter already has
+  one) and **Plain** strips the tags from the selection, closing the formats
+  around it before it and opening them again after it.
+  The buttons never take the focus, so the selection stays. **Preview** shows
+  the page as readers will see it. Each page shows its visible count against
+  the limit, red when over (**Write it** is then off). Escape closes an open
+  list first, then an edit.
+- Letters are written and read on the vanilla note texture; journals and
+  books open as a two-page spread on the journal texture, two fields side by
+  side, **Previous** and **Next** turning two pages, **Remove these pages**
+  dropping the two shown. An empty page between written ones stays a blank
+  page.
+- A book or journal shows its title at the top of the first page and the
+  signature, with the mark, after the text of the last page; the page numbers
+  sit at the foot of each page, and the meta lines (pages, "A copy", broken
+  seals, staff lines) and the buttons in the bar under the book.
+- The sealed face is the vanilla sealed-letter art with the faction mark
+  pressed on it, and the caption, the seal line and the broken seals under it.
+- A door note (housing menu) reads on the note texture with its markup, and
+  its card shows the first lines without the tags.
+- The missive board keeps its plain paper.
+
+The paper textures are JPEG under an alpha mask (`-webkit-mask-image`), so the
+torn edges stay transparent at a tenth of the PNG size: note 77 KB + 11 KB,
+journal 124 KB + 5 KB, sealed letter 15 KB + 2 KB. The masks are built into
+`build.js` as data URIs (the `-mask.png` rule of `skymp5-front/webpack.config.ts`):
+the browser fetches a mask with CORS, the game loads the UI from
+`file:///Data/Platform/UI/index.html`, and a `file://` page fails that fetch
+(`Access to image at 'file:///.../<hash>.png' from origin 'null' has been
+blocked by CORS policy`), which leaves the whole paper transparent with the
+ink on the dark screen, as the first in-game test of 2026-10-01 showed. A
+page served over http, like a scratch build, never shows this. Their size follows the
+screen height: on 1080p the note reads about 860 px tall and the spread about
+760 px tall under the composer's panels, and 1280x720 fits too.
 
 ### Who may do what
 
@@ -117,16 +267,31 @@ rule as "A stranger"):
 
 A seal and a signature carry the mark of the sealer's or author's faction,
 recorded when the wax is pressed or the writing is made (`factionId` on the
-person record). The faction is the one whose title the character shows in the
-Faction tab (**Show Title** doubles as the "seal as" choice); with no title
-shown, or a title of a faction without artwork, the first of the character's
-factions with artwork is used, guilds and the Legion before the hold court,
-since nearly every character is a hold citizen. Artwork exists for the nine
+person record). The faction is the one whose title the character shows with
+their name at that moment (**Show Title** in the Faction tab is the "seal as"
+choice): a Winterhold citizen who is also in the Dark Brotherhood presses the
+Brotherhood's mark while showing their Speaker title and the Court of
+Winterhold's while showing their court title. With no title shown, or a title
+of a faction without artwork, the seal is plain: the sealed face shows no mark
+and only "Closed with the seal of <name>." or "Closed with an unfamiliar
+seal.", a signature gets no mark under it, and the sealer reads "You press a
+plain seal into the wax. Show a faction title to press its mark." (untitled)
+instead of "You press your seal into the wax.". Artwork exists for the nine
 hold courts, the Imperial Legion, the College of Winterhold and the Dark
 Brotherhood (`SEAL_FACTIONS` in `writingSystem.ts`, the `SEALS` table in the
 front); the Stormcloaks and the other factions press no mark. The ids are the
 stable faction ids of `faction-whitelist.json`; renaming one there silently
 drops its mark.
+
+Marks also wait for six factions that do not exist yet (2026-09-30, K8):
+`faction:house-telvanni` (the Telvanni seal, drawn in purple ink, on the
+sealed face and the Telvanni banner under a signature), `faction:house-redoran`,
+`faction:house-dres`, `faction:house-indoril` (their banners),
+`faction:house-sadras` (the gold-on-blue emblem, `sadras.png`) and
+`faction:morag-tong` (the red wax seal). A faction made in the dashboard or the
+manager gets the id `faction:<group name as a slug>`, so the groups must be
+named "House Telvanni", "House Redoran", "House Dres", "House Indoril", "House
+Sadras" and "Morag Tong" (army or guild type) for the marks to apply.
 
 Heraldry is public: the sealed face shows the mark and its caption ("Court of
 Haafingar") above "Closed with an unfamiliar seal.", and the opened letter
@@ -169,8 +334,11 @@ Consequences:
   Dropped items vanish after two minutes and lose their name on a restart.
 - **Search and pet windows refuse writings** (`searchSystem.ts` `stuck()`),
   in both directions, because those windows list stacks without names and a
-  take could move the wrong letter. Couriers cannot be robbed of letters at
-  launch.
+  take could move the wrong letter, so a living courier cannot be robbed of
+  letters. The one exception is the body a PK leaves: the victim's writings
+  and property keys go onto it with the rest of the pack, and its window
+  lists them by name, so a looter takes them, document and all
+  (`docs_roleplay_survival_loop.md` section 8).
 - **Trade and chests** move the named copy intact; the trade window shows the
   name, never the text.
 - **A forgotten pet** (its body removed, vanished, or its dead record dropped
@@ -220,6 +388,60 @@ frees when the document ages out of the window, so the cap never becomes a
 lifetime limit. A burned document still counts toward the day. The refusal
 tells the player how many days until the next slot frees.
 
+## Pinning a letter to a door (2026-09, G3)
+
+A player carrying a written, unsealed Letter sees **Pin a note** in the
+housing menu (X on a door). It opens a picker of their letters (title, with
+the id beside it so two letters of one title can be told apart), preselects
+the first and pins the chosen one with **Pin it**: the letter leaves the pack
+and hangs on that door. Everyone who opens the housing menu at that door
+(owner, key holder, hold official, admin, stranger, claimable view) sees a
+paper card, "A note is pinned here" ("Your note is pinned here" for the
+poster), with the title and the first lines; clicking it opens the paper
+reader with the signature and the mark under the introductions rule, and
+the broken-seal lines. Escape backs out of the reader first, then closes the
+menu.
+
+- What: a written Letter only. Not a Blank Parchment, a Sealed Letter, a
+  journal or a book ("Only an open letter can be pinned.", "Only a letter can
+  be pinned.").
+- Where: a claimed door (a claim with an owner) that is no faction's; never a
+  container, an unclaimed door or a faction door. One note per door
+  reference, so a house door carries one note outside and one inside, and the
+  menu shows the note of the half it was opened at.
+- Seen from outside the menu: while a note hangs on a half, everyone near it
+  sees the door's interact prompt end in a scroll ("OPEN 📜", "UNLOCK 📜"),
+  and it goes the moment the note is taken down or crumbles.
+- Who takes it down (**Take down the note**, or **Take it down** in the
+  reader): the character that pinned it (same account and same character), and
+  on a claimed door the owner (any character of the owning account), a key
+  holder or an admin; on a door left unclaimed by Give up or Break lock only
+  the poster or an admin. Hold officials see it but cannot take it down. The
+  letter goes into the pack of whoever takes it down, named from the
+  document's current title.
+- Transfer, Void all keys, Give up and Break lock leave the note on the door;
+  the right to take it down follows whoever holds the claim.
+- A pinned letter is in nobody's pack, so it cannot be edited, sealed or
+  burned. Staff destroying its document makes it crumble the next time the
+  menu opens there ("The note crumbles to dust."), and the pin is cleared.
+- While writing is off (`writingEnabled` false or a record missing) no card,
+  no option and no take down; stored pins come back when it is on.
+
+Storage: `private.doorNote` `{ id, by, byProfile, byName, at }` on the door
+reference, riding its changeform into MongoDB like `private.housing`; the text
+stays in `writings/<id>.json`. The half also carries `ff_doorNote` (true, null
+once the note is gone), a neighbour-visible property the gamemode registers in
+`50_properties.js`, which the client's prompt reads. Without that registration
+notes still pin and the server logs once `[housing] door note markers are off,
+ff_doorNote could not be set ...`; the first login after a start marks notes
+pinned before the marker existed: `[housing] door note markers: N pinned notes
+on claimed doors marked for clients`. Pinning neither makes nor destroys a document,
+so the per-character counters do not move. The server acts on the half the
+player last opened the housing menu at (checked for reach again), never on a
+door id from the packet. Code: `housingSystem.ts` (Door notes section) and the
+`lettersOf`, `takeLetterToPin`, `returnPinnedLetter` and `pinnedNoteView`
+methods of `writingSystem.ts`.
+
 ## Staff
 
 The Writings tab was removed from the Personal Menu. The server still answers
@@ -240,13 +462,27 @@ destructions. The staff reader's "Scribe" and "Sealed by" lines end the same
 way. The manager rotates it with the other
 gamemode logs. Only staff with access to the server may read it.
 
+Door notes add three `writing.log` lines (the text is not repeated, it was
+logged when written):
+
+    [profile 12] "Ria" pinned letter W1A7QZ "To the owner" to door 1a2b3c (outside) of claim 1a2b3c "Breezehome", owner profile 7
+    [profile 7] "Sen" took down letter W1A7QZ "To the owner" from door 1a2b3c (outside) of claim 1a2b3c "Breezehome" as owner, pinned by [profile 12] "Ria" at 2026-09-30T14:02:11.000Z
+    letter W1A7QZ pinned to door 1a2b3c crumbled: its document is destroyed
+
+and the server log `[housing] note W1A7QZ pinned to door ... by Ria (profile
+12)`, `[housing] note W1A7QZ taken down from door ... by Sen (profile 7) as
+owner` (`poster`, `owner`, `key` or `admin`), the crumble line and every
+refusal as `[housing] pinnote|takenote <id> refused for <who>: <text>`. An
+admin taking a note down also writes `profile 3 (gm) took down letter W1A7QZ
+from door 1a2b3c (claim 1a2b3c "Breezehome")` to `admin.log`.
+
 ## Wire protocol
 
 Every message is a CustomPacket carrying JSON:
 
     Client -> Server:
-      { customPacketType: "writingUse", baseId }
-      { customPacketType: "writingOpen", id }
+      { customPacketType: "writingUse", baseId, name }   // name of the entry read, "" unknown
+      { customPacketType: "writingOpen", id }            // id "new": the list's Write a new row
       { customPacketType: "writingCreate", title, pages, signed }
       { customPacketType: "writingSave", id, title, pages }
       { customPacketType: "writingFinish" | "writingSeal" | "writingBreak" | "writingCopy" | "writingBurn", id }
@@ -264,6 +500,15 @@ Every message is a CustomPacket carrying JSON:
       { customPacketType: "notification", text }
       { customPacketType: "adminActionResult", ok, text }   // staff requests
 
+Door notes ride the housing packets (`docs_roleplay_property_factions.md`):
+
+    Client -> Server:
+      { customPacketType: "propertyRequest", action: "pinnote", target, id }
+      { customPacketType: "propertyRequest", action: "takenote", target }
+    Server -> Client, added to propertyMenu:
+      note: null | { title, text, byline, signFaction, brokenSeals, mine, canTakeDown }
+      letters: [{ id, title }]   // non-empty only when this viewer may pin here now
+
 A sealed letter's `writingMenu` carries no pages; `sealFaction` is set only on
 the sealed face and `signFaction` only on a signed open writing, both faction
 ids the front maps to artwork. The widget type is
@@ -276,8 +521,8 @@ end an edit on the reply to a save.
 |---|---|---|
 | `writingEnabled` | `false` | turns the feature on; also a row in the manager Settings tab |
 | `writingTitleMaxLen` | 40 | characters in a title |
-| `writingLetterMaxLen` | 2000 | characters in a letter |
-| `writingPageMaxLen` | 1500 | characters per journal or book page |
+| `writingLetterMaxLen` | 2000 | characters in a letter, honoured tags not counted; the raw text with its tags holds twice that |
+| `writingPageMaxLen` | 1500 | characters per journal or book page, counted the same way |
 | `writingJournalMaxPages` | 50 | pages in a journal |
 | `writingBookMaxPages` | 100 | pages in a book |
 | `writingMaxDocuments` | 200 | documents one character may have made within `writingDocumentDays` |
@@ -309,7 +554,15 @@ In this order:
 
 - Reading a Blank Parchment from the pack closes the inventory and opens the
   composer, without the vanilla book flashing for long; note whether the Book
-  Menu or the equip event came first (client log `Reading writing`).
+  Menu or the equip event came first (skyrim-platform.log `WritingService:
+  reading`).
+- Blanks beside letters (K4): carry two received letters, a Blank Parchment
+  and an unnamed Letter (Item Spawner). Read each from the pack: the Blank
+  Parchment and the unnamed Letter open the composer, each letter opens
+  itself; the server log names the entry (`reads 330020cb "Mysterious Note
+  (W...)": W...`) and skyrim-platform.log shows `selected entry "..."`. With
+  `selected entry unread`, reading a letter shows the list with **Write a new
+  letter** first.
 - The written item shows its name in the inventory, trade window and a chest.
 - Two letters in one chest, taken back one by one, each keep their own text.
 - Seal (wax used), trade to a second player, break the seal: the break line is
@@ -339,9 +592,41 @@ In this order:
 - A pre-change document opens as before, without marks; re-sealing one writes
   `seal.factionId` and the `writing.log` line ends `as hold:...`.
 - The missive board's paper is unchanged.
+- Markup (K8): write a letter with every toolbar button, two fonts on one line
+  and an illuminated capital; Preview, Write it, then read it: it looks as
+  previewed, on the note texture with torn edges (the game shows through the
+  edges, no square corners). A second reader sees the same. Type `<b>x</b>`
+  and `[sic]`: both show as typed. 2,000 letters plus tags are accepted;
+  2,001 letters are refused with "A page holds 2000 characters at most.",
+  and so are 2,000 letters plus a `[head=4]`, which shows as text. With the
+  caret at the start of `[center][head=1]Title`, **Capital** illuminates the
+  T; pressing it again does nothing. Bold `Hello`, select `lo wor` and pick
+  a font: `lo` is bold in that font and ` wor` in that font only, with no
+  `[/font]` printed.
+- A journal and a book open as a two-page spread; type on both pages, turn
+  with Next, Write it, read it back; the signature and mark close the last
+  page. A finished book's copy reads the same.
+- Fonts: each font in the Font list draws its sample; Falmer, Dragon and Mage
+  Script text comes out in capitals; Unreadable comes out as scribbles.
+- A sealed letter shows the sealed-letter art with the mark on it.
+- A letter written before K8 reads as before, on the note texture.
+- At 1280x720 the composer, the note and the spread fit the screen.
 - Dropping a writing puts it back with the message; the search and pet windows
-  refuse it.
+  refuse it, except a PK body's, which lists it by name and lets it be taken.
 - Finish a book, copy it onto a Blank Book, read the copy ("A copy").
 - Relog and restart: names and text persist.
 - Staff Read, Rename and Destroy from the Personal Menu, each in `admin.log`.
 - The missive board still posts, reads, backs out with Escape and refunds.
+- Door notes: with no letter, or only a Blank Parchment, a sealed letter, a
+  journal or a book, X on a claimed door shows no Pin a note. With a written
+  letter, Pin a note, pick it, Pin it: it leaves the pack, the card shows, the
+  `writing.log` and `[housing]` lines are there. The owner comes home to a
+  locked door, presses X, reads the card (stranger and introduced signatures),
+  then Unlock Entrance works as before. The owner, a key holder, the poster and
+  an admin (`admin.log`) can take it down into their pack; another character
+  of the poster's account and a hold official cannot. A second note on the
+  same half is refused and stays in the pack. On a house door a note outside
+  does not show inside. A container, an unclaimed door and a faction door
+  offer no pinning. Give up leaves the note on the claimable view. Staff
+  destroy the document: the next X shows "The note crumbles to dust." Restart
+  the Test Server: the note persists.

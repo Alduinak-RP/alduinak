@@ -4,13 +4,20 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, closeContainerMenu } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
-import { Actor, BrowserMessageEvent } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, Form } from "skyrimPlatform";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { getInventory } from "../../sync/inventory";
 import { logTrace, logError } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
+
+// A stack of the searched inventory; name only on a PK body's keys and writings
+interface SearchEntry {
+  baseId: number;
+  count: number;
+  name?: string;
+}
 
 const WIDGET_ID = 16;
 
@@ -74,9 +81,9 @@ export class SearchService extends ClientListener {
       case "searchApproved":
         if (typeof content["target"] === "number") {
           const entries = Array.isArray(content["entries"])
-            ? (content["entries"] as { baseId: number, count: number }[]) : [];
+            ? (content["entries"] as SearchEntry[]) : [];
           this.approvedAt = Date.now();
-          logTrace(this, `Search approved for`, (content["target"] as number).toString(16), `with`, entries.length, `entries`);
+          logTrace(this, `Search approved for`, (content["target"] as number).toString(16), `with`, entries.length, `entries,`, entries.filter((e) => e.name).length, `named`);
           this.openTargetInventory(content["target"] as number, entries, content["body"] === true, content["npc"] === true);
         }
         break;
@@ -113,7 +120,8 @@ export class SearchService extends ClientListener {
   // Vanilla container window on the target's synced body; item moves ride the normal ContainersService PutItem/TakeItem sync the server just authorized for this pair.
   // The local clone's bag is not the real one (players mirror equipment, NPC clones roll their own leveled items): missing stacks are topped up, and on bodies and living NPCs local-only extras are removed unless worn.
   // A living NPC keeps what its clone wears: the server lists no gear for it and refuses a take of it, so the window shows the gear and a take snaps back.
-  private openTargetInventory(remoteId: number, entries: { baseId: number, count: number }[], body: boolean, npc: boolean): void {
+  // A base with named copies (a PK body's keys and writings) is put in afresh under each copy's name, so a take sends the name the server matches.
+  private openTargetInventory(remoteId: number, entries: SearchEntry[], body: boolean, npc: boolean): void {
     this.searchWindowOpen = true;
     this.controller.once("update", () => {
       if (!this.searchWindowOpen) {
@@ -129,8 +137,12 @@ export class SearchService extends ClientListener {
       }
       // Server count minus the engine's count, which also sees the base container items getInventory misses
       const server = new Map<number, number>();
+      const named = new Map<number, SearchEntry[]>();
       for (const e of entries) {
         server.set(e.baseId, (server.get(e.baseId) || 0) + e.count);
+        if (e.name) {
+          named.set(e.baseId, entries.filter((x) => x.baseId === e.baseId));
+        }
       }
       const ids = new Set<number>(server.keys());
       for (const e of getInventory(actor).entries) {
@@ -148,6 +160,11 @@ export class SearchService extends ClientListener {
         if (!form) {
           return;
         }
+        const copies = named.get(baseId);
+        if (copies) {
+          this.restock(actor, form, copies);
+          return;
+        }
         const d = (server.get(baseId) || 0) - actor.getItemCount(form);
         if (d > 0) {
           actor.addItem(form, d, true);
@@ -157,6 +174,20 @@ export class SearchService extends ClientListener {
       });
       actor.openInventory(true);
     });
+  }
+
+  private restock(actor: Actor, form: Form, copies: SearchEntry[]): void {
+    const held = actor.getItemCount(form);
+    if (held > 0) {
+      actor.removeItem(form, held, true, null);
+    }
+    for (const e of copies) {
+      if (e.name) {
+        this.sp.TESModPlatform.addItemEx(actor, form, e.count, 1, null, 0, false, 0, e.name, 0, null, 0);
+      } else {
+        actor.addItem(form, e.count, true);
+      }
+    }
   }
 
   private closeTargetInventory(): void {

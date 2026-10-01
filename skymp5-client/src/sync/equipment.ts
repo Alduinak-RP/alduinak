@@ -2,6 +2,7 @@ import {
   Actor,
   Ammo,
   Armor,
+  FormType,
   Game,
   ObjectReference,
   Spell,
@@ -10,7 +11,7 @@ import {
   setInventory,
 } from 'skyrimPlatform';
 
-import { Entry, Inventory, getInventory, getPlayerEnchantment, isBoundItem } from './inventory';
+import { Entry, Inventory, getInventory, getPlayerEnchantment, healthStep, isBoundItem, sameItem } from './inventory';
 
 export const enum SpellType {
   Left,
@@ -67,6 +68,10 @@ const filterWorn = (inv: Inventory): Inventory => {
 
 export const countWorn = (inv: Inventory): number => filterWorn(inv).entries.length;
 
+// The carryable light an equipment record holds in hand, such as a torch
+export const getWornLight = (eq: Equipment): Entry | undefined =>
+  filterWorn(eq.inv).entries.find((e) => Game.getFormEx(e.baseId)?.getType() === FormType.Light);
+
 const wornKeys = (inv: Inventory): string[] =>
   filterWorn(inv).entries.map((e) => `${e.baseId}:${e.wornLeft ? "L" : "R"}`).sort();
 
@@ -86,6 +91,15 @@ const withoutBoundItems = (inv: Inventory): Inventory => ({
 
 // The saved worn items the player's spawn apply dresses in
 export const getPlayerWorn = (eq: Equipment): Entry[] => withoutBoundItems(filterWorn(eq.inv)).entries;
+
+// setInventory adds a plain copy, which the inventory apply would swap for the tempered or poisoned server copy, unequipping it
+const dressesPlain = (e: Entry): boolean => healthStep(e.health) === healthStep() && !e.poisonId;
+
+// Saved worn pieces whose base is worn but as another copy, such as a plain one equipped in place of the tempered one
+export const getWornOtherCopy = (ac: Actor, eq: Equipment): Entry[] => {
+  const worn = filterWorn(getInventory(ac)).entries;
+  return getPlayerWorn(eq).filter((s) => worn.some((l) => l.baseId === s.baseId) && !worn.some((l) => sameItem(l, s)));
+};
 
 export const getUnwornSaved = (ac: Actor, eq: Equipment): Entry[] => {
   const local = getInventory(ac).entries;
@@ -201,7 +215,7 @@ export const applyEquipment = (ac: Actor, eq: Equipment): boolean => {
   ac.removeAllItems(null, false, true);
 
   const isPlayer = ac.getFormID() === 0x14;
-  const worn = isPlayer ? { entries: getPlayerWorn(eq) } : filterWorn(eq.inv);
+  const worn = isPlayer ? { entries: getPlayerWorn(eq).filter(dressesPlain) } : filterWorn(eq.inv);
   const newInventory = removeUnnecessaryExtra(worn, isPlayer);
 
   setInventory(ac.getFormID(), newInventory);

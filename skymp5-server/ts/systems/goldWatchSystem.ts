@@ -12,6 +12,10 @@ type Mp = any;
 // Inventory watch (B14, B24): the same samples log every drop of gold and every drop of Salt Pile the actor's own
 // crafts, eats, puts, drops and takes in the interval do not explain, with those tallies and the trade and bounty
 // packets seen, so a reported disappearance lands next to its cause or stands out as unexplained.
+// A drop of the item the actor just ate is logged, the trace of an eat the client also sent as a drop (G9).
+// Every other accepted drop is logged too (K5): the native side logs drops at trace level only, and a drop is the one
+// way a player's own client takes items out of the pack without a craft, put, trade or eat line.
+// packSummary is the pack as spawn.ts logs it at logout, the grace despawn and login.
 //
 // server-settings.json keys:
 //   goldAlertThreshold  gold gained between two samples that raises an alert, 0 disables the alert; the drop lines stay (default 5000)
@@ -23,6 +27,8 @@ const SALT_BASE_ID = 0x00034cdf;
 const WATCHED: Array<{ baseId: number; label: string }> = [{ baseId: GOLD_BASE_ID, label: "gold" }, { baseId: SALT_BASE_ID, label: "salt" }];
 // Packets that move items the hooks never see
 const MOVE_PACKETS = new Set(["tradeAccept", "bountyBoardPost"]);
+// The false drop arrives right behind the eat's OnEquip
+const EAT_DROP_WINDOW_MS = 2000;
 
 // What the hooks saw an actor do with one watched item since the last sample
 interface Tally {
@@ -34,6 +40,19 @@ interface Tally {
 }
 
 const emptyTally = (): Tally => ({ crafts: 0, eats: 0, puts: 0, drops: 0, takes: 0 });
+
+// Count per base id of an inventory, gold apart; the items read "<id> x<count>" in id order
+export const packSummary = (entries: unknown): { gold: number; items: string[] } => {
+  const totals = new Map<number, number>();
+  for (const e of Array.isArray(entries) ? entries : []) {
+    const baseId = Number(e?.baseId) >>> 0;
+    totals.set(baseId, (totals.get(baseId) || 0) + (Number(e?.count) || 0));
+  }
+  const gold = totals.get(GOLD_BASE_ID) || 0;
+  totals.delete(GOLD_BASE_ID);
+  const items = Array.from(totals).filter(([, n]) => n > 0).sort(([a], [b]) => a - b).map(([id, n]) => `${hex(id)} x${n}`);
+  return { gold, items };
+};
 
 export class GoldWatchSystem implements System {
   systemName = "GoldWatchSystem";
@@ -51,6 +70,8 @@ export class GoldWatchSystem implements System {
   // actorId -> trade and bounty packets since the last sample
   private packets = new Map<number, string[]>();
   private inputCache = new Map<number, Map<number, number>>();
+  // actorId -> the last item the actor ate
+  private lastEat = new Map<number, { baseId: number; at: number }>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -63,7 +84,7 @@ export class GoldWatchSystem implements System {
     this.mp = ctx.svr as Mp;
     // Installed last, so a craft, put, take, drop or eat another system refused is never counted as an explanation
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.installHooks());
-    this.log(`GoldWatchSystem: ${this.threshold ? `alerting on gains above ${this.threshold} gold` : "gain alert disabled (goldAlertThreshold is 0)"}, logging drops of gold and unexplained drops of salt`);
+    this.log(`GoldWatchSystem: ${this.threshold ? `alerting on gains above ${this.threshold} gold` : "gain alert disabled (goldAlertThreshold is 0)"}, logging drops of gold, unexplained drops of salt and every item dropped`);
   }
 
   private installHooks(): void {
@@ -81,10 +102,16 @@ export class GoldWatchSystem implements System {
     after("onCraft", (actorId, _craftedId, _count, recipeId) => {
       for (const [baseId, count] of this.recipeInputs(recipeId)) this.tally(actorId, baseId).crafts += count;
     });
-    after("onEatItem", (actorId, baseId) => { if (this.watched(baseId)) this.tally(actorId, baseId).eats += 1; });
+    after("onEatItem", (actorId, baseId) => {
+      this.lastEat.set(actorId, { baseId, at: Date.now() });
+      if (this.watched(baseId)) this.tally(actorId, baseId).eats += 1;
+    });
     after("onPutItem", (_targetId, actorId, baseId, count) => { if (this.watched(baseId)) this.tally(actorId, baseId).puts += count; });
     after("onTakeItem", (_sourceId, actorId, baseId, count) => { if (this.watched(baseId)) this.tally(actorId, baseId).takes += count; });
-    after("onDropItem", (actorId, baseId, count) => { if (this.watched(baseId)) this.tally(actorId, baseId).drops += count; });
+    after("onDropItem", (actorId, baseId, count) => {
+      this.noteDrop(actorId, baseId, count);
+      if (this.watched(baseId)) this.tally(actorId, baseId).drops += count;
+    });
   }
 
   disconnect(userId: number): void {
@@ -93,6 +120,7 @@ export class GoldWatchSystem implements System {
     this.lastCounts.delete(actorId);
     this.tallies.delete(actorId);
     this.packets.delete(actorId);
+    this.lastEat.delete(actorId);
   }
 
   customPacket(userId: number, type: string, _content: Content): void {
@@ -138,6 +166,26 @@ export class GoldWatchSystem implements System {
     }
   }
 
+  private noteDrop(actorId: number, baseId: number, count: number): void {
+    const eat = this.lastEat.get(actorId);
+    const ms = eat && eat.baseId === baseId ? Date.now() - eat.at : Infinity;
+    let edid = "";
+    try { edid = String(this.mp.lookupEspmRecordById(baseId)?.record?.editorId || ""); } catch { }
+    const item = `${edid || "item"} ${hex(baseId)} x${count}`;
+    // The hook runs before the native removal, which still throws when the server holds none
+    const held = this.countOf(actorId, baseId);
+    setImmediate(() => {
+      const who = this.who(this.mp, actorId);
+      if (this.countOf(actorId, baseId) >= held) {
+        this.log(`[inv] ${who} drop of ${item} refused natively: the server held ${held}${ms <= EAT_DROP_WINDOW_MS ? `, ${ms} ms after eating one` : ""}`);
+      } else {
+        this.log(ms <= EAT_DROP_WINDOW_MS
+          ? `[inv] ${who} drop of ${item} ${ms} ms after eating one: the client sent the eat as a drop too`
+          : `[inv] ${who} dropped ${item}`);
+      }
+    });
+  }
+
   private watched(baseId: number): boolean {
     return WATCHED.some((w) => w.baseId === (baseId >>> 0));
   }
@@ -168,6 +216,14 @@ export class GoldWatchSystem implements System {
     } catch { /* not a recipe */ }
     this.inputCache.set(recipeId, out);
     return out;
+  }
+
+  private countOf(actorId: number, baseId: number): number {
+    let n = 0;
+    try {
+      for (const e of this.mp.get(actorId, "inventory")?.entries || []) if ((Number(e.baseId) >>> 0) === baseId) n += Number(e.count) || 0;
+    } catch { /* actor gone */ }
+    return n;
   }
 
   private countsOf(mp: Mp, actorId: number): Map<number, number> {

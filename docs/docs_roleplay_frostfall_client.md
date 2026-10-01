@@ -190,6 +190,117 @@ line to `skyrim-platform.log`.
   again should the movie show it (a new HUD movie after a load). Showing the
   interface restores both clips; nothing is written while the interface was
   never hidden.
+- **Magicka bar while crafting**: the Crafting Menu pushes the HUD's
+  `InventoryMode` (the engine's `CraftingMenu` destructor, id 51303, pops it
+  again), and `HUDMenu.ShowElements` hides `Health`, `Magica` and `Stamina` in
+  it, as none of them carries an `InventoryMode` flag. While a Crafting Menu is
+  open the service keeps `_root.HUDMovieBaseInstance.Magica`, which carries the
+  red fatigue end, visible in the health bar's place at the bottom centre (the
+  owner's 2026-10-01 request; it stood on the stamina bar's side before): its
+  `_x` becomes `Health._x - 193` (the centre of the meter art lies 192.4 px
+  right of the magicka origin and 0.6 px left of the health origin, the same in
+  SkyUI's and the vanilla `hudmenu.swf`) and its `_y` `Health._y - 48`. At the
+  health bar's own height it would cover SkyUI's crafting bottom bar, whose
+  top sits 58 px above the visible bottom whatever the safe zone (74.95 px art,
+  `_y += safeRect.y - _height + 17`); the magicka art ends 15.5 px above its
+  origin, so the lift keeps it above the bar for any safe zone. A health bar
+  that shows while the menu is open is hidden (`Health._visible`, checked
+  every update) and shown again at the close. The check runs only while
+  `Ui.isMenuOpen("Crafting Menu")` holds: SkyrimPlatform sends the update
+  before it runs the queued `menuClose`, so one more update follows the
+  close, by when the HUD may have shown the health bar again on its own, and
+  the line below would then report a health bar the menu never had.
+  The clips are found by their
+  `_name`, compared without case: Papyrus pools strings without case, so
+  `Health` can come back as another script first wrote it. A
+  full, idle bar fades out, so the clip is held on frame 40 (`Pause`,
+  `METER_PAUSE_FRAME`, the first fully faded in frame of its 200-frame fade)
+  through queued `PlayForward(40)` and `gotoAndStop(40)` invokes whenever it
+  stands elsewhere. The Crafting Menu does not pause the game and
+  `HUDMenu::AdvanceMovie` polls the Survival globals every frame, so the fill
+  and the red end are expected to follow each craft at once (from fatigue
+  stage 2); the close line below shows whether they did. On close the bar
+  goes back to its own place and plays on from frame 40, fading a few seconds
+  later as after any other change. Log lines: `Crafting Menu: magicka bar
+  moved from x=<a> y=<b> to the health bar's place above the bottom bar, x=<c>
+  y=<d>` once a session, `Crafting Menu: the health bar was showing, hidden
+  until the menu closes` once a session when that happened, and on
+  every close `Crafting Menu closed: HUD magicka <p>% penalty <q>%, player
+  magicka <r>% at open, ... at close`: the HUD's own last values beside the
+  player's magicka, where a close penalty equal to the `exhaustion=` of the
+  last `NeedsService: survival hud` line means the bar followed the crafts;
+  `magicka bar left hidden, _root.HUDMovieBaseInstance.Health._name reads
+  "<a>" and _root.HUDMovieBaseInstance.Magica._name "<b>"` when the clips are
+  not found. The owner's test of 2026-10-01 logged the older `magicka bar left
+  hidden, ... Magica or ... Stamina not found` at the first forge, so the bar
+  never showed there. That check compared `Stamina` by exact case, the likely
+  cause (not proven: the old line did not print what it read).
+
+---
+
+## Loading in
+
+What the client does from the server's `createActor` for the player to a
+dressed player with a full pack, and the `skyrim-platform.log` lines that time
+it.
+
+**Startup.** The client script starts right after the engine's data load
+(`skse message type 8`); `EngineFixes.log` prints `time to main menu <ms>` for
+the engine load before it (25.8 s on a 2026-09-30 player log, against about
+0.2 s for the client script). `RemoteServer: startup: client services ready N
+ms after the client script started` covers the bundle and every service
+constructor, `startup: front page loaded N ms after ...` the CEF login page.
+
+**Spawn outfit** (`remoteServer.ts`, `sync/equipment.ts`). The first spawn
+pass strips the player once (`removeAllItems`, `unequipAll`), dresses the
+saved worn pieces through `setInventory` and applies the server inventory.
+Tempered (health above 1) and poisoned pieces stay out of that dress:
+`setInventory` can only add a plain copy, which the inventory apply then
+swapped for the server's copy, taking the piece off the player again. The
+second pass (0.3 s after a load, 1.3 s after an in-game move) does not strip:
+it applies the inventory again, and one frame after an apply has landed (its
+adds run at the end of the frame) a top-up equips the saved pieces still
+unworn, tempered ones included. The strip's apply waits one update so the
+dress (queued, it lands at the end of the strip's frame) is in the pack before
+the apply compares against it, whichever update callback runs first; applied
+in the strip's own frame it would add every dressed piece a second time. The
+spawn's applies also run past the 2 s hold that `CraftedExtrasService` arms on
+every change between the player and nowhere: the strip and the dress are such
+changes, so the hold used to keep the pack down to the worn pieces for about
+2 s (and while an inventory menu opened in that window stayed up), and right
+after a strip there is no local craft or consume left to protect. Equipment
+reports wait for the spawn's apply and top-up (at most 10 s after the strip),
+so a tempered or poisoned piece that arrives with the apply is worn before
+the first report saves the outfit. The settle check 2.5 s after the last pass
+re-dresses once, as before; its line adds `worn as another copy <base ids>`
+when a saved piece is worn only as a different copy (the top-up equips by
+base form, so with a plain and a tempered sword in the pack the engine may
+pick the plain one). The second pass used to strip everything again and skip
+its own inventory apply (the first pass had bumped the counter it compared),
+and the outfit came on only at the settle re-dress (owner's log 2026-09-22:
+both passes 78 ms apart, `3 of 3 saved not worn, worn 0, re-dressing` 2.5 s
+later, 26 entries back only after that). An own
+`createActor` drops the stored inventory of the previous character, so the
+periodic apply cannot add that pack to the new character before its own
+arrives, and a pass of an older spawn does nothing. `applyInventory` no
+longer prints each `TESModPlatform.addItemEx` call to the console and queues
+one 3D rebuild per apply.
+
+**Timing lines.** Once per spawn, when the outfit settles:
+`RemoteServer: spawn timing (spawn N): createActor A ms after the client
+script started; load requested +B ms, loaded +C ms, outfit applied +D ms,
+inventory applied +E ms, settled +F ms[, race menu open G ms of it]; S
+strip(s), T top-up(s) equipping U, I inventory apply(ies) adding X and
+removing Y stack(s), Q equip and R unequip event(s); after the outfit apply
+F frames, longest L ms, K over 250 ms; inventory N entries, worn W`. One
+strip, two inventory applies, `inventory applied` a few frames after `outfit
+applied` and nothing removed is the expected shape;
+removals mean the local pack held items the server does not have, and many
+more unequip events than worn pieces mean something took the outfit off
+again. `load requested none` is a spawn by an in-game move. The race menu
+close line ends with `open N ms, R race switch(es), F frames, longest L ms,
+K over 250 ms`, frames counted on `tick`, which runs in every menu: one long
+frame per race switch is the engine building the new race's head and body.
 
 ---
 
@@ -211,6 +322,35 @@ engine did. `skyrim-platform.log` shows
 the first time a view goes past the buffer. Stack dumps of later culling
 crashes (ids 76553, 32189, 108600) can hold stale SkyrimPlatformImpl.dll
 addresses from these copies; that alone does not point at the guard.
+
+**Papyrus update watchdog** (`PapyrusTESModPlatform.cpp`
+`TESModPlatform::Update`): SkyrimPlatform's `update` event, and with it every
+client step that needs Papyrus (spawn, race menu, needs request, load
+handling), runs inside one `TESModPlatform.Add` call dispatched into the
+Papyrus VM per frame, and the next one is dispatched only after the last has
+run or a load event arrives. A dispatch the VM refuses, or a queued call it
+drops, used to stop `update` for the rest of the game session while the game
+kept running: a new character on 2026-09-30 loaded into the world with no
+race menu and no sync until the game was restarted (only native input lines
+were logged after its postLoadGame, so whether `tick` still ran is not known).
+A refused dispatch is now retried the next frame, and a call that has not run
+after 5 s of continuous unpaused frames is dispatched again; a duplicate runs
+as a no-op. The wait starts over while a loading screen or the main menu is
+open, while the game is paused or not the active window, and after any gap of
+more than 1 s between frames (a hitch or an alt-tab), so those never count as
+a stall. `skyrim-platform.log` shows
+`TESModPlatform: first Papyrus update N ms after the load event` once per
+load, `TESModPlatform: no Papyrus update for N s of game time after M updates,
+dispatching TESModPlatform.Add again (re-dispatch K)` (K = 1, 2, 4, ...) and
+`TESModPlatform: Papyrus update resumed after K re-dispatch(es)` when it
+recovers, and `TESModPlatform: the VM refused the TESModPlatform.Add dispatch
+(stack creation failure or queue full)` once a session (the engine's own
+wording; a full queue right after a load is the likeliest cause). Reading a
+recurrence: a postLoadGame line with no `first Papyrus update` line and no
+stall warning after it means `TESModPlatform::Update` itself stopped running
+(the SKSE task chain that calls it each frame), which this watchdog does not
+cover; a stall warning with no `resumed` line after it means the VM never ran
+the re-dispatched call either.
 
 ---
 

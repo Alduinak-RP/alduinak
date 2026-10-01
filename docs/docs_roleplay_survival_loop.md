@@ -117,8 +117,11 @@ behaviour-graph events — no ESP required.**
   victim stays kneeling and every weapon plays the one-handed
   `pa_1HMKillMoveBleedOutKill` (F469E, `pa_KillingBlow`, no decapitation,
   no variety; a two-hander stabs one-handed, no non-decapitating two-handed
-  bleedout record exists) 1.2 s after the packet on every client, the
-  execution's kneel rule below (`unarmed` is refused here too). The
+  bleedout record exists) 1.2 s after the packet on every client, once the
+  victim's client sent the kneel again when it had none recorded (`kneel
+  missing at pair start`) and every other client sent `bleedOutStart` to its
+  copy (`kneel re-sent to copy ... at pair start`); `unarmed` is refused here
+  too. The
   victim's timer waits while the pair plays: each
   participant's client polls both actors (`bIsSynced`, `IsInKillMove`) and
   reports the end (`pairedIdleDone`, first report wins), a pair the graph
@@ -147,69 +150,147 @@ behaviour-graph events — no ESP required.**
 - **Execution** (`executionSystem.ts`): the same right works at a headsman's
   block, the `ExecutionerChoppingBlock` furniture (FURN 2E8EB) already placed
   at Helgen, Solitude and in the Falkreath and Dragon Bridge city mods, plus
-  any base listed in `executionBlockBaseIds`. Standing within 300 units of a
-  block, **Prepare Execution** on a cuffed prisoner in reach moves them onto
-  the block (`executionBlockOffset`) where they kneel in the bleedout pose
-  (`bleedOutStart`, `executionState`) and cannot move but can open menus.
-  The move reattaches the prisoner's 3D on their client a few frames after
-  the packet (`moveRefrToPosition` after the ragdoll purge), which can
-  swallow the kneel sent around it, so `RestraintService.onTeleported` sends
-  the held pose again 0.5 s after every server move of a posed player
-  (`pose <pose> re-sent after teleport` in `skyrim-platform.log`); the
-  copies take it from the relayed event, and the server also writes the
-  kneel to the prisoner's `lastAnimEvent` (the parked-body pose path, the
-  native build that accepts it; `[execution] mirroring bleedOutStart on ...
-  failed` on an older one), so a copy that streams in later, or is rebuilt
-  by the move, kneels too; leaving the block writes `bleedOutStop` there.
-  The vanilla headsman idles (`IdleExecutioneeIdleEnterInstant`,
-  `IdleExecutionerChop` and their pair) are furniture-state clips with no
-  own animation file: the engine only enters them by seating both actors in
-  the block furniture, and sent on the ground they play nothing, which is
-  what r13 shipped. **Execute** needs a drawn melee weapon ("Draw your
-  weapon first.") and plays the bleedout beheading pair on the kneeling
-  prisoner through the same `pairedIdle` packet as a finish off, from
-  wherever the executioner stands within reach of the block: nothing moves
-  the executioner (the pair aligns the two actors itself). Every client plays a kneeling pair 1.2 s after the
-  packet: the prisoner's client sends the kneel again first when it has
-  none recorded (`kneel missing at pair start`), and every other client
-  sends `bleedOutStart` to its copy of the prisoner (`kneel re-sent to copy
-  ... at pair start`), since the bleedout pairs need the victim's graph in
-  the bleedout state on the client that plays them and a copy rebuilt by
-  the move onto the block may stand. The prisoner's client waits even with
-  the kneel in place, so both participants' clips end together and the
-  first `pairedIdleDone`, which kills, never lands while the executioner
-  and the viewers are still 1.2 s from the end of theirs. The clips:
-  `pa_KillMove1HMDecapBleedOut` (IDLE F465D) for one-handed and dual
-  weapons, `pa_KillMove2HMDecapBleedOut` (F467F) for two-handed ones, the
-  clips the finish off played in r13 and r14 (a battleaxe or warhammer plays
-  the greatsword clip and the server logs `[execution] no battleaxe
-  decapitation, using the greatsword clip`). A beheading is the point of a block execution, and
-  the respawn rebuilds the body. The prisoner dies when a participant's
-  client reports the end of the pair, or at `finishOffMaxMs`, and goes to
-  Sovngarde, the same PK as a finish off (`pk.log`, `pvp.log`, the
-  `execute` alert); their body is freed from the cuffs. A prisoner who logs
-  out while the axe falls is executed at once. Once the pair is sent nothing
-  stops it: the clip has already beheaded the prisoner on every client, so
-  the executioner leaving, going down or being pulled away changes nothing,
-  and a Release or a carry meanwhile is refused ("The axe is already
-  falling."). Before that, **Release** from anyone who is not bound pulls a
-  prisoner off the block; the cuffs stay on and unbinding stays the
-  captor's. A carry also takes them off the block. The
-  offset is an unmeasured starting point: measure it at a block with
-  `getpos`/`getangle` and set it in `server-settings.json`. Static bloody
-  blocks do not count, the server never loads statics. The vanilla
-  head-on-the-block look is reachable only through the furniture; a later
-  probe at the Helgen block (`0xAA7CC`) decides it: (1) press E on the
-  block: does the engine kneel you with your head on it; (2) standing,
-  `player.sae IdleChairEnterInstant` then
-  `player.sae IdleExecutioneeIdleEnterInstant`: does the kneel appear (what
-  copies would use); (3) seated on the block from behind with a two-handed
-  axe, `player.sae IdleExecutionerIdleEnterInstant` then
-  `player.sae IdleExecutionerChop`. If (1) works the prisoner can be seated
-  through the Papyrus activate `gatheringSystem.activateFor` uses and
-  released with `IdleFurnitureExit`; if (3) works only for the vanilla
-  headsmen, the `isExecutioner` keyword (0x70C0A) on the Player record is
-  the ESP option.
+  any base listed in `executionBlockBaseIds`, and plays the vanilla Helgen
+  and Solitude sequence. In vanilla the prisoner, the headsman and at Helgen
+  the captain sit in the block's furniture markers; the block's
+  `HeadChopBlockHookupSCRIPT` links the prisoner's graph to theirs
+  (`AddDependentAnimatedObjectReference`) and plays `IdleHeadChop` (event
+  `IdleExecutionerChop`) on the prisoner, which every linked graph takes at
+  once. MQ101 stage 50 only walks the Stormcloaks out of the cart, stage 85
+  only listens for the prisoner's `Decapitate` to switch the crowd sound,
+  and SolitudeOpening drives Roggvir with packages onto the same block. The
+  clips sit in `mt_behavior.hkx` and need no furniture: `IdleExecutioneeIdle`
+  and `IdleExecutionerIdle` are global wildcard transitions of
+  `MT_RootBehavior` into `Executionee_State` (the 1.5 s `AOExecutioneeEnter`
+  kneel, then the head-on-the-block loop `AOExecutioneeIdle`) and the
+  furniture state's `Executioner_State` (the 1.5 s `AOExecutionerEnter`,
+  which loads and draws the `AnimObjectExecutionerAxe` prop, then
+  `AOExecutionerIdle`), the same way the chair sync seats copies with
+  `IdleChairEnterInstant`. From those idles `IdleExecutionerChop` plays
+  `AOExecutionerChop` (20 s, back to the stance at 19.5 s) on the headsman
+  and `AOExecutioneeChop` (20 s, `Decapitate` at 11.84 s, `KillActor` at
+  16.61 s) on the prisoner; `IdleChairExitStart` takes the headsman out
+  through his enter clip played backwards, which puts the axe away. Before
+  r34 the block sent the IDLE record names (`IdleExecutioneeIdleEnterInstant`
+  and `IdleExecutioneeChop`, which no transition uses, and
+  `IdleExecutionerIdleEnterInstant`, a local wildcard taken only inside the
+  headsman's state), so nothing played, and then the bleedout beheading
+  killmove from wherever the executioner stood.
+  Standing within 300 units of a block, **Prepare Execution** on a cuffed
+  prisoner in reach moves them onto the block's prisoner mark
+  (`Furniture\HeadChoppingBlock.nif` marker 1: 87.7 units ahead of the
+  block's origin and 68.8 to its right, turned 270 degrees, so the head lies
+  on the block in front of the headsman; `executionBlockOffset` overrides it)
+  and sends `IdleExecutioneeIdle` (`executionState`): they kneel with their
+  head on the block, are put in third person and cannot move but can open
+  menus. The move reattaches the prisoner's 3D on their client a few frames
+  after the packet, which can swallow the kneel sent around it, so
+  `RestraintService.onTeleported` sends the held pose again 0.5 s after
+  every server move of a posed player (`pose <pose> re-sent after teleport`
+  in `skyrim-platform.log`); the copies take it from the relayed event, and
+  the server also writes it to the prisoner's `lastAnimEvent` (the
+  parked-body pose path, the native build that accepts it), so a copy that
+  streams in later kneels too; leaving the block writes
+  `IdleForceDefaultState` there. When the prisoner's graph took none of the
+  sends 1.5 s after the first, their client (`ExecutionChopService`) sheathes,
+  forces third person and the default state and sends it once more; when
+  that fails too it reports it and the server kneels them in the bleedout
+  pose instead (`bleedOutStart`, left with `bleedOutStop`), on which no chop
+  clip plays.
+  **Execute** needs a two-handed weapon equipped (the owner's 2026-10-01
+  rule): any weapon whose animation type is two-handed, a greatsword (5) or
+  a battleaxe or warhammer (6), worn in the hand by the server's equipment
+  record; one only carried in the pack, a one-handed weapon, a bow or empty
+  hands are refused ("You need a two-handed weapon equipped to execute them,
+  such as a battleaxe, greatsword or warhammer."). The weapon stays on the
+  back: the executioner must also be on foot, upright, sheathed and without
+  a torch in hand ("Dismount first.", "Stand up first.", "Sheathe your
+  weapon first.", "Put away your torch first."), since the MT behaviour that
+  holds these states runs only with the hands free, and the swing itself
+  uses the block's axe prop the stance draws. The menu offers Execute
+  without the weapon, and the request is refused, as with the finish off. A
+  headsman takes one prisoner at a time ("You cannot do that now."). The
+  server moves the executioner onto marker 0
+  (the block's origin, facing the block's yaw), sends him
+  `IdleExecutionerIdle` with the exit `IdleChairExitStart` (`executionState`,
+  held like the prisoner) and writes it to his `lastAnimEvent`, and sends
+  `executionChop` to both players and to everyone whose client has a copy of
+  either. Every client sends the stance and the kneel again 1.3 s after the
+  packet (a graph already in them ignores it, a copy posed late reaches its
+  idle in time), then 3 s after the packet sends `IdleExecutionerChop` to
+  both actors in the same frame, the vanilla script's one event for the two
+  linked graphs, with both copies out of the movement sync until the end;
+  an event relayed for the headsman that is not a block event (his
+  bleedout kneel when he is downed meanwhile, his logout pose) frees his
+  copy to play it at once, and that copy gets no exit at the end. An
+  actor whose graph refuses the chop gets its stance or kneel again and the
+  chop 1.7 s later. The prisoner dies when the head comes off (the owner's
+  2026-10-01 rule), 15.34 s after the request, 0.5 s after the clip's
+  `Decapitate` 11.84 s into the chop. The margin is needed: each client
+  starts its chop on the first frame after its own 3 s and the clip reaches
+  `Decapitate` on a frame step as well, while the death reaches the same
+  client about as fast as the chop packet did, so a kill right at
+  `Decapitate` mostly landed a frame or two early and the copy died
+  mid-clip with the head still on. Before that rule the kill waited for the
+  clip's `KillActor` (19.61 s), so the prisoner lived 4.8 s with the head
+  off. When a client reports that its copy of the prisoner, or the
+  prisoner's own graph, refused the chop, which that client sends again
+  1.7 s later, the kill waits those 1.7 s too, once. The participants'
+  clients report every chop answer; a bystander's client reports only a
+  refused prisoner chop it is about to send again, and the server takes it
+  only from a client it streams the prisoner to. A bystander on a client
+  older than that change reports nothing, so their screen can still show
+  the death before a retried head comes off. A prisoner in the bleedout
+  kneel, on whom no chop clip plays, keeps the 15.34 s. The prisoner goes
+  to Sovngarde, the same PK as a finish off
+  (`pk.log`, `pvp.log`, the `execute` alert); their body is freed from the
+  cuffs and the respawn rebuilds the head. The headsman's release does not
+  move with the kill: his own clip, `AOExecutionerChop`, is back in the
+  stance only 19.5 s into the chop, the one state his exit plays from, so he
+  is released 24 s after the request as before, once his swing is
+  back in the stance: `IdleChairExitStart`, written to his `lastAnimEvent`
+  too, and sent to every copy still in the scene; his client and each such
+  copy try a refused exit again every 0.5 s (a copy whose chop needed the
+  retry is still mid-swing at 24 s) and after six refusals force
+  `IdleForceDefaultState`, which can leave the axe prop in hand until the
+  next weapon draw. A headsman who is downed, bound, dead or offline by
+  then only has his client's stance cleared: no exit is written, so late
+  viewers keep seeing his bleedout kneel or logout pose, and his own client
+  stops retrying the exit while he is downed. A prisoner who logs out while the axe
+  falls is executed at once. Once the chop is sent nothing stops it: a
+  Release or a carry is refused ("The axe is already falling."). Before
+  that, **Release** from anyone who is not bound pulls a prisoner off the
+  block; the cuffs stay on and unbinding stays the captor's. A carry also
+  takes them off the block. Static bloody blocks do not count, the server
+  never loads statics.
+  The server logs each step: `[execution] <executor> puts <prisoner> on
+  block <block> at the prisoner's mark (<x>, <y>, <z>) yaw <deg>,
+  IdleExecutioneeIdle`, `[execution] <executor> executes <prisoner> at block
+  <block> with the greatsword|battleaxe equipped: headsman moved to his mark
+  ..., IdleExecutionerIdle; chop <seq> on every client in 3000 ms (prisoner
+  in <pose>), the kill at +15340 ms, 500 ms after the head comes off,
+  IdleChairExitStart at +24000 ms`, one `[execution] block step from
+  <reporter>'s client on <prisoner> (chop <seq>): <event> on the
+  <headsman|prisoner> <local id>: taken|refused|ignored, already chopping`
+  line for each answer of a participant's own graph and for its chop of the
+  other participant's copy, and for a bystander's refused chop of its copy
+  of the prisoner, `[execution] the kill of <prisoner> waits 1700
+  ms more, <ms> ms from now: <reporter>'s client plays the prisoner's
+  refused chop again` when the kill moves, the PK line and `left block`, then `[execution]
+  <executor> steps off the block after the chop of <prisoner>
+  (IdleChairExitStart|downed|restrained|dead|offline, no
+  IdleChairExitStart)`. Each client writes `ExecutionChopService: chop
+  <seq>: chop in 3000 ms; headsman <copy|this player> <id>, animDriven
+  <bool>, <n> units from its mark, facing <deg> degrees off; prisoner ...`,
+  `stance and kneel sent again 1700 ms before the chop; ...`,
+  `IdleExecutionerChop sent to the headsman and the prisoner together`, one
+  line per graph answer, any `fallback: ...` line, `the headsman's copy
+  <id> leaves the scene for the relayed <event>`, `over, chop taken by
+  <ids>[, IdleChairExitStart sent to the headsman's copy| no
+  IdleChairExitStart for the headsman's copy (left for <event>)]` and
+  `IdleChairExitStart on this player|the headsman's copy <id>: taken, the
+  axe is put away|refused (try N of 6)` (`no retry, downed` for a downed
+  headsman) to `skyrim-platform.log`.
 - **Assassinate** (`executionSystem.ts`): the same right kills a standing
   player from behind. Assassinate shows in the X menu on a living player
   character in reach (`captureInteractMaxDistance`) who is neither downed, bound,
@@ -254,20 +335,60 @@ behaviour-graph events — no ESP required.**
   "... failed to assassinate you." to a living victim). Logged as `[execution]
   <killer> assassinates <victim> with <type> idle <id>`.
 - **The body** (`bodySystem.ts`): every PK (a finish off, an execution, a
-  soul trap by an execute holder) leaves a body where the victim fell: a
+  soul trap by an execute holder) of a living character leaves a body where
+  the victim fell (a fallen character finished off in their realm leaves
+  none and keeps the realm outfit): a
   clone made with `createActor` at the victim's spot wearing their look
-  and their gear (`mp.set(body, "equipment", ...)`, the native
+  and the pieces they wore, without the spells in their hands
+  (`mp.set(body, "equipment", ...)` with the worn entries alone, the native
   `EquipmentBinding::Set` in `skymp5-server/cpp/addon/property_bindings`,
   which reaches the server with a CI flatrim build applied while the game
   service is stopped; on an older native build the set throws, is swallowed
   and the body lies naked) and holding their pack with the worn flags
   dropped, so every stack is
-  takeable through the search window. The fallen character keeps only the
-  named items (property keys and writings, `isNamedItemBase`), which the
-  window never moves anyway, and wakes in the afterlife with nothing else:
-  gold and worn gear included. The victim's own dead actor
+  takeable through the search window. A worn piece taken from the body stops
+  showing on it at the next 2 s check (the body's equipment keeps a worn
+  entry while the pack still holds one of its base; `[body] <id> no longer
+  shows N worn piece(s) taken from it, M still shown`). The fallen
+  character's property keys and writings (`isNamedItemBase`) go to the body
+  with everything else, each copy under its own name, so for whoever loots
+  it a house key still opens its door and a letter still reads its
+  document: the PK body's window, alone of all search windows, lists them by
+  name (`SearchSystem.namedLoot`; the `searchApproved` entries carry `name`
+  and the client puts each copy into its copy of the body under that name,
+  `searchService.ts` `restock`, so a take or a put sends the name the native
+  `FindEntriesFor` matches). A client older than this change lists them
+  without names, and its take of one fails on the server: the native take
+  finds no copy without a name and moves nothing, the body keeps the key,
+  and the looter's pack is set back from the server 0.2 s later, so the
+  copy their screen moved leaves it again (the body's window shows the key
+  again only when it is opened again). Every key or writing moved in a PK
+  body's window resyncs the mover's pack that way, and its `[take]` line
+  waits for the native move: one that moved nothing logs `[take] <looter>
+  take of <base> x<n> from <body> refused natively: no copy under the name
+  the client sent, the pack is resynced` (a put, `[put] <looter> put of
+  <base> x<n> into <body> refused natively: ...`) instead. The
+  victim wakes in the afterlife with nothing: gold, worn gear, keys and
+  letters included. Their server-side equipment is emptied as well
+  (spells kept), so no copy of them goes on wearing what the body holds; the
+  realm's own outfit is then handed out and put on 5 s after the respawn
+  (`AfterlifeSystem.dress`, `afterlifeLooks`). The victim's own dead actor
   is respawned 4 s later (the afterlife routing takes that respawn to the
-  realm), so two bodies never lie side by side. The clone has no profile id,
+  realm): its client is still inside its half of the killmove when the
+  server's kill lands (the victim's own pair end was reported 0.7 s after
+  the kill in the test of 2026-10-01) and then falls, so the respawn waits
+  for that. Nobody else sees that wait: `leaveBody` sends every other client
+  that has a copy of the victim (`actorNeighbors`) the custom packet
+  `bodyLeft` (`victim`, `ms` 6000, the wait plus 2 s), `RemoteServer` marks
+  that copy's model (`bodyLeftUntil`) and `FormView` drops the copy and
+  creates none until the mark runs out, by when the respawn has taken the
+  victim from that client, so two bodies never lie side by side. A copy this
+  client still plays a killmove pair or a chop scene on
+  (`isCloneMovementSuspended`) is dropped when that ends. A client that
+  streams the victim in during the wait creates no dead copy anyway, and a
+  client older than this change keeps showing the stripped corpse for the
+  4 s. The client logs `FormView: <victim> hidden: a PK body stands in for
+  the dead copy <local id>`. The clone has no profile id,
   so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
   never applies `searchPlayerBodyTakeLimit` to it: a body gives up
   everything, except to the victim's own account. The body entry keeps the
@@ -275,30 +396,100 @@ behaviour-graph events — no ESP required.**
   refuses a search of it by any character of that profile ("You cannot loot
   the body of your own fallen character."), so an alt cannot walk over and
   undo the loss; a take needs the search's occupancy, so no take gets past
-  it. `createActor` only adds the form and never streams it, so
-  once the clone is dressed, filled and dead it is put on the grid with
+  it. A hunter may skin the body (`docs_roleplay_mastery.md`, Skinning a
+  player's body) for Human Flesh, a 10% chance of a Human Heart and, when it
+  looks Khajiit, a 20% chance of a Khajiit Pelt, once for as long as it lies
+  (`private.skinned` on the body), and the skinner takes everything it holds
+  too, keys and writings under their names (`BodySystem.emptyInto`, the owner's
+  rule of 2026-10-01; `[body] <id> of <victim> skinned: N item(s) in M
+  stack(s) moved to <skinner> (K named); moved: ...`); searches are refused
+  only during the 5 s skinning, and the emptied body then goes by the rule
+  below. The victim's own account never skins it, and the victim's own
+  stripped actor is never skinned for the same death. `createActor` only adds the form and never streams it, so
+  once the clone is dressed and dead it is put on the grid with
   `mp.set(body, "locationalData", ...)` (`MpActor::Teleport`, whose first
   `SetPos` runs `ForceSubscriptionsUpdate`) and every client nearby creates
-  it with its full state. The victim is stripped only after that: if any
-  step before fails (`[body] leaving a body for <victim> failed <step>,
-  pack kept`) the clone is destroyed and the victim keeps their pack. It
+  it with its full state. Only then does the pack move, and it moves rather
+  than being copied: the victim is stripped first and the body filled after,
+  so no stack ever has two owners. If any step up to the strip fails
+  (`[body] leaving a body for <victim> failed <step>, pack kept`) the clone is
+  destroyed and nothing moved; if the body cannot take the pack the victim
+  gets it back (`... failed filling the body, pack given back`), and if
+  even that fails the line reads `pack NOT given back (<error>), staff must
+  restore <victim>: <base> x<count>, ...`. It
   is registered in `bodies.json` next to `companions.json`
   and re-adopted, and put on the grid again, after a restart while its
-  actor still exists; every 2 s a
-  body whose loose stacks are gone, one older than `bodyMaxSeconds`
-  (default 0 = never), or one that has been taken from or put into but then
-  left alone for `bodyIdleSeconds` (default 7200; the last touch is kept in
-  `bodies.json` as `touchedAt`, and a body nobody has touched is not
-  affected) is removed (`[body] <id> of <victim> removed: emptied
-  | lay too long | left alone | gone`). The body carries the neighbor-visible `ff_body`
-  property, which the gamemode must register in
-  `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
-  the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
-  Build gamemode only before the server build; without it no client could
+  actor still exists (the clone is an ordinary `ff` actor saved in the world
+  database with `spawnDelay` 1e9, so it stays dead). The clone also carries
+  its own record (`private.pkBody`: victim, profile and time of death) and
+  index (`private.indexed.pkBody`), so a restart adopts a body that
+  `bodies.json` lost as well (`[body] N/M body(ies) of the previous run
+  kept, K more missing from ./bodies.json found by private.indexed.pkBody:
+  <ids>`). A body has no lifetime (the owner's rule of 2026-10-01;
+  `bodyMaxSeconds` and `bodyIdleSeconds` are no longer read): every 2 s a
+  body with no stack left that a search window can show and that has lain
+  at least 60 s since the death is removed, one emptied later at that next
+  check, after a restart too (`[body] <id> of <victim> removed: emptied |
+  gone`, followed by `, went with it: <base> x<count>, ...` when stacks
+  were still in it, which are then gone for good). Keys and writings count
+  as loot like any other stack; a stack whose base the load order no longer
+  holds counts as none, since no window can show it, and goes with the
+  body. The body carries the neighbor-visible `ff_body`
+  property, registered in the test gamemode's
+  `build/dist/testserver/gamemode_extensions/50_properties.js` (gitignored;
+  manager Build gamemode only, and Migrate server carries it to live) with
+  the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`); without
+  it no client could
   ever create the body (`formView.ts` never creates a dead copy that
   carries an appearance otherwise), so no body is left and the victim keeps
-  their pack (`failed setting ff_body`). Logged as `[body] <victim> <how> by <killer>: body
-  <id> holds N stack(s)`.
+  their pack (`failed setting ff_body`). From 2026-09-24 to the r34 test
+  gamemode every PK ended that way. Logged as `[body] <victim> <how> by
+  <killer>: body <id> holds N item(s) in M stack(s) moved from the victim (W
+  shown worn, K named), their own dead actor hidden on C client(s); moved: <base> x<count>, <base> "<name>" x<count>,
+  ...`, the record staff restore from (a key or writing carries its name). `skymp5-server/tools/test-bodies.js` runs
+  the move, the failures, the worn pieces, the removals and the restarts
+  against a stub `mp`, `skymp5-server/tools/test-search-named.js` the PK
+  body's window with the key against a player's own body.
+- **A player's own body**: every death leaves the player's own actor dead
+  where they fell until the engine respawns it after its `spawnDelay`, which
+  the gamemode's `70_admin_loop.js` holds at `respawnSeconds` (15) for every
+  online player (`MpActor::RespawnWithDelay`; the onRespawn hooks then route
+  it to a temple or a realm). Clients that had a copy of the player see the
+  ragdoll for those seconds; one that streams the player in later creates no
+  dead copy (`formView.ts`). Anyone may open the body without a prompt and take
+  `searchPlayerBodyTakeLimit` (2) different items; the take that reaches the
+  limit respawns the player at once, and the respawn keeps everything else
+  (the Player record has no death item). A PK that left a clone has already
+  stripped this actor and respawns it 4 s later; without the `ff_body`
+  registration it keeps the pack for the whole wait like any other death. A
+  hunter may skin the body instead (`docs_roleplay_mastery.md`, Skinning a
+  player's body): Human Flesh, a 10% chance of a Human Heart and on a
+  Khajiit a 20% chance of a Khajiit Pelt, nothing of the pack. Nobody can
+  search the body during the 5 s skinning ("A hunter is skinning this
+  body."), and then it goes like a looted body (the owner's rule of
+  2026-10-01): the player respawns at once with everything they carried,
+  with no chat line about the skinning. If that respawn fails the body lies until
+  `respawnSeconds`, refused to every search ("This body has been skinned.
+  Nothing can be taken from it."). A downed player is alive and is
+  neither searched as a body nor skinned. A search prompt still open when
+  either side dies is void: the next search request drops it, so it no longer
+  blocks the body, and an answer after the death is ignored (the searcher reads
+  "<name> can no longer answer.", logged `[search] <target> answered
+  <searcher>'s prompt after a death, ignored`); the body opens only through a
+  fresh request, which applies the body refusals.
+- **No kill cams** (`disableKillCamService.ts`): the engine's kill camera
+  (the slow motion arrow or spell follow cam, and the cinematic cut on a
+  melee killmove) glitched players who got one with a bow, so every client
+  turns it off at startup: INI `bVATSDisable:VATS` true, which drops the
+  VATS camera and its slow motion while paired killmoves still play in real
+  time, and the ranged/magic kill cam odds `fKillCamBaseOdds`,
+  `fKillCamLevelBias`, `fKillCamLevelFactor`, `fKillCamLevelMaxBias` and
+  `iKillCamLevelOffset` at 0 (the settings the "Disabled Ranged and Magic
+  KillCams" mod zeroes). Finish offs, executions and assassinations are
+  `Actor.PlayIdleWithTarget` pairs no odds gate, so they play as before,
+  without the camera cut. One line in `skyrim-platform.log`:
+  `DisableKillCamService: kill cams off: bVATSDisable:VATS false -> true,
+  fKillCamBaseOdds 1 -> 0, ...` with each value before and read back after.
 - **Coming back whole** (`deathService.ts`): a finisher never decapitates,
   an execution does, and a decapitation persists as the actor's
   dismembered-limb extra data, which nothing on the respawn path cleared. So
@@ -536,7 +727,26 @@ prisoner can also be carried).
   their carrier is still online, not downed, in the same cell and within
   `captureInteractMaxDistance` (default 256) of the parked body; otherwise the
   carry ends quietly and a bound captive stays bound.
-- **Doors**: a carrier's door activation is recorded (`onActivate`, after the
+- **Load doors**: a carrier holding a player does not go through a door that
+  teleports. The carrier's client refuses the press where it starts
+  (`ActivationService`). It knows the load is a player from the server's
+  `carryState`, which says `player: true` for one (the packet's `target`
+  names only a carried NPC, and a job load has no such field). The first
+  press on a plugin door while carrying a player asks the server whether it teleports (`loadDoorQuery`, answered from
+  the door's XTEL or the override list and remembered per door), a load door
+  is then not sent at all, the carrier reads "Set them down before going
+  through this door." (at most once per 2 s) and the Platform log says
+  `load door <id> not used: the player carries someone`; a plain door goes
+  out as soon as the answer is in. The server guards it for a client that
+  sent the press anyway: `CaptureSystem`'s `onActivate` wrapper refuses a
+  door with an XTEL while the carrier's load is a player (after the housing
+  lock had its say, before the door override and the native teleport), sends
+  the same notice and logs
+  `[carry] <carrier> refused at load door <door> while carrying <carried>`.
+  Nobody is moved and the carry goes on. A carried pet and a passive job load
+  still go through load doors. `skymp5-server/tools/test-carry-door.js` runs
+  the server side against a stub, the `carryState` flag included.
+- **Doors**: any other door activation of a carrier is recorded (`onActivate`, after the
   housing lock had its say, so a locked door never counts, and before the door
   override runs, so an overridden door such as the embassy entry counts). The body only
   follows the carrier into another cell when the carrier used a door within the
@@ -564,7 +774,7 @@ prisoner can also be carried).
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
 | `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it |
-| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting, skinning); the pose waits up to 3 s for a stand-up from a sneak, a sheathe and third person; a pose not seen playing 0.5 s later falls back to the kneel through `Actor.PlayIdle`, then to the bleedout kneel, and one that stops early is re-sent twice at most; a mounted or swimming player skips it |
+| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting, skinning); the pose waits up to 3 s for a stand-up from a sneak, a sheathe and third person; a pose not seen playing 0.5 s later falls back to the kneel through `Actor.PlayIdle`, then to the bleedout kneel, and one that stops early is re-sent twice at most; after the exit the client sends it again while the graph still holds the pose (5 exits at most, then the engine's knock-down ends a bleedout kneel); 0 s ends the lock, as the server sends when a skinning ends; a mounted or swimming player skips it |
 | `playerMenuState` `{ target, canRelease, givePotion, hasPotion, finishOff, prepareExecution, execute, assassinate }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 

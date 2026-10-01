@@ -74,7 +74,11 @@ const KIT_PROP = "private.professionKit";
 // Plugin recipes any character makes (instruments, broom, war horns) are no one's work
 const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
 // Recipes whose rank bonus belongs to several professions, by editor id prefix
-const SHARED_RECIPES: Array<[string, string[]]> = [["AldRecipeKiln_Charcoal", ["woodworker", "blacksmith", "miner"]]];
+const SHARED_RECIPES: Array<[string, string[]]> = [
+  ["AldRecipeKiln_Charcoal", ["woodworker", "blacksmith", "miner"]],
+  // One wax recipe per station (AldRecipeWriting_SealingWax<Station>); each one's conditions name who makes it there
+  ["AldRecipeWriting_SealingWax", ["blacksmith", "alchemist", "miner", "tailor", "hunter", "woodworker", "cook"]]
+];
 // Crafting at their benches costs half: cooking, alchemy, and refining at the smelter (miner) and the tanning rack (hunter)
 const HALF_COST_BENCHES_OF = ["cook", "alchemist", "miner", "hunter"];
 // Refining made at another bench, by the editor id of what the recipe makes
@@ -213,11 +217,11 @@ const PROFESSIONS: Profession[] = [
     id: "warrior", label: "Warrior", title: "The Steadfast Guardian", type: "Fighter", skills: ["HeavyArmor", "Block"],
     blurbs: [
       "Anyone may take up a blade.",
-      "A surer footing in a fight.",
-      "A faster off hand, a shield carried at speed, and deeper wind.",
-      "The charge: with a shield, a blade or a greatsword.",
-      "The full stance, the sweeping blow, and a warmaster's reach.",
-      "A legend of the battlefield.",
+      "Lighter power attacks with one hand or two, and deeper wind.",
+      "A faster off hand, the power bash, a shield carried at speed, and light armour that weighs nothing.",
+      "The charge, and heavy armour that weighs nothing.",
+      "The sweeping blow, a warmaster's reach, and a heavier pack.",
+      "A legend of the battlefield, tireless and heavily laden.",
     ],
   },
   {
@@ -255,14 +259,17 @@ const ACTOR_TYPES = ["ActorTypeNPC", "ActorTypeCreature", "ActorTypeUndead", "Ac
 // Player actors have no base record; their race is always a playable one.
 const PLAYER_KEYWORD = "ActorTypeNPC";
 
+// Every drink at a meadery boiler: the shared keyword and each boiler's own mead keyword
+const MEAD_STATIONS = ["AldCraftingMead", "AldCraftingMeadHonningbrew", "AldCraftingMeadBlackBriar"];
+
 const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
-  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: ["AldCraftingMead"], activateTypes: ["FLOR", "TREE"] },
+  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: MEAD_STATIONS, activateTypes: ["FLOR", "TREE"] },
   // Anything made at a forge, anvil or smelter counts, and a temper at the workbench or grindstone
   blacksmith: {
     craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge", "DLC1CraftingDawnguard", "DLC1LD_CraftingForgeAetherium", "CraftingSmithingArmorTable", "CraftingSmithingSharpeningWheel"],
     craftStations: ["isBlacksmithForge", "isBlacksmithAnvil", "isSmelter"],
   },
-  cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"], craftStations: ["AldCraftingMead"] },
+  cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"], craftStations: MEAD_STATIONS },
   farmer: { activateTypes: ["FLOR", "TREE"] },
   // Hunters and tailors both tan leather
   hunter: { killKeywords: ["ActorTypeAnimal"], craftKeywords: ["CraftingTanningRack"] },

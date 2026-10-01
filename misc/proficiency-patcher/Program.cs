@@ -69,7 +69,7 @@ JsonObject? categories = null;
 Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
-    ? [Steps.MarkerAbilities, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
+    ? [Steps.Items, Steps.MarkerAbilities, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
        Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
        Steps.DisableActors, categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
@@ -374,15 +374,23 @@ static class Steps
                     }
                     spell.Effects.Add(effect);
                 }
-                var stamina = rankSpec["stamina"]?.GetValue<float>() ?? 0;
-                if (stamina > 0)
+                foreach (var (key, mgefEdid, name, description, av) in RankValues)
                 {
-                    var mgef = ValueModifier(c, "AldMasteryFortifyStamina", "Fortify Stamina", "Stamina is increased by <mag> points.", ActorValue.Stamina);
-                    spell.Effects.Add(new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = stamina, Area = 0, Duration = 0 } });
+                    var amount = rankSpec[key]?.GetValue<float>() ?? 0;
+                    if (amount <= 0) continue;
+                    var mgef = ValueModifier(c, mgefEdid, name, description, av);
+                    spell.Effects.Add(new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = amount, Area = 0, Duration = 0 } });
                 }
             }
         }
     }
+
+    // A rank's flat bonuses ("stamina": 25, "carryWeight": 50), each a hidden value modifier on the marker
+    static readonly (string Key, string Edid, string Name, string Description, ActorValue Av)[] RankValues =
+    [
+        ("stamina", "AldMasteryFortifyStamina", "Fortify Stamina", "Stamina is increased by <mag> points.", ActorValue.Stamina),
+        ("carryWeight", "AldMasteryFortifyCarryWeight", "Fortify Carry Weight", "Carry weight is increased by <mag>.", ActorValue.CarryWeight),
+    ];
 
     // New perks a rank's marker applies; one without entry points exists for conditions only
     static void Perks(PatchContext c)
@@ -1330,7 +1338,11 @@ static class Steps
     public static void Items(PatchContext c)
     {
         foreach (var spec in (c.Spec["items"]?["misc"] as JsonArray ?? new JsonArray()).Select(x => x!.AsObject()))
+        {
+            // A hotfix run only adds the missing ones; an item the plugin holds keeps what it was made from
+            if (c.Hotfix && c.TryWinning<IMiscItemGetter>(spec["edid"]!.GetValue<string>(), out var held) && held.FormKey.ModKey == c.Key) continue;
             MakeMisc(c, spec, "Item");
+        }
     }
 
     // A new MISC copied from a template, optionally with another mesh and a pinned form id
@@ -1611,6 +1623,24 @@ static class Steps
             var spell = ctx.GetOrAddAsOverride(c.Mod);
             spell.Effects.RemoveAll(e => Drop(e));
             c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): {found} effect(s) ending with {suffix} removed, {spell.Effects.Count} kept");
+        }
+        foreach (var l in Entries(o["lights"]))
+        {
+            var key = FormKey.Factory(l["item"]!.GetValue<string>());
+            if (!cache.TryResolveContext<ILight, ILightGetter>(key, out var ctx)) { c.Error($"overrides: light {key} not found"); continue; }
+            var time = l["time"]!.GetValue<int>();
+            var from = ctx.Record.Time;
+            ctx.GetOrAddAsOverride(c.Mod).Time = time;
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): time {from} -> {time}");
+        }
+        foreach (var w in Entries(o["weapons"]))
+        {
+            var key = FormKey.Factory(w["item"]!.GetValue<string>());
+            if (!cache.TryResolveContext<IWeapon, IWeaponGetter>(key, out var ctx) || ctx.Record.Data == null) { c.Error($"overrides: weapon {key} not found"); continue; }
+            var animation = Enum.Parse<WeaponAnimationType>(w["animation"]!.GetValue<string>());
+            var from = ctx.Record.Data.AnimationType;
+            ctx.GetOrAddAsOverride(c.Mod).Data!.AnimationType = animation;
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): animation {from} -> {animation}");
         }
         foreach (var mv in Entries(o["moves"]))
             MoveReference(c, mv, "overrides");
@@ -2120,7 +2150,12 @@ static class Steps
             var (owner, also, tier) = Current(r);
             if (owner == p.Owner && tier == p.Tier && also.SequenceEqual(p.Also)) continue;
             var cobj = c.Override(c.Mod.ConstructibleObjects, r);
+            // Faction gear keeps its markers and race group after the rank, where the factions and racial steps put them
+            var faction = cobj.Conditions.Where(cond => cond.Data is IHasSpellConditionDataGetter hs && hs.Spell.Link.FormKey.ModKey == c.MarkerKey && !markers.ContainsKey(hs.Spell.Link.FormKey)).ToList();
+            var kept = faction.Count == 0 ? faction : cobj.Conditions.Where(cond => faction.Contains(cond) || cond.Data is IGetIsRaceConditionDataGetter).ToList();
+            cobj.Conditions.RemoveAll(cond => kept.Contains(cond));
             SetTier(c, cobj, p.Owner!, p.Tier, p.Also);
+            cobj.Conditions.AddRange(kept);
             changed++;
             c.Report.Recipes.Add(new RecipeLine("retier", r.EditorID ?? "", c.NameOf(r.CreatedObject.FormKey), p.Owner!, p.Tier, Items(c, cobj), origin: r.FormKey.ModKey.FileName,
                                                 note: $"was {owner ?? "-"} {tier}{(p.Why.Length > 0 ? "; " + p.Why : "")}{(p.Also.Count > 0 ? "; also " + string.Join(", ", p.Also) : "")}"));

@@ -388,6 +388,13 @@ async fn write_directive(f: &Value, dest_root: &Path, extracted: &HashMap<String
     let to = f["to"].as_str().unwrap_or("");
     let dest = join_rel(dest_root, to);
     if let Some(parent) = dest.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
+    // A kept file was sha256-verified when planned: hard-linked into a new mod folder, left alone when already in place
+    if let Some(keep) = f.get("keep").and_then(|v| v.as_str()).map(PathBuf::from) {
+        if keep != dest && fs::hard_link(&keep, &dest).is_err() {
+            tokio::fs::copy(&keep, &dest).await.map_err(|e| format!("could not keep {}: {e}", keep.display()))?;
+        }
+        return Ok(());
+    }
     if let Some(inline) = f.get("inline").and_then(|v| v.as_str()) {
         use base64::Engine;
         let bytes = base64::engine::general_purpose::STANDARD.decode(inline).map_err(|e| e.to_string())?;
@@ -437,7 +444,8 @@ pub async fn apply_mod(name: &str, files: &[Value], extracted: &HashMap<String, 
             return Err(e.to_string());
         }
         rmrf(&stale);
-        log(format!("[mo2] installed {folder} ({} file(s))", files.len()));
+        let kept = files.iter().filter(|f| f.get("keep").is_some()).count();
+        log(format!("[mo2] installed {folder} ({} file(s), {kept} kept from the previous install)", files.len()));
         Ok(())
     }.await;
     if result.is_err() { rmrf(&build); }
@@ -606,10 +614,30 @@ pub fn prune_direct_mods(game_dir: &Path, keep: &HashSet<String>) {
     write_direct_record(game_dir, &record);
 }
 
+// Data holds one copy of a path, so each mod keeps only the files no higher-priority mod (earlier in the manifest) has; returns how many were left out
+pub fn drop_shadowed_files(mods: &mut [Value]) -> usize {
+    let mut owned: HashSet<String> = HashSet::new();
+    let mut dropped = 0;
+    for m in mods.iter_mut() {
+        let Some(files) = m["files"].as_array_mut() else { continue };
+        let before = files.len();
+        files.retain(|f| !owned.contains(&f["to"].as_str().unwrap_or("").to_lowercase()));
+        dropped += before - files.len();
+        owned.extend(files.iter().filter_map(|f| f["to"].as_str()).map(str::to_lowercase));
+    }
+    dropped
+}
+
 // Files a cheat would swap: code, plugins and compiled scripts; hashed on every Play, the rest only sized
 pub fn is_risky(name: &str) -> bool {
     let l = name.to_lowercase();
     [".dll", ".exe", ".esp", ".esm", ".esl", ".pex"].iter().any(|e| l.ends_with(e))
+}
+
+// Logs SKSE plugins write while the game runs and ActorLimitFix.pdb, never sized; compile-manifest's UNSHIPPED_FILE_RE is the twin
+pub fn is_unverified(rel: &str) -> bool {
+    let l = rel.to_lowercase();
+    l.ends_with(".log") || l.rsplit('/').next() == Some("actorlimitfix.pdb")
 }
 
 // Why a mod installed straight into Data differs from the manifest, None when it matches
@@ -619,6 +647,7 @@ pub async fn direct_mod_problem(game_dir: &Path, m: &Value) -> Option<String> {
     if !rec.is_object() || rec["hash"].as_str().unwrap_or("") != m["hash"].as_str().unwrap_or("") { return Some("not installed at this version".into()); }
     for f in m["files"].as_array().into_iter().flatten() {
         let to = f["to"].as_str().unwrap_or("");
+        if is_unverified(to) { continue; }
         let p = join_rel(&game_dir.join("Data"), to);
         let Ok(meta) = fs::metadata(&p) else { return Some(format!("missing file {to}")) };
         if f["size"].as_u64().is_some_and(|s| s != meta.len()) { return Some(format!("resized file {to}")); }
@@ -643,16 +672,35 @@ pub async fn risky_file_problem(dir: &Path, files: &[Value]) -> Result<Option<St
     Ok(expected.keys().find(|to| !have.contains(*to)).map(|to| format!("missing file {to}")))
 }
 
-// Byte size of an installed mod folder without the launcher's meta.ini; None when missing or unreadable
+// Files of an installed mod folder that count toward its size: all but the launcher's meta.ini and unverified files
+fn sized_files(dir: &Path) -> Vec<String> {
+    list_files_rel(dir).into_iter().filter(|rel| !rel.eq_ignore_ascii_case("meta.ini") && !is_unverified(rel)).collect()
+}
+
+// Byte size of an installed mod folder; None when missing or unreadable
 pub fn mod_folder_size(name: &str) -> Option<u64> {
     let dir = mods_dir().join(sanitize(name));
     if !dir.exists() { return None; }
     let mut total = 0;
-    for rel in list_files_rel(&dir) {
-        if rel.eq_ignore_ascii_case("meta.ini") { continue; }
-        total += fs::metadata(join_rel(&dir, &rel)).ok()?.len();
-    }
+    for rel in sized_files(&dir) { total += fs::metadata(join_rel(&dir, &rel)).ok()?.len(); }
     Some(total)
+}
+
+// The files behind a folder size mismatch: unlisted, resized or missing
+pub fn size_mismatches(name: &str, files: &[Value]) -> String {
+    let dir = mods_dir().join(sanitize(name));
+    let mut want: HashMap<String, u64> = files.iter().filter_map(|f| Some((f["to"].as_str()?.to_lowercase(), f["size"].as_u64()?))).filter(|(to, _)| !is_unverified(to)).collect();
+    let mut out = vec![];
+    for rel in sized_files(&dir) {
+        let size = fs::metadata(join_rel(&dir, &rel)).map(|m| m.len()).unwrap_or(0);
+        match want.remove(&rel.to_lowercase()) {
+            None => out.push(format!("unlisted {rel} {size} bytes")),
+            Some(s) if s != size => out.push(format!("{rel} {size} bytes, not {s}")),
+            _ => {}
+        }
+    }
+    out.extend(want.keys().map(|to| format!("missing {to}")));
+    out.join(", ")
 }
 
 fn is_plugin(n: &str) -> bool { let l = n.to_lowercase(); l.ends_with(".esp") || l.ends_with(".esm") || l.ends_with(".esl") }
@@ -948,4 +996,47 @@ pub fn mo2_open() -> Value {
 pub fn mo2_status() -> Value {
     let mod_count = fs::read_dir(mods_dir()).map(|rd| rd.flatten().filter(|e| e.path().is_dir()).count()).unwrap_or(0);
     json!({ "installed": is_installed(), "version": MO2_VERSION, "root": root().to_string_lossy(), "modCount": mod_count })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A kept file lands in the new mod folder and outlives the old folder's removal
+    #[tokio::test]
+    async fn kept_file_survives_the_old_folder() {
+        let base = std::env::temp_dir().join(format!("alduinak-keep-link-{}", std::process::id()));
+        let (old, build) = (base.join("old"), base.join("build"));
+        fs::create_dir_all(old.join("meshes")).unwrap();
+        fs::write(old.join("meshes/lod.nif"), b"lod").unwrap();
+        let f = json!({ "to": "meshes/lod.nif", "archive": "a1", "keep": old.join("meshes/lod.nif").to_string_lossy() });
+        write_directive(&f, &build, &HashMap::new()).await.unwrap();
+        rmrf(&old);
+        assert_eq!(fs::read(build.join("meshes/lod.nif")).unwrap(), b"lod");
+        rmrf(&base);
+    }
+
+    fn directive(to: &str, from: &str, body: &[u8]) -> Value {
+        json!({ "to": to, "archive": "a", "from": from, "sha256": hex::encode(<sha2::Sha256 as sha2::Digest>::digest(body)), "size": body.len() })
+    }
+
+    // Under Mod Manager None a path two mods share is written and checked for the higher-priority one only
+    #[tokio::test]
+    async fn shared_path_stays_with_the_higher_mod() {
+        let game = std::env::temp_dir().join(format!("alduinak-shadow-{}", std::process::id()));
+        let src = game.join("src");
+        fs::create_dir_all(&src).unwrap();
+        for (name, body) in [("high.dds", "high"), ("low.dds", "low lod"), ("only.dds", "only")] { fs::write(src.join(name), body).unwrap(); }
+        let mut mods = vec![
+            json!({ "name": "High", "hash": "h", "files": [directive("textures/LOD.dds", "high.dds", b"high")] }),
+            json!({ "name": "Low", "hash": "l", "files": [directive("textures/lod.dds", "low.dds", b"low lod"), directive("textures/only.dds", "only.dds", b"only")] }),
+        ];
+        assert_eq!(drop_shadowed_files(&mut mods), 1);
+        assert_eq!(mods[1]["files"].as_array().unwrap().len(), 1);
+        let extracted = HashMap::from([("a".to_string(), src.clone())]);
+        for m in &mods { apply_mod_direct(&game, m, &extracted).await.unwrap(); }
+        assert_eq!(fs::read(game.join("Data/textures/lod.dds")).unwrap(), b"high");
+        for m in &mods { assert!(direct_mod_problem(&game, m).await.is_none(), "{}", m["name"]); }
+        rmrf(&game);
+    }
 }

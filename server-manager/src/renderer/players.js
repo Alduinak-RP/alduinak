@@ -135,20 +135,21 @@ function showStats() {
     btn.remove()
     if (!r.ok) { box.appendChild(el('p', {}, `Error: ${esc(r.error)}`)); return }
     const s = r.stats
+    const block = (title, body) => `<div class="stat-block"><h4>${esc(title)}</h4>${body}</div>`
+    const kv = (label, value) => `<div class="kv"><b>${esc(label)}</b><span>${value}</span></div>`
     const table = (title, counts, order) => {
       const keys = order || Object.keys(counts).sort((a, b) => counts[b] - counts[a])
-      return `<h4>${esc(title)}</h4><div class="stat-grid">` + keys.map(k => `<span>${esc(k)}</span><b>${counts[k] || 0}</b>`).join('') + '</div>'
+      return block(title, '<div class="stat-grid">' + keys.map(k => `<span>${esc(k)}</span><b>${counts[k] || 0}</b>`).join('') + '</div>')
     }
-    box.insertAdjacentHTML('beforeend',
-      `<div class="kv"><b>Accounts</b><span>${s.players}</span></div><div class="kv"><b>Living characters</b><span>${s.characters}</span></div>` +
+    box.insertAdjacentHTML('beforeend', '<div class="stat-cols">' +
+      block('Totals', kv('Accounts', s.players) + kv('Living characters', s.characters)) +
       table('Race', s.races) + table('Gender', s.genders) + table('Profession', s.professions) +
       table('Hours played', s.hours, s.hourOrder) +
-      `<h4>Wealth</h4><div class="kv"><b>Total gold</b><span>${s.totalWealth.toLocaleString()}</span></div>` +
-      `<div class="kv"><b>Carried by characters</b><span>${s.carriedWealth.toLocaleString()}</span></div>` +
-      `<div class="kv"><b>In containers</b><span>${s.storedWealth.toLocaleString()}</span></div>` +
-      `<div class="kv"><b>Average carried per account</b><span>${s.averageWealth.toLocaleString()}</span></div>` +
+      block('Wealth', kv('Total gold', s.totalWealth.toLocaleString()) + kv('Carried by characters', s.carriedWealth.toLocaleString()) +
+        kv('In containers', s.storedWealth.toLocaleString()) + kv('Average carried per account', s.averageWealth.toLocaleString())) +
       table('Gold carried per account', s.wealth, s.wealthOrder) +
-      (s.materialError ? `<h4>Materials</h4><p class="muted">Unavailable: ${esc(s.materialError)}</p>` : table('Materials (characters and containers)', s.materials, s.materialOrder)))
+      (s.materialError ? block('Materials', `<p class="muted">Unavailable: ${esc(s.materialError)}</p>`) : table('Materials (characters and containers)', s.materials, s.materialOrder)) +
+      '</div>')
   })
   box.appendChild(btn)
 }

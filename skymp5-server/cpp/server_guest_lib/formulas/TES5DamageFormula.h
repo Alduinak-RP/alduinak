@@ -20,6 +20,15 @@ struct PoisonHit
                                            const MpActor& target,
                                            uint32_t poisonId);
 
+// The blocker's BlockMod multiplier on the blocked part of a hit, 1 unless effectModifiers is on
+[[nodiscard]] float GetBlockEffectMult(const MpActor& blocker,
+                                       const MpActor& attacker);
+
+// The aggressor's OneHandedMod, TwoHandedMod or MarksmanMod multiplier by the weapon's type, 1 for other sources or unless effectModifiers is on
+[[nodiscard]] float GetWeaponEffectMult(const MpActor& aggressor,
+                                        const MpActor& target,
+                                        uint32_t source);
+
 // Implements vanilla Skyrim damage formula.
 // Some parts may be missing. If they are, there should be a TODO regarding it.
 // If there's no corresponding TODO, consider adding it and/or filing an issue.

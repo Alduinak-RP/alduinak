@@ -31,6 +31,7 @@
 #endif
 
 class MpActor;
+class ItemRowResolver;
 class FormCallbacks;
 class MpChangeForm;
 namespace Viet {
@@ -260,6 +261,17 @@ public:
   NpcSettingsEntry defaultSetting;
   bool enableConsoleCommandsForAll = false;
   float regenerationMultiplier = 1.f;
+  // Takes the place of regenerationMultiplier for health when set
+  std::optional<float> healthRegenerationMultiplier;
+
+  // Share of an NPC's weapon hit that still lands through a player's block
+  float npcBlockedDamageShare = 0.2f;
+
+  // Ability and Disease skill modifiers scale weapon damage and blocking
+  bool effectModifiers = false;
+
+  // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
+  std::shared_ptr<ItemRowResolver> itemRowResolver;
 
   bool disableVanillaScriptsInExterior = true;
 

@@ -4,7 +4,8 @@ import { MsgType } from "../../messages";
 import { getInventory } from "../../sync/inventory";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { notifyNextUpdate, parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { RestraintService } from "./restraintService";
 
 // TODO: refactor this out
 import { localIdToRemoteId } from "../../view/worldViewMisc";
@@ -26,6 +27,10 @@ const LOAD_DOOR_ANSWER_MS = 3000;
 const FIRST_RUNTIME_ID = 0xff000000;
 
 const SEAT_RELEASE_LOG_GAP_MS = 5000;
+
+// Read by a carrier holding a player at a load door, at most this often; CaptureSystem words its own refusal the same
+const CARRY_DOOR_NOTICE = "Set them down before going through this door.";
+const CARRY_DOOR_NOTICE_MS = 2000;
 
 // The engine activations RemoteServer issues itself to open a server-approved container or furniture, by remote target id
 const localActivations = new Map<number, number>();
@@ -73,7 +78,9 @@ export class ActivationService extends ClientListener {
 
     // The server's answer per plugin door: a press on a load door teleports and never reverses a swing
     private loadDoors = new Map<number, boolean>();
-    private pendingLoadDoorPress = new Map<number, { caster: number, at: number }>();
+    // plain: the press also goes out when the door turns out not to teleport
+    private pendingLoadDoorPress = new Map<number, { caster: number, at: number, plain: boolean }>();
+    private lastCarryDoorNotice = 0;
 
     private onActivate(e: ActivateEvent) {
         const lastInvService = this.controller.lookupListener(LastInvService);
@@ -124,9 +131,15 @@ export class ActivationService extends ClientListener {
             Closing,
         }
 
-        if ((openState === OpenState.Opening || openState === OpenState.Closing) && !this.loadDoors.get(target)) {
+        const swinging = openState === OpenState.Opening || openState === OpenState.Closing;
+
+        if (e.caster.getFormID() === 0x14 && this.heldForCarry(e, caster, target, !swinging)) {
+            return;
+        }
+
+        if (swinging && !this.loadDoors.get(target)) {
             if (target < FIRST_RUNTIME_ID && !this.loadDoors.has(target)) {
-                this.askLoadDoor(caster, target);
+                this.askLoadDoor(caster, target, false);
             }
             const now = Date.now();
             let firstIgnored = this.firstIgnoredMs.get(target);
@@ -179,9 +192,39 @@ export class ActivationService extends ClientListener {
         }
     }
 
-    private askLoadDoor(caster: number, target: number) {
+    // A carrier holding a player does not go through a load door: true when the press was refused or waits for the server to say whether the door teleports
+    private heldForCarry(e: ActivateEvent, caster: number, target: number, plain: boolean): boolean {
+        if (target >= FIRST_RUNTIME_ID || !this.isCarryingPlayer() || e.target.getBaseObject()?.getType() !== FormType.Door) {
+            return false;
+        }
+        const loadDoor = this.loadDoors.get(target);
+        if (loadDoor === undefined) {
+            this.askLoadDoor(caster, target, plain);
+            return true;
+        }
+        if (loadDoor) {
+            this.refuseCarrier(target);
+        }
+        return loadDoor;
+    }
+
+    private isCarryingPlayer(): boolean {
+        return this.controller.lookupListener(RestraintService).isCarryingPlayer;
+    }
+
+    private refuseCarrier(target: number) {
+        const now = Date.now();
+        if (now - this.lastCarryDoorNotice < CARRY_DOOR_NOTICE_MS) {
+            return;
+        }
+        this.lastCarryDoorNotice = now;
+        notifyNextUpdate(this.controller, this.sp, CARRY_DOOR_NOTICE);
+        logToPlatformLog(this, `load door ${target.toString(16)} not used: the player carries someone`);
+    }
+
+    private askLoadDoor(caster: number, target: number, plain: boolean) {
         const asked = this.pendingLoadDoorPress.has(target);
-        this.pendingLoadDoorPress.set(target, { caster, at: Date.now() });
+        this.pendingLoadDoorPress.set(target, { caster, at: Date.now(), plain });
         if (!asked) {
             sendCustomPacket(this.controller, { customPacketType: "loadDoorQuery", target });
         }
@@ -195,8 +238,11 @@ export class ActivationService extends ClientListener {
         this.loadDoors.set(target, loadDoor);
         const pending = this.pendingLoadDoorPress.get(target);
         this.pendingLoadDoorPress.delete(target);
-        if (loadDoor && pending && Date.now() - pending.at < LOAD_DOOR_ANSWER_MS) {
-            logTrace(this, "Sending the press dropped on load door", target.toString(16));
+        if (!pending || Date.now() - pending.at >= LOAD_DOOR_ANSWER_MS) return;
+        if (loadDoor && this.isCarryingPlayer()) {
+            this.refuseCarrier(target);
+        } else if (loadDoor || pending.plain) {
+            logTrace(this, "Sending the press held on door", target.toString(16));
             this.sendActivation(pending.caster, target);
         }
     }

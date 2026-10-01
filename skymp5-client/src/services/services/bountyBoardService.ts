@@ -23,6 +23,7 @@ interface BoardNote {
   author: string;
   text: string;
   ageHours: number;
+  mine?: boolean;
 }
 
 // The server's bountyBoardMenu reply, mirrored into the widget.
@@ -53,8 +54,10 @@ let info: BoardInfo = {
  *
  *   Server -> Client: { "customPacketType": "bountyBoardMenu", "board",
  *                       "boardName", "reason", "costGold", "gold",
- *                       "maxTextLen", "maxNotes", "expiryDays", "notes" }
+ *                       "maxTextLen", "maxNotes", "expiryDays", "canRemove",
+ *                       "notes": [{ "id", "author", "text", "ageHours", "mine" }] }
  *   Client -> Server: { "customPacketType": "bountyBoardPost", "board", "text" }
+ *   Client -> Server: { "customPacketType": "bountyBoardRemove", "board", "id" }
  *   Client -> Server: { "customPacketType": "bountyBoardClose" }
  *   Server -> Client: { "customPacketType": "bountyBoardNotice", "text" }
  */
@@ -137,7 +140,10 @@ export class BountyBoardService extends ClientListener {
     }
     if (key === events.remove) {
       const id = Number(e.arguments[1]);
-      if (Number.isInteger(id) && id > 0) sendCustomPacket(this.controller, { customPacketType: "bountyBoardRemove", board: info.board, id });
+      if (!Number.isInteger(id) || id < 1) return;
+      const note = info.notes.filter((n) => n.id === id)[0];
+      logTrace(this, `Removing notice`, id, note && note.mine ? "own" : "as officer");
+      sendCustomPacket(this.controller, { customPacketType: "bountyBoardRemove", board: info.board, id });
     }
   }
 

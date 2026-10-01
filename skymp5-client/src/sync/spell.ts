@@ -120,8 +120,8 @@ const spellEffects = (spell: Spell) => {
   return effects;
 };
 
-// A race set on the base never runs SwitchRace, so other races' abilities are dispelled and the current race's are added
-export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
+// A race set on the base never runs SwitchRace, so other races' abilities are dispelled and the current race's are added; previous is a race just left, such as a polymorph's creature form
+export const syncRaceAbilities = (actor: Actor, keep: Array<number>, previous: Race | null = null) => {
   const current = ActorBase.from(actor.getBaseObject())?.getRace();
   if (!current) {
     return;
@@ -130,9 +130,10 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>) => {
   const kept = new Set([...keep, ...currentSpells.map((spell) => spell.getFormID())]);
 
   const others = playableRaces();
-  const actorRace = actor.getRace();
-  if (actorRace && !others.some((race) => race.getFormID() === actorRace.getFormID())) {
-    others.push(actorRace);
+  for (const race of [actor.getRace(), previous]) {
+    if (race && !others.some((other) => other.getFormID() === race.getFormID())) {
+      others.push(race);
+    }
   }
 
   for (const race of others) {

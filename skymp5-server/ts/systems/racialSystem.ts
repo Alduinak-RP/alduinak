@@ -109,7 +109,7 @@ const REPORT_PACKET = "racialReport";
 const RESYNC_PACKET = "racialResync";
 const BASE_PACKET = "racialBase";
 const SELF_CHECK_MODES = ["off", "log", "resync"];
-// Main's polymorph.ts record, set while a GM transform holds the character in another race
+// The polymorph.ts record, set while a GM transform holds the character in another race
 const POLYMORPH_PROP = "private.polymorph";
 // A report this soon after the character's last one is dropped
 const REPORT_MIN_GAP_MS = 2000;

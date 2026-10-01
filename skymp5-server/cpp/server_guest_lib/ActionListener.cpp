@@ -18,6 +18,7 @@
 #include "gamemode_events/EatItemEvent.h"
 #include "gamemode_events/UpdateAppearanceAttemptEvent.h"
 #include "gamemode_events/UpdateEquipmentAttemptEvent.h"
+#include "formulas/EffectModifiers.h"
 #include "formulas/TES5DamageFormula.h"
 #include "script_objects/EspmGameObject.h"
 #include <fmt/format.h>
@@ -1316,7 +1317,12 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
         sendOutMsg = true;
         return;
       }
+      const float reported = newVal;
       newVal = CropHealthRegeneration(newVal, timeAfterRegeneration, actor);
+      if (partOne.worldState.healthRegenerationMultiplier &&
+          newVal < reported && !MathUtils::IsNearlyEqual(newVal, reported)) {
+        NoteRefusedHealthIncrease(*actor, reported - newVal, now);
+      }
     } else if (av == espm::ActorValue::Magicka) {
       newVal = CropMagickaRegeneration(newVal, timeAfterRegeneration, actor);
     } else if (av == espm::ActorValue::Stamina) {
@@ -2241,8 +2247,47 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
 
   TrackNpcHitPoison(*aggressor, targetActor, hitData.isHitBlocked);
 
-  float damage = partOne.CalculateDamage(*aggressor, targetActor, hitData);
+  // A player's block lets npcBlockedDamageShare of an NPC's hit through, a player's hit stays fully blocked
+  const bool playerBlocked =
+    hitData.isHitBlocked && targetActor.GetProfileId() >= 0;
+  const bool npcAggressor = aggressor->GetProfileId() < 0;
+  const bool npcBlocked = playerBlocked && npcAggressor;
+  const float blockMult =
+    npcBlocked ? GetBlockEffectMult(targetActor, *aggressor) : 1.f;
+  const float blockedShare = npcBlocked
+    ? BlockedPassShare(partOne.worldState.npcBlockedDamageShare, blockMult)
+    : 0.f;
+  // The formula zeroes a blocked hit, so a leaking one is priced unblocked
+  HitData formulaHitData = hitData;
+  formulaHitData.isHitBlocked = hitData.isHitBlocked && blockedShare <= 0.f;
+  float damage =
+    partOne.CalculateDamage(*aggressor, targetActor, formulaHitData);
   damage = damage < 0.f ? 0.f : damage;
+  if (blockedShare > 0.f && blockMult != 1.f) {
+    spdlog::info("OnWeaponHit - {:x} blocked npc {:x} with {:x}, {} of {} "
+                 "damage lands (npcBlockedDamageShare {}, share {} at block "
+                 "modifier x{})",
+                 targetActor.GetFormId(), aggressor->GetFormId(),
+                 hitData.source, damage * blockedShare, damage,
+                 partOne.worldState.npcBlockedDamageShare, blockedShare,
+                 blockMult);
+    damage *= blockedShare;
+  } else if (blockedShare > 0.f) {
+    spdlog::info("OnWeaponHit - {:x} blocked npc {:x} with {:x}, {} of {} "
+                 "damage lands (npcBlockedDamageShare {})",
+                 targetActor.GetFormId(), aggressor->GetFormId(),
+                 hitData.source, damage * blockedShare, damage, blockedShare);
+    damage *= blockedShare;
+  } else if (playerBlocked && damage > 0.f) {
+    spdlog::info("OnWeaponHit - {:x} blocked {} {:x} with {:x}, {} damage "
+                 "lands through the block",
+                 targetActor.GetFormId(), npcAggressor ? "npc" : "player",
+                 aggressor->GetFormId(), hitData.source, damage);
+  } else if (playerBlocked) {
+    spdlog::info("OnWeaponHit - {:x} blocked {} {:x} with {:x}, fully blocked",
+                 targetActor.GetFormId(), npcAggressor ? "npc" : "player",
+                 aggressor->GetFormId(), hitData.source);
+  }
   // A block stops the blade, not the poison on it; a bash never carries it
   const auto poisoned = hitData.isBashAttack
     ? std::nullopt
@@ -2481,6 +2526,28 @@ void ActionListener::TrackNpcHitPoison(const MpActor& aggressor,
                     { "aggressor", aggressor.GetFormId() } }
       .dump();
   target.SendToUser(message, true);
+}
+
+// With healthRegenerationMultiplier 0 only a client that still regenerates sends these, each minute of them is logged at the next one
+void ActionListener::NoteRefusedHealthIncrease(
+  const MpActor& actor, float refused,
+  std::chrono::steady_clock::time_point now)
+{
+  auto& entry = refusedHealthIncreases[actor.GetFormId()];
+  if (entry.count > 0 && now - entry.since >= std::chrono::minutes(1)) {
+    spdlog::info(
+      "OnChangeValues - {:x} sent {} health increase(s) above the allowed "
+      "regeneration within a minute, largest {} of full health refused "
+      "(healthRegenerationMultiplier {})",
+      actor.GetFormId(), entry.count, entry.largest,
+      *partOne.worldState.healthRegenerationMultiplier);
+    entry = {};
+  }
+  if (entry.count == 0) {
+    entry.since = now;
+  }
+  ++entry.count;
+  entry.largest = std::max(entry.largest, refused);
 }
 
 // A lower health reported inside the guard is the blocked hit's poison, so the server keeps its value for up to that poison's damage

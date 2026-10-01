@@ -7,7 +7,7 @@ const config = require('./config')
 
 const FACTION_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE'])
 // Faction and rank ids are lower-case slugs, so no dot, percent sign, empty segment or query string ever reaches the backend
-const FACTION_PATH_RE = /^(?:\/[a-z][a-z0-9-]{0,31}\/[a-z0-9][a-z0-9-]{0,63}(?:\/members|\/ranks(?:\/[a-z0-9][a-z0-9-]{0,63})?)?)?$/
+const FACTION_PATH_RE = /^(?:\/[a-z][a-z0-9-]{0,31}\/[a-z0-9][a-z0-9-]{0,63}(?:\/members|\/convert|\/ranks(?:\/[a-z0-9][a-z0-9-]{0,63})?)?)?$/
 const MAX_BODY = 64 * 1024
 
 function backendRequest(method, apiPath, { body, headers = {}, timeout = 3000 } = {}) {

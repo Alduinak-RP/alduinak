@@ -5,12 +5,12 @@ export type AdminTier = "senior" | "developer" | "gm";
 // Precedence when a player holds roles from several tiers
 const TIER_ORDER: AdminTier[] = ["senior", "developer", "gm"];
 
-// factions: manage every faction in game (ranks, removals, invites at any rank); weather: the Weather sub-tab (force and clear a region's weather)
-export type AdminCap = "players" | "teleport" | "modes" | "npcs" | "items" | "kick" | "ban" | "factions" | "weather";
-export const ADMIN_CAPS: AdminCap[] = ["players", "teleport", "modes", "npcs", "items", "kick", "ban", "factions", "weather"];
+// factions: manage every faction in game (ranks, removals, invites at any rank); weather: the Weather sub-tab (force and clear a region's weather); polymorph: the Polymorph sub-tab
+export type AdminCap = "players" | "teleport" | "modes" | "npcs" | "items" | "kick" | "ban" | "factions" | "weather" | "polymorph";
+export const ADMIN_CAPS: AdminCap[] = ["players", "teleport", "modes", "npcs", "items", "kick", "ban", "factions", "weather", "polymorph"];
 export type AdminCaps = Record<AdminCap, boolean>;
 
-const allCaps = (moderation: boolean): AdminCaps => ({ players: true, teleport: true, modes: true, npcs: true, items: true, kick: moderation, ban: moderation, factions: true, weather: true });
+const allCaps = (moderation: boolean): AdminCaps => ({ players: true, teleport: true, modes: true, npcs: true, items: true, kick: moderation, ban: moderation, factions: true, weather: true, polymorph: true });
 
 export const TIER_CAPS: Record<AdminTier, AdminCaps> = {
   senior: allCaps(true),
@@ -60,6 +60,9 @@ export const REQUEST_CAP: Record<string, AdminCap | null> = {
   weatherList: "weather",
   weatherSet: "weather",
   weatherClear: "weather",
+  raceList: "polymorph",
+  polymorph: "polymorph",
+  polymorphRevert: "polymorph",
 };
 
 // Undefined for an unknown request

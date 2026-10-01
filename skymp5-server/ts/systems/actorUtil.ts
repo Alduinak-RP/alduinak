@@ -55,14 +55,17 @@ export const hadStarterGold = (mp: Mp, actorId: number): boolean => {
   }
 };
 
-// Record type of a reference's base ("DOOR", "FURN"...), "" when unknown
-export const baseTypeOf = (mp: Mp, refId: number): string => {
+// Record type of a base form ("LIGH", "WEAP"...), "" when unknown
+export const recordTypeOf = (mp: Mp, baseId: number): string => {
   try {
-    return String(mp.lookupEspmRecordById(baseIdOf(mp, refId))?.record?.type ?? "");
+    return String(mp.lookupEspmRecordById(baseId)?.record?.type ?? "");
   } catch {
     return "";
   }
 };
+
+// Record type of a reference's base ("DOOR", "FURN"...), "" when unknown
+export const baseTypeOf = (mp: Mp, refId: number): string => recordTypeOf(mp, baseIdOf(mp, refId));
 
 export const isDoorRef = (mp: Mp, refId: number): boolean => baseTypeOf(mp, refId) === "DOOR";
 
@@ -285,6 +288,11 @@ export const addSpellTo = (mp: Mp, actorId: number, spellId: number): boolean =>
 
 export const removeSpellFrom = (mp: Mp, actorId: number, spellId: number): void => {
   mp.callPapyrusFunction("method", "Actor", "RemoveSpell", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(spellId) }]);
+};
+
+// Papyrus UnequipItem(akItem, abPreventEquip false, abSilent true) on the owner's client, whose equipment report syncs back; throws when a form is unknown
+export const unequipItemOf = (mp: Mp, actorId: number, itemId: number): void => {
+  mp.callPapyrusFunction("method", "Actor", "UnequipItem", { type: "form", desc: mp.getDescFromId(actorId) }, [{ type: "espm", desc: mp.getDescFromId(itemId) }, false, true]);
 };
 
 export const addItemTo = (mp: Mp, actorId: number, itemId: number, count: number, silent = false): void => {

@@ -23,6 +23,14 @@ float GetServerRegenMultiplier(MpActor* actor)
   return worldState ? worldState->regenerationMultiplier : 1.f;
 }
 
+float GetServerHealthRegenMultiplier(MpActor* actor)
+{
+  auto worldState = actor->GetParent();
+  return worldState && worldState->healthRegenerationMultiplier
+    ? *worldState->healthRegenerationMultiplier
+    : GetServerRegenMultiplier(actor);
+}
+
 }
 
 float CropRegeneration(float newAttributeValue, float secondsAfterLastRegen,
@@ -78,7 +86,7 @@ float CropHealthRegeneration(float newAttributeValue,
   const BaseActorValues baseValues = GetValues(actor);
   const ActorValues& actorValues = actor->GetActorValues();
   const float rate = std::max(baseValues.healRate, actorValues.healRate) *
-    GetServerRegenMultiplier(actor);
+    GetServerHealthRegenMultiplier(actor);
   const float rateMult =
     std::max(baseValues.healRateMult, actorValues.healRateMult);
   const float oldPercentage = actorValues.healthPercentage;

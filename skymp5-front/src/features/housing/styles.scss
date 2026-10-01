@@ -1,6 +1,7 @@
 // Housing / lock panel, sharing the emote wheel's red/black palette.
 
 @use '../../styles/redPanel' as *;
+@use '../../styles/paper' as *;
 
 .housing {
   position: fixed;
@@ -105,5 +106,75 @@
   &__footer {
     display: flex;
     justify-content: center;
+  }
+
+  // A pinned note: a strip of paper that opens the reader
+  &__note {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: $paper;
+    border: 1px solid $paper-edge;
+    color: $ink;
+    font-family: Georgia, 'Times New Roman', serif;
+    text-align: left;
+    cursor: pointer;
+    transition: box-shadow $fast;
+
+    &:hover {
+      box-shadow: 0 0 0 1px $red-border-bright;
+    }
+  }
+
+  &__note-label {
+    color: $ink-dim;
+    font-family: 'Futura Condensed', 'Roboto Condensed', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  &__note-title {
+    font-size: 16px;
+  }
+
+  &__note-text {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    color: $ink-dim;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  &__pick {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 40vh;
+    margin-bottom: 12px;
+    overflow-y: auto;
+    text-align: left;
+  }
+
+  &__pick-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  &__pick-id {
+    margin-left: auto;
+    opacity: 0.6;
+    font-size: 12px;
+  }
+
+  // The reader sits inside this root, whose pointer events are off
+  .parchment__shade {
+    pointer-events: auto;
   }
 }

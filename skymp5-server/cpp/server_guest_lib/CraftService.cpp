@@ -6,6 +6,7 @@
 #include "MpActor.h"
 #include "PartOne.h"
 #include "RawMessageData.h"
+#include "TemperCap.h"
 #include "WorldState.h"
 #include "gamemode_events/CraftEvent.h"
 #include <algorithm>
@@ -87,8 +88,8 @@ void CraftService::OnCraftItem(const RawMessageData& rawMsgData,
 
   auto recipe = reinterpret_cast<const espm::COBJ*>(recipesList[0].rec);
   if (temper) {
-    return UseTemperRecipe(me, recipe, br, recipesList[0].fileIdx,
-                           resultObjectId, *temperHealth);
+    return UseTemperRecipe(me, recipesList[0], br, resultObjectId,
+                           *temperHealth);
   }
   UseCraftRecipe(me, recipe, cache, br, recipesList[0].fileIdx);
 }
@@ -250,54 +251,114 @@ void CraftService::UseCraftRecipe(MpActor* me, const espm::COBJ* recipeUsed,
   craftEvent.Fire(me->GetParent());
 }
 
-float CraftService::GetMaxTemperHealth(MpActor* me,
-                                       const espm::CombineBrowser& br)
+namespace {
+constexpr uint16_t kHasSpell = 264;
+
+// Rank markers a recipe asks for with HasSpell == 1, condition ids are relative to the recipe's plugin
+template <class Callback>
+void ForEachMarkerGate(
+  const espm::LookupResult& recipe, const espm::COBJ::Data& recipeData,
+  const std::unordered_map<uint32_t, TemperCap::Marker>& markers,
+  const Callback& callback)
 {
-  if (!rankMarkers) {
-    static const std::pair<const char*, int> kRanks[] = {
-      { "_Novice", 1 },
-      { "_Adept", 2 },
-      { "_Expert", 3 },
-      { "_Master", 4 },
-      { "_Legendary", 5 }
-    };
-    rankMarkers.emplace();
-    for (auto& spell : br.GetDistinctRecordsByType("SPEL")) {
-      std::string edid = spell.rec->GetEditorId(cache);
-      if (edid.rfind("AldProf_", 0) != 0) {
-        continue;
-      }
-      for (auto& [suffix, rank] : kRanks) {
-        const std::string s = suffix;
-        if (edid.size() > s.size() &&
-            edid.compare(edid.size() - s.size(), s.size(), s) == 0) {
-          rankMarkers->push_back(
-            { spell.ToGlobalId(spell.rec->GetId()), rank });
-          break;
-        }
-      }
+  for (const auto& ctda : recipeData.conditions) {
+    if (ctda.functionIndex != kHasSpell || ctda.comparisonValue != 1.f ||
+        ctda.GetOperator() != espm::CTDA::Operator::EqualTo) {
+      continue;
     }
-    spdlog::info("CraftService found {} profession rank markers",
-                 rankMarkers->size());
-  }
-
-  int rank = 0;
-  for (auto& [spellId, markerRank] : *rankMarkers) {
-    if (markerRank > rank && me->IsSpellLearned(spellId)) {
-      rank = markerRank;
+    const uint32_t spellId =
+      recipe.ToGlobalId(ctda.GetDefaultData().firstParameter);
+    auto it = markers.find(spellId);
+    if (it != markers.end()) {
+      callback(spellId, it->second);
     }
   }
-
-  // Free Fine 1.1 up to Legendary 1.6, the engine's quality steps
-  return 1.1f + 0.1f * static_cast<float>(rank);
+}
 }
 
-void CraftService::UseTemperRecipe(MpActor* me, const espm::COBJ* recipeUsed,
-                                   const espm::CombineBrowser& br,
-                                   int espmIdx, uint32_t itemId,
-                                   float temperHealth)
+void CraftService::LoadRankMarkers(const espm::CombineBrowser& br)
 {
-  const float maxHealth = GetMaxTemperHealth(me, br);
+  rankMarkers.emplace();
+  for (auto& spell : br.GetDistinctRecordsByType("SPEL")) {
+    if (auto marker =
+          TemperCap::ParseMarkerEditorId(spell.rec->GetEditorId(cache))) {
+      rankMarkers->emplace(spell.ToGlobalId(spell.rec->GetId()), *marker);
+    }
+  }
+  spdlog::info("CraftService found {} profession rank markers",
+               rankMarkers->size());
+
+  if (allRecipes.empty()) {
+    allRecipes = br.GetDistinctRecordsByType("COBJ");
+  }
+  for (auto& recipe : allRecipes) {
+    const auto recipeData =
+      reinterpret_cast<const espm::COBJ*>(recipe.rec)->GetData(cache);
+    auto& professions =
+      benchProfessions[recipe.ToGlobalId(recipeData.benchKeywordId)];
+    ForEachMarkerGate(recipe, recipeData, *rankMarkers,
+                      [&](uint32_t, const TemperCap::Marker& marker) {
+                        if (std::find(professions.begin(), professions.end(),
+                                      marker.profession) ==
+                            professions.end()) {
+                          professions.push_back(marker.profession);
+                        }
+                      });
+  }
+}
+
+float CraftService::GetMaxTemperHealth(MpActor* me,
+                                       const espm::CombineBrowser& br,
+                                       const espm::LookupResult& recipe)
+{
+  if (!rankMarkers) {
+    LoadRankMarkers(br);
+  }
+
+  const auto recipeData =
+    reinterpret_cast<const espm::COBJ*>(recipe.rec)->GetData(cache);
+  std::vector<TemperCap::Gate> gates;
+  ForEachMarkerGate(recipe, recipeData, *rankMarkers,
+                    [&](uint32_t spellId, const TemperCap::Marker& marker) {
+                      gates.push_back(
+                        { marker.profession, me->IsSpellLearned(spellId) });
+                    });
+
+  const auto rankOf = [&](const std::string& profession) {
+    int rank = 0;
+    for (auto& [spellId, marker] : *rankMarkers) {
+      if (marker.rank > rank && marker.profession == profession &&
+          me->IsSpellLearned(spellId)) {
+        rank = marker.rank;
+      }
+    }
+    return rank;
+  };
+
+  static const std::vector<std::string> kNoProfessions;
+  auto bench =
+    benchProfessions.find(recipe.ToGlobalId(recipeData.benchKeywordId));
+  const TemperCap::Cap cap = TemperCap::Resolve(
+    gates, bench == benchProfessions.end() ? kNoProfessions : bench->second,
+    rankOf);
+
+  spdlog::info("CraftService - temper cap {} from {} for {} ({:#x})",
+               TemperCap::RankName(cap.rank),
+               cap.profession.empty() ? "no profession" : cap.profession,
+               recipe.rec->GetEditorId(cache),
+               recipe.ToGlobalId(recipe.rec->GetId()));
+
+  return TemperCap::HealthOfRank(cap.rank);
+}
+
+void CraftService::UseTemperRecipe(MpActor* me,
+                                   const espm::LookupResult& recipe,
+                                   const espm::CombineBrowser& br,
+                                   uint32_t itemId, float temperHealth)
+{
+  auto recipeUsed = reinterpret_cast<const espm::COBJ*>(recipe.rec);
+  const int espmIdx = recipe.fileIdx;
+  const float maxHealth = GetMaxTemperHealth(me, br, recipe);
   const float health = std::min(temperHealth, maxHealth);
 
   // The worn copy first, then the least improved one

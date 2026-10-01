@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { toFormId } from "./formIdUtil";
+import { toFormId, espmRefrFieldId } from "./formIdUtil";
 import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, isNear, chainMpHook, isDoorRef } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -20,6 +20,8 @@ type Mp = any;
 //     A put-down sets the body at the carrier's feet, and the body only follows
 //     the carrier into another cell through a door they used within DOOR_FOLLOW_MS;
 //     any other cell change or teleport ends the carry where the body was.
+//     A carrier holding a player is refused at a door that teleports (XTEL) and
+//     told to set them down first; a carried pet still follows through one.
 // Flows: arresting needs the configured "manacles" item (settings.manaclesFormId)
 // in the captor's inventory, carrying needs no item. A conscious target must
 // accept a Yes/No consent prompt. A DOWNED (bleeding-out) target is
@@ -39,7 +41,7 @@ type Mp = any;
 //   Server -> Client:
 //     { customPacketType: "playerMenuState", target, canRelease, ...flags } // -> the requester only: whether their Release applies, plus menuFlagProviders' flags
 //     { customPacketType: "restraintState",  boundHands, carried, carrier, anim, carriedAnim, carryForward, carryUp, carryYaw } // -> captive's RestraintService (carrier = actor id or 0)
-//     { customPacketType: "carryState",      carrying, anim, target, carriedAnim, carryForward, carryUp, carryYaw } // -> carrier's RestraintService (pose, and where and how a carried NPC is held)
+//     { customPacketType: "carryState",      carrying, anim, target, player, carriedAnim, carryForward, carryUp, carryYaw } // -> carrier's RestraintService (pose, where and how a carried NPC is held, and whether the load is a player)
 //     { customPacketType: "captureConsentRequest", requestId, text }       // -> target's CaptureConsentService
 //     { customPacketType: "captureNotice",   text }                        // -> corner notification
 //   Neighbour-visible property on the carried actor, registered in the gamemode's 50_properties.js:
@@ -110,6 +112,10 @@ const DEFAULT_INTERACT_MAX_DISTANCE = 256;
 // A refused carry or carrier attack is logged at most this often per actor
 const REFUSAL_LOG_MS = 5000;
 
+// Read by a carrier holding a player at a door that teleports, at most this often; the client words its own refusal the same
+const CARRY_DOOR_NOTICE = "Set them down before going through this door.";
+const CARRY_DOOR_NOTICE_MS = 2000;
+
 interface RestraintInfo {
   boundHands: boolean;   // arrested
   carried: boolean;
@@ -176,6 +182,8 @@ export class CaptureSystem implements System {
   private lastFollowMs = 0;
   // actorId -> last refusal log timestamp
   private refusalLogAt = new Map<number, number>();
+  // carrierActorId -> when they were last told to set their captive down at a load door
+  private doorNoticeAt = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -214,15 +222,20 @@ export class CaptureSystem implements System {
       this.onActorAssigned(ctx, actorId);
     });
     this.installCarrierFightBlock(ctx.svr as Mp);
-    this.installDoorWatch(ctx.svr as Mp);
+    this.installDoorWatch(ctx);
   }
 
-  // Recorded before the chain: the door override installed earlier vetoes the native teleport after moving the carrier, and a locked door is refused by HousingSystem's later wrapper before this one runs
-  private installDoorWatch(mp: Mp): void {
+  // Refused or recorded before the chain: the door override installed earlier vetoes the native teleport after moving the carrier, and a locked door is refused by HousingSystem's later wrapper before this one runs
+  private installDoorWatch(ctx: SystemContext): void {
+    const mp = ctx.svr as Mp;
     const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
     mp.onActivate = (targetId: number, casterId: number): boolean => {
       const carrier = casterId >>> 0;
-      if (this.carrying.has(carrier) && isDoorRef(mp, targetId >>> 0)) this.doorUsedAt.set(carrier, Date.now());
+      const carried = this.carrying.get(carrier);
+      if (carried !== undefined && isDoorRef(mp, targetId >>> 0)) {
+        if (this.refusedAtLoadDoor(ctx, carrier, carried, targetId >>> 0)) return false;
+        this.doorUsedAt.set(carrier, Date.now());
+      }
       if (!previous) return true;
       try {
         return previous.call(mp, targetId, casterId) !== false;
@@ -231,6 +244,19 @@ export class CaptureSystem implements System {
         return true;
       }
     };
+  }
+
+  // A carried player is not taken through a door that teleports: the press is refused, nobody is moved and the carry goes on
+  private refusedAtLoadDoor(ctx: SystemContext, carrier: number, carried: number, doorId: number): boolean {
+    const mp = ctx.svr as Mp;
+    if (espmRefrFieldId(mp, doorId, "XTEL") === 0 || !isPlayerActor(mp, carried)) return false;
+    const now = Date.now();
+    if (now - (this.doorNoticeAt.get(carrier) ?? 0) >= CARRY_DOOR_NOTICE_MS) {
+      this.doorNoticeAt.set(carrier, now);
+      this.notice(ctx, this.userOf(ctx, carrier), CARRY_DOOR_NOTICE);
+      this.log(`[carry] ${carrier.toString(16)} refused at load door ${doorId.toString(16)} while carrying ${carried.toString(16)}`);
+    }
+    return true;
   }
 
   // A carrier cannot fight; onHitAttempt and onSpellCastAttempt need the native build, onHitDamageAttempt works on any
@@ -326,6 +352,7 @@ export class CaptureSystem implements System {
     if (!actorId) {
       return;
     }
+    this.doorNoticeAt.delete(actorId);
     // If they were carrying someone, set that body down (keeping any binding).
     const carried = this.carrying.get(actorId);
     if (carried !== undefined) {
@@ -893,6 +920,8 @@ export class CaptureSystem implements System {
       carrying,
       anim: this.carrierAnim,
       target: npcTarget,
+      // The carrier's client refuses load doors while the load is a player
+      player: carrying && !!target && !npcTarget,
       carriedAnim: this.carriedAnim,
       carryForward: this.carryForward,
       carryUp: this.carryUp,

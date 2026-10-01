@@ -64,6 +64,11 @@ keeps its display name with a verb picked from its base form type.
   Ride on any horse, Harvest on your own livestock, Command on your own dog or
   conjured companion, no verb on someone else's animal; X on your own pet opens
   the pet menu instead of the Personal Menu. A dead pet keeps the Search path.
+- **Door notes**: a door half with a letter pinned to it (the neighbour-visible
+  `ff_doorNote`, true while a note hangs there; `docs_roleplay_writing.md`)
+  ends its verb with a scroll, "OPEN 📜" or "UNLOCK 📜". The emoji is drawn by
+  CEF (Chromium falls back to Segoe UI Emoji); with `customPrompts: false` the
+  vanilla rollover shows and carries no marker.
 - **Verbs by base type**: Door Open/Unlock, Container Search/Unlock,
   Activator Activate, Furniture Use, Book Read, Flora/Tree Harvest (skipped
   when harvested; coin purses, loose salmon and any other `untouchableBaseIds`

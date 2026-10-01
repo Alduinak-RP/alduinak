@@ -1,6 +1,7 @@
 #include "TES5DamageFormula.h"
 
 #include "ConditionsEvaluator.h"
+#include "EffectModifiers.h"
 #include "EvaluateTemplate.h"
 #include "HitData.h"
 #include "MpActor.h"
@@ -171,12 +172,17 @@ float TES5DamageFormulaImpl::CalculateDamage() const
 
   if (hitData.isHitBlocked) {
     // TODO(#460): implement correct block formula
-    damage *= kBlockedHitDamageMult;
+    damage *= BlockedPassShare(kBlockedHitDamageMult,
+                               GetBlockEffectMult(target, aggressor));
   }
 
   if (hitData.isSneakAttack) {
     // TODO(GM-613): get from GameSettings
     damage *= 1.3f;
+  }
+
+  if (damage > 0.f) {
+    damage *= GetWeaponEffectMult(aggressor, target, hitData.source);
   }
 
   return damage;
@@ -333,7 +339,46 @@ bool ConditionsHold(const std::vector<espm::CTDA>& ctdas,
   return true;
 }
 
-// The target's abilities modifying the resist value (racial resistances, weaknesses), capped like fPlayerMaxResistance
+// The holder's Ability and Disease value modifiers on one actor value, detrimental ones negative; conditions run with the holder as Subject
+float SumPassiveValueModifiers(espm::ActorValue av, const MpActor& holder,
+                               const MpActor& opponent, bool countDual)
+{
+  float sum = 0.f;
+  for (uint32_t spellId : holder.GetLearnedAndBaseSpells()) {
+    ForEachSpellEffectRecord(
+      holder.GetParent(), spellId,
+      [&](const espm::LookupResult& spellLookup, const espm::SPEL::Data& spell,
+          const espm::SPEL::Effect& effect, const espm::MGEF::Data& mgef,
+          const espm::LookupResult& mgefLookup) {
+        if (!effect.effectItem || !spell.spellItem ||
+            (spell.spellItem->type != espm::SPEL::SpellType::Ability &&
+             spell.spellItem->type != espm::SPEL::SpellType::Disease)) {
+          return;
+        }
+        const bool dual =
+          countDual && mgef.data.effectType == espm::MGEF::EffectType::Dual;
+        const bool modifiesValue = dual ||
+          mgef.data.effectType == espm::MGEF::EffectType::ValueMod ||
+          mgef.data.effectType == espm::MGEF::EffectType::PeakValueMod;
+        float share = modifiesValue && mgef.data.primaryAV == av ? 1.f : 0.f;
+        if (dual && mgef.data.secondaryAV == av) {
+          share += mgef.data.secondAVWeight;
+        }
+        if (share == 0.f ||
+            !ConditionsHold(effect.conditions, spellLookup, opponent,
+                            holder) ||
+            !ConditionsHold(mgef.conditions, mgefLookup, opponent, holder)) {
+          return;
+        }
+        const float magnitude = effect.effectItem->magnitude * share;
+        sum += mgef.data.IsFlagSet(espm::MGEF::Flags::Detrimental) ? -magnitude
+                                                                   : magnitude;
+      });
+  }
+  return sum;
+}
+
+// The target's abilities and diseases modifying the resist value (racial resistances, weaknesses), capped like fPlayerMaxResistance
 float GetResistMult(espm::ActorValue resistAV, const MpActor& aggressor,
                     const MpActor& target)
 {
@@ -341,31 +386,21 @@ float GetResistMult(espm::ActorValue resistAV, const MpActor& aggressor,
   if (resistAV == espm::ActorValue::None) {
     return 1.f;
   }
-  float resistance = 0.f;
-  for (uint32_t spellId : target.GetLearnedAndBaseSpells()) {
-    ForEachSpellEffectRecord(
-      aggressor.GetParent(), spellId,
-      [&](const espm::LookupResult& spellLookup, const espm::SPEL::Data& spell,
-          const espm::SPEL::Effect& effect, const espm::MGEF::Data& mgef,
-          const espm::LookupResult& mgefLookup) {
-        const bool modifiesValue =
-          mgef.data.effectType == espm::MGEF::EffectType::ValueMod ||
-          mgef.data.effectType == espm::MGEF::EffectType::PeakValueMod;
-        if (!effect.effectItem || !spell.spellItem ||
-            spell.spellItem->type != espm::SPEL::SpellType::Ability ||
-            !modifiesValue || mgef.data.primaryAV != resistAV ||
-            !ConditionsHold(effect.conditions, spellLookup, aggressor,
-                            target) ||
-            !ConditionsHold(mgef.conditions, mgefLookup, aggressor, target)) {
-          return;
-        }
-        const float magnitude = effect.effectItem->magnitude;
-        resistance +=
-          mgef.data.IsFlagSet(espm::MGEF::Flags::Detrimental) ? -magnitude
-                                                              : magnitude;
-      });
-  }
+  const float resistance =
+    SumPassiveValueModifiers(resistAV, target, aggressor, false);
   return 1.f - std::min(resistance, kMaxResistance) / 100.f;
+}
+
+// 1 unless effectModifiers is on and the holder carries modifiers of the skill value
+float GetEffectModifierMult(espm::ActorValue av, const MpActor& holder,
+                            const MpActor& opponent)
+{
+  const WorldState* worldState = holder.GetParent();
+  if (!worldState || !worldState->effectModifiers) {
+    return 1.f;
+  }
+  return EffectModifierMult(
+    SumPassiveValueModifiers(av, holder, opponent, true));
 }
 
 float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
@@ -425,6 +460,66 @@ float* PoisonBucket(PoisonHit& hit, espm::ActorValue av)
   }
 }
 
+}
+
+float GetBlockEffectMult(const MpActor& blocker, const MpActor& attacker)
+{
+  const float mult = internal::GetEffectModifierMult(
+    espm::ActorValue::BlockMod, blocker, attacker);
+  if (mult != 1.f) {
+    spdlog::info("TES5DamageFormula - {:x} blocks {:x} at x{} of a full "
+                 "block (BlockMod of its abilities and diseases)",
+                 blocker.GetFormId(), attacker.GetFormId(), mult);
+  }
+  return mult;
+}
+
+float GetWeaponEffectMult(const MpActor& aggressor, const MpActor& target,
+                          uint32_t source)
+{
+  WorldState* worldState = aggressor.GetParent();
+  if (!worldState || !worldState->effectModifiers ||
+      internal::IsUnarmedAttack(source)) {
+    return 1.f;
+  }
+  const auto weapon = espm::Convert<espm::WEAP>(
+    worldState->GetEspm().GetBrowser().LookupById(source).rec);
+  const auto dnam =
+    weapon ? weapon->GetData(worldState->GetEspmCache()).weapDNAM : nullptr;
+  if (!dnam) {
+    return 1.f;
+  }
+  auto av = espm::ActorValue::None;
+  const char* name = "";
+  switch (dnam->animType) {
+    case espm::WEAP::AnimType::OneHandSword:
+    case espm::WEAP::AnimType::OneHandDagger:
+    case espm::WEAP::AnimType::OneHandAxe:
+    case espm::WEAP::AnimType::OneHandMace:
+      av = espm::ActorValue::OneHandedMod;
+      name = "OneHandedMod";
+      break;
+    case espm::WEAP::AnimType::TwoHandSword:
+    case espm::WEAP::AnimType::TwoHandAxe:
+      av = espm::ActorValue::TwoHandedMod;
+      name = "TwoHandedMod";
+      break;
+    case espm::WEAP::AnimType::Bow:
+    case espm::WEAP::AnimType::Crossbow:
+      av = espm::ActorValue::MarksmanMod;
+      name = "MarksmanMod";
+      break;
+    default:
+      return 1.f;
+  }
+  const float mult = internal::GetEffectModifierMult(av, aggressor, target);
+  if (mult != 1.f) {
+    spdlog::info("TES5DamageFormula - {:x} hits {:x} with {:x} at x{} damage "
+                 "({} of its abilities and diseases)",
+                 aggressor.GetFormId(), target.GetFormId(), source, mult,
+                 name);
+  }
+  return mult;
 }
 
 PoisonHit CalculatePoisonHit(const MpActor& aggressor, const MpActor& target,

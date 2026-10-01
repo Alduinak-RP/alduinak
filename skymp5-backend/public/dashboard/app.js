@@ -412,7 +412,7 @@ function renderRequirements() {
       <tbody>
         ${rows.map(req => `
           <tr class="${req.id === state.selectedRequirementId ? 'selected' : ''}">
-            <td><span class="tag">${escapeHtml(req.scope)}</span></td>
+            <td><span class="tag">${escapeHtml(req.scope === 'hold' ? 'territory' : req.scope)}</span></td>
             <td>${escapeHtml(req.group)}</td>
             <td>${escapeHtml(req.rank)}</td>
             <td>${req.capacity === null ? 'Open' : `${req.assigned}/${req.capacity}`}</td>

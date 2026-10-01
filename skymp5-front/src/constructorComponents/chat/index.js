@@ -291,7 +291,8 @@ const Chat = (props) => {
     return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
   }, [fadeSeconds]);
 
-  const prevMessageCountRef = useRef(window.chatMessages.length);
+  // The newest line already seen; the list is capped at 100, so its length stops growing
+  const lastSeenMessageRef = useRef(window.chatMessages[window.chatMessages.length - 1]);
   useEffect(() => {
     // Follow new messages to the bottom (chatRef is the scrolling list).
     if (window.needToScroll && chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
@@ -300,10 +301,9 @@ const Chat = (props) => {
     }
     bumpIdle();
     // Incoming system messages and PMs pull their tab into focus (never mid-typing)
-    const prevCount = prevMessageCountRef.current;
-    prevMessageCountRef.current = window.chatMessages.length;
-    if (!isInputFocus && window.chatMessages.length > prevCount) {
-      const fresh = window.chatMessages.slice(prevCount);
+    const fresh = window.chatMessages.slice(window.chatMessages.lastIndexOf(lastSeenMessageRef.current) + 1);
+    lastSeenMessageRef.current = window.chatMessages[window.chatMessages.length - 1];
+    if (!isInputFocus && fresh.length) {
       if (fresh.some((m) => m.channel === SYSTEM_CHANNEL)) {
         setChannel(SYSTEM_CHANNEL);
       } else if (fresh.some((m) => m.channel === 'personal')) {

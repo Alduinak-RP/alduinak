@@ -55,6 +55,7 @@ import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { DiscordAlerts } from "./systems/discordAlerts";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
+import { TorchSystem } from "./systems/torchSystem";
 import { CompanionSystem } from "./systems/companionSystem";
 import { HostingSystem } from "./systems/hostingSystem";
 import { PetSystem } from "./systems/petSystem";
@@ -266,8 +267,10 @@ const main = async () => {
   // Living NPCs are searched too; hosting's aggro says whether one is fighting
   const searchSystem = new SearchSystem(log, hostingSystem);
   const huntingSystem = new HuntingSystem(log, masterySystem, needsSystem);
-  // A hunter's interaction with a dead animal skins it before it is searched
-  searchSystem.bodyAction = (ctx, searcherId, bodyId) => huntingSystem.trySkin(ctx, searcherId, bodyId);
+  // A hunter's interaction with a dead animal, a dead player's own body or a PK body skins it before it is searched
+  searchSystem.bodyAction = (ctx, searcherId, bodyId, chosen) => huntingSystem.trySkin(ctx, searcherId, bodyId, true, chosen);
+  // The interact menu on a dead player's body offers Skin to a hunter holding the knife
+  captureSystem.menuFlagProviders.push((requesterId, bodyId) => huntingSystem.menuFlags(requesterId, bodyId));
   searchSystem.hidesItem = (ctx, _viewerId, bodyId, baseId) => huntingSystem.hidesMeat(ctx, bodyId, baseId);
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
   const petSystem = new PetSystem(log, hostingSystem, companionSystem, housingSystem, searchSystem, captureSystem);
@@ -298,7 +301,14 @@ const main = async () => {
   const factionSystem = new FactionSystem(log, housingSystem);
   // A PK leaves a lootable body at the spot of death
   const bodySystem = new BodySystem(log);
-  searchSystem.bodyRefusal = (searcherId, bodyId) => bodySystem.refusalFor(searcherId, bodyId);
+  // A player's own body or a PK body is not searched while a hunter skins it
+  searchSystem.bodyRefusal = (searcherId, bodyId) => huntingSystem.searchRefusal(bodyId) || bodySystem.refusalFor(searcherId, bodyId);
+  // A PK body holds the victim's keys and writings, taken from its window like any other item
+  searchSystem.namedLoot = (bodyId) => !!bodySystem.bodyOf(bodyId);
+  huntingSystem.leftBody = (victimId) => bodySystem.hasBodyFor(victimId);
+  huntingSystem.pkBodyOf = (bodyId) => bodySystem.bodyOf(bodyId);
+  // A skinned PK body hands its whole pack to the skinner
+  huntingSystem.emptyPkBody = (bodyId, skinnerId) => bodySystem.emptyInto(bodyId, skinnerId, "skinned");
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
   const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem, furnitureSeatSystem);
   adminSystem.setExecutionSystem(executionSystem);
@@ -306,6 +316,9 @@ const main = async () => {
   bountyBoardSystem.canRemove = (actorId, boardName) => factionSystem.canRemoveBoardPosts(actorId, boardName);
   bountyBoardSystem.canManage = (actorId, boardName) => factionSystem.canManageBoard(actorId, boardName);
   bountyBoardSystem.titleOf = (actorId) => factionSystem.titleOfActor(actorId);
+  // Letters pinned to doors from the housing menu
+  const writingSystem = new WritingSystem(log, factionSystem);
+  housingSystem.writings = writingSystem;
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
@@ -349,8 +362,9 @@ const main = async () => {
     // After hunting, whose raw meat it reads, and after needs, whose eat hook it wraps
     survivalSystem,
     bountyBoardSystem,
-    new WritingSystem(log, factionSystem),
+    writingSystem,
     new UntouchableSystem(log),
+    new TorchSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it
     hostingSystem,
     npcSpawnSystem,

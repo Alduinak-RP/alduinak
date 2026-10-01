@@ -193,8 +193,10 @@ fails it prints a direct download URL - save that zip as
     **Migrate settings**, which merges every test setting the live file lacks or
     has differently, except the protected identity keys (name, ports, players,
     database, dataDir, logDir, voice chat, access, admin and Discord keys, daily
-    restart) and the debug toggles (console commands for all, Papyrus hot
-    reload); `loadOrder` and `archives` are left alone, **Migrate client** syncs
+    restart), the debug toggles (console commands for all, Papyrus hot
+    reload) and the switches of features on trial (`alduinakDamageFormulaSettings`,
+    `survivalEnabled`, `masterySlots`, `healthRegenerationMultiplier`, copied to
+    live by hand once signed off); `loadOrder` and `archives` are left alone, **Migrate client** syncs
     them from the manifest so its diff records the plugin shifts the MongoDB
     purge needs.
     **Migrate client** installs the test manifest live (`/files/extras-test/`
@@ -258,11 +260,39 @@ fails it prints a direct download URL - save that zip as
     A `skymp5-client-settings.txt` in any mod folder and the SkyMP client package
     (`Platform/**` and the dlls and pex files listed in
     `skymp5-backend/scripts/client-package.js`) are left out, since the client
-    zip delivers them. `*.log` files in mod folders are left out too: SKSE
-    plugins such as Actor Limit Fix rewrite them on every game start, so a
-    shipped copy changed the mod folder's size and the launcher repaired the
-    mod on every launch. When several downloads hold the same file, a mod takes
-    it from the newest archive of its own Nexus mod. The settings sync keeps
+    zip delivers them. `*.log` files in mod folders and `ActorLimitFix.pdb`
+    (debug symbols) are left out too, listed on the compile's `left out:`
+    line, and the launcher leaves the same files out of its folder size check
+    (`mo2::is_unverified`, launchers after 3.0.5). Its repair line names
+    the files that differ: `[install] Actor Limit Fix: folder is A bytes,
+    manifest expects B (unlisted X n bytes, Y n bytes, not m, missing Z) -
+    repairing`. Actor Limit Fix writes `ActorLimitFix.log` next to its dll on
+    every game start; that lands in the mod folder only when the folder
+    already has the file (an install from a manifest older than C22, which
+    shipped it empty), otherwise MO2 puts it in `overwrite`. Leaving the pdb
+    out changes the mod's hash, so every install rebuilds it once after the
+    next Update Modlist; a launcher after 3.0.5 keeps the unchanged dll and
+    json and downloads nothing, 3.0.5 downloads the archive again (by hand on
+    a free Nexus account). Both servers use one MO2 folder, so while the test
+    and live manifests differ a PC that plays both rebuilds it on each switch,
+    and the switch to live downloads the archive for the pdb, until Migrate
+    client. When several downloads
+    hold the same file, a mod takes it from the newest archive of its own
+    Nexus mod. A mod built from several archives (Alduinak Client Files takes
+    the client archive and the DynDOLOD Files archive) is reinstalled as a
+    whole when any file changes, but the launcher keeps every file already on
+    disk with the manifest's size and sha256 and downloads only the archives
+    the changed files come from, so a new client archive no longer pulls the
+    DynDOLOD archive again; `install.log` reads `[install] <mod>: keeping N
+    of M file(s) ...` and `[install] skipping archive <name> ...`, and Repair
+    Modlist still rebuilds everything from the archives. With Mod Manager None
+    every mod goes into the one Data folder, so a path two mods share (1333 in
+    the test manifest, 1072 of them Alduinak Client Files over DynDOLOD
+    Resources SE) is written and checked for the higher-priority mod only, as
+    MO2 would show it; before, the lower mod overwrote it and the two mods
+    flagged each other on alternate Plays, re-downloading the DynDOLOD archive
+    each time (`[install] Mod Manager None: N file(s) left to a higher-priority
+    mod with the same path`). The settings sync keeps
     `server-settings.json.prev`; the data sync deletes only unmodified files a
     previous manifest or sync put there, sha256-verifies copies and never
     touches vanilla masters; the purge refuses on an unreadable light flag or

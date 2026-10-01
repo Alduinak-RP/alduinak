@@ -1,13 +1,24 @@
-// Writings: the paper reader and composer of ../parchment over a darkened screen.
+// Writings: the composer, the note and book readers and the sealed face over a darkened screen, plus the markup of markup.tsx
 
-$paper: #d8c9a3;
-$paper-edge: #b5a478;
-$ink: #2a2118;
-$ink-dim: rgba(42, 33, 24, 0.65);
+@use '../../styles/paper' as *;
+
 $gold: #c8b48a;
 $bg: rgba(10, 10, 10, 0.94);
 $border: rgba(200, 180, 138, 0.45);
 $text: #e8e0d0;
+$text-dim: rgba(232, 224, 208, 0.6);
+$wax: #7a1f14;
+
+// The owner's fonts, packed by misc/writing-fonts.py; markup.tsx FONTS names them
+@font-face { font-family: 'Writing Hand'; src: url('../../fonts/writing/handwritten.woff') format('woff'); }
+@font-face { font-family: 'Writing Book'; src: url('../../fonts/writing/gaelic.woff') format('woff'); }
+@font-face { font-family: 'Writing Daedric'; src: url('../../fonts/writing/daedric.woff') format('woff'); }
+@font-face { font-family: 'Writing Dragon'; src: url('../../fonts/writing/dragon.woff') format('woff'); }
+@font-face { font-family: 'Writing Dwemer'; src: url('../../fonts/writing/dwemer.woff') format('woff'); }
+@font-face { font-family: 'Writing Falmer'; src: url('../../fonts/writing/falmer.woff') format('woff'); }
+@font-face { font-family: 'Writing Mage'; src: url('../../fonts/writing/mage.woff') format('woff'); }
+@font-face { font-family: 'Writing Unreadable'; src: url('../../fonts/writing/unreadable.woff') format('woff'); }
+@font-face { font-family: 'Writing Symbols'; src: url('../../fonts/writing/symbols.woff') format('woff'); }
 
 .writing {
   position: fixed;
@@ -35,23 +46,287 @@ $text: #e8e0d0;
     height: 100%;
   }
 
-  &__fields {
+  // A paper between its panels; --paper-h and --paper-w size the art, the panels may be wider
+  &__desk {
+    --paper-h: min(calc(100vh - 270px), 780px);
+    --paper-w: calc(var(--paper-h) * 0.7275);
     display: flex;
     flex-direction: column;
     gap: 10px;
+    width: min(96vw, max(var(--paper-w), 800px));
+
+    &--spread {
+      --paper-h: min(calc(100vh - 270px), 760px, calc(94vw / 1.3254));
+      --paper-w: calc(var(--paper-h) * 1.3254);
+    }
+
+    &--spread#{&}--read {
+      --paper-h: min(calc(100vh - 150px), 820px, calc(94vw / 1.3254));
+    }
+
+    &--sealed {
+      --paper-w: min(560px, 80vw, calc((100vh - 300px) / 0.6617));
+      --paper-h: calc(var(--paper-w) * 0.6617);
+      width: min(96vw, max(var(--paper-w), 520px));
+    }
+  }
+
+  &__head,
+  &__foot {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 14px;
+    background: $bg;
+    border: 1px solid $border;
+    color: $text;
+  }
+
+  &__head-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+
+    .writing__title-input {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .parchment__compose-title {
+      flex: none;
+      max-width: 55%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  &__foot {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+
+    &--column {
+      flex-direction: column;
+      align-items: stretch;
+    }
   }
 
   &__title-input {
-    padding: 8px 12px;
+    padding: 6px 12px;
     background: $paper;
     border: 1px solid $paper-edge;
     color: $ink;
     font-family: Georgia, 'Times New Roman', serif;
     font-size: 16px;
+    user-select: text;
 
     &:focus {
       outline: 1px solid $gold;
     }
+  }
+
+  &__tools {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  &__tool {
+    min-width: 34px;
+    height: 30px;
+    padding: 0 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid $border;
+    color: $text;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      border-color: $gold;
+      color: $gold;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    &--on,
+    &--on:hover:not(:disabled) {
+      background: $gold;
+      color: #101010;
+    }
+
+    &--wide {
+      margin-left: auto;
+    }
+  }
+
+  &__popup {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 50vh;
+    margin-top: 4px;
+    padding: 6px;
+    overflow-y: auto;
+    background: rgba(10, 10, 10, 0.97);
+    border: 1px solid $border;
+
+    &--inks {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 6px;
+      width: 214px;
+    }
+  }
+
+  &__popup-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    padding: 6px 10px;
+    color: $text;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(200, 180, 138, 0.15);
+      color: $gold;
+    }
+  }
+
+  &__popup-sample {
+    font-size: 20px;
+  }
+
+  &__swatch {
+    width: 44px;
+    height: 28px;
+    border: 1px solid $border;
+    cursor: pointer;
+
+    &:hover {
+      outline: 1px solid $gold;
+    }
+  }
+
+  // The art and the page areas inside it, placed on the texture's writable part
+  &__paper {
+    position: relative;
+    isolation: isolate;
+    align-self: center;
+    width: var(--paper-w);
+    height: var(--paper-h);
+    color: $ink;
+    font-size: clamp(14px, 2vh, 19px);
+    line-height: 1.4;
+  }
+
+  &__page {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    &--note {
+      top: 9%;
+      bottom: 7%;
+      left: 11%;
+      right: 11%;
+    }
+
+    &--left,
+    &--right {
+      top: 6%;
+      bottom: 6%;
+      width: 37.5%;
+    }
+
+    &--left {
+      left: 8%;
+    }
+
+    &--right {
+      left: 54.5%;
+    }
+  }
+
+  &__field,
+  &__view {
+    @include paper-scrollbar;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    padding: 2px 4px;
+    overflow-y: auto;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  &__field {
+    resize: none;
+    user-select: text;
+
+    &:focus {
+      outline: 1px dashed rgba(42, 33, 24, 0.35);
+    }
+
+    &::placeholder {
+      color: $ink-dim;
+    }
+  }
+
+  &__count {
+    flex: none;
+    align-self: flex-end;
+    color: $ink-dim;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 12px;
+    white-space: pre;
+
+    &--over {
+      color: #8b1a1a;
+    }
+  }
+
+  &__book-title {
+    margin: 0 0 0.6em;
+    font-size: 1.5em;
+    font-weight: 400;
+    text-align: center;
+  }
+
+  &__byline {
+    margin: 0.8em 0 0;
+    font-style: italic;
+    text-align: right;
+    white-space: normal;
+  }
+
+  &__meta {
+    color: $text-dim;
+    font-size: 13px;
+  }
+
+  &__warn {
+    color: #e0a080;
+    font-size: 14px;
   }
 
   &__pager {
@@ -68,6 +343,38 @@ $text: #e8e0d0;
     color: $text;
     font-size: 15px;
     letter-spacing: 0.04em;
+  }
+
+  // The sealed face: the letter art with the faction's mark pressed on it
+  &__sealed {
+    position: relative;
+    isolation: isolate;
+    align-self: center;
+    width: var(--paper-w);
+    height: var(--paper-h);
+  }
+
+  &__sealed-mark {
+    position: absolute;
+    top: 57%;
+    left: 50%;
+    height: 48%;
+    width: auto;
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  }
+
+  &__sealed-caption {
+    color: $gold;
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    text-align: center;
+  }
+
+  &__sealed-text {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 16px;
+    text-align: center;
   }
 
   // The sealed-face stamp is sized by height only, so the portrait Legion mark keeps its shape
@@ -93,18 +400,6 @@ $text: #e8e0d0;
     font-size: 12px;
     color: $ink-dim;
     text-align: center;
-  }
-
-  &__confirm {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-  }
-
-  &__confirm-text {
-    font-size: 15px;
   }
 
   &__list {
@@ -133,4 +428,76 @@ $text: #e8e0d0;
       color: $gold;
     }
   }
+}
+
+// Markup elements, sized from the page's font
+.writing-md {
+  &__head {
+    display: block;
+    margin: 0.2em 0 0.3em;
+    line-height: 1.2;
+
+    &--1 {
+      font-size: 1.7em;
+      text-align: center;
+    }
+
+    &--2 {
+      font-size: 1.4em;
+    }
+
+    &--3 {
+      font-size: 1.15em;
+      font-weight: 700;
+    }
+  }
+
+  &__block {
+    display: block;
+
+    &--center {
+      text-align: center;
+    }
+
+    &--right {
+      text-align: right;
+    }
+  }
+
+  &__bullet {
+    padding-left: 0.6em;
+  }
+
+  &__hr {
+    display: block;
+    height: 0;
+    margin: 0.5em 12%;
+    border-top: 1px solid rgba(42, 33, 24, 0.45);
+  }
+
+  // An illuminated capital three lines tall; a letter without art is drawn large in the book face
+  &__fancy {
+    float: left;
+    height: 3.6em;
+    width: auto;
+    margin: 0.15em 0.3em 0 0;
+
+    &--text {
+      height: auto;
+      color: $wax;
+      font-family: 'Writing Book', Georgia, serif;
+      font-size: 3.4em;
+      line-height: 0.95;
+    }
+  }
+}
+
+// The note reader keeps room for the text on short screens
+.parchment__read--note .writing__seal--sign {
+  max-height: 14vh;
+}
+
+.parchment__read--note .parchment__button {
+  padding: 6px 12px;
+  font-size: 13px;
 }

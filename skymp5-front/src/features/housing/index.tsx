@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
+import { PaperReader, useEscapeLayer } from '../parchment';
+import { Markup, plainText, sealMark } from '../writing';
 import './styles.scss';
 
 interface HousingEvents {
   claim: string;
+  claimFaction?: string;
   abandon: string;
   breakLock: string;
   lock: string;
@@ -19,9 +22,40 @@ interface HousingEvents {
   revokeKeys: string;
   grantContainer: string;
   pets: string;
+  pinNote: string;
+  takeNote: string;
+  knock: string;
   cancel: string;
   typing: string;
   [key: string]: string;
+}
+
+// The letter pinned to the door half the menu was opened at (housingSystem.ts noteFor)
+interface DoorNote {
+  title: string;
+  text: string;
+  byline: string;
+  signFaction: string;
+  brokenSeals: string[];
+  mine: boolean;
+  canTakeDown: boolean;
+}
+
+interface PinnableLetter {
+  id: string;
+  title: string;
+}
+
+// The faction owning a faction claim; role is the viewer's standing in it
+interface OwningFaction {
+  id: string;
+  name: string;
+  role: 'manager' | 'member' | '';
+}
+
+interface FactionChoice {
+  id: string;
+  name: string;
 }
 
 // The widget object the client pushes through window.skyrimPlatform.widgets.
@@ -40,6 +74,11 @@ export interface HousingData {
   ownerName: string | null;
   pets?: string; // "stable" | "farm" | "house" when pets are kept at this door, else ""
   hold?: string; // The hold the property lies in, "" outside every hold
+  note?: DoorNote | null;
+  letters?: PinnableLetter[]; // Letters this viewer may pin here now
+  canKnock?: boolean; // A door anyone may knock on
+  faction?: OwningFaction | null; // Set on a faction claim
+  claimFactions?: FactionChoice[]; // Factions this viewer may claim this for, or hand their own claim to
   events: HousingEvents;
 }
 
@@ -47,7 +86,7 @@ export interface HousingData {
 const NAME_CHARS = /^[A-Za-z0-9 '_-]+$/;
 
 // Actions that ask before they go to the server
-type Pending = 'voidKeys' | 'giveUp' | 'breakLock';
+type Pending = 'voidKeys' | 'giveUp' | 'breakLock' | 'pinNote' | 'giveFaction';
 
 const send = (key: string, ...args: unknown[]): void => {
   try {
@@ -70,10 +109,19 @@ const Housing = ({ data }: { data: HousingData }) => {
   const hasAccess = manages || view === 'keyholder';
   const canLock = hasAccess && data.canLock !== false;
 
+  const note = data.note || null;
+  const letters = data.letters || [];
+  const faction = data.faction || null;
+  const claimFactions = ev.claimFaction ? data.claimFactions || [] : [];
+  const canClaim = view === 'claimable' || (isManager && !data.owned);
+
   const [rename, setRename] = useState(data.name || '');
   const [pending, setPending] = useState<Pending | null>(null);
+  const [reading, setReading] = useState(false);
+  const [pick, setPick] = useState('');
+  const [giveTo, setGiveTo] = useState<FactionChoice | null>(null);
 
-  const confirms: Record<Pending, { title: string; body: string; label: string; event: string }> = {
+  const confirms: Record<Pending, { title: string; body: React.ReactNode; label: string; event: string; args?: unknown[] }> = {
     voidKeys: {
       title: 'Void all keys?',
       body: 'Every key cut for this property stops working, including the ones you hold.',
@@ -87,8 +135,47 @@ const Housing = ({ data }: { data: HousingData }) => {
       label: 'Break lock',
       event: ev.breakLock,
     },
+    pinNote: {
+      title: 'Pin which note?',
+      body: (
+        <>
+          <span className="housing__pick">
+            {letters.map((l) => (
+              <label key={l.id} className="housing__pick-row">
+                <input type="radio" name="housing-pick" checked={pick === l.id} onChange={() => setPick(l.id)} />
+                <span>{l.title}</span>
+                <span className="housing__pick-id">{l.id}</span>
+              </label>
+            ))}
+          </span>
+          It leaves your pack. Whoever takes it down gets it.
+        </>
+      ),
+      label: 'Pin it',
+      event: ev.pinNote,
+      args: [pick],
+    },
+    giveFaction: {
+      title: `Give ${displayName} to ${giveTo ? giveTo.name : 'the faction'}?`,
+      body: 'It stops being yours and stays with the faction whoever leads it. Its ranks that open faction doors use it, its property managers run it, and every key cut so far stops working.',
+      label: 'Give',
+      event: ev.claimFaction || '',
+      args: [giveTo ? giveTo.id : ''],
+    },
   };
   const dialog = pending ? confirms[pending] : null;
+
+  const openPicker = (): void => {
+    setPick(letters.length ? letters[0].id : '');
+    setPending('pinNote');
+  };
+
+  useEscapeLayer(reading, () => setReading(false));
+
+  // A note taken down or crumbled closes its reader
+  useEffect(() => {
+    if (!note) setReading(false);
+  }, [note]);
 
   // The client tears the widget down on close, but a re-push while it is open
   // (after lock, rename, ...) keeps this instance - follow the server's name.
@@ -105,9 +192,8 @@ const Housing = ({ data }: { data: HousingData }) => {
   const lockState = data.sides
     ? ` · entrance ${data.lockedEntrance ? 'locked' : 'open'} · exit ${data.lockedExit ? 'locked' : 'open'}`
     : (data.locked ? ' · locked' : ' · unlocked');
-  const status = hasAccess
-    ? (isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder') + lockState
-    : (data.owned ? 'Owned by another' : 'Unclaimed');
+  const holder = faction && faction.role ? "Your faction's" : isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder';
+  const status = hasAccess ? holder + lockState : (data.owned ? 'Owned by another' : 'Unclaimed');
 
   return (
     <div className="housing">
@@ -118,11 +204,19 @@ const Housing = ({ data }: { data: HousingData }) => {
           <span className={'housing__status' + (data.locked ? ' housing__status--locked' : '')}>{status}</span>
         </div>
 
-        {data.ownerName && !isOwner ? (
+        {data.ownerName && (!isOwner || faction) ? (
           <p className="housing__owner">Owner: {data.ownerName}</p>
         ) : null}
 
-        {data.hold ? <p className="housing__owner">Hold: {data.hold}</p> : null}
+        {data.hold ? <p className="housing__owner">Territory: {data.hold}</p> : null}
+
+        {note ? (
+          <button className="housing__note" onClick={() => setReading(true)}>
+            <span className="housing__note-label">{note.mine ? 'Your note is pinned here' : 'A note is pinned here'}</span>
+            <span className="housing__note-title">{note.title}</span>
+            <span className="housing__note-text">{plainText(note.text)}</span>
+          </button>
+        ) : null}
 
         {!hasAccess ? (
           <p className="housing__empty">
@@ -130,12 +224,28 @@ const Housing = ({ data }: { data: HousingData }) => {
           </p>
         ) : null}
 
+        {canClaim && claimFactions.length > 0 ? (
+          <p className="housing__hint">A faction claim belongs to the faction, not to you, and stays with it whoever leads it.</p>
+        ) : null}
+
         <div className="housing__actions">
-          {view === 'claimable' || (isManager && !data.owned) ? (
+          {canClaim ? (
             <button className="housing__button housing__button--primary" onClick={() => send(ev.claim)}>
               Claim
             </button>
           ) : null}
+
+          {canClaim
+            ? claimFactions.map((f) => (
+                <button
+                  key={f.id}
+                  className="housing__button housing__button--primary"
+                  onClick={() => send(ev.claimFaction || '', f.id)}
+                >
+                  Claim for {f.name}
+                </button>
+              ))
+            : null}
 
           {canLock && data.owned && data.sides ? (
             <>
@@ -177,6 +287,21 @@ const Housing = ({ data }: { data: HousingData }) => {
             </button>
           ) : null}
 
+          {isOwner && !faction && data.owned
+            ? claimFactions.map((f) => (
+                <button
+                  key={f.id}
+                  className="housing__button"
+                  onClick={() => {
+                    setGiveTo(f);
+                    setPending('giveFaction');
+                  }}
+                >
+                  Give to {f.name}
+                </button>
+              ))
+            : null}
+
           {isOwner ? (
             <button className="housing__button housing__button--danger" onClick={() => setPending('giveUp')}>
               Give up
@@ -198,6 +323,18 @@ const Housing = ({ data }: { data: HousingData }) => {
           {data.pets ? (
             <button className="housing__button" onClick={() => send(ev.pets)}>Pets</button>
           ) : null}
+
+          {letters.length > 0 && ev.pinNote ? (
+            <button className="housing__button" onClick={openPicker}>Pin a note</button>
+          ) : null}
+
+          {note && note.canTakeDown ? (
+            <button className="housing__button" onClick={() => send(ev.takeNote)}>Take down the note</button>
+          ) : null}
+
+          {data.canKnock && ev.knock ? (
+            <button className="housing__button" onClick={() => send(ev.knock)}>Knock</button>
+          ) : null}
         </div>
 
         {isOwner && data.sides ? (
@@ -206,6 +343,14 @@ const Housing = ({ data }: { data: HousingData }) => {
 
         {isOwner && !data.sides ? (
           <p className="housing__hint">A locked door stops everyone, you included, until it is unlocked here. A key lets its holder lock and unlock it too: trade it or leave it in a chest. Void all keys cancels every copy.</p>
+        ) : null}
+
+        {faction && faction.role ? (
+          <p className="housing__hint">
+            {faction.role === 'manager'
+              ? `Every rank of ${faction.name} that opens faction doors locks and unlocks this too. Its property managers rename it, cut and void keys, transfer it or give it up.`
+              : `Your rank in ${faction.name} lets you lock and unlock this from here.`}
+          </p>
         ) : null}
 
         {manages ? (
@@ -239,13 +384,30 @@ const Housing = ({ data }: { data: HousingData }) => {
           </button>
         </div>
       </div>
+      {note && reading ? (
+        <PaperReader
+          heading={note.title}
+          text={note.text}
+          body={<Markup text={note.text} />}
+          byline={note.byline}
+          mark={sealMark(note.signFaction, true)}
+          meta={note.brokenSeals}
+          note
+          onBack={() => setReading(false)}
+        >
+          {note.canTakeDown ? (
+            <button className="parchment__button" onClick={() => send(ev.takeNote)}>Take it down</button>
+          ) : null}
+          <button className="parchment__button parchment__button--primary" onClick={() => setReading(false)}>Back</button>
+        </PaperReader>
+      ) : null}
       {dialog ? (
         <ConfirmDialog
           title={dialog.title}
           body={dialog.body}
           confirmLabel={dialog.label}
           onConfirm={() => {
-            send(dialog.event);
+            send(dialog.event, ...(dialog.args || []));
             setPending(null);
           }}
           onCancel={() => setPending(null)}

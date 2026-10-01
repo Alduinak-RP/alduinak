@@ -71,15 +71,51 @@ Board"** in the custom rollover (see `docs_roleplay_interaction_prompts.md`).
   when one is shown (`FactionSystem.titleOfActor`, injected as `titleOf` in
   `index.ts`), as in chat. Notices posted earlier keep the name they were
   posted with. The audit log always records the real name.
+- Each notice records the poster's account (`profileId`) and character
+  (`actorId`) for the audit trail and for taking it down; neither is sent to
+  clients.
 - Text is capped at `bountyBoardMaxTextLen` (default 500) characters; line
   breaks survive, every other control character is stripped.
 - One board holds `bountyBoardMaxNotes` (default 40) notices; a full board
-  refuses new ones until something fades.
+  refuses new ones until something fades or is taken down.
 - Posting requires standing within `bountyBoardMaxDistance` (default 512)
   units of the board copy the player opened, and an open board session, so
   a forged packet from across the map does nothing.
 - Everyone with that board open sees the new notice immediately (a refresh
   push; the client only applies it to an already-open menu).
+
+## Taking notices down
+
+Two kinds of player may take a notice down:
+
+- **Its poster.** The character that posted it, matched by account and
+  character, so a mask or a title change does not matter. Notices posted
+  before the character was recorded (before r28) carry `actorId` 0, and any
+  character of the posting account counts as their poster; they fade within
+  a week anyway. A later character that reuses a deleted character's ff id
+  only matches when it belongs to the same account, and a notice stored with
+  profile -1 is nobody's.
+- **Hold officers and staff.** `canRemove`, injected in `index.ts` as
+  `FactionSystem.canRemoveBoardPosts`: staff, or any rank of the board's hold
+  above its citizenry. The board name must map to a hold first, so on a patch
+  plugin board ("Missive") only posters can take notices down.
+
+The server sends each viewer `mine` per notice and a board-wide `canRemove`.
+The opened paper then shows a "Your notice" line and **Take down your
+notice** on one's own, and **Remove notice** on others' for officers. Either
+button asks Yes or No first ("Take your notice down? The fee is not
+returned." or "Remove this notice for good?"); Escape closes the question,
+then the paper, then the board. The server never trusts `mine`: it finds the
+notice, then lets the poster or `canRemove` through, and refuses anyone else
+with "Only its poster or a non-citizen member of this hold may remove a
+notice." Reach and session rules are the same as for posting ("You are too
+far from the board."), and a notice already gone answers "That notice is no
+longer on this board." On success the remover reads "You take your notice
+down." or "The notice is taken down.", and everyone reading that board gets
+the refresh.
+
+No gold comes back: the fee stays in the strongbox, which the steward or jarl
+may already have emptied. A freed slot lets the next notice go up.
 
 ## Strongbox
 
@@ -194,11 +230,16 @@ at. Correctness never depends on the sweep having run.
 
 ## Logging
 
-Every post and every fade is appended to `bounty.log` in the shared log
+Every post, removal and fade is appended to `bounty.log` in the shared log
 directory (`ALDUINAK_LOG_DIR`, else `logDir` from `server-settings.json`, else
 `C:\logs`). Names and notice text are JSON-quoted with the profile id in a
 fixed position, so crafted text cannot forge a line. The Server Manager
-rotates `bounty.log` with the other gamemode logs on service restart.
+rotates `bounty.log` with the other gamemode logs on service restart. A
+removal names the remover (real name), the notice's poster and which right
+was used:
+
+    [profile 12] "Ria" removed note 7 by [profile 12] "Ria" from the Whiterun board as its poster: "Wolf pelts wanted"
+    [profile 3] "Balgruuf" removed note 8 by [profile 12] "Thane Ria" from the Whiterun board as a hold officer or staff: "..."
 
 ## Wire protocol
 
@@ -206,16 +247,18 @@ Every message is a CustomPacket carrying JSON:
 
     Server -> Client: { customPacketType: "bountyBoardMenu", board, boardName,
                         reason: "open" | "refresh", costGold, gold, maxTextLen,
-                        maxNotes, expiryDays,
-                        notes: [{ id, author, text, ageHours }] }
+                        maxNotes, expiryDays, canRemove,
+                        notes: [{ id, author, text, ageHours, mine }] }
     Client -> Server: { customPacketType: "bountyBoardPost", board, text }
+    Client -> Server: { customPacketType: "bountyBoardRemove", board, id }
     Client -> Server: { customPacketType: "bountyBoardManage", board }
     Client -> Server: { customPacketType: "bountyBoardClose" }
     Server -> Client: { customPacketType: "bountyBoardNotice", text }
 
 `reason: "open"` is the reply to a physical activation and opens the menu;
-`"refresh"` only updates a menu that is already open. The widget type is
-`bountyBoard`, id 26.
+`"refresh"` only updates a menu that is already open. `canRemove` is the
+viewer's officer right for the whole board, `mine` is per notice and per
+viewer. The widget type is `bountyBoard`, id 26.
 
 ## Front
 
@@ -224,9 +267,11 @@ parchment beige) with the swap points marked in
 `skymp5-front/src/features/bountyBoard/styles.scss` and, for the opened paper
 and the compose dialog, `skymp5-front/src/features/parchment/styles.scss`;
 drop the real backdrop and paper art in as `background-image` there when it
-exists. Escape backs out
-one layer at a time (compose dialog, opened paper, then the board), and the
-menu closes itself when the browser loses focus, like the mastery menu.
+exists. The take-down question is the shared `ConfirmBar` from
+`features/parchment`, the same Yes/No bar the writings use. Escape backs out
+one layer at a time (compose dialog, take-down question, opened paper, then
+the board), and the menu closes itself when the browser loses focus, like the
+mastery menu.
 
 ## server-settings.json keys (all optional)
 

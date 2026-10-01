@@ -686,6 +686,20 @@ $admin-row-gutter: 16px;
   }
   &__cell--desc { flex: 0 0 170px; }
 
+  // Polymorph: the race list leaves room for the transform bar and the transformed characters
+  &__list--races {
+    max-height: 300px;
+  }
+
+  // The name and risk column lines up with the Race heading
+  &__race-info {
+    flex: 1 1 130px;
+  }
+
+  &__cell--risk {
+    color: #ce7b7b;
+  }
+
   &__spawn {
     align-items: center;
   }
@@ -699,8 +713,10 @@ $admin-row-gutter: 16px;
     font-size: 16px;
   }
 
+  // Starts under the Name column: the list's border plus a row's gutter
   &__pager {
     align-items: center;
+    padding-left: $admin-row-gutter + 1px;
   }
 
   &__pager-page {

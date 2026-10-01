@@ -216,6 +216,21 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   condition. Several hunger effects on one food add up, as their scripts would. A food the server refuses for its 10
   second cooldown restores nothing. Gutworm, one of the survival diseases, scales the restore through the modifier
   sources below (0.75/0.5/0.25 by stage, see [Survival](#survival)).
+- Eating, drinking or applying a poison from the inventory takes the item out of the pack with no container and no
+  world reference, which `DropItemService` read as a drop: whenever the same item lay in the world within 2000 units
+  (the cabbages, potatoes and cheese bowls of every inn and kitchen, the potions of a dungeon) it deleted those local
+  copies and sent `DropItem`, so the server dropped one more at the player's feet, or, when the eaten one was the
+  last, threw `Source inventory doesn't have enough <id> (1 is required while 0 present)` (249 of those for foods,
+  potions and ingredients in the September logs). Since 1.0 a potion or ingredient that leaves the pack with no world
+  reference within a second of its own equip is eaten, not dropped; the equips are counted per item, so two quick eats
+  of the same potion in one frame each match their own removal. The client logs `DropItemService: consumed, not
+  dropped: <name> <id> left the pack with no world reference <ms> ms from its equip[, N more equip(s) of it still to
+  match]; the nearest <name> in the world <d> units away was left alone` (or `no <name> in the world within 2000
+  units`) to `skyrim-platform.log`; a
+  real drop logs `DropItemService: dropped <id> x<n>: world reference <id|none>, <k> local copies removed`. The
+  server's inventory watch logs `[inv] <name> (<id>, profile P) drop of <editor id> <id> xN <ms> ms after eating
+  one: the client sent the eat as a drop too` if such a drop still arrives (see `GoldWatchSystem` in
+  `docs_server_configuration_reference.md`).
 - The item card still reads Survival's text, "Restore 2 points of Hunger." and so on: the number is written into the
   effect description string of the Survival esl, not read from the server.
 - Common foods: VerySmall (40, 4%): ale, mead, wine and spirits, milk, butter, flour, cheese wedges, half a loaf, raw
@@ -268,13 +283,14 @@ takes real effort costs more of it (0.9.6 values; actions per full bar in bracke
 
 Half cost: flora (plants that are not crops), refining (the smelter, the tanning rack and thread), cooking, alchemy and
 skinning. Rabbits, pheasants and salmon hanging on racks cost nothing. Spells cost nothing. A shared recipe (smelting,
-tanning, charcoal) gives every profession that shares it both its rank discount and its hours. An alchemist of Novice or
-better pays `gatheringAlchemistFloraDiscount` (50%) less again for alchemy flora, flora that hands over an ingredient
-(flowers, mushrooms, herbs, berries, eggs): 1% a flower at Novice.
+tanning, charcoal, the sealing wax) gives every profession that shares it both its rank discount and its hours. An
+alchemist pays a farmer's price for flora at the same rank and the Free price for crops. `gatheringAlchemistFloraDiscount` (default 0,
+off) takes that share off again for an alchemist of Novice or better on alchemy flora, flora that hands over an
+ingredient (flowers, mushrooms, herbs, berries, eggs, nirnroot).
 
 **Steadied by drink.** A cook or alchemist of Novice or better, in any profession slot, who drinks an alcohol pays
 `needsAlcoholDiscount` (25%) less fatigue for the crafts their cook or alchemist rank prices (the cooking pot and oven
-for a cook, the alchemy lab for an alchemist, shared recipes) for `needsAlcoholMinutes` (10); a craft another
+for a cook, the alchemy lab for an alchemist, every drink at a meadery boiler for both, shared recipes) for `needsAlcoholMinutes` (10); a craft another
 profession prices (a Blacksmith primary's smithing, say) pays in full, and so does the check that keeps a too-tired
 character out of a bench menu: it prices the bench by the slot that works it, so a Cook Adept beside a Blacksmith Adept
 opens a forge only with a full forge craft's fatigue. Another drink refreshes the timer and never
@@ -288,14 +304,15 @@ your hands steady for another 10 minutes." on a refresh) and the server logs `[n
 crafts -25% until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so it survives a relog.
 
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
-  (farmer or alchemist). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
+  (farmer or alchemist; a crop is priced by the farmer rank alone). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
   A crop needs a hoe and takes 5 s of hoeing (`IdleHoe`); flora takes a 2 s kneel. The charge line names the plant
-  and its class: `[needs] <id> harvest <editor id> flora|crop r<rank>: -N%, fatigue F%` (Nirnroot, wild and planted,
-  is a crop). A plant is charged only once the native harvest handed it over; one that gave nothing costs nothing
+  and its class: `[needs] <id> harvest <editor id> flora|crop r<rank>: -N%, fatigue F%` (Nirnroot, wild, crimson and
+  planted, is flora: no hoe). A plant is charged only once the native harvest handed it over; one that gave nothing costs nothing
   (`[gathering] <id> harvest of <plant> <ref> handed over nothing, no fatigue taken`).
 - Crafting is every recipe the server accepts at any station, and every temper at the workbench or grindstone, by the
   rank of a character whose profession works that bench keyword (MasterySystem `craftCost`). Smiths and miners both get
-  their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal.
+  their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal;
+  all seven professions that work a crafting station get their rank for the sealing wax at every station.
   Crafts whose inputs the crafter does not hold are left to the native side uncharged.
 - Skinning (hunter rank) costs half a kill. Only a hunter's skinning takes an animal's pelt and meat; a search of the
   body never shows its meat.
@@ -386,12 +403,18 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
   never ask.
 
 **HUD:** as in vanilla Survival, the penalty shows as a red segment at the end of the stamina bar (hunger) and the
-magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. Fatigue itself has a
-small front widget (`features/fatigueReadout`, widget id 39): one line above the magicka bar, bottom left, reading
-`FATIGUE <fatigue>%` and the `fatigueStageName` ("Refreshed", "Tired", ...; the Cold line above it adds the server's
-`warmth <n>` to the stage from Chilly on), shown while `fatigue` is below 100 and
-`survivalMode` is on (`needsSurvivalModeFlag`), and gone at 100 or with the flag off. It follows every `needsState`
-and hides with the rest of the browser (menus, hidden interface). `needsService.ts` writes the share into the
+magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. The magicka bar is the
+only fatigue display: the `FATIGUE <fatigue>%` line above it (`features/fatigueReadout`, widget id 39) was removed in
+r31 (K1), and `needsState` still carries `fatigue` and `fatigueStageName`, which the client no longer reads. The red
+end is the stage 2 penalty share, `(exhaustion - 159) / 801`, so the first sixth of the bar spent (160 of 960) shows
+nothing: a Novice crafter (1/12 a craft) sees no red end for 2 crafts and then 10%, an Adept (1/24) for 4 and then 5%,
+an Expert (1/36) for 6 and then 3.5%, a Master or Legendary (1/48) for 8 and then 2.6%, twice as many at the
+half-cost benches, while 10 minutes online refill 16.7%; only a Free character (1/3) sees it from the first craft. While the
+Crafting Menu is open the magicka bar shows in the health bar's place at the bottom centre, above the menu's bottom bar, and no health bar shows (`docs_roleplay_frostfall_client.md`, Vanilla
+menus). Widget id 39 is now the survival readout (`features/survivalReadout`), fed by `needsService.ts` with what
+`SurvivalService` hands over: a `SICK` line and a `COLD <stage>` line from Chilly on with the server's `warmth <n>`
+(see [Survival](#survival)), shown only while `survivalMode` is on (`needsSurvivalModeFlag`) and hidden with the rest
+of the browser (menus, hidden interface); it has no fatigue line. `needsService.ts` writes the share into the
 Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
 (0x2EDF, `SRHP`) and `Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100 (the penalty share times
 100, nothing else); `Survival_ColdAttributePenaltyPercent` (0x2EDE, `SRCP`) belongs to `SurvivalService` (see
@@ -419,8 +442,8 @@ Survival switched itself on. A load resets the engine's HUD cache, so the servic
 The live `server-settings.json` carries the key explicitly (the manager Settings tab lists it under Gameplay as
 "Survival mode flag on clients"); it is read at boot, so restart the game service after a change.
 `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
-The segments follow Survival's curve, starting at stage 2; below that, the fatigue readout and the stage notices are
-the cue.
+The segments follow Survival's curve, starting at stage 2 (exhaustion 160 of 960, fatigue below about 83%); a lighter
+spend shows nothing on the HUD, and the stage notice from stage 2 and the "too tired" notice are the other cues.
 
 ## Survival
 
@@ -485,7 +508,8 @@ re-send as the hunger stages), and at creation finish:
     a character still under the penalty.
   - Nothing gives health back afterwards: the login and spawn sync send the stored share, the needs and cold
     penalties move the maximum and keep the share, and `AldSurvival_AbNoHealthRegen` stops the client's regeneration.
-    Until NV1 (`healthRegenerationMultiplier` 0) the server still accepts a client's health reports up to the race's
+    NV1 is in the native source (`ea63f69a`); until a native server build with it runs with
+    `healthRegenerationMultiplier` 0, the server still accepts a client's health reports up to the race's
     heal rate (0.7% of the maximum a second, 1 to full in about 2.5 minutes), so health regenerates on a client
     without the ability (a plugin older than r27a, `survivalNoHealthRegen: false`) or on a modified one. Potions,
     food, Restoration spells and the staff heal modes heal as before.
@@ -591,7 +615,8 @@ rolls nothing new.
 Hunger and fatigue stages come from NeedsSystem's `needsStage` event. An affliction lasts `survivalAfflictionHours` (24)
 real hours, offline included, or until cured; none rolls in creation, dead or in the realms. Weakened's melee and block
 part and Frostbitten's archery show in Active Effects but change no damage until the effect modifiers of the damage
-formula (NV4a).
+formula (NV4a, in the native source since `ea63f69a`) run: a native server build with it, and
+`alduinakDamageFormulaSettings` with `enabled` or `durability.enabled` true and `effectModifiers` not false.
 
 ### Food poisoning, the cure and shrines
 
@@ -661,7 +686,7 @@ regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
     two), the character not settled yet in the seconds after a login or respawn, or the hit dropped natively before the
     event (a second unarmed hit within about 0.77 s).
   - On a catch the player reads "You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming
-    days. A Cure Disease potion or a healing potion cures it.", the fatigue readout gains a Sick line and Active Effects
+    days. A Cure Disease potion or a healing potion cures it.", the survival readout gains a Sick line and Active Effects
     lists the disease.
   - A zone creature is an NPC_ base with no appearance. Its race is the RNAM of the first record of its base and
     evaluated template chain that keeps its own traits, so `EncSkeever` is `SkeeverRace` and a leveled base such as
@@ -898,8 +923,9 @@ None of these has been run yet.
   Drained, Tired, Weary, then Debilitated, and magicka stops regenerating at Debilitated; after the sixth, max magicka
   is 1 point, spells fail to cast, and the client log shows no errors; resting 10 minutes restores 16% of the bar and
   part of the magicka maximum.
-- Spend the bar to about 50%, log out for 15 minutes and log back in: the readout shows about 75% at once and the server
-  log has `[needs] <id> rested offline 15 min: fatigue 50% -> 75%`; out for an hour or more, the bar is full.
+- Spend the bar to about 50% (a red end of about 40% on the magicka bar), log out for 15 minutes and log back in: the
+  red end is about 10% at once and the server log has `[needs] <id> rested offline 15 min: fatigue 50% -> 75%`; out
+  for an hour or more, the bar is full.
 - With a stamina or magicka penalty on, stop the game service for over a minute (the client returns to the main menu)
   or change character, then rejoin: the maximum matches the red segment again, never shorter or longer than before. A
   client hot reload leaves it unchanged.
@@ -929,13 +955,22 @@ None of these has been run yet.
   sets `GlobalVariable.from(Game.getFormFromFile(0x2EDF, 'Update.esm'))` to 30 and on F10 sets 0x828 of
   `ccQDRSSE001-SurvivalMode.esl` to 1; SkyrimPlatform loads `PluginsDev`, the launcher never deletes it, and the value
   holds until the next `needsState` (sent on change only). Delete the file after the test.
-- Fatigue readout: with a rested character, mine one vein or craft once; a line `FATIGUE <n>%` with the stage name
-  appears above the magicka bar, the magicka bar stays full with no red end (a mage's full magicka reads full), and the
-  line goes once fatigue is back at 100. From stage 2 the red end grows by the penalty share, not the fatigue spent.
+- No fatigue readout: with a rested character, mine one vein or craft once; no `FATIGUE <n>%` line shows above the
+  magicka bar, and the bar stays full with no red end (a mage's full magicka reads full). From stage 2 the red end
+  grows by the penalty share, not the fatigue spent.
+- Ranked crafter: a Novice blacksmith at a forge from a rested bar sees no red end after the first and second craft
+  (8.3% each, still below stage 2), about 10% after the third and 20% after the fourth; the `NeedsService: survival hud`
+  line stays at `exhaustion=0` through the first two and then reads `exhaustion=10` and `exhaustion=20`.
 - Crafting at a forge as a Free (non-blacksmith) character costs 33.2%; from a full bar the third craft closes the menu
   with the "too tired" notice and all three items stay. A Novice blacksmith makes six. A click that slips in before the
   close is refused: the refused item must be absent and its inputs present. Ten minutes online refill 16.7%.
-- Eat any food with a partly spent bar: the fatigue readout must not move.
+- Magicka bar while crafting: open a forge with a rested Free character; the magicka bar shows full at the bottom centre,
+  where the health bar sits, just above the menu's bottom bar, does not fade, and no health bar shows. The first craft
+  (33.2%, stage 2) puts a red end of about 20% on it at once, the second about 60%. Close the menu: the bar is back at
+  the bottom left and fades a few seconds later, and the health bar shows again when health changes.
+  `skyrim-platform.log` has `Crafting Menu closed: HUD magicka .. penalty 0% ... at open, HUD magicka .. penalty 60% ...
+  at close` matching the last `exhaustion=60`.
+- Eat any food with fatigue past stage 2: the magicka bar's red end must not move.
 - Chopping: sit at a block and wait; the axe keeps swinging, 2 firewood land every 10 seconds, and the player stands up
   only with the "too tired" notice. Stand up (move key) about 5 seconds into a swing: no firewood for it and no fatigue
   spent.

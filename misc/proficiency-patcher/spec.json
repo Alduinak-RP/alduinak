@@ -29,6 +29,14 @@
     "formId": "2100",
     "value": 5,
     "weight": 5.0
+   },
+   {
+    "edid": "AldKhajiitPelt",
+    "name": "Khajiit Pelt",
+    "template": "SabreCatPelt",
+    "formId": "0x0413E1",
+    "value": 25,
+    "weight": 2.0
    }
   ]
  },
@@ -173,8 +181,10 @@
   "warrior": {
    "Novice": {
     "perks": [
-     "FightingStance"
-    ]
+     "FightingStance",
+     "ChampionsStance"
+    ],
+    "stamina": 25
    },
    "Adept": {
     "perks": [
@@ -182,7 +192,9 @@
       "edid": "DualFlurry30",
       "untilRank": "Master"
      },
-     "BlockRunner"
+     "BlockRunner",
+     "PowerBashPerk",
+     "Unhindered"
     ],
     "stamina": 25
    },
@@ -190,17 +202,23 @@
     "perks": [
      "ShieldCharge",
      "CriticalCharge",
-     "GreatCriticalCharge"
+     "GreatCriticalCharge",
+     "Conditioning"
     ],
     "stamina": 25
    },
    "Master": {
     "perks": [
-     "ChampionsStance",
      "Sweep",
      "DualFlurry50",
      "Warmaster"
-    ]
+    ],
+    "stamina": 25,
+    "carryWeight": 50
+   },
+   "Legendary": {
+    "stamina": 100,
+    "carryWeight": 50
    }
   },
   "woodworker": {
@@ -408,6 +426,10 @@
   "AldMasteryPerk_AldPerk_ExpertFarmer": "0x0412AE",
   "AldMasteryPerk_AldPerk_MasterFarmer": "0x0412AF",
   "AldMasteryPerk_AldPerk_LegendaryFarmer": "0x0412B0",
+  "AldMasteryPerk_PowerBashPerk": "0x0413E2",
+  "AldMasteryPerk_Unhindered": "0x0413E3",
+  "AldMasteryPerk_Conditioning": "0x0413E4",
+  "AldMasteryFortifyCarryWeight": "0x0413E5",
   "AldKeyword_FineClothing": "0x0412B1",
   "AldKeyword_NobleClothing": "0x0412B2",
   "AldLootDwarvenScrapPiece": "0x0412B9",
@@ -665,7 +687,7 @@
     "items": {
      "MountainFlower01Blue": 3,
      "BoneMeal": 5,
-     "Lavender": 10
+     "Lavender": 6
     }
    },
    {
@@ -675,7 +697,7 @@
     "items": {
      "MountainFlower01Blue": 5,
      "BoneMeal": 7,
-     "Lavender": 12,
+     "Lavender": 10,
      "HagravenFeathers": 2
     }
    },
@@ -684,7 +706,7 @@
     "name": "Potion of Destruction",
     "tier": "Expert",
     "items": {
-     "GlowingMushroom": 7,
+     "GlowingMushroom": 6,
      "Nightshade": 5
     },
     "proposedTier": true
@@ -705,7 +727,7 @@
     "name": "Potion of Illusion",
     "tier": "Expert",
     "items": {
-     "DragonsTongue": 7,
+     "DragonsTongue": 6,
      "MoraTapinellaBits": 4
     }
    },
@@ -723,7 +745,7 @@
     "name": "Philter of Illusion",
     "tier": "Master",
     "items": {
-     "DragonsTongue": 11,
+     "DragonsTongue": 10,
      "MoraTapinellaBits": 8,
      "DwarvenOil": 1
     }
@@ -733,7 +755,7 @@
     "name": "Elixir of Illusion",
     "tier": "Master",
     "items": {
-     "DragonsTongue": 13,
+     "DragonsTongue": 10,
      "MoraTapinellaBits": 10,
      "DwarvenOil": 2,
      "Taproot": 1
@@ -746,7 +768,7 @@
     "items": {
      "CanisRoot01": 5,
      "SpiderEgg": 3,
-     "JuniperBerries": 10
+     "JuniperBerries": 6
     }
    },
    {
@@ -755,7 +777,7 @@
     "tier": "Expert",
     "items": {
      "SabrecatTooth": 5,
-     "BirdEgg01": 8
+     "BirdEgg01": 6
     }
    },
    {
@@ -774,7 +796,7 @@
     "items": {
      "BearClaws": 2,
      "BirdEgg01": 3,
-     "HangingMoss": 10
+     "HangingMoss": 6
     }
    },
    {
@@ -784,7 +806,7 @@
     "items": {
      "BearClaws": 4,
      "BirdEgg01": 5,
-     "HangingMoss": 12,
+     "HangingMoss": 10,
      "Mushroom01": 6
     }
    },
@@ -812,8 +834,8 @@
     "tier": "Expert",
     "items": {
      "Garlic": 5,
-     "JuniperBerries": 7,
-     "Mushroom05": 10
+     "JuniperBerries": 5,
+     "Mushroom05": 6
     }
    },
    {
@@ -821,8 +843,8 @@
     "name": "Potion of Lasting Potency",
     "tier": "Expert",
     "items": {
-     "Garlic": 12,
-     "JazBay": 7
+     "Garlic": 6,
+     "JazBay": 5
     }
    },
    {
@@ -830,7 +852,7 @@
     "name": "Draught of Lasting Potency",
     "tier": "Master",
     "items": {
-     "Garlic": 14,
+     "Garlic": 10,
      "JazBay": 9,
      "SaltPile": 5
     }
@@ -840,8 +862,8 @@
     "name": "Potion of Vigor",
     "tier": "Expert",
     "items": {
-     "Mushroom01": 9,
-     "ScalyPholiotaBits": 7
+     "Mushroom01": 6,
+     "ScalyPholiotaBits": 5
     }
    },
    {
@@ -849,7 +871,7 @@
     "name": "Draught of Vigor",
     "tier": "Master",
     "items": {
-     "Mushroom01": 11,
+     "Mushroom01": 10,
      "ScalyPholiotaBits": 9,
      "MoraTapinellaBits": 5
     }
@@ -860,8 +882,8 @@
     "tier": "Expert",
     "items": {
      "BoneMeal": 5,
-     "DragonsTongue": 12,
-     "Mushroom01": 8
+     "DragonsTongue": 6,
+     "Mushroom01": 5
     }
    },
    {
@@ -870,7 +892,7 @@
     "tier": "Master",
     "items": {
      "BoneMeal": 7,
-     "DragonsTongue": 14,
+     "DragonsTongue": 10,
      "Mushroom01": 10,
      "FireSalts": 2
     }
@@ -881,8 +903,8 @@
     "tier": "Expert",
     "items": {
      "FrostMirriam": 4,
-     "Snowberry": 12,
-     "MountainFlower01Purple": 8
+     "Snowberry": 6,
+     "MountainFlower01Purple": 5
     }
    },
    {
@@ -892,7 +914,7 @@
     "items": {
      "FrostMirriam": 6,
      "FrostSalts": 1,
-     "Snowberry": 14,
+     "Snowberry": 10,
      "MountainFlower01Purple": 10
     }
    },
@@ -901,7 +923,7 @@
     "name": "Potion of Resist Magic",
     "tier": "Expert",
     "items": {
-     "Mushroom02": 7,
+     "Mushroom02": 6,
      "TundraCotton": 5
     }
    },
@@ -912,7 +934,7 @@
     "items": {
      "Mushroom02": 9,
      "TundraCotton": 7,
-     "Lavender": 12,
+     "Lavender": 10,
      "Nirnroot": 1
     }
    },
@@ -940,8 +962,8 @@
     "name": "Potion of Minor Healing",
     "tier": "Novice",
     "items": {
-     "MountainFlower01Blue": 12,
-     "Wheat": 8
+     "MountainFlower01Blue": 3,
+     "Wheat": 2
     }
    },
    {
@@ -949,8 +971,8 @@
     "name": "Potion of Healing",
     "tier": "Expert",
     "items": {
-     "MountainFlower01Blue": 14,
-     "Wheat": 10,
+     "MountainFlower01Blue": 6,
+     "Wheat": 5,
      "Mushroom04": 5
     }
    },
@@ -959,8 +981,8 @@
     "name": "Potion of Plentiful Healing",
     "tier": "Master",
     "items": {
-     "MountainFlower01Blue": 16,
-     "Wheat": 12,
+     "MountainFlower01Blue": 10,
+     "Wheat": 10,
      "Mushroom04": 7,
      "SabrecatEyeball": 2
     },
@@ -971,8 +993,8 @@
     "name": "Potion of Minor Magicka",
     "tier": "Novice",
     "items": {
-     "CreepClusterRoot": 7,
-     "ElvesEar": 8
+     "CreepClusterRoot": 2,
+     "ElvesEar": 3
     }
    },
    {
@@ -980,8 +1002,8 @@
     "name": "Potion of Magicka",
     "tier": "Expert",
     "items": {
-     "CreepClusterRoot": 9,
-     "ElvesEar": 10,
+     "CreepClusterRoot": 5,
+     "ElvesEar": 6,
      "Mushroom03": 4
     }
    },
@@ -990,8 +1012,8 @@
     "name": "Potion of Plentiful Magicka",
     "tier": "Master",
     "items": {
-     "CreepClusterRoot": 11,
-     "ElvesEar": 12,
+     "CreepClusterRoot": 10,
+     "ElvesEar": 10,
      "Mushroom03": 6,
      "GiantLichen": 8
     },
@@ -1002,8 +1024,8 @@
     "name": "Potion of Minor Stamina",
     "tier": "Novice",
     "items": {
-     "MountainFlower01Purple": 12,
-     "AntlersLarge": 5
+     "MountainFlower01Purple": 3,
+     "AntlersLarge": 2
     }
    },
    {
@@ -1011,8 +1033,8 @@
     "name": "Potion of Stamina",
     "tier": "Expert",
     "items": {
-     "MountainFlower01Purple": 14,
-     "AntlersLarge": 7,
+     "MountainFlower01Purple": 6,
+     "AntlersLarge": 5,
      "BearClaws": 3
     }
    },
@@ -1021,7 +1043,7 @@
     "name": "Potion of Plentiful Stamina",
     "tier": "Master",
     "items": {
-     "MountainFlower01Purple": 16,
+     "MountainFlower01Purple": 10,
      "AntlersLarge": 7,
      "BearClaws": 5,
      "BeeHoneyComb": 6
@@ -1035,7 +1057,7 @@
     "items": {
      "deathBell": 4,
      "ChaurusEggs": 5,
-     "MudcrabChitin": 7
+     "MudcrabChitin": 6
     }
    },
    {
@@ -1043,7 +1065,7 @@
     "name": "Potion of Cure Disease",
     "tier": "Adept",
     "items": {
-     "ChaurusEggs": 7,
+     "ChaurusEggs": 6,
      "deathBell": 6,
      "Garlic": 4
     }
@@ -1053,9 +1075,9 @@
     "name": "Potion of Extra Magicka",
     "tier": "Expert",
     "items": {
-     "MountainFlower01Red": 12,
-     "JazBay": 7,
-     "TundraCotton": 10
+     "MountainFlower01Red": 6,
+     "JazBay": 5,
+     "TundraCotton": 5
     }
    },
    {
@@ -1063,9 +1085,9 @@
     "name": "Draught of Extra Magicka",
     "tier": "Master",
     "items": {
-     "MountainFlower01Red": 14,
+     "MountainFlower01Red": 10,
      "JazBay": 9,
-     "TundraCotton": 12,
+     "TundraCotton": 10,
      "Ectoplasm": 1
     }
    },
@@ -1074,8 +1096,8 @@
     "name": "Potion of Enhanced Stamina",
     "tier": "Expert",
     "items": {
-     "Garlic": 8,
-     "Lavender": 11
+     "Garlic": 5,
+     "Lavender": 6
     }
    },
    {
@@ -1084,7 +1106,7 @@
     "tier": "Master",
     "items": {
      "Garlic": 10,
-     "Lavender": 13,
+     "Lavender": 10,
      "SlaughterfishEgg01": 5
     }
    },
@@ -1094,7 +1116,7 @@
     "tier": "Master",
     "items": {
      "MoonSugar": 5,
-     "Nightshade": 12,
+     "Nightshade": 10,
      "JazBay": 4
     }
    },
@@ -1104,7 +1126,7 @@
     "tier": "Master",
     "items": {
      "MoonSugar": 5,
-     "Nightshade": 12,
+     "Nightshade": 10,
      "JazBay": 4,
      "FireSalts": 1
     }
@@ -1115,7 +1137,7 @@
     "tier": "Expert",
     "items": {
      "GiantToes": 2,
-     "MountainFlower01Blue": 8
+     "MountainFlower01Blue": 6
     }
    },
    {
@@ -1124,7 +1146,7 @@
     "tier": "Master",
     "items": {
      "MoonSugar": 5,
-     "Nightshade": 12,
+     "Nightshade": 10,
      "Nirnroot": 6
     }
    },
@@ -1134,7 +1156,7 @@
     "tier": "Expert",
     "items": {
      "MoonSugar": 5,
-     "Nightshade": 12
+     "Nightshade": 6
     }
    },
    {
@@ -1142,8 +1164,8 @@
     "name": "Weak Poison",
     "tier": "Adept",
     "items": {
-     "Mushroom02": 5,
-     "ChaurusEggs": 7,
+     "Mushroom02": 2,
+     "ChaurusEggs": 3,
      "SpiderEgg": 2
     }
    },
@@ -1152,7 +1174,7 @@
     "name": "Weak Magicka Poison",
     "tier": "Adept",
     "items": {
-     "GiantLichen": 8,
+     "GiantLichen": 3,
      "HagravenFeathers": 2
     }
    },
@@ -1161,8 +1183,8 @@
     "name": "Weak Stamina Poison",
     "tier": "Adept",
     "items": {
-     "BoneMeal": 7,
-     "CanisRoot01": 5,
+     "BoneMeal": 3,
+     "CanisRoot01": 2,
      "SpiderEgg": 2
     }
    },
@@ -1171,8 +1193,8 @@
     "name": "Weak Aversion to Fire",
     "tier": "Adept",
     "items": {
-     "Mushroom02": 7,
-     "JuniperBerries": 5,
+     "Mushroom02": 3,
+     "JuniperBerries": 2,
      "FrostSalts": 1
     }
    },
@@ -1181,7 +1203,7 @@
     "name": "Weak Aversion to Frost",
     "tier": "Adept",
     "items": {
-     "ElvesEar": 7,
+     "ElvesEar": 3,
      "FireSalts": 1,
      "IceWraithTeeth": 2
     }
@@ -1191,9 +1213,9 @@
     "name": "Weak Aversion to Magic",
     "tier": "Adept",
     "items": {
-     "CreepClusterRoot": 7,
+     "CreepClusterRoot": 3,
      "DwarvenOil": 1,
-     "BirdEgg01": 5
+     "BirdEgg01": 2
     }
    },
    {
@@ -1203,7 +1225,7 @@
     "items": {
      "VoidSalts": 1,
      "HagravenFeathers": 2,
-     "GiantLichen": 7
+     "GiantLichen": 3
     }
    },
    {
@@ -1322,6 +1344,18 @@
     "MammothTusk": 1,
     "IngotIron": 1,
     "LeatherStrips": 1
+   }
+  },
+  {
+   "edid": "AldRecipeCommon_Torch01",
+   "formId": "0x0413E0",
+   "bench": "AldCraftingWoodcrafting",
+   "output": "Torch01",
+   "count": 1,
+   "tier": "Anyone",
+   "items": {
+    "Firewood01": 1,
+    "Charcoal": 1
    }
   }
  ],
@@ -1617,7 +1651,7 @@
     "output": "ArmorEastmarchHelmetFull",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1630,7 +1664,7 @@
     "output": "TH_WhiterunCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1643,7 +1677,7 @@
     "output": "TH_WhiterunCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1657,7 +1691,7 @@
     "output": "TH_WhiterunBootsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1671,7 +1705,7 @@
     "output": "TH_WhiterunCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1683,7 +1717,7 @@
     "output": "TH_WhiterunCloakCeremonial",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1695,7 +1729,7 @@
     "output": "TH_WhiterunGauntletsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1709,7 +1743,7 @@
     "output": "TH_WhiterunHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1722,7 +1756,7 @@
     "output": "TH_WhiterunHelmetCeremonial",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1736,7 +1770,7 @@
     "output": "TH_WhiterunHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1750,7 +1784,7 @@
     "output": "TH_WhiterunShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 4,
      "LeatherStrips": 1
@@ -1763,7 +1797,7 @@
     "output": "TH_WhiterunShieldHeavy",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1777,7 +1811,7 @@
     "output": "TH_SwordWhiterun",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1791,7 +1825,7 @@
     "output": "TH_SolitudeCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1804,7 +1838,7 @@
     "output": "TH_SolitudeCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1818,7 +1852,7 @@
     "output": "TH_SolitudeBoots",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -1831,7 +1865,7 @@
     "output": "TH_SolitudeBootsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1845,7 +1879,7 @@
     "output": "TH_SolitudeCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1857,7 +1891,7 @@
     "output": "TH_SolitudeGauntlets",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -1870,7 +1904,7 @@
     "output": "TH_SolitudeGauntletsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1884,7 +1918,7 @@
     "output": "TH_SolitudeHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -1897,7 +1931,7 @@
     "output": "TH_SolitudeHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1911,7 +1945,7 @@
     "output": "TH_SolitudeShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -1925,7 +1959,7 @@
     "output": "TH_SwordSolitude",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -1939,7 +1973,7 @@
     "output": "TH_WindhelmCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -1952,7 +1986,7 @@
     "output": "TH_WindhelmCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -1966,7 +2000,7 @@
     "output": "TH_WindhelmCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1978,7 +2012,7 @@
     "output": "TH_WindhelmCloakP",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -1990,7 +2024,7 @@
     "output": "TH_WindhelmHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2003,7 +2037,7 @@
     "output": "TH_WindhelmHelmetClosed",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2017,7 +2051,7 @@
     "output": "TH_WindhelmHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2031,7 +2065,7 @@
     "output": "TH_WindhelmShield1",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2045,7 +2079,7 @@
     "output": "TH_WindhelmShield2",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 4,
      "LeatherStrips": 1
@@ -2058,7 +2092,7 @@
     "output": "TH_SwordWindhelm",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2072,7 +2106,7 @@
     "output": "TH_MarkarthCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2085,7 +2119,7 @@
     "output": "TH_MarkarthCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -2099,7 +2133,7 @@
     "output": "TH_MarkarthBoots",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -2112,7 +2146,7 @@
     "output": "TH_MarkarthBootsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2126,7 +2160,7 @@
     "output": "TH_MarkarthCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2138,7 +2172,7 @@
     "output": "TH_MarkarthGauntlets",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -2151,7 +2185,7 @@
     "output": "TH_MarkarthGauntletsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2165,7 +2199,7 @@
     "output": "TH_MarkarthHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2178,7 +2212,7 @@
     "output": "TH_MarkarthHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2192,7 +2226,7 @@
     "output": "TH_MarkarthShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2206,7 +2240,7 @@
     "output": "TH_SwordMarkarth",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2220,7 +2254,7 @@
     "output": "TH_RiftenCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2233,7 +2267,7 @@
     "output": "TH_RiftenCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -2247,7 +2281,7 @@
     "output": "TH_RiftenBoots",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2261,7 +2295,7 @@
     "output": "TH_RiftenCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2273,7 +2307,7 @@
     "output": "TH_RiftenGauntlets",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2287,7 +2321,7 @@
     "output": "TH_RiftenHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2300,7 +2334,7 @@
     "output": "TH_RiftenHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2314,7 +2348,7 @@
     "output": "TH_RiftenShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2328,7 +2362,7 @@
     "output": "TH_SwordRiften",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2342,7 +2376,7 @@
     "output": "TH_DawnstarCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2355,7 +2389,7 @@
     "output": "TH_DawnstarCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -2369,7 +2403,7 @@
     "output": "TH_DawnstarBoots",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -2382,7 +2416,7 @@
     "output": "TH_DawnstarBootsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2396,7 +2430,7 @@
     "output": "TH_DawnstarCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2408,7 +2442,7 @@
     "output": "TH_DawnstarGauntlets",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -2421,7 +2455,7 @@
     "output": "TH_DawnstarGauntletsHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2435,7 +2469,7 @@
     "output": "TH_DawnstarHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2448,7 +2482,7 @@
     "output": "TH_DawnstarHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2462,7 +2496,7 @@
     "output": "TH_DawnstarShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2476,7 +2510,7 @@
     "output": "TH_WarAxeDawnstar",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2490,7 +2524,7 @@
     "output": "TH_FalkreathCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2503,7 +2537,7 @@
     "output": "TH_FalkreathCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -2517,7 +2551,7 @@
     "output": "TH_FalkreathBoots",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -2530,7 +2564,7 @@
     "output": "TH_FalkreathCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2542,7 +2576,7 @@
     "output": "TH_FalkreathGauntlets",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -2555,7 +2589,7 @@
     "output": "TH_FalkreathHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2568,7 +2602,7 @@
     "output": "TH_FalkreathHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2582,7 +2616,7 @@
     "output": "TH_FalkreathShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 4,
      "LeatherStrips": 1
@@ -2595,7 +2629,7 @@
     "output": "TH_FalkreathShieldHeavy",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2609,7 +2643,7 @@
     "output": "TH_WarAxeFalkreath",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2623,7 +2657,7 @@
     "output": "TH_MorthalCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2636,7 +2670,7 @@
     "output": "TH_MorthalCuirassHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 4,
      "IngotIron": 1,
@@ -2650,7 +2684,7 @@
     "output": "TH_MorthalBoots",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 2,
      "LeatherStrips": 2
@@ -2663,7 +2697,7 @@
     "output": "TH_MorthalCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2675,7 +2709,7 @@
     "output": "TH_MorthalGauntlets",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "Leather01": 1,
      "LeatherStrips": 2
@@ -2688,7 +2722,7 @@
     "output": "TH_MorthalHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2701,7 +2735,7 @@
     "output": "TH_MorthalHelmetHeavy",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2715,7 +2749,7 @@
     "output": "TH_MorthalShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2729,7 +2763,7 @@
     "output": "TH_WarAxeMorthal",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2743,7 +2777,7 @@
     "output": "TH_WinterholdCuirass",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "LeatherStrips": 3,
      "Leather01": 6
@@ -2756,7 +2790,7 @@
     "output": "TH_WinterholdCloak",
     "count": 1,
     "profession": "tailor",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "RuinsLinenPile01": 2
     }
@@ -2768,7 +2802,7 @@
     "output": "TH_WinterholdHelmet",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Novice",
     "items": {
      "IngotIron": 3,
      "LeatherStrips": 2
@@ -2781,7 +2815,7 @@
     "output": "TH_WinterholdShield",
     "count": 1,
     "profession": "woodworker",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 3,
      "IngotIron": 1,
@@ -2795,7 +2829,7 @@
     "output": "TH_WarAxeWinterhold",
     "count": 1,
     "profession": "blacksmith",
-    "tier": "Expert",
+    "tier": "Adept",
     "items": {
      "IngotSteel": 2,
      "IngotIron": 1,
@@ -2965,6 +2999,19 @@
     "tier": "Novice",
     "items": {
      "Firewood01": 1
+    }
+   },
+   {
+    "edid": "AldRecipeSmith_SkyforgeNordHeroBow",
+    "formId": "0x041330",
+    "bench": "CraftingSmithingSkyforge",
+    "output": "NordHeroBow",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Adept",
+    "items": {
+     "DraugrBow": 1,
+     "IngotSteel": 3
     }
    }
   ]
@@ -4066,21 +4113,21 @@
    {
     "edid": "MCERecipeArmorGuardCuirassThePale",
     "name": "Pale Guard's Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullPale",
     "name": "Pale Guard's Helmet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardShieldPale",
     "name": "Pale Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
@@ -4122,300 +4169,300 @@
    {
     "edid": "MCERecipeArmorGuardCuirassFalkreath",
     "name": "Falkreath Guard's Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardCuirassHjaalmarch",
     "name": "Hjaalmarch Guard's Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardCuirassMarkarth",
     "name": "Reach Guard's Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardCuirassRiften",
     "name": "Rift Guard's Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardCuirassSolitude",
     "name": "Solitude Guard's Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardCuirassWhiterun",
     "name": "Whiterun Guard's Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardCuirassWinterhold",
     "name": "Winterhold Guard's Armor",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorStormcloakCuirass",
     "name": "Stormcloak Cuirass (Eastmarch guard)",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullFalkreath",
     "name": "Falkreath Guard's Helmet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullHaafingar",
     "name": "Haafingar Guard's Helmet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullHjaalmarch",
     "name": "Hjaalmarch Guard's Helmet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullReach",
     "name": "Reach Guard's Helmet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullRift",
     "name": "Rift Guard's Helmet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullWhiterun",
     "name": "Whiterun Guard's Helmet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardHelmetFullWinterhold",
     "name": "Winterhold Guard's Helmet",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "MCERecipeArmorGuardShieldEastmarch",
     "name": "Eastmarch Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "MCERecipeArmorGuardShieldFalkreath",
     "name": "Falkreath Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "MCERecipeArmorGuardShieldHjaalmarch",
     "name": "Hjaalmarch Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "MCERecipeArmorGuardShieldMarkarth",
     "name": "Reach Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "MCERecipeArmorGuardShieldRiften",
     "name": "Rift Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "MCERecipeArmorGuardShieldSolitude",
     "name": "Solitude Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "MCERecipeArmorGuardShieldWhiterun",
     "name": "Whiterun Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "MCERecipeArmorGuardShieldWinterhold",
     "name": "Winterhold Guard's Shield",
-    "tier": "Expert",
+    "tier": "Novice",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "vol_GuardCapeRecipe_Dawnstar",
     "name": "Dawnstar Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Dawnstar",
     "name": "Dawnstar Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "vol_GuardCapeRecipe_Falkreath",
     "name": "Falkreath Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Falkreath",
     "name": "Falkreath Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "vol_GuardCapeRecipe_Hjaalmarch",
     "name": "Hjaalmarch Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Hjaalmarch",
     "name": "Hjaalmarch Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "vol_GuardCapeRecipe_Markarth",
     "name": "Markarth Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Markarth",
     "name": "Markarth Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "vol_GuardCapeRecipe_Riften",
     "name": "Riften Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Riften",
     "name": "Riften Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "vol_GuardCapeRecipe_Solitude",
     "name": "Solitude Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Solitude",
     "name": "Solitude Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "vol_GuardCapeRecipe_Whiterun",
     "name": "Whiterun Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Whiterun",
     "name": "Whiterun Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "vol_GuardCapeRecipe_Windhelm",
     "name": "Windhelm Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Windhelm",
     "name": "Windhelm Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "vol_GuardCapeRecipe_Winterhold",
     "name": "Winterhold Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "MCE_vol_GuardCapeRecipe_Winterhold",
     "name": "Winterhold Guard Cape",
-    "tier": "Expert"
+    "tier": "Novice"
    },
    {
     "edid": "IARFalkreathBoots",
     "name": "Falkreath Boots",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "IARFalkreathCrown",
     "name": "Falkreath Crown",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "IARFalkreathCuirass",
     "name": "Falkreath Cuirass",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "IARFalkreathGauntlets",
     "name": "Falkreath Gauntlets",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "IARFalkreathHelmet",
     "name": "Falkreath Helmet",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    },
    {
     "edid": "IARFalkreathShield",
     "name": "Falkreath Shield",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "AldCraftingWoodcrafting",
     "profession": "woodworker"
    },
    {
     "edid": "IWRecipeWeaponFalkreathBladeSword",
     "name": "Falkreath Blade",
-    "tier": "Expert",
+    "tier": "Adept",
     "bench": "CraftingSmithingForge",
     "profession": "blacksmith"
    }
@@ -7767,6 +7814,9 @@
     "all": [
      "Guard",
      "Solitude"
+    ],
+    "match": [
+     "TemperArmorTH_SolitudeShield"
     ]
    },
    {
@@ -7775,6 +7825,9 @@
     "all": [
      "Guard",
      "Markarth"
+    ],
+    "match": [
+     "TemperArmorTH_MarkarthShield"
     ]
    },
    {
@@ -7794,13 +7847,18 @@
     "all": [
      "Guard",
      "Hjaalmarch"
+    ],
+    "match": [
+     "TemperArmorTH_MorthalShield"
     ]
    },
    {
     "id": "hold:eastmarch",
     "name": "Guard of Eastmarch",
     "match": [
-     "AldRecipeArmorGuardHelmetFullEastmarch"
+     "AldRecipeArmorGuardHelmetFullEastmarch",
+     "TemperArmorTH_WindhelmCloakP",
+     "TemperArmorTH_WindhelmShield"
     ],
     "all": [
      "Guard",
@@ -7813,6 +7871,9 @@
     "all": [
      "Guard",
      "Winterhold"
+    ],
+    "match": [
+     "TemperArmorTH_WinterholdShield"
     ]
    },
    {
@@ -7821,6 +7882,9 @@
     "all": [
      "Guard",
      "Riften"
+    ],
+    "match": [
+     "TemperArmorTH_RiftenShield"
     ]
    },
    {
@@ -7831,7 +7895,8 @@
      "Dawnstar"
     ],
     "match": [
-     "Pale Guard"
+     "Pale Guard",
+     "TemperArmorTH_DawnstarShield"
     ]
    },
    {
@@ -7840,6 +7905,10 @@
     "all": [
      "Guard",
      "Whiterun"
+    ],
+    "match": [
+     "TemperArmorTH_WhiterunCloakCeremonial",
+     "TemperArmorTH_WhiterunShield"
     ]
    },
    {
@@ -8076,7 +8145,7 @@
   ]
  },
  "disableReferences": {
-  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). Then the duplicate floor of Digitus Quintus' House, the Two-Moons Delegation Hall (The Great City of Solitude cell 00B213): the flat SMDEFloSol03 tile 00B27A at (320,-1008,0) z-fights the ceiling-carrying SMDEFloSol01 tile 00B448 one unit east of it, so the flat one goes and the ceiling stays. Then Immersive Armors' shield painting activator 020EC5 in Whiterun (exterior, near 29461,-2367,-2054): its Ecks_ShieldPaintingRackActivateScript adds the Configure Auxiliary Armors power to a player who lacks it, and with IAGRemoveSpell at 0 (overrides.globals) on every activation, since Papyrus binds its && before the trailing || !IAGRemoveSpell.GetValue(); its enable parent C06FuneralClutter, opposite, would switch it on regardless of the flag, so a listed reference with an enable parent that could turn it on gets the player, opposite, as disableActors does. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run. Then the removals of Alduinak925.esp, which Graves disabled and dropped under the floor (the flag alone keeps them off): the Thalmor Embassy kitchen table with its food, crate and rag, the firewood pile by the new Solitude smelter, two barrels in Whiterun (0C1E28, and 0057D8 of JKs Whiterun.esp), the Throat of the World blizzard hazard 105375 (a placed hazard), the MQ204 pushback triggers 097010 and 09DD0F and the rock trim 06B52C on the path to the summit, and the vanilla Windhelm gate doors 0A17D2 and 0A17D3, which AldWorldRef_005932 and AldWorldRef_005933 replace.",
+  "comment": "The beehives and Stonewall Terrace pieces the owner asked Graves to delete, and the collision box left in the gateway of the iron gate in the Whiterun outer wall. Then the owner's list of 2026-09-24: the floating empty wine bottle outside Whiterun (205626), the corpses of Salia and Safni (the Warbirds 'dead draugr' containers) in Carpe's House (cell 07C55D) and the knapsack by the road west of Solitude (001F23, cell 00929F). Then the duplicate floor of Digitus Quintus' House, the Two-Moons Delegation Hall (The Great City of Solitude cell 00B213): the flat SMDEFloSol03 tile 00B27A at (320,-1008,0) z-fights the ceiling-carrying SMDEFloSol01 tile 00B448 one unit east of it, so the flat one goes and the ceiling stays. Then Immersive Armors' shield painting activator 020EC5 in Whiterun (exterior, near 29461,-2367,-2054): its Ecks_ShieldPaintingRackActivateScript adds the Configure Auxiliary Armors power to a player who lacks it, and with IAGRemoveSpell at 0 (overrides.globals) on every activation, since Papyrus binds its && before the trailing || !IAGRemoveSpell.GetValue(); its enable parent C06FuneralClutter, opposite, would switch it on regardless of the flag, so a listed reference with an enable parent that could turn it on gets the player, opposite, as disableActors does. A Creation Kit deletion does not survive a rebuild, so they are listed here and come back Initially Disabled every run. Then the removals of Alduinak925.esp, which Graves disabled and dropped under the floor (the flag alone keeps them off): the Thalmor Embassy kitchen table with its food, crate and rag, the firewood pile by the new Solitude smelter, two barrels in Whiterun (0C1E28, and 0057D8 of JKs Whiterun.esp), the Throat of the World blizzard hazard 105375 (a placed hazard), the MQ204 pushback triggers 097010 and 09DD0F and the rock trim 06B52C on the path to the summit, and the vanilla Windhelm gate doors 0A17D2 and 0A17D3, which AldWorldRef_005932 and AldWorldRef_005933 replace. Then the owner's list of 2026-09-30: the Hearthfire oven 0018C1 (base 00283F:HearthFires.esm) the plugin placed in the Moorside Inn (cell 0138CE) at (682,-301,0); Graves's oven AldWorldRef_005938 (041300 of world.placements) at (768,-392,0) in the same room stays.",
   "refs": [
    "0A467D:Skyrim.esm",
    "025D97:Skyrim.esm",
@@ -8159,7 +8228,8 @@
    "0A17D3:Skyrim.esm",
    "0C1E28:Skyrim.esm",
    "0057D8:JKs Whiterun.esp",
-   "050C60:Skyrim.esm"
+   "050C60:Skyrim.esm",
+   "0018C1:AlduinakAdditions.esp"
   ]
  },
  "enableReferences": {
@@ -8169,7 +8239,7 @@
   ]
  },
  "overrides": {
-  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). moves sets a placed reference's position by form key, keeping everything else it wins with (the SMdETraCon01 seam piece 00B444 of Digitus Quintus' House, The Great City of Solitude cell 00B213, one unit down from (321,-1296,0): one unit off the kit grid like 00B448, its beam lies inside the top beam of the wall 00B28C on the same seam with both undersides, its ceiling strip and its floor strip on the planes of 00B28C and the floor 00B221, which z-fights; disabling it instead leaves the atrium side of that beam and the ceiling under the balcony 00B446 open). globals sets a global's value by form key (Immersive Armors' IAGRemoveSpell to 0: IAStartupQuestScript adds the Configure Auxiliary Armors power to the player at every game start while it is not 0 and SkyUI.esp is absent, and SkyUI SE is SkyUI_SE.esp; the shield painting activator, the other script that adds it, is in disableReferences). Runs in the hotfix list too. A moves entry may also set a scale. flags clears (clear) or sets (set) record flags of a placed reference (ref) or an armour (item) by form key: the Castle Dour jail door 05E922 loses Inaccessible (0x100), as Alduinak925.esp has it, and the four Tied Linen Pouches of Nirn Necessities, the hip pouches the tailor makes at Adept, lose Non-Playable (0x4), which hid a crafted pouch from the inventory. The nudges of Alduinak925.esp are under moves too: the Thalmor Embassy raw beef and dog meat, the Moorside Inn cask (moved aside for the new oven, scale 0.6), a snow drift on the path to the Throat of the World and the thicket sunk among the new torches at Hammerfell Gate. foods may instead remove one effect by editor id (remove): the HearthFires Garlic Bread loses Cure Disease (AlchCureDisease), so only potions cure diseases (O6), starting from Survival's override of it. spells removes the effects whose editor id ends with dropEffectsEndingWith from a spell by form key (Survival's cold stage abilities lose their screen effects, the ImodEffect ones, and keep the Freezing and Numb frost shader, O8, as creations.stageAbilities did for hunger and exhaustion).",
+  "comment": "Single fields of records other plugins define, overridden in place: misc sets an item's weight by form key (the Sea Salt Rock of Saltdeposits.esp, 20 instead of 1), recipes sets a recipe's created object count (one Sea Salt Rock refines into 50 Salt Pile at the smelter), refs sets the scale of one of the plugin's own placed references by editor id (the mead benches, whose pick target was too small). foods swaps one magic effect of a food by form key, from and hunger by editor id (the six raw vegetables get Survival's Small hunger effect, the one it gives raw apples and tomatoes, instead of Very Small). quests drops the named scripts from a quest by form key (Survival_MainScript, whose 5 s OnUpdate poll of Survival_ModeToggle starts vanilla Survival once the client sets the toggle for the HUD). moves sets a placed reference's position by form key, keeping everything else it wins with (the SMdETraCon01 seam piece 00B444 of Digitus Quintus' House, The Great City of Solitude cell 00B213, one unit down from (321,-1296,0): one unit off the kit grid like 00B448, its beam lies inside the top beam of the wall 00B28C on the same seam with both undersides, its ceiling strip and its floor strip on the planes of 00B28C and the floor 00B221, which z-fights; disabling it instead leaves the atrium side of that beam and the ceiling under the balcony 00B446 open). globals sets a global's value by form key (Immersive Armors' IAGRemoveSpell to 0: IAStartupQuestScript adds the Configure Auxiliary Armors power to the player at every game start while it is not 0 and SkyUI.esp is absent, and SkyUI SE is SkyUI_SE.esp; the shield painting activator, the other script that adds it, is in disableReferences). Runs in the hotfix list too. A moves entry may also set a scale. flags clears (clear) or sets (set) record flags of a placed reference (ref) or an armour (item) by form key: the Castle Dour jail door 05E922 loses Inaccessible (0x100), as Alduinak925.esp has it, and the four Tied Linen Pouches of Nirn Necessities, the hip pouches the tailor makes at Adept, lose Non-Playable (0x4), which hid a crafted pouch from the inventory. The nudges of Alduinak925.esp are under moves too: the Thalmor Embassy raw beef and dog meat, the Moorside Inn cask (moved aside for the new oven, scale 0.6), a snow drift on the path to the Throat of the World and the thicket sunk among the new torches at Hammerfell Gate. foods may instead remove one effect by editor id (remove): the HearthFires Garlic Bread loses Cure Disease (AlchCureDisease), so only potions cure diseases (O6), starting from Survival's override of it. spells removes the effects whose editor id ends with dropEffectsEndingWith from a spell by form key (Survival's cold stage abilities lose their screen effects, the ImodEffect ones, and keep the Freezing and Numb frost shader, O8, as creations.stageAbilities did for hunger and exhaustion). lights sets the burn time (DATA Time, the seconds the engine lets a held light burn) of a carryable light by form key: the four carryable lights of the load order, Torch01, Torch01Shadow and SovngardeWarmLight of Skyrim.esm (240) and DLC1Torch of Dawnguard.esm (180), at 36000 (10 h), so the engine never burns a held torch out and the server alone does after torchBurnMinutes of use (TorchSystem). weapons sets the animation type of a weapon by form key: Immersive Weapons' Mighty Steel Greatsword carries WeapTypeGreatsword and the greatsword's impact, swing and draw sounds but the battle axe animation type (TwoHandAxe), so it swung and was held like a battle axe; it takes TwoHandSword, every stat kept.",
   "misc": [
    {
     "item": "0012C8:Saltdeposits.esp",
@@ -8379,6 +8449,35 @@
     "item": "000DF6:evgnnsmpaccessories.esp",
     "name": "Tied Linen Pouch (Right) (evgsmpbasicpouchRDARKarmor)",
     "clear": "0x4"
+   }
+  ],
+  "lights": [
+   {
+    "item": "01D4EC:Skyrim.esm",
+    "name": "Torch (Torch01)",
+    "time": 36000
+   },
+   {
+    "item": "036343:Skyrim.esm",
+    "name": "Torch (Torch01Shadow)",
+    "time": 36000
+   },
+   {
+    "item": "0C82C7:Skyrim.esm",
+    "name": "Torch (SovngardeWarmLight)",
+    "time": 36000
+   },
+   {
+    "item": "015374:Dawnguard.esm",
+    "name": "Torch (DLC1Torch)",
+    "time": 36000
+   }
+  ],
+  "weapons": [
+   {
+    "item": "0A1111:Immersive Weapons.esp",
+    "name": "Mighty Steel Greatsword (IWMightySteelGreatsword)",
+    "animation": "TwoHandSword"
    }
   ]
  },
@@ -9681,8 +9780,7 @@
     "profession": "tailor",
     "tier": "Anyone",
     "items": {
-     "PaperRoll": 1,
-     "LeatherStrips": 1
+     "PaperRoll": 1
     }
    },
    {
@@ -9695,7 +9793,7 @@
     "items": {
      "PaperRoll": 2,
      "Leather01": 1,
-     "LeatherStrips": 2
+     "LeatherStrips": 1
     }
    },
    {
@@ -9708,7 +9806,7 @@
     "items": {
      "PaperRoll": 4,
      "Leather01": 2,
-     "LeatherStrips": 4
+     "LeatherStrips": 1
     }
    },
    {
@@ -9719,8 +9817,7 @@
     "profession": "woodworker",
     "tier": "Anyone",
     "items": {
-     "PaperRoll": 1,
-     "LeatherStrips": 1
+     "PaperRoll": 1
     }
    },
    {
@@ -9759,7 +9856,204 @@
     "items": {
      "BeeHiveHusk": 1,
      "Charcoal": 1
-    }
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxForge",
+    "formId": "0x0413E6",
+    "bench": "CraftingSmithingForge",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxTanningRack",
+    "formId": "0x0413E7",
+    "bench": "CraftingTanningRack",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxLoom",
+    "formId": "0x0413E8",
+    "bench": "MCE_CraftingLoom",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxWoodcrafting",
+    "formId": "0x0413E9",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxCookpot",
+    "formId": "0x0413EA",
+    "bench": "CraftingCookpot",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxOven",
+    "formId": "0x0413EB",
+    "bench": "BYOHCraftingOven",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxAlchemy",
+    "formId": "0x0413EC",
+    "bench": "AldCraftingAlchemy",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxMead",
+    "formId": "0x0413ED",
+    "bench": "AldCraftingMead",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxGrainMill",
+    "formId": "0x0413EE",
+    "bench": "AldCraftingGrainMill",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner",
+     "tailor",
+     "hunter",
+     "woodworker",
+     "cook"
+    ]
    }
   ]
  },
@@ -10197,6 +10491,17 @@
     ],
     "tier": "Novice",
     "profession": "tailor"
+   },
+   {
+    "name": "Skyforge smith bow",
+    "benches": [
+     "CraftingSmithingSkyforge"
+    ],
+    "match": [
+     "AldRecipeSmith_SkyforgeNordHeroBow"
+    ],
+    "tier": "Adept",
+    "profession": "blacksmith"
    }
   ]
  },

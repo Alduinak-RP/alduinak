@@ -9,7 +9,8 @@ import FactionAssign from './factionAssign';
 import Dropdown from './dropdown';
 import Jobs, { AdminPos, JobRow } from './jobs';
 import WeatherTab, { WeatherMenuData } from './weatherTab';
-import { diseaseStageName } from '../fatigueReadout';
+import PolymorphTab, { RaceMenuData } from './polymorphTab';
+import { diseaseStageName } from '../survivalReadout';
 import { formatCountdown, formatTimeLeft, isBlankOrNum, isNum, optionalNumber, pad2 } from './util';
 import './styles.scss';
 
@@ -127,18 +128,19 @@ interface DebugServer {
   tzOffsetMin: number; // server-side Date.getTimezoneOffset()
 }
 
-// The crosshair target (adminMenuService.ts DebugTarget); ref and server ids arrive empty on another player's character unless staff.
+// The crosshair target (adminMenuService.ts DebugTarget); the ref id arrives empty on another player's character unless staff.
 interface DebugTarget {
   name: string;
   dist: number;
   live: boolean; // false once the crosshair left it while the menu stayed open
   player: boolean;
-  refId: string;
+  body: boolean; // the body a PK leaves, which wears the victim's look under its own id
+  refId: string; // the server's id (a player's character id), the client's own id only when clientOnly
   refDesc: string; // "hex:Plugin", empty for a ref created in game
-  serverId: string; // empty for a client-only ref
+  clientOnly: boolean; // a ref the server does not know
   baseId: string;
   baseDesc: string;
-  localBaseId: string; // the client's own base when it differs from baseId
+  localBaseId: string; // the client's own plugin base when it differs from baseId
   localBaseDesc: string;
   cell: string;
   cellName: string;
@@ -187,6 +189,7 @@ export interface AdminPanelData {
   jobs?: JobRow[] | null; // the adminJobs reply, absent until it arrives
   weather?: WeatherMenuData | null; // the adminWeather reply, absent until it arrives
   survival?: SurvivalCatalog | null; // null with survival off, absent on older clients
+  races?: RaceMenuData | null; // the adminRaces reply, absent until it arrives
 }
 
 const send = (key: string, ...args: unknown[]): void => {
@@ -201,7 +204,7 @@ const send = (key: string, ...args: unknown[]): void => {
 };
 
 type TopTab = 'admin' | 'faction' | 'skills' | 'debug';
-type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items' | 'weather';
+type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items' | 'weather' | 'polymorph';
 
 // Admin shows only to confirmed staff; the other three are open to every player
 const TOP_TABS: Array<{ id: TopTab; label: string }> = [
@@ -211,7 +214,7 @@ const TOP_TABS: Array<{ id: TopTab; label: string }> = [
   { id: 'debug', label: 'Debug' },
 ];
 
-// Each sub-tab needs its server-sent cap; Item Spawner and Weather need it explicitly true
+// Each sub-tab needs its server-sent cap; Item Spawner, Weather and Polymorph need it explicitly true
 const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
   { id: 'players', label: 'Players' },
   { id: 'teleport', label: 'Teleport' },
@@ -219,6 +222,7 @@ const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
   { id: 'npcs', label: 'NPCs' },
   { id: 'items', label: 'Item Spawner' },
   { id: 'weather', label: 'Weather' },
+  { id: 'polymorph', label: 'Polymorph' },
 ];
 
 // Teleport sections in display order; a missing or unknown group lands in Other
@@ -364,8 +368,7 @@ const withDesc = (id: string, desc: string): string => hexId(id) + (desc ? ' (' 
 // One line for bug reports; the descs paste straight into the Item Spawner search
 const targetReport = (t: DebugTarget): string => {
   const parts = [t.name || '(no name)'];
-  if (t.refId) parts.push('ref ' + withDesc(t.refId, t.refDesc));
-  if (t.serverId && t.serverId !== t.refId) parts.push('server ' + hexId(t.serverId));
+  if (t.refId) parts.push((t.body ? 'body ' : t.player ? 'character ' : 'ref ') + withDesc(t.refId, t.refDesc) + (t.clientOnly ? ' client only' : ''));
   if (t.baseId) parts.push('base ' + withDesc(t.baseId, t.baseDesc));
   if (t.localBaseId) parts.push('local base ' + withDesc(t.localBaseId, t.localBaseDesc));
   if (t.cell) parts.push('cell ' + hexId(t.cell) + (t.cellName ? ' ' + t.cellName : ''));
@@ -434,8 +437,16 @@ const debugCells = (d: DebugData, now: number): DebugCell[] => {
     { label: 'Game Time/Date', value: gameClock(d.gameTime), sub: gameDate(d.gameTime) },
     { label: 'Local Time/Date', value: formatClock(now, new Date(now).getTimezoneOffset()) },
     { label: 'Server Time/Date', value: server ? formatClock(now + server.offsetMs, server.tzOffsetMin) : 'unknown' },
-    { label: 'Target Ref ID', value: !t ? '-' : hidden ? 'Staff only' : hexId(t.refId), sub: t && !hidden ? inGame(t.refDesc) : undefined },
-    { label: 'Target Server ID', value: !t ? '-' : hidden ? 'Staff only' : !t.serverId ? 'client only' : t.serverId === t.refId ? 'same as ref' : hexId(t.serverId) },
+    {
+      label: 'Target Ref ID',
+      value: !t ? '-' : hidden ? 'Staff only' : hexId(t.refId),
+      sub: !t || hidden ? undefined : t.clientOnly ? 'client only' : t.body ? 'body' : t.player ? 'character' : inGame(t.refDesc),
+    },
+    {
+      label: 'Target POS (X Y Z)',
+      value: t ? (t.pos || []).map((n) => Math.round(n)).join(' ') || '-' : '-',
+      sub: t && t.cell ? hexId(t.cell) + (t.cellName ? ' ' + t.cellName : '') : undefined,
+    },
     {
       label: 'Target Base ID',
       value: t ? hexId(t.baseId) : '-',
@@ -483,7 +494,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   const ev = data.events || {};
   const caps: NonNullable<AdminPanelData['caps']> = data.caps || {};
-  const subVisible = (id: AdminSub): boolean => (id === 'items' || id === 'weather' ? caps[id] === true : caps[id] !== false);
+  const subVisible = (id: AdminSub): boolean => (id === 'items' || id === 'weather' || id === 'polymorph' ? caps[id] === true : caps[id] !== false);
   const shownSubs = ADMIN_SUBS.filter((t) => subVisible(t.id));
   const adminVisible = !!data.admin && shownSubs.length > 0;
   const shownTops = TOP_TABS.filter((t) => t.id !== 'admin' || adminVisible);
@@ -540,6 +551,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       setRefreshKey((k) => k + 1);
       if (view === 'npcs' && npcSub === 'jobs' && ev.jobList) send(ev.jobList);
       if (view === 'weather' && ev.weatherList) send(ev.weatherList);
+      if (view === 'polymorph' && ev.polymorphList) send(ev.polymorphList);
     }
     if (topTab === 'skills' && ev.skills) send(ev.skills);
     if (topTab === 'faction' && ev.factionMenu) send(ev.factionMenu, data.faction ? data.faction.selected : '');
@@ -632,6 +644,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     if (id === 'faction' && ev.factionMenu) send(ev.factionMenu, data.faction ? data.faction.selected : '');
     if (id === 'admin' && subTab === 'npcs' && ev.npcList) send(ev.npcList);
     if (id === 'admin' && subTab === 'weather' && ev.weatherList) send(ev.weatherList);
+    if (id === 'admin' && subTab === 'polymorph' && ev.polymorphList) send(ev.polymorphList);
   };
 
   const openSub = (id: AdminSub): void => {
@@ -639,6 +652,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     setSub(id);
     if (id === 'npcs' && ev.npcList) send(ev.npcList);
     if (id === 'weather' && ev.weatherList) send(ev.weatherList);
+    if (id === 'polymorph' && ev.polymorphList) send(ev.polymorphList);
   };
 
   // Seconds left until the zone can fully respawn, -1 when it never will without a reset
@@ -1086,6 +1100,16 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
         ) : null}
 
         {view === 'weather' ? <WeatherTab data={data.weather || null} now={now} ev={ev} send={send} /> : null}
+
+        {view === 'polymorph' ? (
+          <PolymorphTab
+            data={data.races || null}
+            ev={ev}
+            send={send}
+            selfActorId={debug ? debug.actorId : ''}
+            selected={actionsEnabled && selectedPlayer && selectedPlayer.a ? { a: selectedPlayer.a, n: selectedPlayer.n } : null}
+          />
+        ) : null}
 
 
         {view === 'npcs' ? (

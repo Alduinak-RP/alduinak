@@ -25,6 +25,7 @@ import { RemoteServer, settleSpawnEquipment } from "./remoteServer";
 import { DeathService } from "./deathService";
 import { RestraintService } from "./restraintService";
 import { MountService } from "./mountService";
+import { PolymorphService } from "./polymorphService";
 import { Movement } from "../../sync/movement";
 import { logTrace, logToPlatformLog } from "../../logging";
 
@@ -334,7 +335,12 @@ export class SendInputsService extends ClientListener {
                 this.sp.Game.getPlayer() as Actor,
                 this.numEquipmentChanges,
             );
-            if (this.spawnReportsToLog > 0) {
+            // A creature form reports no worn gear, so no weapon reaches the other players' copies of its skeleton
+            if (this.controller.lookupListener(PolymorphService).creatureForm) {
+                const worn = countWorn(eq.inv);
+                eq.inv = { entries: eq.inv.entries.filter((e) => !e.worn && !e.wornLeft) };
+                if (worn) logToPlatformLog(this, `equipment report #${eq.numChanges} in a creature form: ${worn} worn item(s) left out`);
+            } else if (this.spawnReportsToLog > 0) {
                 this.spawnReportsToLog--;
                 logToPlatformLog(this, `equipment report #${eq.numChanges} after spawn: worn ${countWorn(eq.inv)} of ${eq.inv.entries.length}`);
             } else if (countWorn(eq.inv) === 0) {

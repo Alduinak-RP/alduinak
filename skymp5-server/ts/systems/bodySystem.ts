@@ -1,28 +1,30 @@
 import * as fs from "fs";
-import { Settings } from "../settings";
 import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { NEVER_RESPAWN } from "./npcPlacement";
 import { looseEntries } from "./companionSystem";
-import { isNamedItemBase } from "./inventoryExtras";
-import { destroyRef, hex, isAlive } from "./actorUtil";
+import { InventoryEntry, addEntries, isNamedItemBase, readInventory } from "./inventoryExtras";
+import { destroyRef, hex, isAlive, userOf } from "./actorUtil";
+import { sendJson } from "./playerText";
 import { markDeathAlerted } from "./discordAlerts";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// A PK leaves a lootable body: a clone of the victim at the spot of death holding their pack, while the victim comes back empty (docs_roleplay_survival_loop.md section 8)
+// A PK leaves a lootable body: a clone of the victim at the spot of death holding their whole pack, while the victim comes back empty (docs_roleplay_survival_loop.md section 8)
 
 // Neighbor-visible flag (registered in the gamemode) telling clients the dead copy is a body to create
 const BODY_PROP = "ff_body";
 const REGISTRY_FILE = "./bodies.json";
+// The body's own record and index, so a restart finds every body even when bodies.json lost it
+const RECORD_PROP = "private.pkBody";
+const INDEX_PROP = "private.indexed.pkBody";
+const INDEX_ON = "on";
 const CHECK_MS = 2000;
-// The victim's own dead actor is respawned this long after the body is left, so two bodies never lie side by side
+// The victim's own dead actor is respawned this long after the body is left, time for its client to end the killmove and fall
 const VICTIM_RESPAWN_MS = 4000;
-// Seconds a body lies at most, overridable via "bodyMaxSeconds"; 0 keeps it until it is emptied
-const DEFAULT_MAX_SEC = 0;
-// Seconds a body lies after its last take or put, overridable via "bodyIdleSeconds"; 0 keeps it; an untouched body is not affected
-const DEFAULT_IDLE_SEC = 7200;
-// An emptied body is left this long, so a victim with nothing to loot still leaves one to see
+// Clients holding a copy of that actor keep it out of sight this long, past the respawn that takes it from them, so two bodies never lie side by side
+const VICTIM_HIDDEN_MS = VICTIM_RESPAWN_MS + 2000;
+// A body lies until it is emptied, and an emptied one is left this long, so a victim with nothing to loot still leaves one to see
 const EMPTY_GRACE_MS = 60000;
 // A second death of the same victim within this window (a finish off then a soul trap) leaves no second body
 const REPEAT_MS = 30000;
@@ -33,12 +35,27 @@ interface Body {
   // The victim's account, whose other characters may not loot the body; -1 when unknown
   profileId: number;
   at: number;
-  // Last take or put, 0 while nobody has touched the pack
-  touchedAt: number;
 }
 
 const packSig = (entries: any[]): string =>
   entries.filter((e) => e && e.count > 0).map((e) => `${Number(e.baseId) >>> 0}:${e.count}`).sort().join(",");
+
+const stacksOf = (entries: any[]): any[] => entries.filter((e) => e && Number(e.count) > 0);
+
+const isNamed = (e: any): boolean => isNamedItemBase(Number(e?.baseId));
+
+// "N item(s) in M stack(s)"
+const sizeOf = (entries: any[]): string => {
+  const stacks = stacksOf(entries);
+  return `${stacks.reduce((n, e) => n + Number(e.count), 0)} item(s) in ${stacks.length} stack(s)`;
+};
+
+// "f x120, db0e2 "Breezehome Key (H1A2B/3)" x1": the record staff restore from
+const itemList = (entries: any[]): string => stacksOf(entries)
+  .map((e) => `${hex(Number(e.baseId))}${isNamed(e) && e.name ? ` ${JSON.stringify(String(e.name))}` : ""} x${e.count}`).join(", ") || "nothing";
+
+const wornOf = (equipment: any): any[] =>
+  stacksOf(Array.isArray(equipment?.inv?.entries) ? equipment.inv.entries : []).filter((e) => e.worn || e.wornLeft);
 
 export class BodySystem implements System {
   systemName = "BodySystem";
@@ -47,11 +64,6 @@ export class BodySystem implements System {
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
-    const all = (await Settings.get()).allSettings as Record<string, unknown> | null;
-    const maxSec = Number(all?.["bodyMaxSeconds"]);
-    if (Number.isFinite(maxSec) && maxSec >= 0) this.maxSec = maxSec;
-    const idleSec = Number(all?.["bodyIdleSeconds"]);
-    if (Number.isFinite(idleSec) && idleSec >= 0) this.idleSec = idleSec;
     this.loadRegistry();
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.adoptLeftovers());
   }
@@ -63,19 +75,18 @@ export class BodySystem implements System {
     for (const body of Array.from(this.bodies.values())) {
       const entries = this.entriesOf(body.id);
       const left = entries && this.lootLeft(entries);
-      if (entries) this.noteTouch(body, entries, now);
-      const idle = this.idleSec > 0 && body.touchedAt > 0 && now - body.touchedAt > this.idleSec * 1000;
-      const reason = left === null ? "gone" : left === 0 && now - body.at > EMPTY_GRACE_MS ? "emptied" : this.maxSec > 0 && now - body.at > this.maxSec * 1000 ? "lay too long" : idle ? "left alone" : "";
-      if (reason) this.remove(body, reason);
+      if (entries) this.noteTouch(body, entries);
+      const reason = left === null ? "gone" : left === 0 && now - body.at > EMPTY_GRACE_MS ? "emptied" : "";
+      if (reason) this.remove(body, reason, entries);
     }
   }
 
-  // The clone wears the victim's look and gear and holds their pack; the victim keeps only named items (property keys and writings) and respawns shortly after. 0 when no body could be left
+  // The clone wears the victim's look and worn gear and takes their whole pack, property keys and writings with their names; the victim respawns shortly after. 0 when no body could be left
   leaveBody(victimId: number, why: string): number {
     const mp = this.mp;
-    const recent = Array.from(this.bodies.values()).find((b) => b.victimId === victimId && Date.now() - b.at < REPEAT_MS);
+    const recent = this.recentBodyOf(victimId);
     if (recent) return recent.id;
-    let loc: any, appearance: unknown, equipment: unknown, inventory: any, profileId = -1;
+    let loc: any, appearance: unknown, equipment: any, inventory: any, profileId = -1;
     try {
       profileId = Number(mp.get(victimId, "profileId"));
       loc = mp.get(victimId, "locationalData");
@@ -86,37 +97,52 @@ export class BodySystem implements System {
       this.log(`[body] reading ${hex(victimId)} failed: ${e}`);
       return 0;
     }
-    const entries: any[] = Array.isArray(inventory?.entries) ? inventory.entries : [];
-    const named = (e: any): boolean => isNamedItemBase(Number(e?.baseId));
-    const loot = looseEntries({ entries: entries.filter((e) => !named(e)) });
+    const loot = looseEntries(inventory);
+    const worn = wornOf(equipment);
     let cloneId = 0;
     let step = "creating the clone";
-    // The victim is stripped last, so a body that fails to stand leaves their pack where it was
+    let stripped = false;
+    const at = Date.now();
+    // The body stands empty first; the pack then leaves the victim before the body takes it, so it never has two owners
     try {
       cloneId = mp.createActor(0, loc.pos, Number(loc.rot?.[2]) || 0, mp.getIdFromDesc(String(loc.cellOrWorldDesc))) >>> 0;
       mp.set(cloneId, "spawnDelay", NEVER_RESPAWN);
+      mp.set(cloneId, RECORD_PROP, { victimId, profileId, at });
+      mp.set(cloneId, INDEX_PROP, INDEX_ON);
       if (appearance) mp.set(cloneId, "appearance", appearance);
-      // Throws on a native build without the equipment setter; the body then lies naked
-      try { mp.set(cloneId, "equipment", equipment); } catch { }
+      // Worn pieces only, no spells in its hands; throws on a native build without the equipment setter, and the body then lies naked
+      try { mp.set(cloneId, "equipment", { inv: { entries: worn }, numChanges: 0 }); } catch { }
       step = `setting ${BODY_PROP} (registered in gamemode.js?)`;
       mp.set(cloneId, BODY_PROP, true);
       // The clone uses the Player base, so the gamemode's onDeath would post a [Death] line for it
       markDeathAlerted(cloneId);
-      step = "filling the body";
-      mp.set(cloneId, "inventory", { entries: loot });
       mp.set(cloneId, "isDead", true);
       step = "placing the body";
       this.placeOnGrid(cloneId, loc);
       step = "stripping the victim";
-      mp.set(victimId, "inventory", { entries: entries.filter(named) });
+      mp.set(victimId, "inventory", { entries: [] });
+      stripped = true;
+      step = "filling the body";
+      mp.set(cloneId, "inventory", { entries: loot });
     } catch (e) {
-      this.log(`[body] leaving a body for ${hex(victimId)} failed ${step}, pack kept: ${e}`);
+      let outcome = "pack kept";
+      if (stripped) {
+        try {
+          mp.set(victimId, "inventory", inventory);
+          outcome = "pack given back";
+        } catch (e2) {
+          outcome = `pack NOT given back (${e2}), staff must restore ${hex(victimId)}: ${itemList(loot)}`;
+        }
+      }
+      this.log(`[body] leaving a body for ${hex(victimId)} failed ${step}, ${outcome}: ${e}`);
       if (cloneId) {
         try { destroyRef(mp, cloneId); } catch { }
       }
       return 0;
     }
-    this.bodies.set(cloneId, { id: cloneId, victimId, profileId, at: Date.now(), touchedAt: 0 });
+    // Their copies would still wear what the body now holds; spells stay
+    try { mp.set(victimId, "equipment", { ...equipment, inv: { entries: [] }, numChanges: 0 }); } catch { }
+    this.bodies.set(cloneId, { id: cloneId, victimId, profileId, at });
     this.packSigs.set(cloneId, packSig(loot));
     this.save();
     setTimeout(() => {
@@ -126,8 +152,54 @@ export class BodySystem implements System {
         this.log(`[body] respawning ${hex(victimId)} failed: ${e}`);
       }
     }, VICTIM_RESPAWN_MS);
-    this.log(`[body] ${hex(victimId)} ${why}: body ${hex(cloneId)} holds ${loot.length} stack(s)`);
+    const hiddenOn = this.hideVictim(victimId);
+    this.log(`[body] ${hex(victimId)} ${why}: body ${hex(cloneId)} holds ${sizeOf(loot)} moved from the victim (${worn.length} shown worn, ${loot.filter(isNamed).length} named), their own dead actor hidden on ${hiddenOn} client(s); moved: ${itemList(loot)}`);
     return cloneId;
+  }
+
+  // Tells every other client that has a copy of the victim to drop it (FormView, bodyLeftUntil); the number of clients told
+  private hideVictim(victimId: number): number {
+    const mp = this.mp;
+    let neighbors: unknown[] = [];
+    try { neighbors = mp.get(victimId, "actorNeighbors") ?? []; } catch { /* form vanished */ }
+    const users = neighbors.map((id) => Number(id) >>> 0).filter((id) => id !== victimId).map((id) => userOf(mp, id)).filter((user) => user >= 0);
+    for (const user of users) sendJson(mp, user, { customPacketType: "bodyLeft", victim: victimId, ms: VICTIM_HIDDEN_MS });
+    return users.length;
+  }
+
+  // A body left for the victim within REPEAT_MS; their own stripped actor respawns VICTIM_RESPAWN_MS after it
+  hasBodyFor(victimId: number): boolean {
+    return !!this.recentBodyOf(victimId);
+  }
+
+  // The victim and account a body stands for, undefined for any other actor
+  bodyOf(bodyId: number): { victimId: number; profileId: number } | undefined {
+    const body = this.bodies.get(bodyId);
+    return body && { victimId: body.victimId, profileId: body.profileId };
+  }
+
+  // Everything the body holds goes to the actor, keys and writings under their names; "N item(s) in M stack(s)", "" when it held nothing, or throws and the body keeps it
+  emptyInto(bodyId: number, actorId: number, why: string): string {
+    const mp = this.mp;
+    const body = this.bodies.get(bodyId);
+    if (!body) throw new Error(`${hex(bodyId)} is no PK body`);
+    const loot = looseEntries(mp.get(bodyId, "inventory")) as unknown as InventoryEntry[];
+    if (!loot.length) return "";
+    mp.set(bodyId, "inventory", { entries: [] });
+    try {
+      mp.set(actorId, "inventory", addEntries(readInventory(mp, actorId), loot));
+    } catch (e) {
+      let outcome = "the body keeps it";
+      try { mp.set(bodyId, "inventory", { entries: loot }); } catch (e2) { outcome = `NOT given back (${e2}), staff must restore ${hex(bodyId)}: ${itemList(loot)}`; }
+      this.log(`[body] ${hex(bodyId)} of ${hex(body.victimId)} ${why}: moving the pack to ${hex(actorId)} failed, ${outcome}: ${e}`);
+      throw e;
+    }
+    this.log(`[body] ${hex(bodyId)} of ${hex(body.victimId)} ${why}: ${sizeOf(loot)} moved to ${hex(actorId)} (${loot.filter(isNamed).length} named); moved: ${itemList(loot)}`);
+    return sizeOf(loot);
+  }
+
+  private recentBodyOf(victimId: number): Body | undefined {
+    return Array.from(this.bodies.values()).find((b) => b.victimId === victimId && Date.now() - b.at < REPEAT_MS);
   }
 
   // createActor never streams an actor; setting its location puts it on the grid so nearby clients create it
@@ -154,56 +226,99 @@ export class BodySystem implements System {
     }
   }
 
-  // Stacks a searcher can still take
+  // Stacks a searcher can still take; one whose base the load order lacks never shows in the window, so it cannot keep the body
   private lootLeft(entries: any[]): number {
-    return entries.filter((e) => e && e.count > 0 && !isNamedItemBase(Number(e.baseId))).length;
+    return stacksOf(entries).filter((e) => this.inLoadOrder(Number(e.baseId) >>> 0)).length;
+  }
+
+  private inLoadOrder(baseId: number): boolean {
+    let known = this.knownBases.get(baseId);
+    if (known === undefined) {
+      try { known = !!this.mp.lookupEspmRecordById(baseId)?.record; } catch { known = true; }
+      this.knownBases.set(baseId, known);
+    }
+    return known;
   }
 
   // Any change to the pack since the last check is a take or a put; the pack is recorded when the body is left or adopted
-  private noteTouch(body: Body, entries: any[], now: number): void {
+  private noteTouch(body: Body, entries: any[]): void {
     const sig = packSig(entries);
     const last = this.packSigs.get(body.id);
     this.packSigs.set(body.id, sig);
     if (last === undefined || last === sig) return;
-    body.touchedAt = now;
-    this.save();
+    this.trimWorn(body.id, entries);
   }
 
-  private remove(body: Body, reason: string): void {
+  // A worn piece taken from the body stops showing on it; each shown piece needs one of its base still in the pack
+  private trimWorn(bodyId: number, entries: any[]): void {
+    let worn: any[] = [];
+    try { worn = wornOf(this.mp.get(bodyId, "equipment")); } catch { return; }
+    const left = new Map<number, number>();
+    for (const e of stacksOf(entries)) left.set(Number(e.baseId) >>> 0, (left.get(Number(e.baseId) >>> 0) ?? 0) + Number(e.count));
+    const shown = worn.filter((e) => {
+      const base = Number(e.baseId) >>> 0;
+      const n = left.get(base) ?? 0;
+      left.set(base, n - 1);
+      return n > 0;
+    });
+    if (shown.length === worn.length) return;
+    try {
+      this.mp.set(bodyId, "equipment", { inv: { entries: shown }, numChanges: 0 });
+    } catch (e) {
+      this.log(`[body] undressing ${hex(bodyId)} failed: ${e}`);
+      return;
+    }
+    this.log(`[body] ${hex(bodyId)} no longer shows ${worn.length - shown.length} worn piece(s) taken from it, ${shown.length} still shown`);
+  }
+
+  private remove(body: Body, reason: string, entries: any[] | null): void {
     this.bodies.delete(body.id);
     this.packSigs.delete(body.id);
     try { destroyRef(this.mp, body.id); } catch { }
     this.save();
-    this.log(`[body] ${hex(body.id)} of ${hex(body.victimId)} removed: ${reason}`);
+    this.log(`[body] ${hex(body.id)} of ${hex(body.victimId)} removed: ${reason}${entries && stacksOf(entries).length ? `, went with it: ${itemList(entries)}` : ""}`);
   }
 
   private loadRegistry(): void {
     let saved: { bodies?: unknown } = {};
     try { saved = JSON.parse(fs.readFileSync(REGISTRY_FILE, "utf8")) ?? {}; } catch { }
     this.leftovers = (Array.isArray(saved.bodies) ? saved.bodies : [])
-      .map((b: any) => ({ id: Number(b?.id) >>> 0, victimId: Number(b?.victimId) >>> 0, profileId: Number.isInteger(b?.profileId) ? b.profileId : -1, at: Number(b?.at) || 0, touchedAt: Number(b?.touchedAt) || 0 }))
+      .map((b: any) => ({ id: Number(b?.id) >>> 0, victimId: Number(b?.victimId) >>> 0, profileId: Number.isInteger(b?.profileId) ? b.profileId : -1, at: Number(b?.at) || 0 }))
       .filter((b: Body) => b.id > 0);
+  }
+
+  private exists(id: number): boolean {
+    try { return this.mp.get(id, "type") === "MpActor"; } catch { return false; }
+  }
+
+  // Bodies bodies.json lost, found by their index; one without a readable record counts from now
+  private unregisteredBodies(known: Body[]): Body[] {
+    let ids: number[] = [];
+    try { ids = (this.mp.findFormsByPropertyValue(INDEX_PROP, INDEX_ON) as unknown[]).map((id) => Number(id) >>> 0); } catch (e) { this.log(`[body] ${INDEX_PROP} lookup failed: ${e}`); }
+    return ids.filter((id) => !known.some((b) => b.id === id) && this.exists(id)).map((id) => {
+      let rec: any = null;
+      try { rec = this.mp.get(id, RECORD_PROP); } catch { }
+      return { id, victimId: Number(rec?.victimId) >>> 0, profileId: Number.isInteger(rec?.profileId) ? rec.profileId : -1, at: Number(rec?.at) || Date.now() };
+    });
   }
 
   // The world DB loads after every system's init (attachSaveStorage in index.ts); bodies still standing are watched again, the rest are forgotten
   private adoptLeftovers(): void {
-    const mp = this.mp;
-    let kept = 0;
-    for (const body of this.leftovers) {
-      let exists = false;
-      try { exists = mp.get(body.id, "type") === "MpActor"; } catch { }
-      if (!exists) continue;
+    const leftovers = this.leftovers.filter((b) => this.exists(b.id));
+    const found = this.unregisteredBodies(leftovers);
+    for (const body of leftovers.concat(found)) {
       try {
-        this.placeOnGrid(body.id, mp.get(body.id, "locationalData"));
+        this.placeOnGrid(body.id, this.mp.get(body.id, "locationalData"));
       } catch (e) {
         this.log(`[body] placing ${hex(body.id)} failed: ${e}`);
       }
       this.bodies.set(body.id, body);
       const entries = this.entriesOf(body.id);
       if (entries) this.packSigs.set(body.id, packSig(entries));
-      kept++;
     }
-    if (this.leftovers.length) this.log(`[body] ${kept}/${this.leftovers.length} body(ies) of the previous run kept`);
+    if (this.leftovers.length || found.length) {
+      this.log(`[body] ${leftovers.length}/${this.leftovers.length} body(ies) of the previous run kept${found.length ? `, ${found.length} more missing from ${REGISTRY_FILE} found by ${INDEX_PROP}: ${found.map((b) => hex(b.id)).join(", ")}` : ""}`);
+    }
     this.leftovers = [];
     this.save();
   }
@@ -215,9 +330,9 @@ export class BodySystem implements System {
   }
 
   private mp: Mp = null;
-  private maxSec = DEFAULT_MAX_SEC;
-  private idleSec = DEFAULT_IDLE_SEC;
   private nextCheckAt = 0;
+  // baseId -> whether the load order holds it
+  private knownBases = new Map<number, boolean>();
   // bodyId -> the body lying in the world
   private bodies = new Map<number, Body>();
   // bodyId -> the pack as last checked

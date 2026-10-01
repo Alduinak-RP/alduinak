@@ -286,6 +286,70 @@ those forms. `[]` disables the check.
 }
 ```
 
+## torchBurnMinutes
+
+Minutes of use after which a held torch burns out (default `15`, fractions
+allowed; `0` turns it off). `TorchSystem` counts on the server: any carryable
+light (`LIGH`) worn in the character's equipment reports is a lit torch, and
+the clock runs only while its player is connected and holds it (character
+select stops it at the menu request itself, also when the spawn guard skips the
+logout grace for a request within 10 s of the assign or 15 s of the last one).
+The burned time belongs to the character, not to one torch:
+it is saved in `private.torchBurnMs` once a minute, on unequip, on logout and
+at character select, carries over relogs and restarts, and starts again from 0
+after a burn-out. At the limit the server unequips the torch on the player's
+client (Papyrus `Actor.UnequipItem`), takes one of that torch out of the
+inventory, shows "Your torch burns out." and logs
+`[torch] <actor> [profile <id>] "<name>": torch <base> burned out after 15 min of use, <n> left`.
+Lighting and putting out log `[torch] <actor> lights <base>, <x> of 15 min burned`
+and `[torch] <actor> torch <base> unequipped|offline at <x> of 15 min`; boot logs
+`[torch] a held torch burns out after 15 min of use`. The engine has its own
+burn timer, the `LIGH` record's Time (240 s for `Torch01`, `Torch01Shadow` and
+`SovngardeWarmLight`, 180 s for `DLC1Torch`); `AlduinakAdditions.esp` (from
+r24, `overrides.lights` of the patcher spec) overrides those four records with
+Time 36000 (10 h) so only the server burns a torch out, which keeps the setting
+meaningful up to 600. With a plugin that lacks the override the engine takes
+the torch out of the hand after 3 or 4 minutes, the next inventory apply gives
+it back unequipped, the server logs it as `unequipped` and the player has to
+light it again to use up the rest.
+
+Other players see the torch through the holder's equipment record: the worn
+`LIGH` entry reaches every client with the rest of the outfit, also a client
+that streams the holder in later, and the copy is dressed with it. The engine
+then treats that copy as an NPC that carries a torch. Its torch check
+(SkyrimSE.exe 1.6.1179, Address Library 39948, run every frame for every actor
+but the player) asks every `fTorchEvaluationTimer` seconds (5) whether the
+place is dark (37567: an interior light level under `fTorchLightLevelInterior`
+40, outdoors the sky's ambient light under `fTorchLightLevelMorning` 0.6
+between 6 and 20 h and under `fTorchLightLevelNight` 1.2 otherwise) and
+unequips the held torch when it is not, so anywhere but in the dark the torch
+left the other screens within 5 s of every equip. That is the one cause found
+for the reports of 2026-10-01 (gone after the holder drew, never seen by a
+player who arrived later); the draw itself sends the same `WeapEquip` to a
+torch holder as to anyone, and the fix is not yet tested in game. Every client
+now sets `fTorchEvaluationTimer` to 3600
+at startup (`npcTorchCheckService.ts`, one line in `skyrim-platform.log`:
+`NpcTorchCheckService: NPC torch check slowed: fTorchEvaluationTimer 5 -> 3600`),
+and `FormView.keepTorch` looks every 2 s at each player copy whose record
+holds a worn light and equips the torch again when it is off the copy: not
+while the copy sits or sleeps, where the engine puts a torch away every frame,
+and at most 3 times until the torch has stayed 30 s, the copy draws or
+sheathes, or a new record arrives, so a copy is never re-dressed in a loop.
+Lines: `FormView: <actor> torch <base> is in the copy's hand: weapon drawn
+<bool>, light level <n>, left hand graph type <n>` once per record and per
+draw or sheathe (11 is the graph's torch), and `FormView: <actor> torch <base>
+was off the copy and is equipped again, try <n> of 3: ...` for each repair.
+The price: NPCs decide only once an hour, not every 5 s, whether to take out
+or put away a torch of their own.
+
+```json5
+{
+  // ...
+  "torchBurnMinutes": 15
+  // ...
+}
+```
+
 ## doorTeleportOverrides
 
 Load doors that send the player somewhere other than their plugin data says,
@@ -328,7 +392,10 @@ server (`loadDoorQuery`), which answers from the door's XTEL or this list
 (`loadDoorAnswer`), and a load door gets the dropped press sent at once and every
 later one straight through. A plain door stuck mid-swing takes a second press
 1.5 s after the first ignored one; an ignored press older than 5 s starts that
-wait over.
+wait over. A player carrying another player asks the same question on their
+first press on any plugin door, swinging or not: a load door is refused there
+("Set them down before going through this door."), a plain one is sent once the
+answer is in (section 10 of `docs_roleplay_survival_loop.md`).
 
 ```json5
 {
@@ -658,7 +725,7 @@ Faction-only doors and containers come from `faction-access.json` next to `gamem
 
 All optional; see `docs/docs_roleplay_survival_loop.md` section 8 for the system. A player at 0 health bleeds out only with the native server build that fires `onKillAttempt`.
 
-World floor (no setting): a living player below Z -40000 in Tamriel or below -30000 in any other cell or worldspace has fallen through the world. The server kills them (`[floor]` and `[bleedout] ... fell out of the world` log lines, the Discord death line) and they respawn in the nearest temple after `respawnSeconds`, also after a relog into a saved void position.
+World floor (no setting): a living player below Z -40000 in Tamriel or below -30000 in any other cell or worldspace has fallen through the world. The server kills them (`[floor]` and `[bleedout] ... fell out of the world` log lines, the `[death]` line) and they respawn in the nearest temple after `respawnSeconds`, also after a relog into a saved void position.
 
 World border (no setting): the regions come from the REGN records flagged Border Region in the load order (`[border] N border region(s) over M worldspace(s)` at startup). A living player seen outside every border region of their worldspace on two polls in a row (500 ms apart) is moved back to their last spot inside, or to the nearest start location, and told "You cannot go that way." (`[border]` log line). A character saved outside is placed back inside at login (`[spawn] ... was saved outside the border`). Admins in NoClip are exempt.
 
@@ -667,14 +734,13 @@ World border (no setting): the regions come from the REGN records flagged Border
 | `bleedoutSeconds` | `15` | Seconds a downed player has before dying, unless healed, captured or carried |
 | `bleedoutHealedHealth` | `0.25` | Share of max health that ends a bleedout when healed back to it |
 | `executionBlockBaseIds` | `[0x2E8EB, 0xFE549]` | Base form ids (numbers or `"0x..."` strings) of the furniture that counts as an execution block |
-| `executionBlockOffset` | `{ "forward": 0, "right": 0, "up": 0, "yaw": 0 }` | Where Prepare Execution puts the prisoner, relative to the block: along its facing, across it, up, and degrees added to its yaw. Unmeasured default |
-| `finishOffMaxMs` | `9000` | Cap on a finish off or execution killmove: the victim dies when a participant's client reports the end of the pair, or after this |
+| `executionBlockOffset` | `{ "forward": 87.7, "right": 68.8, "up": 0, "yaw": 270 }` | Where Prepare Execution puts the prisoner, relative to the block: along its facing, across it, up, and degrees added to its yaw. The default is the prisoner's marker of `Furniture\HeadChoppingBlock.nif`, where the vanilla block kneel `IdleExecutioneeIdle` lays the head on the block in front of the headsman, who stands on the block's origin |
+| `finishOffMaxMs` | `9000` | Cap on a finish off or assassination killmove: the victim dies when a participant's client reports the end of the pair, or after this. A block execution has its own fixed timing (the kill 15.34 s after Execute, 0.5 s after the head comes off at the chop clip's `Decapitate`, 1.7 s later when a client that has a copy of the prisoner has to send its chop again) |
 | `finishOffExtendedPool` | `false` | Adds the killmove tree records, whose conditions the engine may refuse, to the finisher pools; a probe, see docs_roleplay_survival_loop.md section 8 |
 | `finishOffStandUp` | `true` | The finish off stands the victim up and plays a standing killmove once the get-up settled; `false` keeps them kneeling and plays the one-handed KillingBlow stab at once (no decapitation, no variety). Read at start, so a change needs a game service restart and no build |
 | `executionFinishers` | see section 8 | The finish off pools per weapon type, `{ "sword": [idle form ids], "dagger": [], "axe": [], "mace": [], "greatsword": [], "battleaxe": [], "dual": [], "unarmed": [] }` (numbers or `"0x..."` strings, loose `pa_` IDLE records of that weapon state); a type given replaces its default pool, the others keep theirs. Sword and dagger share the blade pool (`F469B`, `F469D`, `108A45`), axe and mace share `F469A` and `F469C`, dual is `F469F` and greatsword the stab `F4687`; battleaxe is empty and borrows the greatsword pool, unarmed has nothing (refused). Overriding one type never changes another that shares its default pool. Read at start |
 | `executionSneakFinishers` | one-handed and dual: `pa_1HMSneakKillBackA` F4679, `pa_1HMKillMoveBackStab` F465A; the others the finish off defaults | The assassination pairs per weapon type, same shape as `executionFinishers`; a type given replaces its default pool. Read at start |
-| `bodyMaxSeconds` | `0` | How long the body a PK leaves lies before it is removed with whatever is left in it; `0` (default) keeps it until it is emptied, as the patch notes promise. Read at startup. A body is removed as soon as its loose stacks are gone either way. The body carries the neighbor-visible `ff_body` property, registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`), built with Build gamemode only before the server build |
-| `bodyIdleSeconds` | `7200` | How long a PK body lies after its last take or put before it is removed with whatever is left in it, so leftover or dropped junk cannot keep a looted body forever. A body nobody has taken from or put into is not affected (it stays until emptied or `bodyMaxSeconds`). `0` turns it off. The last touch is kept in `bodies.json`, so a restart does not reset it. Read at startup |
+| `bodyMaxSeconds`, `bodyIdleSeconds` | none | No longer read (2026-10-01, the owner's rule): the body a PK leaves has no lifetime and lies, across restarts, until it is emptied, keys and writings included; it is removed at the next 2 s check once no stack a search window can show is left in it and it has lain at least 60 s since the death (`docs_roleplay_survival_loop.md` section 8). A leftover key is harmless. The body carries the neighbor-visible `ff_body` property, registered in the test gamemode's `build/dist/testserver/gamemode_extensions/50_properties.js` (gitignored) with the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`), built with Build gamemode only and carried to live by Migrate server; without it every PK logs `[body] leaving a body for <victim> failed setting ff_body` and the victim keeps the pack |
 
 ## Carry pose
 
@@ -870,12 +936,13 @@ Lets every player run the server console commands (`additem`, `equipitem`, `plac
 
 The Discord bot integration. `botToken` is the bot's token, so keep this key secret. For each entry in `guilds`, login checks membership and `banRoleId`, and `DiscordBanSystem` kicks players who get the ban role. `eventLogChannelId` receives the game alerts below. Leave `eventLogChannelId` out (or turn on `offlineMode`) on a test server, so it posts nothing to the live channel.
 
-Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted every 2 seconds, so a burst arrives as a few messages. Player text cannot ping anyone or use Discord formatting, and links do not unfurl into previews. Only the kinds listed in `discordAlertKinds` are posted, default `["death", "execute", "ticket"]`; the key is read at boot and a non-empty list replaces the default, so `admin`, `keyword` and `login` are off unless listed. The `death` and `execute` lines also go to every online staff member's in-game Admin tab, listed or not, through the gamemode's `globalThis.__alduinakStaffLine(label, text)` (`35_admin_chat.js`); with the staff calls they are the only log lines that tab shows, and console commands, `/system` broadcasts and PvP hits go only to `admin.log` and `pvp.log`:
+Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted every 2 seconds, so a burst arrives as a few messages. Player text cannot ping anyone or use Discord formatting, and links do not unfurl into previews. Only the kinds listed in `discordAlertKinds` are posted, default `["admin", "execute", "ticket"]`; the key is read at boot and a non-empty list replaces the default, so `keyword` and `login` are off unless listed. The boot line `[discordAlerts] posting admin, execute, ticket` names the kinds in use, and a name that is no kind (`death` included) is reported as `[discordAlerts] discordAlertKinds names no such kind: ...` and dropped. A line repeated right after itself inside one 2 second batch goes out once with `(xN)`; a repeat with other lines in between is posted again, so the order of the actions stays true. A burst past 40 lines ends in one "N more alert(s) skipped" line. The `execute` lines also go to every online staff member's in-game Admin tab, listed or not, through the gamemode's `globalThis.__alduinakStaffLine(label, text)` (`35_admin_chat.js`, which the staff calls use too); a gamemode without that hook shows no [Execution] or [Death] line there. The tab also shows console commands and `/system` broadcasts as [Log] lines (`20_logging.js`) and player kills and hits as [PvP] lines (`55_death.js`, `60_admin_modes.js`), which also go to `admin.log` and `pvp.log`.
 
-- **[Death]** (`death`) every player death, with the killer (player or NPC, if any) and the place: the nearest map marker outdoors, the cell indoors, then the raw location. A bleedout death says how it happened (bled out, died of their wounds while bleeding out, logged out while bleeding out, was finished off, was smitten) and names the player who landed the finishing hit.
-- **[Execution]** (`execute`) execute, finish off and a staff PK. The killing code calls `globalThis.__alduinakMarkDeathAlerted(actorId)` first, so the same death posts no second [Death] line.
+Deaths are never posted to Discord. Every player death, with the killer (player or NPC, if any) and the place (the nearest map marker outdoors, the cell indoors, then the raw location), is printed to the server log as `[death] <player> <how>[, killed by <killer>], <place>` and shown as a [Death] line in every online staff member's Admin tab. A bleedout death says how it happened (bled out, died of their wounds while bleeding out, logged out while bleeding out, was finished off, was smitten) and names the player who landed the finishing hit. The kinds posted:
+
+- **[Execution]** (`execute`) execute, finish off and a staff PK. The killing code calls `globalThis.__alduinakMarkDeathAlerted(actorId)` first, so the same death shows no second [Death] line.
 - **[Staff call]** (`ticket`) `/gm`, `/ticket`, `/pray` and `/prayer <message>`, with `@here` and a mention of the player. The same line goes to the in-game Admin tab, which players still cannot read, and each player may call once a minute. Staff and players may `/pm` each other without an introduction, so a ticket can go back and forth. For the `@here` to ping, the bot needs the Mention @everyone, @here and All Roles permission in that channel.
-- **[Admin]** (`admin`, off unless listed) every admin power (teleports, summon, kick, PK, ban, item spawn, grants, npc zones, jobs, admin modes), staff writing actions, `/system` broadcasts, and faction changes made with staff powers rather than a rank of the actor's own. Every one of these lines is written to `admin.log` in `logDir` whether or not it is posted; nothing of it reaches the in-game Admin tab.
+- **[Admin]** (`admin`) every admin panel action (teleports, summon, kick, ban, revive, item spawn, mastery, attribute and pet grants, polymorph and its manual revert, npc zones, jobs, weather, admin modes, refused actions), staff writing actions, `/system` broadcasts, and faction changes made with staff powers rather than a rank of the actor's own. A PK posts as [Execution] instead. Every one of these lines, PK included, is written to `admin.log` in `logDir` whether or not it is posted; of them only the `/system` broadcasts also reach the in-game Admin tab, as [Log] lines.
 - **[Keyword]** (`keyword`, off unless listed) any chat line, PMs included, that contains a word from `alert-keywords.json` in the server folder. Staff `/admin` and `/system` lines are not scanned. The server re-reads the file within 5 seconds of a save. It holds `keywords` (whole words or phrases, ignoring case; a trailing `*` matches any ending) and `cooldownSeconds` (default 60, per player and keyword). The seed with notes is `skymp5-server/seeds/alert-keywords.json`. Without the file, keyword alerts are off.
 - **[Login]** (`login`, off unless listed) the `Server Login` line of every verified login (slot, IP, actor ids, profile id) with a mention of the player. The same line is always printed to the server log.
 
@@ -886,7 +953,7 @@ Game alerts (`skymp5-server/ts/systems/discordAlerts.ts`) are batched and posted
     "botToken": "<bot token>",
     "guilds": [{ "guildId": "<guild id>", "banRoleId": "<role id>", "eventLogChannelId": "<channel id>" }]
   },
-  "discordAlertKinds": ["death", "execute", "ticket"]
+  "discordAlertKinds": ["admin", "execute", "ticket"]
   // ...
 }
 ```
@@ -901,22 +968,23 @@ Every player opens the Personal Menu with the interact key (X by default) while 
   - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit, Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn) and Show account name (while it is on, everyone near the admin sees the admin's own account name on the admin's floating tag in place of the character name, so players know they are dealing with staff and not a character: red for the senior tier, blue for developers, green for GMs; it shows whatever the viewer's chat name toggle or introductions say, through sneaking, a mask (`SweetHidePerson`) or invisibility, within the usual 1000 units and line of sight, and an Invisible admin stays hidden; off restores the character tag, and on a character switch the tag leaves the old character and, with the mode still on, goes to the new one. It rides the neighbour-visible `ff_adminTag` actor property, `{ n: account name, t: senior | developer | gm }` while on and `null` while off, registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_adminModes`, built with Build gamemode only);
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`, grant pets, and place, teleport to either end of and delete the passive jobs of `Jobs.json`, see `docs_roleplay_jobs.md`;
   - Item Spawner, see below;
-  - Weather: every weather region with its current weather, the time left, the players in it and the one the admin stands in; force a weather on a region until cleared or for a number of minutes, and clear it, see `docs_roleplay_weather.md`.
+  - Weather: every weather region with its current weather, the time left, the players in it and the one the admin stands in; force a weather on a region until cleared or for a number of minutes, and clear it, see `docs_roleplay_weather.md`;
+  - Polymorph: turn yourself or the online player selected on the Players tab into any race of the load order with a skeleton, and Revert; races known to crash are marked, and logout, a crash, character select and a restart revert on their own, see `docs_admin_polymorph.md`.
 - **Faction**: the character's factions with roster, promote, demote, set rank, remove, leave and the /f chat choice, see `docs_roleplay_property_factions.md`. Hold uniforms are crafted by the Captain (and the Jarl or an acting regent), never issued.
 - **Skills**: the mastery (craft) menu.
-- **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, the distance to whatever the player faces (the crosshair when it picks something, otherwise the loaded cell's ref nearest the screen centre, so statics, trees and other scenery read too; it re-reads once a second while the tab is open and within a quarter second of a crosshair change, and a target the crosshair leaves stays on screen marked "last seen" until the menu closes; a player character you were not introduced to reads Stranger or Body, as on the interaction prompt), the target's ref id with its `hex:Plugin` desc, server id and base id with its desc (a ref created in game shows the server's base from the world model, plus the client's own base when that differs; another player's character shows its ref and server ids to staff only, since those ids would follow a masked character), a Copy IDs button that puts one line on the clipboard (name, ref id, server id when different, base id, cell and position; the descs paste straight into the Item Spawner search), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
+- **Debug**: account and character name, server-side FormID, server name, position, cell id and name, heading, the distance to whatever the player faces (the crosshair when it picks something, otherwise the loaded cell's ref nearest the screen centre, so statics, trees and other scenery read too; it re-reads once a second while the tab is open and within a quarter second of a crosshair change, and a target the crosshair leaves stays on screen marked "last seen" until the menu closes; a player character you were not introduced to reads Stranger or Body, as on the interaction prompt), the target's ref id with its `hex:Plugin` desc, its position and cell, and its base id with its desc (the ref id is always the server's id, so a player character reads its character id, the actor id of the Players tab and the server logs, and a synced NPC its server id; each client spawns other players and server NPCs as its own `ff` copies, whose local ids differ from client to client and mean nothing to the server, so they are never shown; only a ref the server does not know shows the client's id, marked "client only"; a ref created in game shows the server's base from the world model (`7:Skyrim.esm` for a player character), plus the client's own base when that differs and is a plugin record; another player's character shows its id to staff only, since it would follow a masked character, the same rule as the name tag's id line; the body a PK leaves wears the victim's look but reads "body" with its own id, which BodySystem logs and the Players tab does not list), a Copy IDs button that puts one line on the clipboard (name, ref id, or "character" or "body" and the id for a player or a body, base id, cell and position; the descs paste straight into the Item Spawner search), magicka/health/stamina, the Tamrielic game date, local and server clocks and the active effects the client has seen start.
 
 Admins also get the admin chat channel. Nobody gets the server console commands (`additem`, `equipitem`, `placeatme`, `disable`, `markfordelete`, `mp`), admins included: AdminSystem clears `consoleCommandsAllowed` whenever a character is assigned, so keep `enableConsoleCommandsForAll` off. The client closes the local ~ console and refuses the local cheat commands for everyone, admins included (`ConsoleBlockService`), so every admin mode, Freecam included, is toggled from Admin > Modes. This is client-side enforcement; the server checks stay the authority. Admin rights come from Discord roles, resolved into one of three tiers by `skymp5-server/ts/systems/adminRoles.ts`.
 
 Each Admin sub-tab needs a cap. A sub-tab shows only when the tier has its cap, and the server refuses every request the tier lacks the cap for, with an admin.log line.
 
-| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `kick` | `ban` | `factions` | `weather` |
-|---|---|---|---|---|---|---|---|---|---|
-| `senior` | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `developer` | yes | yes | yes | yes | yes | no | no | yes | yes |
-| `gm` | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| Tier | `players` | `teleport` | `modes` | `npcs` | `items` | `kick` | `ban` | `factions` | `weather` | `polymorph` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `senior` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `developer` | yes | yes | yes | yes | yes | no | no | yes | yes | yes |
+| `gm` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
 
-`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab, `items` the Item Spawner and `weather` the Weather sub-tab (`weatherList`, `weatherSet`, `weatherClear`). `kick` is the Kick and PK buttons and `ban` the Ban button; all three also need `players`. `factions` lets staff see and manage every faction in the Faction tab, the leader rank included. `adminTierCaps` changes the defaults per tier.
+`players` covers the Players sub-tab, `teleport` the Teleport sub-tab, `modes` the Modes sub-tab, `npcs` the NPCs sub-tab, `items` the Item Spawner, `weather` the Weather sub-tab (`weatherList`, `weatherSet`, `weatherClear`) and `polymorph` the Polymorph sub-tab (`raceList`, `polymorph`, `polymorphRevert`). `kick` is the Kick and PK buttons and `ban` the Ban button; all three also need `players`. `factions` lets staff see and manage every faction in the Faction tab, the leader rank included. `adminTierCaps` changes the defaults per tier.
 
 Teleporting yourself (TP to on a player, a Teleport location or an NPC zone's TP) closes the Personal Menu once the server confirms it. A refused teleport, Summon and every other action leave it open.
 
@@ -966,7 +1034,7 @@ Master-api profile ids (numbers) that are always `senior`, regardless of Discord
 
 ### adminTierCaps
 
-Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `kick` and `ban` for `developer`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items`, `kick`, `ban` and `factions` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
+Optional per-tier overrides of the caps above, merged over the defaults (every cap on, except `kick` and `ban` for `developer`). Only the tiers `senior`, `developer` and `gm` and the caps `players`, `teleport`, `modes`, `npcs`, `items`, `kick`, `ban`, `factions`, `weather` and `polymorph` with `true` or `false` apply; anything else is ignored and logged once at boot. A change needs a restart.
 
 ```json5
 {
@@ -1187,6 +1255,25 @@ Named damage rules, each a multiplier applied when its conditions hold. Conditio
 }
 ```
 
+## npcBlockedDamageShare
+
+Share of an NPC's weapon hit that still lands when a player blocks it (a raised weapon or shield facing the NPC, a
+shield against arrows). A number from 0 to 1, default `0.2`: a player's block is 80% effective against NPCs. `0`
+restores full blocks. A player's hit on a blocking player stays fully blocked, and NPCs blocking are unchanged. The
+leaked part is the unblocked damage (armor, power attack and the multiplier formulas included) times the share; the
+hit still counts as blocked, so the Falmer hit spell poison does not land through it. Wards are not affected. Read by
+the native server at boot, which logs `npcBlockedDamageShare is <share>: ...`; each such hit logs `OnWeaponHit -
+<player> blocked npc <npc> with <weapon>, <landed> of <unblocked> damage lands (npcBlockedDamageShare <share>)`. See
+`docs/docs_onhit_and_damage.md`, Blocked hits.
+
+```json5
+{
+  // ...
+  "npcBlockedDamageShare": 0.2
+  // ...
+}
+```
+
 ## Hunger and fatigue
 
 All optional; see `docs/docs_roleplay_creations_and_needs.md` for the system. Hunger uses Survival Mode's scale, 0 (full) to 1000, and
@@ -1258,7 +1345,7 @@ Body rules, raw meat and the cure:
 | `survivalRespawnHealthPoints` | `1` | Health points a respawn after a death wakes with (temple, afterlife arrival, a looted PK body's respawn) and a staff revive out of a realm sets, measured against the race's base health (100, an Orc 150); the client is sent the value right after the native respawn; magicka and stamina keep theirs; `0` uses the share below instead |
 | `survivalRespawnHealth` | `0.01` | Share of base health used when the points are 0 or the race cannot be read, above 0 up to 1; `1` turns the respawn rule off, whatever the points say |
 | `survivalCarryWeightSpell` | `"Survival_abLowerCarryWeightSpell"` | Editor id or desc of the carry weight ability (Survival esl 0x887, carry weight 150); `""` turns it off |
-| `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a); potions, food and Restoration still heal. The server-side refusal of client regeneration is the native `healthRegenerationMultiplier` of plan task NV1, which this build does not have |
+| `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a); potions, food and Restoration still heal. The server-side refusal of client regeneration is the native `healthRegenerationMultiplier` of plan task NV1 (top level; 0 refuses every health increase a client reports), which needs a native server build from `ea63f69a` or later |
 | `survivalFreezingWater` | `true` | Grants `AldSurvival_FreezingWaterDamage` once (it hurts only while swimming with the client's `AldSurvival_FreezingArea` at 1) and runs the freezing water cold; `false` turns both off |
 | `survivalFoodPoisoningChance` | `0.5` | Chance raw meat (`Survival_FoodRawMeat`, the hunting meats and `survivalRawMeatExtra`) gives food poisoning, times (1 - disease resistance); 0 to 1, `0` turns it off. A race with `rawMeatSafe` never gets it |
 | `survivalFoodPoisoningHours` | `24` | Real hours food poisoning lasts, offline included |
@@ -1369,14 +1456,20 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `gatheringProduceContainers` | `{ "BeeHive": 60, "BeeHiveVacant": 60, "BYOHBYOHApiary": 60 }` | `{ "<container editor id>": minutes }`: placed containers of these bases never open; E hands over their yield and it grows back after the minutes. `BYOHBYOHApiary` is the Hearthfire apiary every placed apiary uses. Replaces the default, `{}` turns it off |
 | `gatheringProduceYield` | `{ "BeeHive": { "BeeHoneyComb": 2, "CritterBeeIngredient": 2, "BeeHiveHusk": 2 }, "BeeHiveVacant": { … }, "BYOHBYOHApiary": { … } }` | `{ "<container>": { "<item editor id or hex id>": count } }` handed over instead of the container record's own contents. A container whose items do not resolve keeps its record contents |
 | `gatheringPickMinutes` | `30` | Minutes a picked nirnroot or ingredient-carrying critter (bees, fireflies) stays gone. The server disables the picked ref for everyone and enables it again when the time is up; `gathering-picks.json` in the server's working folder (beside `housing.json`) keeps the pending ones over a restart |
-| `gatheringAlchemistFloraDiscount` | `0.5` | Share of the fatigue an alchemist (Novice or better) saves on alchemy flora: a plant that is not a crop and hands over an ingredient (flowers, mushrooms, herbs, berries, eggs, the Hearthfire herb planters), on top of the rank price and the flora half. `0` turns it off; crops, nirnroot and the food plants (apples, vegetables, cheese, fish, meat) keep their price. The charge line reads `[needs] <id> harvest <plant> flora r<rank>, alchemist -50%: -N%, fatigue F%`. Read at boot |
+| `gatheringAlchemistFloraDiscount` | `0` | Extra share of the fatigue an alchemist (Novice or better) saves on alchemy flora: a plant that is not a crop and hands over an ingredient (flowers, mushrooms, herbs, berries, eggs, nirnroot, the Hearthfire herb planters), on top of the flora rank price an alchemist already pays like a farmer of the same rank and the flora half. `0` (default) turns it off; crops (priced by the farmer rank alone, so an alchemist pays the Free crop price) and the food plants (apples, vegetables, cheese, fish, meat) never get it. Set, the charge line reads `[needs] <id> harvest <plant> flora r<rank>, alchemist -50%: -N%, fatigue F%`. Read at boot |
 | `huntingButcherChance` | `0.25` | Expert hunter: chance of one extra meat per kind an animal dropped |
 | `huntingMeats` | vanilla and DLC list | Editor ids of what counts as meat for the butcher bonus |
 | `huntingPeltMap` | see `DEFAULT_PELT_MAP` in `huntingSystem.ts` | `{ "<editor id fragment>": "<pelt editor id>" }` replacing the default: the pelt a skinned body gives. The body's own NPC_ editor id is tried first, then the race that supplies its traits, then its template NPC_s (lower-cased); the first fragment found in the earliest name wins |
+| `huntingSkinPlayers` | `"crouch"` | How a hunter with the Hunting Knife skins a dead player's own body while it waits for its respawn (`respawnSeconds`), or the body a PK left of them while it lies: `"crouch"` Skin in the Search and Skin menu the body opens for them, whose Search never skins (a client without the menu skins on crouch and interact; a plain press by anyone else searches it), `"interact"` every press skins as on an animal with no menu, `"off"` never. A skinned body gives Human Flesh, maybe a Human Heart and on a Khajiit maybe a Khajiit Pelt. An own body then goes like a looted one: the victim respawns at once and keeps their whole pack. A PK body also hands the skinner everything it holds, keys and writings under their names (never to the victim's own account), is skinned once for as long as it lies and, emptied, goes by the PK body rule. Nobody can search either during the 5 s skinning. An unknown value logs `[hunting] huntingSkinPlayers ... is not one of crouch, interact, off` and uses `"crouch"`. Read at boot |
+| `huntingHumanFlesh` | `"HumanFlesh"` | Editor id, `"hex:Plugin.esm"` desc or hex id of the item a skinned player's body gives, one each (Skyrim.esm `001016B3`). Not in the load order: players are not skinned (`players not skinned` on the boot line) |
+| `huntingHumanHeart` | `"HumanHeart"` | The same for the item the chance adds (Skyrim.esm `000B18CD`); `""` gives none |
+| `huntingHumanHeartChance` | `0.1` | Chance, 0 to 1, rolled on the server per skinned player body |
+| `huntingKhajiitPelt` | `"AldKhajiitPelt"` | Editor id, `"hex:Plugin.esm"` desc or hex id of the item a skinned player body that looks Khajiit (its appearance race `KhajiitRace` or `KhajiitRaceVampire`) may add, one (the Alduinak plugin's Khajiit Pelt, from plugin r24); `""` gives none. Not in the load order: `[hunting] not in the load order, ignored: ..., AldKhajiitPelt` once at boot and `no Khajiit pelt` on the boot line |
+| `huntingKhajiitPeltChance` | `0.2` | Chance, 0 to 1, of that pelt, rolled on the server per skinned Khajiit body |
 
 ## goldAlertThreshold
 
-`GoldWatchSystem` samples every online character's gold every 10 s. A rise above `goldAlertThreshold` (default `5000`, `0` disables the alert) between two samples logs `GoldWatchSystem: <name> (profile P) went from A to B gold` and posts a `goldSpawn` security alert to the manager's Security tab. The first sample of a character only sets its baseline. Since 2026-09 (B24, B14) the same samples watch drops: every drop of gold and every drop of Salt Pile (`0x34cdf`) that the actor's own actions in the interval do not explain are logged as `[inv] <name> (<id>, profile P) gold|salt A -> B[, N unexplained] (interval: crafts C, eats E, puts P, drops D, takes T[, packets tradeAccept bountyBoardPost])`, where the tallies come from the `onCraft` (the recipe's inputs of that item), `onEatItem`, `onPutItem`, `onDropItem` and `onTakeItem` hooks after every other system had its say, and the packets are the trade and bounty board sends the hooks never see. Together with `spawn.ts`'s `[gold] <id> logs out|quits|despawned|logs in with N gold` lines a reported loss lands in one of three windows: during play (an `[inv]` line), the parked body (logout vs despawn) or offline (despawn vs login, the only window persistence can explain).
+`GoldWatchSystem` samples every online character's gold every 10 s. A rise above `goldAlertThreshold` (default `5000`, `0` disables the alert) between two samples logs `GoldWatchSystem: <name> (profile P) went from A to B gold` and posts a `goldSpawn` security alert to the manager's Security tab. The first sample of a character only sets its baseline. Since 2026-09 (B24, B14) the same samples watch drops: every drop of gold and every drop of Salt Pile (`0x34cdf`) that the actor's own actions in the interval do not explain are logged as `[inv] <name> (<id>, profile P) gold|salt A -> B[, N unexplained] (interval: crafts C, eats E, puts P, drops D, takes T[, packets tradeAccept bountyBoardPost])`, where the tallies come from the `onCraft` (the recipe's inputs of that item), `onEatItem`, `onPutItem`, `onDropItem` and `onTakeItem` hooks after every other system had its say, and the packets are the trade and bounty board sends the hooks never see. A drop of the item the actor ate less than 2 s before logs `[inv] <name> (<id>, profile P) drop of <editor id> <id> xN <ms> ms after eating one: the client sent the eat as a drop too` (G9; a client before 1.0 sent eating from the inventory near a same item in the world as a drop too). Every other drop the hooks accept logs `[inv] <name> (<id>, profile P) dropped <editor id> <id> xN` (K5) once the server's count of that item has fallen: the hooks run before the native `MpActor::DropItem` removes anything, and it logs at trace level only, while a drop is the one way a player's own client takes items out of the pack without a craft, put, trade or eat line. A drop the server's count does not follow (the native removal then throws `Source inventory doesn't have enough <id> (N is required while 0 present)`) logs `[inv] <name> (<id>, profile P) drop of <editor id> <id> xN refused natively: the server held H` instead, the mark of a client showing items the server never had. Every client version sends a drop for a misc item, a pelt or ore say, that leaves the pack with no container while the inventory menu is open; G9 changed only potions and ingredients. Together with `spawn.ts`'s `[gold] <id> logs out|quits|despawned|logs in with N gold` lines and the `[pack] <id> (profile P) logs out|quits to the menu|despawned|logs in with K kind(s): <base id> x<count>, ...` line written right after each (the whole pack summed per base id in id order, gold apart; K5), a reported loss lands in one of three windows: during play (an `[inv]` line), the parked body (logout vs despawn) or offline (despawn vs login, the only window persistence can explain).
 
 ## enableGamemodeDataUpdatesBroadcast
 

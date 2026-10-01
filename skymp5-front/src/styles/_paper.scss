@@ -1,0 +1,22 @@
+// Placeholder parchment tones shared by the paper widgets and the housing menu's note card
+
+$paper: #d8c9a3;
+$paper-edge: #b5a478;
+$ink: #2a2118;
+$ink-dim: rgba(42, 33, 24, 0.65);
+
+// A thin ink-brown scrollbar for text on paper
+@mixin paper-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(42, 33, 24, 0.35);
+    border-radius: 3px;
+  }
+}
