@@ -180,6 +180,22 @@ test('a polymorphed character is not checked, and its traits follow the race it 
   assert.deepEqual([t.racial.traits(id).raceEdid, t.racial.traits(id).coldRateMult], ['NordRace', 0])
 })
 
+test('a polymorphed character keeps the base bonus of its own race, so a professionState sent meanwhile writes the magicka it has after the revert', () => {
+  const t = setup()
+  const id = t.actor(1, 0xff000001, BRETON)
+  const own = { health: 0, magicka: 50, stamina: 0 }
+  assert.deepEqual(t.racial.baseBonus(id), own)
+  t.mp.set(id, 'private.polymorph', { appearance: { raceId: BRETON }, race: 'x' })
+  t.mp.set(id, 'appearance', { raceId: NORD })
+  assert.equal(t.racial.traits(id).raceEdid, 'NordRace', 'the traits follow the worn race')
+  assert.deepEqual(t.racial.baseBonus(id), own, 'not the 0/0/50 of the worn race')
+  t.mp.set(id, 'private.polymorph', { race: 'x' })
+  assert.deepEqual(t.racial.baseBonus(id), { health: 0, magicka: 0, stamina: 50 }, 'a record without a stored race falls back to the worn one')
+  t.mp.set(id, 'private.polymorph', null)
+  t.mp.set(id, 'appearance', { raceId: BRETON })
+  assert.deepEqual(t.racial.baseBonus(id), own)
+})
+
 test('racialBase: one packet with the race\'s base health and stamina for an accepted race menu and its creation finish, none with the block off', () => {
   const queued = []
   const realImmediate = global.setImmediate

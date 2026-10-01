@@ -108,7 +108,8 @@ be the optional native task NV8).
 A mage's base magicka is written by MasterySystem (`professionState.magicka`), which would erase a race's magicka
 bonus. So `magicka` is the mage rank's value plus `RacialSystem.baseBonus(actorId).magicka` (the RACE starting magicka
 above 50), and a character with no mage slot is held at 100 plus the bonus: a Novice mage Breton writes 175, a High
-Elf with no mage craft 200. See `docs_roleplay_mastery.md`, professionState.
+Elf with no mage craft 200. The bonus is that of the character's own race, also while a GM polymorph holds it in
+another one. See `docs_roleplay_mastery.md`, professionState.
 
 A character in creation spawns with an empty appearance, so its `createActor` carries the base values of the Player
 NPC_ race (NordRace: 100/100/150 with r27a) and the client writes them as base values before the race menu opens.
@@ -204,6 +205,9 @@ a base value alone is only logged ("the client's plugins differ from the server'
 files on the client. A report within 2 s of the last one is dropped. A character a GM polymorph holds
 (`private.polymorph`, the admin panel's Polymorph tab) is not checked (`race check after <reason> skipped: a polymorph holds the
 character (private.polymorph)`), and its traits follow the race it wears while the cached race is kept for the revert.
+`baseBonus` is the exception: it reads the character's own race from the record (`private.polymorph.appearance.raceId`),
+so a `professionState` sent while the character is transformed (a grant, a pick or reset, a rank change) writes the
+base magicka the character has after the revert, not 100 plus the creature race's starting magicka minus 50.
 
 The race speed spell counts as on while `AldRaceSpeedEffect` runs on the character; the client line still shows the
 SpeedMult it reads against the spell's value, which cold stages, diseases and other speed effects move.

@@ -95,10 +95,11 @@ Sent on actor assign, five seconds later, five seconds after creation finishes, 
 craft slot's profession's at 25/40/60/80/100 by rank, the best slot winning where two set the same skill.
 `magicka` is the base magicka the client writes: for a mage of Novice or better in any slot the mage rank's value
 (100/125/150/175/200/500) plus the race's bonus (the RACE starting magicka above 50: Breton 50, High Elf 100 with
-plugin r27a, `RacialSystem.baseBonus`), for anyone else 100 plus that bonus, so a character who stops being a mage
-drops back at once. While the character is still in creation a mage gets the rank value alone and anyone else
-`null`. `slots` lists every configured slot, `[{ slot, name, profession, label, rank, rankName, hours, cap, capName,
-rankHours }]`, an empty one with `profession: null`; one entry with multiclassing off.
+plugin r27a, `RacialSystem.baseBonus`, the character's own race also under an admin polymorph), for anyone else 100
+plus that bonus, so a character who stops being a mage drops back at once. While the character is still in creation
+a mage gets the rank value alone and anyone else `null`. `slots` lists every configured slot,
+`[{ slot, name, profession, label, rank, rankName, hours, cap, capName, rankHours }]`, an empty one with
+`profession: null`; one entry with multiclassing off.
 
 ## The professions
 

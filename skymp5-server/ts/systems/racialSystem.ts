@@ -25,7 +25,8 @@ type Mp = any;
 // start plus the Player NPC_ offsets, magicka as MasterySystem last sent it), logs "check ok" or "MISMATCH" and, with "resync", sends
 // one racialResync per spawn when the race sync can fix what differs (a wrong race, a missing, unheld or stopped spell, another race's
 // spell); an extra spell or a base value means another plugin on the client, which only the log can show. A character a GM polymorph
-// holds (private.polymorph) is neither checked nor cached, so its traits follow the race it wears.
+// holds (private.polymorph) is neither checked nor cached, so its traits follow the race it wears; baseBonus stays that of its own
+// race, the record's appearance.raceId, so a professionState sent while it is transformed writes the magicka it has after the revert.
 // Base values: the createActor of a character in creation carries the Player NPC_ race's health, magicka and stamina, so once its race
 // menu is accepted the client gets the new race's base health and stamina (racialBase); magicka stays MasterySystem's.
 //
@@ -427,9 +428,9 @@ export class RacialSystem implements System, NeedsModifierSource {
     return this.config.enabled ? this.config.races.get(this.keyOf(raceEdid)) : undefined;
   }
 
-  // Starting health, magicka and stamina of the character's race above the common 50; zero in creation
+  // Starting health, magicka and stamina of the character's own race above the common 50; zero in creation
   baseBonus(actorId: number): BaseBonus {
-    const raceId = this.raceOf(actorId >>> 0);
+    const raceId = this.ownRaceOf(actorId >>> 0);
     if (!raceId) return NO_BONUS;
     const start = this.startValues(raceId);
     return start ? { health: start[0] - COMMON_START, magicka: start[1] - COMMON_START, stamina: start[2] - COMMON_START } : NO_BONUS;
@@ -721,6 +722,13 @@ export class RacialSystem implements System, NeedsModifierSource {
     if (this.raceCache.size >= MAX_CACHED_ACTORS) this.raceCache.clear();
     this.raceCache.set(actorId, raceId);
     return raceId;
+  }
+
+  // The race a polymorph record stores as the character's own, raceOf without one
+  private ownRaceOf(actorId: number): number {
+    let own = 0;
+    try { own = toFormId(this.mp?.get(actorId, POLYMORPH_PROP)?.appearance?.raceId); } catch { /* no record */ }
+    return own || this.raceOf(actorId);
   }
 
   private edidOf(raceId: number): string {

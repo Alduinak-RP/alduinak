@@ -270,6 +270,34 @@ test('skills are the best of the slots, and magicka follows the mage slot and th
   assert.equal(inCreation.sys.lastMagicka(ACTOR), null, 'a spawn starts with no write')
 })
 
+test('a professionState sent while a GM polymorph holds the character writes the magicka of its own race, not of the worn one', () => {
+  const { RacialSystem } = load('racialSystem.ts')
+  const HIGH_ELF = 0x13743
+  const WOLF = 0x1320a
+  const startMagicka = { [HIGH_ELF]: 150, [WOLF]: 0 }
+  const raceData = (magicka) => { const data = new Uint8Array(128); new DataView(data.buffer).setFloat32(40, magicka, true); return data }
+  const t = setup()
+  const lookup = t.mp.lookupEspmRecordById
+  t.mp.lookupEspmRecordById = (id) => (id in startMagicka ? { record: { type: 'RACE', editorId: '', fields: [{ type: 'DATA', data: raceData(startMagicka[id]) }] } } : lookup(id))
+  const racial = new RacialSystem(() => {})
+  racial.mp = t.mp
+  t.sys.setRacial(racial)
+  t.mp.set(ACTOR, 'appearance', { raceId: HIGH_ELF })
+  t.choose('blacksmith', 0)
+  assert.equal(t.last('professionState').magicka, 200, 'a High Elf with no mage craft')
+  t.mp.props.set(`${ACTOR}:private.polymorph`, { appearance: { raceId: HIGH_ELF }, race: '1320a:Skyrim.esm' })
+  t.mp.set(ACTOR, 'appearance', { raceId: WOLF })
+  const sent = t.mp.packets.length
+  t.sys.grantPoints(t.ctx, ACTOR, 40, 0)
+  assert.ok(t.mp.packets.slice(sent).some((p) => p.customPacketType === 'professionState'), 'the grant sends a new state')
+  assert.equal(t.last('professionState').magicka, 200, 'granted as a wolf: still the 200 of a High Elf, not 100 + (0 - 50)')
+  assert.equal(t.sys.lastMagicka(ACTOR), 200)
+  t.mp.props.delete(`${ACTOR}:private.polymorph`)
+  t.mp.set(ACTOR, 'appearance', { raceId: HIGH_ELF })
+  t.sys.grantPoints(t.ctx, ACTOR, 60, 0)
+  assert.equal(t.last('professionState').magicka, 200, 'and the same after the revert')
+})
+
 test('a sub-slot mage casts count, and the primary mage keeps its spell tier cap', () => {
   const t = setup()
   t.choose('blacksmith', 0)
