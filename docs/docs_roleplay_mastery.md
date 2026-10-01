@@ -396,7 +396,12 @@ Benches:
   Charcoal, the smelter's charcoal) at the Woodcrafting Bench and the Imperial
   and Nord war horns at the forge (costs in `docs_roleplay_emote_wheel.md`). Any
   character makes them, and they earn no hours: `masterySystem.ts` skips every
-  recipe named `AldRecipeCommon_*`. In the spec they are `kilnRecipes` entries
+  recipe named `AldRecipeCommon_*`. They are priced like any craft at their
+  bench, though: a character who is not a woodworker (a blacksmith for the
+  horns) pays the Free price, a third of the fatigue bar, and below 33% the
+  bench refuses them, so a Free character pays about half the bar for one torch
+  with its charcoal (a sixth at the half-cost smelter), for 15 minutes of
+  light. In the spec they are `kilnRecipes` entries
   without a `profession`, tiered `Anyone`. The lute, flute and drum are no
   longer common: they are the woodworker's Master, Expert and Adept work.
 - **Armour table and grindstone**: the Improve tab shows only what the character
