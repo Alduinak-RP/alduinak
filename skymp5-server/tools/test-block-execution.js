@@ -1,6 +1,6 @@
 'use strict'
 
-// executionSystem.ts at a headsman's block against a stub mp: the marks, the two-handed weapon rule, the vanilla block events, the chop packet, the kill and release timers, the kill delay and the kneel fallback: node tools/test-block-execution.js
+// executionSystem.ts at a headsman's block against a stub mp: the marks, the two-handed weapon rule, the vanilla block events, the chop packet, the kill and release timers, the kill delay from a participant or a bystander and the kneel fallback: node tools/test-block-execution.js
 
 const assert  = require('node:assert/strict')
 const fs      = require('fs')
@@ -196,8 +196,8 @@ let ExecutionSystem
     assert.equal(chop.ms, 24000)
     near(chop.headsmanSpot.pos, BLOCK_POS, 'headsman spot')
     near(chop.prisonerSpot.pos, prisonerMark, 'prisoner spot')
-    assert.deepEqual(timers.map((x) => x.ms).sort((a, b) => a - b), [14840, 24000], 'the kill as the head comes off, 11.84 s into the chop')
-    assert.match(t.lines.join('\n'), /ff000a01 executes ff000b01 at block aa7cc with the greatsword equipped: headsman moved to his mark \(15671, -81493, 8203\) yaw 269, IdleExecutionerIdle; chop \d+ on every client in 3000 ms \(prisoner in IdleExecutioneeIdle\), the kill at \+14840 ms as the head comes off, IdleChairExitStart at \+24000 ms/)
+    assert.deepEqual(timers.map((x) => x.ms).sort((a, b) => a - b), [15340, 24000], 'the kill 0.5 s after the head comes off, 11.84 s into the chop')
+    assert.match(t.lines.join('\n'), /ff000a01 executes ff000b01 at block aa7cc with the greatsword equipped: headsman moved to his mark \(15671, -81493, 8203\) yaw 269, IdleExecutionerIdle; chop \d+ on every client in 3000 ms \(prisoner in IdleExecutioneeIdle\), the kill at \+15340 ms, 500 ms after the head comes off, IdleChairExitStart at \+24000 ms/)
 
     t.request(HEADSMAN, 'executeRequest', PRISONER)
     assert.equal(t.notices(HEADSMAN).at(-1), 'You cannot do that now.', 'one chop at a time')
@@ -209,7 +209,7 @@ let ExecutionSystem
     assert.ok(!t.lines.join('\n').includes('spam'), 'a bystander is not logged')
     assert.ok(!t.lines.join('\n').includes('waits'), 'a taken chop keeps the kill time')
 
-    runTimer(14840)
+    runTimer(15340)
     assert.deepEqual(t.calls.slice(0, 3), [['died', PRISONER, 'executed', HEADSMAN], ['body', PRISONER], ['freed', PRISONER]])
     assert.ok(t.calls.some((c) => c[0] === 'sovngarde' && c[1] === PRISONER))
     assert.equal(t.sent(PRISONER, 'executionState').at(-1).pose, '', 'off the block')
@@ -237,7 +237,7 @@ let ExecutionSystem
     t.request(PRISONER, 'executionStep', PRISONER, { step: 'late', fallback: 'kneel' })
     assert.equal(t.sent(PRISONER, 'executionState').length, 2, 'no fallback once the axe falls')
     t.request(PRISONER, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner 14 (this player): refused' })
-    assert.ok(timers.some((x) => x.ms === 14840) && !t.lines.join('\n').includes('waits'), 'no chop clip plays on the bleedout kneel, so nothing to wait for')
+    assert.ok(timers.some((x) => x.ms === 15340) && !t.lines.join('\n').includes('waits'), 'no chop clip plays on the bleedout kneel, so nothing to wait for')
   }
 
   {
@@ -248,15 +248,31 @@ let ExecutionSystem
     assert.match(t.lines.join('\n'), /executes ff000b01 at block aa7cc with the battleaxe equipped/, 'a warhammer counts by its animation type')
     t.request(HEADSMAN, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the headsman 14 (this player): refused' })
     t.request(HEADSMAN, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner ff000123: taken' })
-    assert.ok(timers.some((x) => x.ms === 14840), 'the headsman\'s own retry or a taken chop keeps the kill time')
+    assert.ok(timers.some((x) => x.ms === 15340), 'the headsman\'s own retry or a taken chop keeps the kill time')
     t.request(HEADSMAN, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner ff000123: refused' })
-    assert.ok(!timers.some((x) => x.ms === 14840), 'the old kill timer is cleared')
-    const delayed = timers.find((x) => Math.abs(x.ms - 16540) < 100)
+    assert.ok(!timers.some((x) => x.ms === 15340), 'the old kill timer is cleared')
+    const delayed = timers.find((x) => Math.abs(x.ms - 17040) < 100)
     assert.ok(delayed, 'the kill waits for the retried chop, 1.7 s later')
     assert.match(t.lines.join('\n'), /the kill of ff000b01 waits 1700 ms more, \d+ ms from now: ff000a01's client plays the prisoner's refused chop again/)
     t.request(PRISONER, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner 14 (this player): refused' })
     assert.equal(t.lines.filter((l) => l.includes('waits')).length, 1, 'the kill moves once')
-    runTimer(16540, 100)
+    runTimer(17040, 100)
+    assert.deepEqual(t.calls.slice(0, 1), [['died', PRISONER, 'executed', HEADSMAN]])
+  }
+
+  {
+    const t = await setup()
+    t.request(HEADSMAN, 'prepareExecutionRequest', PRISONER)
+    t.request(HEADSMAN, 'executeRequest', PRISONER)
+    t.request(FAR, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner ff000123: refused' })
+    assert.ok(timers.some((x) => x.ms === 15340) && !t.lines.join('\n').includes('ff000d01'), 'a client without a copy of the prisoner is ignored')
+    t.request(VIEWER, 'executionStep', HEADSMAN, { step: 'IdleExecutionerChop on the headsman ff000124: refused' })
+    assert.ok(timers.some((x) => x.ms === 15340) && !t.lines.join('\n').includes('ff000c01'), 'a bystander reports only the prisoner\'s refused chop')
+    t.request(VIEWER, 'executionStep', PRISONER, { step: 'IdleExecutionerChop on the prisoner ff000123: refused' })
+    assert.match(t.lines.join('\n'), /block step from ff000c01's client on ff000b01: IdleExecutionerChop on the prisoner ff000123: refused/)
+    assert.match(t.lines.join('\n'), /the kill of ff000b01 waits 1700 ms more, \d+ ms from now: ff000c01's client plays the prisoner's refused chop again/)
+    assert.ok(!timers.some((x) => x.ms === 15340) && timers.some((x) => Math.abs(x.ms - 17040) < 100), 'a bystander\'s retried chop holds the kill too')
+    runTimer(17040, 100)
     assert.deepEqual(t.calls.slice(0, 1), [['died', PRISONER, 'executed', HEADSMAN]])
   }
 

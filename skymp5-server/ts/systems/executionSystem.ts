@@ -83,12 +83,15 @@ const BLEEDOUT_STAND = "bleedOutStop";
 const CHOP = "IdleExecutionerChop";
 // Every client sends IdleExecutionerChop to both actors this long after the chop packet: the headsman's move settles and his 1.5 s stance enter plays out
 const CHOP_LEAD_MS = 3000;
-// AOExecutioneeChop.hkx (20 s) fires Decapitate at 11.84 s, where the prisoner dies, and KillActor at 16.61 s; AOExecutionerChop.hkx goes back to the stance at 19.5 s
-const CHOP_KILL_MS = 11840;
+// AOExecutioneeChop.hkx (20 s) fires Decapitate at 11.84 s and KillActor at 16.61 s; AOExecutionerChop.hkx goes back to the stance at 19.5 s
+const DECAPITATE_MS = 11840;
+// The prisoner dies this long after Decapitate, a margin for each client's frame steps and network jitter
+const KILL_AFTER_HEAD_MS = 500;
+const CHOP_KILL_MS = DECAPITATE_MS + KILL_AFTER_HEAD_MS;
 const CHOP_DONE_MS = 21000;
 // A client whose copy refused the chop sends it again this long after, as ExecutionChopService's SETTLE_MS
 const CHOP_RETRY_MS = 1700;
-// The step a participant's client reports when the prisoner's graph refused the chop
+// The step a client reports when its copy of the prisoner, or the prisoner's own graph, refused the chop
 const PRISONER_CHOP_REFUSED = new RegExp(`^${CHOP} on the prisoner [0-9a-f]+( \\(this player\\))?: refused$`);
 // The headsman's own weapon, equipped and sheathed; the stance draws the block's axe prop. A warhammer is a battleaxe by its animation type
 const TWO_HANDED = new Set<string>(["greatsword", "battleaxe"]);
@@ -395,7 +398,7 @@ export class ExecutionSystem implements System {
     this.log(`[execution] ${hex(executorId)} puts ${hex(prisonerId)} on block ${hex(blockId)} at the prisoner's mark ${describeSpot(spot)}, ${PRISONER_KNEEL}`);
   }
 
-  // The headsman stands on his mark in the stance, then every client chops both actors at once; the kill lands as the head comes off, the stance is left once the swing is over
+  // The headsman stands on his mark in the stance, then every client chops both actors at once; the kill lands just after the head comes off, the stance is left once the swing is over
   private onExecuteRequest(userId: number, prisonerId: number): void {
     const mp = this.mp;
     const executorId = this.actorOf(userId);
@@ -431,16 +434,16 @@ export class ExecutionSystem implements System {
     setTimeout(() => this.releaseHeadsman(executorId, prisonerId), CHOP_LEAD_MS + CHOP_DONE_MS);
     notifyActor(mp, prisonerId, `${nameShownTo(mp, prisonerId, executorId)} raises the axe.`);
     this.log(`[execution] ${hex(executorId)} executes ${hex(prisonerId)} at block ${hex(prisoner.blockId)} with the ${held} equipped: headsman moved to his mark ${describeSpot(spot)}, ` +
-      `${HEADSMAN_STANCE}; chop ${seq} on every client in ${CHOP_LEAD_MS} ms (prisoner in ${prisoner.pose}), the kill at +${CHOP_LEAD_MS + CHOP_KILL_MS} ms as the head comes off, ` +
+      `${HEADSMAN_STANCE}; chop ${seq} on every client in ${CHOP_LEAD_MS} ms (prisoner in ${prisoner.pose}), the kill at +${CHOP_LEAD_MS + CHOP_KILL_MS} ms, ${KILL_AFTER_HEAD_MS} ms after the head comes off, ` +
       `${HEADSMAN_EXIT} at +${CHOP_LEAD_MS + CHOP_DONE_MS} ms`);
   }
 
-  // A participant's client that saw the prisoner's graph refuse the chop plays it again later, so the kill waits for that head to come off, once
-  private delayKill(reporterId: number, step: string): void {
-    const prisonerId = this.prisoners.has(reporterId) ? reporterId : this.headsmen.get(reporterId) ?? 0;
+  // A client that saw the prisoner's graph refuse the chop plays it again later, so the kill waits for that head to come off, once
+  private delayKill(prisonerId: number, reporterId: number, step: string): void {
     const prisoner = this.prisoners.get(prisonerId);
     const executorId = prisoner?.executorId;
     if (!prisoner || !executorId || prisoner.killDelayed || prisoner.pose === BLEEDOUT_KNEEL || !PRISONER_CHOP_REFUSED.test(step)) return;
+    if (reporterId !== prisonerId && reporterId !== executorId && !isStreamedTo(this.mp, prisonerId, reporterId)) return;
     prisoner.killDelayed = true;
     prisoner.killAt += CHOP_RETRY_MS;
     const wait = Math.max(0, prisoner.killAt - Date.now());
@@ -462,14 +465,17 @@ export class ExecutionSystem implements System {
     this.log(`[execution] ${hex(executorId)} steps off the block after the chop of ${hex(prisonerId)} (${away ? `${away}, no ${HEADSMAN_EXIT}` : HEADSMAN_EXIT})`);
   }
 
-  // A participant's client names each answer of its graph; a prisoner whose graph never took the block kneel kneels in the bleedout pose instead
+  // A participant's client names each answer of its graph, a bystander's only its copy's refusal of the prisoner's chop; a prisoner whose graph never took the block kneel kneels in the bleedout pose instead
   private onBlockStep(userId: number, targetId: number, content: Content): void {
     const reporterId = this.actorOf(userId);
-    if (!reporterId || (!this.prisoners.has(reporterId) && !this.headsmen.has(reporterId))) return;
+    if (!reporterId) return;
     const seq = Number(content.seq) || 0;
     const step = String(content.step ?? "");
+    const participant = this.prisoners.has(reporterId) || this.headsmen.has(reporterId);
+    const watcher = !participant && PRISONER_CHOP_REFUSED.test(step) && !!this.prisoners.get(targetId)?.executorId && isStreamedTo(this.mp, targetId, reporterId);
+    if (!participant && !watcher) return;
     this.log(`[execution] block step from ${hex(reporterId)}'s client on ${hex(targetId)}${seq ? ` (chop ${seq})` : ""}: ${step.slice(0, STEP_MAX_CHARS)}`);
-    this.delayKill(reporterId, step);
+    this.delayKill(targetId, reporterId, step);
     const prisoner = this.prisoners.get(reporterId);
     if (content.fallback !== "kneel" || !prisoner || prisoner.executorId || prisoner.pose === BLEEDOUT_KNEEL) return;
     prisoner.pose = BLEEDOUT_KNEEL;

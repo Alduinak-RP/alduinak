@@ -225,14 +225,24 @@ behaviour-graph events — no ESP required.**
   copy to play it at once, and that copy gets no exit at the end. An
   actor whose graph refuses the chop gets its stance or kneel again and the
   chop 1.7 s later. The prisoner dies when the head comes off (the owner's
-  2026-10-01 rule), 14.84 s after the request, at the clip's `Decapitate`
-  11.84 s into the chop; before that rule the kill waited for the clip's
-  `KillActor` (19.61 s), so the prisoner lived 4.8 s with the head off.
-  When a participant's client reports that the prisoner's graph refused the
-  chop, which that client sends again 1.7 s later, the kill waits those
-  1.7 s too, once, so no screen sees the death before the head comes off; a
-  prisoner in the bleedout kneel, on whom no chop clip plays, keeps the
-  14.84 s. The prisoner goes to Sovngarde, the same PK as a finish off
+  2026-10-01 rule), 15.34 s after the request, 0.5 s after the clip's
+  `Decapitate` 11.84 s into the chop. The margin is needed: each client
+  starts its chop on the first frame after its own 3 s and the clip reaches
+  `Decapitate` on a frame step as well, while the death reaches the same
+  client about as fast as the chop packet did, so a kill right at
+  `Decapitate` mostly landed a frame or two early and the copy died
+  mid-clip with the head still on. Before that rule the kill waited for the
+  clip's `KillActor` (19.61 s), so the prisoner lived 4.8 s with the head
+  off. When a client reports that its copy of the prisoner, or the
+  prisoner's own graph, refused the chop, which that client sends again
+  1.7 s later, the kill waits those 1.7 s too, once. The participants'
+  clients report every chop answer; a bystander's client reports only a
+  refused prisoner chop it is about to send again, and the server takes it
+  only from a client it streams the prisoner to. A bystander on a client
+  older than that change reports nothing, so their screen can still show
+  the death before a retried head comes off. A prisoner in the bleedout
+  kneel, on whom no chop clip plays, keeps the 15.34 s. The prisoner goes
+  to Sovngarde, the same PK as a finish off
   (`pk.log`, `pvp.log`, the `execute` alert); their body is freed from the
   cuffs and the respawn rebuilds the head. The headsman's release does not
   move with the kill: his own clip, `AOExecutionerChop`, is back in the
@@ -258,12 +268,13 @@ behaviour-graph events — no ESP required.**
   IdleExecutioneeIdle`, `[execution] <executor> executes <prisoner> at block
   <block> with the greatsword|battleaxe equipped: headsman moved to his mark
   ..., IdleExecutionerIdle; chop <seq> on every client in 3000 ms (prisoner
-  in <pose>), the kill at +14840 ms as the head comes off,
+  in <pose>), the kill at +15340 ms, 500 ms after the head comes off,
   IdleChairExitStart at +24000 ms`, one `[execution] block step from
   <reporter>'s client on <prisoner> (chop <seq>): <event> on the
   <headsman|prisoner> <local id>: taken|refused|ignored, already chopping`
   line for each answer of a participant's own graph and for its chop of the
-  other participant's copy, `[execution] the kill of <prisoner> waits 1700
+  other participant's copy, and for a bystander's refused chop of its copy
+  of the prisoner, `[execution] the kill of <prisoner> waits 1700
   ms more, <ms> ms from now: <reporter>'s client plays the prisoner's
   refused chop again` when the kill moves, the PK line and `left block`, then `[execution]
   <executor> steps off the block after the chop of <prisoner>

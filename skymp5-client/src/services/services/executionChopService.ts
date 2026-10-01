@@ -214,10 +214,12 @@ export class ExecutionChopService extends ClientListener {
     const text = `${anim} on the ${role} ${hex(selfId)}${selfId === PLAYER_FORM_ID ? " (this player)" : ""}: ${answer}`;
     if (scene) this.log(scene, text);
     else logToPlatformLog(this, text);
-    if (selfId === PLAYER_FORM_ID || (scene?.participant && anim === CHOP)) {
+    const retry = !!scene && anim === CHOP && !ok && !already && scene.chopped && !scene.retried.has(selfId);
+    // A bystander's retried prisoner chop is reported too, so the server holds the kill until that head comes off
+    if (selfId === PLAYER_FORM_ID || (scene?.participant && anim === CHOP) || (retry && selfId === scene?.prisonerId)) {
       this.report(scene ? scene.prisonerRemoteId : this.myRemoteId(), scene?.seq ?? 0, text);
     }
-    if (anim === CHOP && !ok && !already && scene?.chopped && !scene.retried.has(selfId)) this.retryChop(scene, selfId);
+    if (scene && retry) this.retryChop(scene, selfId);
   }
 
   // Not yet in its block idle: the stance or kneel goes again and the chop follows once the enter clip is over
