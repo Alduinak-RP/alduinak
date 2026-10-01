@@ -67,7 +67,8 @@ type Mp = any;
 //   blockStaggerWithoutStamina    a blocker whose stamina is below the cost is staggered, default true
 //   blockStaggerMagnitude         staggerMagnitude of that stagger (0.1 to 1), default 0.5
 //   alduinakDamageFormulaSettings.blockStamina   { perArmorWeight, weightCap }, defaults 0.006 and 115: while the block's enabled is true a blocked
-//                                 hit costs x (1 + perArmorWeight x min(worn armor weight, weightCap)); perArmorWeight 0 turns the rule off
+//                                 hit costs x (1 + perArmorWeight x min(worn armor weight, weightCap)); perArmorWeight 0 turns the rule off,
+//                                 and so does a value the native rejects the whole block for (not a number from 0)
 
 const NEEDS_PROP = "private.needs";
 const STATE_PACKET = "needsState";
@@ -125,6 +126,8 @@ const ANIMAL_KEYWORD = "ActorTypeAnimal";
 const STAGGER_COOLDOWN_MS = 1000;
 const DEFAULT_BLOCK_PER_ARMOR_WEIGHT = 0.006;
 const DEFAULT_BLOCK_WEIGHT_CAP = 115;
+// kMax of the native settings reader (AlduinakCombatSettings.cpp)
+const NATIVE_NUMBER_MAX = 1000000;
 // Warmed by drink: the professions whose own-rank crafts a drink discounts
 const ALCOHOL_PROFESSIONS = ["cook", "alchemist"];
 const DEFAULT_ALCOHOL_DISCOUNT = 0.25;
@@ -227,14 +230,27 @@ export interface BlockWeightRule {
   cap: number;
 }
 
-// The rebalance's block stamina rule from alduinakDamageFormulaSettings; null without the block, with enabled not true or perArmorWeight 0
-export const blockWeightRule = (block: unknown): BlockWeightRule | null => {
+// The rebalance's block stamina rule from alduinakDamageFormulaSettings; null without the block, with enabled not true or perArmorWeight 0.
+// A blockStamina value the native rejects the whole block for (Reader::Object, Reader::Number) gives null as well and is named to problem
+export const blockWeightRule = (block: unknown, problem?: (text: string) => void): BlockWeightRule | null => {
   const b = block && typeof block === "object" ? block as Record<string, unknown> : null;
   if (!b || b["enabled"] !== true) return null;
-  const rule = (b["blockStamina"] && typeof b["blockStamina"] === "object" ? b["blockStamina"] : {}) as Record<string, unknown>;
-  const numOr = (v: unknown, fallback: number): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback);
-  const perWeight = numOr(rule["perArmorWeight"], DEFAULT_BLOCK_PER_ARMOR_WEIGHT);
-  return perWeight > 0 ? { perWeight, cap: numOr(rule["weightCap"], DEFAULT_BLOCK_WEIGHT_CAP) } : null;
+  const raw = b["blockStamina"] ?? {};
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    problem?.(`blockStamina should be an object, found ${JSON.stringify(raw)}`);
+    return null;
+  }
+  const rule = raw as Record<string, unknown>;
+  const read = (key: string, fallback: number): number | null => {
+    if (!(key in rule)) return fallback;
+    const v = rule[key];
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= NATIVE_NUMBER_MAX) return v;
+    problem?.(`blockStamina.${key} should be a number from 0 to ${NATIVE_NUMBER_MAX}, found ${JSON.stringify(v)}`);
+    return null;
+  };
+  const perWeight = read("perArmorWeight", DEFAULT_BLOCK_PER_ARMOR_WEIGHT);
+  const cap = read("weightCap", DEFAULT_BLOCK_WEIGHT_CAP);
+  return perWeight !== null && cap !== null && perWeight > 0 ? { perWeight, cap } : null;
 };
 
 export const blockWeightMult = (rule: BlockWeightRule, armorWeight: number): number => 1 + rule.perWeight * clamp(armorWeight, 0, rule.cap);
@@ -285,7 +301,8 @@ export class NeedsSystem implements System {
     this.alcoholMs = num("needsAlcoholMinutes", DEFAULT_ALCOHOL_MINUTES) * 60000;
     this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05),
       all["blockStaggerWithoutStamina"] !== false ? clamp(num("blockStaggerMagnitude", 0.5), 0.1, 1) : 0,
-      blockWeightRule(all["alduinakDamageFormulaSettings"]));
+      blockWeightRule(all["alduinakDamageFormulaSettings"], (text) =>
+        this.log(`[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.${text}; the native rejects the whole block for such a value, so a block costs its base share`)));
 
     if (!this.enabled) {
       this.log("[needs] disabled by needsEnabled");
@@ -415,7 +432,13 @@ export class NeedsSystem implements System {
     const byWeight = weightRule && hasCombatStats(mp) ? weightRule : null;
     if (byWeight) this.log(`[needs] block stamina by armor weight: a block costs x (1 + ${byWeight.perWeight} x worn armor weight, counted up to ${byWeight.cap})`);
     else if (weightRule) this.log("[needs] block stamina by armor weight is off: this scam_native.node has no getCombatStats, a block costs its base share");
-    let weightMissingLogged = false;
+    // Each reason a block fell back to the base share is logged once
+    const reported = new Set<string>();
+    const fellBack = (reason: string, line: string): void => {
+      if (reported.has(reason)) return;
+      reported.add(reason);
+      this.log(`[needs] ${line}, blocks cost their base share`);
+    };
     const lastStagger = new Map<number, number>();
     chainMpHook(mp, "onPapyrusEvent:OnHit", (...args: unknown[]) => {
       if (args[7] !== true) return;
@@ -432,14 +455,19 @@ export class NeedsSystem implements System {
           const p = mp.get(targetId, "percentages");
           if (!p || base <= 0) return;
           let drain = base;
-          const stats = byWeight ? combatStats(mp, targetId) : null;
+          let threw = false;
+          const stats = byWeight ? combatStats(mp, targetId, (e) => {
+            threw = true;
+            fellBack("threw", `getCombatStats of ${hex(targetId)} failed: ${e}`);
+          }) : null;
           const weight = stats ? armorWeightOf(stats) : null;
           if (byWeight && weight !== null && weight > 0) {
             drain = base * blockWeightMult(byWeight, weight);
             this.log(`[needs] ${hex(targetId)} blocked in ${share(weight)} armor weight: stamina -${tenth(drain)}% (${tenth(base)}% x${share(drain / base)})`);
-          } else if (stats && weight === null && !weightMissingLogged) {
-            weightMissingLogged = true;
-            this.log(`[needs] getCombatStats of ${hex(targetId)} carries no armor weight (fields ${Object.keys(stats).join(", ") || "none"}), blocks cost their base share`);
+          } else if (stats && weight === null) {
+            fellBack("no weight", `getCombatStats of ${hex(targetId)} carries no armor weight (fields ${Object.keys(stats).join(", ") || "none"})`);
+          } else if (byWeight && !stats && !threw) {
+            fellBack("no stats", `getCombatStats has no stats for ${hex(targetId)} (the native gives none while it prices hits without the rebalance formula, as after it rejected alduinakDamageFormulaSettings at boot)`);
           }
           const short = Number(p.stamina) < drain;
           mp.set(targetId, "percentages", { ...p, stamina: Math.max(0, Number(p.stamina) - drain) });

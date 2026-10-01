@@ -405,9 +405,19 @@ Without the block, with `enabled` false (durability alone does not count), or on
 `getCombatStats`, a block costs the base share as before. The server logs at boot `[needs] block stamina by armor
 weight: a block costs x (1 + 0.006 x worn armor weight, counted up to 115)`, or `[needs] block stamina by armor weight
 is off: this scam_native.node has no getCombatStats, a block costs its base share`, and for each weighted block
-`[needs] <blocker> blocked in <weight> armor weight: stamina -<cost>% (<base>% x<multiplier>)`. Stats that carry no
-weight are reported once (`[needs] getCombatStats of <actor> carries no armor weight (fields ...)`) and cost the base
-share. Test: `node tools/test-block-stamina.js` in `skymp5-server`.
+`[needs] <blocker> blocked in <weight> armor weight: stamina -<cost>% (<base>% x<multiplier>)`.
+
+The boot line only says the rule was read. A block that cannot be priced by weight costs the base share, and the
+server log says why, once per reason and server start:
+
+| Log line | Meaning |
+|---|---|
+| `[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.blockStamina.perArmorWeight should be a number from 0 to 1000000, found "0"; ...` (at boot) | `perArmorWeight` or `weightCap` is present but not a number from 0, or `blockStamina` is not an object. The native rejects the whole block for the same value and prices hits by TES5, so this rule stays off as well. Write `0` as a number to switch only this rule off |
+| `[needs] getCombatStats has no stats for <actor> (...), blocks cost their base share` | The native answered null for a blocker: it prices hits without the rebalance formula, as it does after it rejected the block at boot for a value elsewhere in it (see its `alduinakDamageFormulaSettings` error lines) |
+| `[needs] getCombatStats of <actor> failed: <error>, blocks cost their base share` | The native call threw, for example on another call shape than `getCombatStats(actorId)` |
+| `[needs] getCombatStats of <actor> carries no armor weight (fields ...), blocks cost their base share` | The stats came without `armorWeight` |
+
+Test: `node tools/test-block-stamina.js` in `skymp5-server`.
 
 **Protocol**
 - Client -> Server: `{ customPacketType: "needsRequest" }`

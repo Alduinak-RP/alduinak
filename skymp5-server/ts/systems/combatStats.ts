@@ -9,12 +9,13 @@ const WEIGHT_FIELDS = ["armorWeight", "wornArmorWeight", "wornWeight"];
 
 export const hasCombatStats = (mp: Mp): boolean => typeof mp?.[NATIVE_FUNCTION] === "function";
 
-// Null when the native has no stats for the actor (formula off, unknown actor) or the call fails
-export const combatStats = (mp: Mp, actorId: number): Record<string, unknown> | null => {
+// Null when the native has no stats for the actor (formula off or block rejected, unknown actor) or the call fails; failed gets what a call threw
+export const combatStats = (mp: Mp, actorId: number, failed?: (error: unknown) => void): Record<string, unknown> | null => {
   try {
     const stats = hasCombatStats(mp) ? mp[NATIVE_FUNCTION](actorId) : null;
     return stats && typeof stats === "object" ? stats : null;
-  } catch {
+  } catch (e) {
+    failed?.(e);
     return null;
   }
 };

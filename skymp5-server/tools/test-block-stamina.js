@@ -112,12 +112,45 @@ async function main() {
     assert.equal(design.blockStamina.warrior, 0.05)
   })
 
-  await test('perArmorWeight 0 turns the rule off, a bad value takes the default', () => {
-    assert.equal(blockWeightRule({ enabled: true, blockStamina: { perArmorWeight: 0 } }), null)
-    assert.deepEqual(blockWeightRule({ enabled: true, blockStamina: { perArmorWeight: 0.01, weightCap: 90 } }), { perWeight: 0.01, cap: 90 })
-    assert.deepEqual(blockWeightRule({ enabled: true, blockStamina: { perArmorWeight: -1, weightCap: 'x' } }), DEFAULT_RULE)
-    assert.deepEqual(blockWeightRule({ enabled: true, blockStamina: 'heavy' }), DEFAULT_RULE)
-    assert.deepEqual(blockWeightRule({ enabled: true, blockStamina: { weightCap: 0 } }), { perWeight: 0.006, cap: 0 })
+  await test('perArmorWeight 0 turns the rule off, an absent value takes the default', () => {
+    const problems = []
+    const rule = (blockStamina) => blockWeightRule({ enabled: true, blockStamina }, (text) => problems.push(text))
+    assert.equal(rule({ perArmorWeight: 0 }), null)
+    assert.deepEqual(rule({ perArmorWeight: 0.01, weightCap: 90 }), { perWeight: 0.01, cap: 90 })
+    assert.deepEqual(rule({ weightCap: 0 }), { perWeight: 0.006, cap: 0 })
+    assert.deepEqual(rule({ perArmorWeight: 0.01 }), { perWeight: 0.01, cap: 115 })
+    assert.deepEqual(rule({}), DEFAULT_RULE)
+    // The native reads a null object as absent
+    assert.deepEqual(rule(null), DEFAULT_RULE)
+    assert.deepEqual(problems, [])
+  })
+
+  await test('a value the native rejects the block for switches the rule off and is named', () => {
+    const cases = [
+      [{ perArmorWeight: '0' }, ['blockStamina.perArmorWeight should be a number from 0 to 1000000, found "0"']],
+      [{ perArmorWeight: -1 }, ['blockStamina.perArmorWeight should be a number from 0 to 1000000, found -1']],
+      [{ perArmorWeight: null }, ['blockStamina.perArmorWeight should be a number from 0 to 1000000, found null']],
+      [{ perArmorWeight: 0.006, weightCap: 'x' }, ['blockStamina.weightCap should be a number from 0 to 1000000, found "x"']],
+      [{ weightCap: 2000000 }, ['blockStamina.weightCap should be a number from 0 to 1000000, found 2000000']],
+      [{ perArmorWeight: true, weightCap: -5 }, ['blockStamina.perArmorWeight should be a number from 0 to 1000000, found true',
+        'blockStamina.weightCap should be a number from 0 to 1000000, found -5']],
+      // A bad cap is named even when perArmorWeight 0 switches the rule off anyway
+      [{ perArmorWeight: 0, weightCap: 'x' }, ['blockStamina.weightCap should be a number from 0 to 1000000, found "x"']],
+      ['heavy', ['blockStamina should be an object, found "heavy"']],
+      [[0.006, 115], ['blockStamina should be an object, found [0.006,115]']],
+      [0.006, ['blockStamina should be an object, found 0.006']],
+    ]
+    for (const [blockStamina, expected] of cases) {
+      const problems = []
+      assert.equal(blockWeightRule({ enabled: true, blockStamina }, (text) => problems.push(text)), null, JSON.stringify(blockStamina))
+      assert.deepEqual(problems, expected)
+      // Without a listener the answer is the same
+      assert.equal(blockWeightRule({ enabled: true, blockStamina }), null)
+    }
+    // A block that is off is never read
+    const problems = []
+    assert.equal(blockWeightRule({ enabled: false, blockStamina: 'heavy' }, (text) => problems.push(text)), null)
+    assert.deepEqual(problems, [])
   })
 
   await test('the multiplier gives the plan table: cost x, blocks from full and Warrior blocks', () => {
@@ -234,15 +267,46 @@ async function main() {
     assert.equal(t.logs.length, 1)
   })
 
-  await test('a native that throws or returns nothing leaves the base share', async () => {
-    const thrown = setup({ rule: DEFAULT_RULE, native: () => { throw new Error('formula is off') } })
-    await thrown.hit()
-    assert.equal(thrown.staminaOf(), 1 - 0.1)
-    assert.equal(thrown.logs.length, 1)
-    const none = setup({ rule: DEFAULT_RULE, native: () => null })
-    await none.hit()
-    assert.equal(none.staminaOf(), 1 - 0.1)
-    assert.equal(none.logs.length, 1)
+  await test('a native that throws leaves the base share and says why once', async () => {
+    const t = setup({ rule: DEFAULT_RULE, native: () => { throw new Error('actorFormId should be a number') } })
+    await t.hit()
+    await t.hit()
+    await t.hit(NPC)
+    assert.equal(t.staminaOf(), 1 - 0.1 - 0.1)
+    assert.equal(t.staminaOf(NPC), 1 - 0.1)
+    assert.deepEqual(t.logs.slice(1), ['[needs] getCombatStats of ff000001 failed: Error: actorFormId should be a number, blocks cost their base share'])
+  })
+
+  await test('a native that has no stats for the blocker leaves the base share and says so once', async () => {
+    for (const nothing of [null, undefined, 7]) {
+      const t = setup({ rule: DEFAULT_RULE, native: () => nothing })
+      await t.hit()
+      await t.hit()
+      await t.hit(NPC)
+      assert.equal(t.staminaOf(), 1 - 0.1 - 0.1)
+      assert.equal(t.logs.length, 2)
+      assert.match(t.logs[1], /^\[needs\] getCombatStats has no stats for ff000001 \(the native gives none while it prices hits without the rebalance formula, .*\), blocks cost their base share$/)
+    }
+  })
+
+  await test('each reason is logged once and a later weighted block still logs its own line', async () => {
+    let answer = () => null
+    const t = setup({ rule: DEFAULT_RULE, native: () => answer() })
+    await t.hit()
+    answer = () => { throw new Error('gone') }
+    await t.hit()
+    answer = () => ({ wornDT: 3 })
+    await t.hit()
+    answer = () => null
+    await t.hit()
+    answer = () => ({ armorWeight: 52 })
+    await t.hit()
+    assert.equal(t.logs.length, 5)
+    assert.match(t.logs[1], /has no stats for ff000001/)
+    assert.match(t.logs[2], /getCombatStats of ff000001 failed: Error: gone/)
+    assert.match(t.logs[3], /carries no armor weight \(fields wornDT\)/)
+    assert.match(t.logs[4], /blocked in 52 armor weight/)
+    near(t.staminaOf(), 1 - 0.4 - 0.1312, 'four base blocks and a Steel one')
   })
 
   await test('stats without a weight field keep the base share and say so once', async () => {
@@ -317,6 +381,24 @@ async function main() {
     near(b.stamina, 1 - 0.1312, 'Steel block')
     const own = await boot({ alduinakDamageFormulaSettings: { enabled: true, blockStamina: { perArmorWeight: 0.01, weightCap: 40 } }, blockStaminaCost: 0.2 }, steel)
     near(own.stamina, 1 - 0.2 * 1.4, 'own numbers')
+  })
+
+  await test('boot: a blockStamina value the native rejects boots, names the value once and charges the base share', async () => {
+    for (const [blockStamina, found] of [[{ perArmorWeight: '0' }, 'blockStamina.perArmorWeight should be a number from 0 to 1000000, found "0"'],
+      [{ perArmorWeight: -1 }, 'blockStamina.perArmorWeight should be a number from 0 to 1000000, found -1'],
+      [{ weightCap: 'x' }, 'blockStamina.weightCap should be a number from 0 to 1000000, found "x"']]) {
+      const b = await boot({ alduinakDamageFormulaSettings: { enabled: true, blockStamina } }, steel)
+      assert.equal(b.stamina, 1 - 0.1)
+      assert.deepEqual(b.mp.calls, [])
+      assert.deepEqual(b.logs, [`[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.${found}; ` +
+        'the native rejects the whole block for such a value, so a block costs its base share', '[needs] disabled by needsEnabled'])
+    }
+  })
+
+  await test('boot: a native that rejected the block gives no stats, so the base share is charged and one line says why', async () => {
+    const b = await boot({ alduinakDamageFormulaSettings: ENABLED }, () => null)
+    assert.equal(b.stamina, 1 - 0.1)
+    assert.equal(b.logs.filter((l) => /getCombatStats has no stats for ff000001/.test(l)).length, 1)
   })
 
   await test('boot: the enabled block on a native without getCombatStats boots, logs once and charges the base share', async () => {
