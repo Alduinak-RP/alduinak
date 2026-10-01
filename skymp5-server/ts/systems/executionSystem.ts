@@ -559,7 +559,8 @@ export class ExecutionSystem implements System {
       ` (${rights.length ? `execute right of ${rights.join(", ")}` : "staff"})`;
     (globalThis as any).__alduinakMarkDeathAlerted?.(victimId);
     this.bleedout.die(victimId, how, killerId);
-    this.bodies.leaveBody(victimId, `${how} by ${hex(killerId)}`);
+    // A fallen victim keeps the realm outfit
+    if (!isFallen(mp, victimId)) this.bodies.leaveBody(victimId, `${how} by ${hex(killerId)}`);
     // Before the move, since a carried captive is set down at the carrier
     if (this.ctx) this.capture.freeCaptive(this.ctx, victimId);
     this.afterlife.sendToSovngarde(victimId, `${how} by ${hex(killerId)}`);

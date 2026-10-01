@@ -238,6 +238,21 @@ let ExecutionSystem
     assert.deepEqual(pairs.map((p) => p.u).sort(), [1, 2, 3], 'the finish off still reaches both players and the viewer')
   }
 
+  for (const fallen of [false, true]) {
+    const t = await setup()
+    let slay = null
+    t.sys.bleedout.hold = (_id, _killer, _ms, done) => { slay = done; return '' }
+    t.forms.get(PRISONER).downed = true
+    t.forms.get(PRISONER)['private.restrained'] = null
+    if (fallen) t.forms.get(PRISONER)['private.afterlife'] = { realm: 'sovngarde' }
+    t.forms.get(HEADSMAN).equipment = { inv: { entries: [{ baseId: SWORD, count: 1, worn: true }] } }
+    t.state.drawn.add(HEADSMAN)
+    t.request(HEADSMAN, 'finishOffRequest', PRISONER)
+    slay()
+    assert.ok(t.calls.some((c) => c[0] === 'died' && c[1] === PRISONER), 'finished off')
+    assert.equal(t.calls.some((c) => c[0] === 'body'), !fallen, fallen ? 'a fallen victim leaves no body and keeps the realm outfit' : 'a living victim leaves a body')
+  }
+
   console.log('test-block-execution: all checks passed')
 })().catch((e) => {
   console.error(e)

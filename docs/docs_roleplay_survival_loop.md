@@ -290,7 +290,9 @@ behaviour-graph events — no ESP required.**
   "... failed to assassinate you." to a living victim). Logged as `[execution]
   <killer> assassinates <victim> with <type> idle <id>`.
 - **The body** (`bodySystem.ts`): every PK (a finish off, an execution, a
-  soul trap by an execute holder) leaves a body where the victim fell: a
+  soul trap by an execute holder) of a living character leaves a body where
+  the victim fell (a fallen character finished off in their realm leaves
+  none and keeps the realm outfit): a
   clone made with `createActor` at the victim's spot wearing their look
   and the pieces they wore, without the spells in their hands
   (`mp.set(body, "equipment", ...)` with the worn entries alone, the native
@@ -340,7 +342,8 @@ behaviour-graph events — no ESP required.**
   and re-adopted, and put on the grid again, after a restart while its
   actor still exists (the clone is an ordinary `ff` actor saved in the world
   database with `spawnDelay` 1e9, so it stays dead); every 2 s a
-  body whose loose stacks are gone (after a minute's grace), one older than `bodyMaxSeconds`
+  body whose loose stacks are gone and that has lain at least 60 s since
+  the death (one emptied later goes at that next check), one older than `bodyMaxSeconds`
   (default 0 = never), or one that has been taken from or put into but then
   left alone for `bodyIdleSeconds` (default 7200; the last touch is kept in
   `bodies.json` as `touchedAt`, and a body nobody has touched is not
