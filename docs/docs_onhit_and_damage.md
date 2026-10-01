@@ -182,3 +182,63 @@ The server logs at boot `npcBlockedDamageShare is <share>: a player's block lets
 through, a player's hit stays fully blocked`, and for each blocked hit on a player `OnWeaponHit - <player> blocked
 npc <npc> with <weapon>, <landed> of <unblocked> damage lands (npcBlockedDamageShare <share>)` or `OnWeaponHit -
 <player> blocked player|npc <aggressor> with <weapon>, fully blocked` (another player, or any NPC when the share is 0).
+
+## Crit notice, /armor and the pvp.log columns (rebalance)
+
+Three readouts show players and staff what the rebalance formula and durability did. Without
+`alduinakDamageFormulaSettings`, or with its `enabled` false and `durability.enabled` false, none of them exists:
+hits, chat and `pvp.log` are as before, and `/armor` is an unknown command.
+
+**Hit arguments.** A `scam_native.node` with the rebalance hit arguments calls `onHitDamageAttempt` and
+`onHitDamage` with `aggressor, target, source, damage, blocked, power, bash, critical, preDT`; an older one stops
+after `damage`. The gamemode part `62_mastery.js` passes every argument on to `60_admin_modes.js`, which reads the
+five new ones in one place (`hitExtras`) and only while `enabled` is true. A hit without them is logged once per
+gamemode load (`[combat] a hit arrived without the arguments blocked, power, bash, critical, preDT ...`) and
+treated as before.
+
+**Crit notice** (`60_admin_modes.js`). A hit with `critical` true sends the aggressor `Critical hit! <damage>
+damage.` and the target `You took a critical hit: <damage> damage.`, each only to a player, so a player's crit on
+an NPC and a humanoid NPC's crit on a player are announced too. The damage is what landed, after DT and the cap.
+A hit that an admin mode replaced (god, smite, heal) is not announced. `combatCritNotice: false` in
+`server-settings.json` keeps the notices off (default true); the gamemode reads it when it loads. The client has
+no sound packet, so the notice is text in the System tab only.
+
+**pvp.log.** A player's hit on a player is still one line, `<aggressor> hit <target> for <damage> (source
+<weapon or spell id>)`. With the rebalance on and the new arguments present the line ends with five columns:
+`crit=1 power=0 bash=0 blocked=0 preDT=26.5` (1 or 0 each, then the damage before DT rounded to a tenth). `preDT`
+against the damage shows what the armor took off; a broken sword or a resisted spell shows in the damage itself.
+
+**/armor** (`86_combat_readout.js` and `skymp5-server/ts/systems/combatReadoutSystem.ts`). The chat command lists
+what the player wears and holds, one System tab line each:
+
+```
+Armor: DT 14.31 (taken off each weapon hit), weight 52
+Steel Armor: DT 8.34, Superior, 97% (262/270)
+Steel Helmet: DT 2.03, 100% (68/68)
+Steel Cuffed Boots: DT 1.69, Broken (0/56)
+Steel Shield: DT 0.56, 50% (180/360)
+Steel Sword: damage 9, Fine, 88% (308/350)
+```
+
+- The DT, the temper and the weapon line come from the native `getCombatStats(actorId)` and exist while `enabled`
+  is true. A piece below full condition reads `DT 6.4 of 8`. The temper is the quality name of its step (Fine to
+  Legendary).
+- The condition comes from the native `getDurability(actorId)` and exists while `durability.enabled` is true: the
+  percent of the name tag (rounded down, never 0 above broken), the word of `durability.nameTag.brokenLabel` at 0,
+  and the HP of the copy out of its full HP. With durability alone (TES5 damage) the command lists the worn
+  durable copies with their condition only.
+- Worn copies the stats do not name (a second weapon) follow as condition lines. An unarmored player reads `You
+  wear no armor: DT 0, every weapon hit lands in full.`
+- Staff may name an online player: `/armor <name>`.
+
+`CombatReadoutSystem` registers `globalThis.__alduinakArmorReport(actorId)` at boot only when at least one of the
+two readouts is on and its native function exists, and the gamemode part answers `Unknown or unavailable command:
+/armor` without it, so the parts can be on a server whose native or settings lack the rebalance. Boot logs
+`[combat] /armor shows DT and temper per worn piece and condition`, or for a native without a function `[combat]
+this scam_native.node has no getCombatStats (no DT lines)` (and the same for `getDurability (no condition)`, with
+`, /armor is off` when neither is left). The field names read from the two natives are listed at the top of
+`combatStats.ts` and in `copyOf` of `combatReadoutSystem.ts`; a renamed field is changed there. Tests:
+`node tools/test-combat-readout.js` in `skymp5-server`.
+
+The three gamemode parts are gitignored files of the server folder (`gamemode_extensions`): they reach the Test
+Server through "Build gamemode only" and live through Migrate server.

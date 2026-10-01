@@ -56,6 +56,7 @@ import { DiscordAlerts } from "./systems/discordAlerts";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
 import { TorchSystem } from "./systems/torchSystem";
+import { CombatReadoutSystem } from "./systems/combatReadoutSystem";
 import { CompanionSystem } from "./systems/companionSystem";
 import { HostingSystem } from "./systems/hostingSystem";
 import { PetSystem } from "./systems/petSystem";
@@ -366,6 +367,8 @@ const main = async () => {
     writingSystem,
     new UntouchableSystem(log),
     new TorchSystem(log),
+    // The lines of the /armor chat command, on only with the rebalance or durability
+    new CombatReadoutSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it
     hostingSystem,
     npcSpawnSystem,
