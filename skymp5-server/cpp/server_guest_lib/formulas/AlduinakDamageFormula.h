@@ -14,7 +14,7 @@
 class ItemRowResolver;
 class WorldState;
 
-// The rebalance formula of alduinakDamageFormulaSettings: row damage against worn DT for weapon hits, TES5 for spells
+// The rebalance formula of alduinakDamageFormulaSettings: row damage against worn DT for weapon hits, TES5 spell damage against the magic rules
 class AlduinakDamageFormula : public IDamageFormula
 {
 public:
@@ -53,6 +53,25 @@ public:
     float damage = 0.f;
   };
 
+  // What the last spell hit was priced from
+  struct LastSpellHit
+  {
+    uint32_t aggressor = 0;
+    uint32_t target = 0;
+    uint32_t spell = 0;
+    // Damage of the spell's hostile effects before any resistance
+    float unresisted = 0.f;
+    // After the target's resist abilities, magic resistance included when it counts
+    float resisted = 0.f;
+    float magicResistMult = 1.f;
+    bool ignoresResistance = false;
+    float wornDT = 0.f;
+    // DT the spell met, magic.dtShare of the worn DT
+    float spellDT = 0.f;
+    // What CalculateDamage returned, before the wrappers and the cap
+    float damage = 0.f;
+  };
+
   // One worn armor piece or shield with the DT it gives
   struct WornPiece
   {
@@ -82,6 +101,11 @@ public:
 
   [[nodiscard]] const LastHit& GetLastHit() const noexcept { return lastHit; }
 
+  [[nodiscard]] const LastSpellHit& GetLastSpellHit() const noexcept
+  {
+    return lastSpellHit;
+  }
+
   // The attack of a WEAP or fist source in the aggressor's hands, row receives the weapon's settings row
   [[nodiscard]] HitMath::Attack GetAttack(const MpActor& aggressor,
                                           uint32_t source, bool bash = false,
@@ -109,7 +133,7 @@ public:
   // A Hunter of Adept rank or above draws faster
   [[nodiscard]] bool HasQuickShot(const MpActor& actor) const;
 
-  // Worn armor weight, DT per worn piece, the weapons in hand and the fists, for getCombatStats
+  // Worn armor weight, DT per worn piece, the weapons in hand, the fists and the magic rules, for getCombatStats
   [[nodiscard]] nlohmann::json GetCombatStats(const MpActor& actor) const;
 
   // Fixes the crit rolls, for tests
@@ -126,10 +150,10 @@ private:
   const RaceInfo& GetRaceInfo(uint32_t raceId, WorldState& worldState) const;
 
   std::shared_ptr<ItemRowResolver> resolver;
-  TES5DamageFormula spellFormula;
   mutable std::mt19937 rng;
   mutable std::unordered_map<uint32_t, RaceInfo> races;
   // Hunter rank markers that carry QuickShot, read from the load order on first use
   mutable std::optional<std::vector<uint32_t>> quickShotMarkers;
   mutable LastHit lastHit;
+  mutable LastSpellHit lastSpellHit;
 };

@@ -29,6 +29,27 @@ struct PoisonHit
                                         const MpActor& target,
                                         uint32_t source);
 
+// How a spell hit was priced
+struct SpellDamageParts
+{
+  // Health damage after every resistance
+  float damage = 0.f;
+  // The same damage as if the target resisted nothing
+  float unresisted = 0.f;
+  // Share magic resistance lets through, 1 where it does not count
+  float magicResistMult = 1.f;
+  bool ignoresResistance = false;
+};
+
+// Health damage of a spell's hostile effects after the target's resist abilities; magicResistance also counts its magic resistance on spells that do not ignore resistance
+[[nodiscard]] SpellDamageParts CalculateSpellDamageParts(
+  const MpActor& aggressor, const MpActor& target,
+  const SpellCastData& spellCastData, bool magicResistance);
+
+// Share of hostile spell damage the target's magic resistance abilities and diseases let through
+[[nodiscard]] float GetMagicResistMult(const MpActor& target,
+                                       const MpActor& aggressor);
+
 // Implements vanilla Skyrim damage formula.
 // Some parts may be missing. If they are, there should be a TODO regarding it.
 // If there's no corresponding TODO, consider adding it and/or filing an issue.

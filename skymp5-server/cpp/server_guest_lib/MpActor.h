@@ -188,6 +188,10 @@ public:
 
   BaseActorValues GetBaseValues();
   BaseActorValues GetMaximumValues();
+  // private.healthScale, 1 unless the gamemode set a number above 0
+  float GetHealthScale() const;
+  // Points a full value stands for, health scaled by private.healthScale
+  float GetScaledMaximum(espm::ActorValue av);
 
   void DropItem(const uint32_t baseId, const Inventory::Entry& entry);
   void SetIsBlockActive(bool isBlockActive);

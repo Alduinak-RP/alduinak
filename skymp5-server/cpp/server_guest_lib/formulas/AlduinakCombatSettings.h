@@ -169,6 +169,16 @@ struct AlduinakCombatSettings
     } repair;
   };
 
+  struct Magic
+  {
+    // Share of the target's worn DT a spell loses, 0 leaves spell damage as TES5 prices it
+    float dtShare = 0.5f;
+    // Share of a spell's damage worn DT never takes
+    float floor = 0.5f;
+    // Magic resistance of abilities and diseases on hostile spell damage; unset follows the racial entries of damageMultConditionalFormulaSettings
+    std::optional<bool> resistance;
+  };
+
   std::string source;
   bool enabled = false;
   float floor = 0.2f;
@@ -200,6 +210,8 @@ struct AlduinakCombatSettings
 
   // Read by ScampServer.cpp into WorldState::effectModifiers, kept for the boot report
   bool effectModifiers = true;
+
+  Magic magic;
 
   float temperingWeaponPerStep = 0.015f;
   float temperingArmorPerStep = 0.015f;

@@ -7,6 +7,7 @@
 #include "EvaluateTemplate.h"
 #include "FormCallbacks.h"
 #include "GetBaseActorValues.h"
+#include "HealthScale.h"
 #include "LeveledListUtils.h"
 #include "LocationalDataUtils.h"
 #include "MathUtils.h"
@@ -1930,14 +1931,26 @@ void MpActor::SetIsDead(bool isDead)
 
 void MpActor::RestoreActorValue(espm::ActorValue av, float value)
 {
-  ModifyActorValuePercentage(
-    av, std::abs(value) / GetMaximumValues().GetValue(av));
+  ModifyActorValuePercentage(av, std::abs(value) / GetScaledMaximum(av));
 }
 
 void MpActor::DamageActorValue(espm::ActorValue av, float value)
 {
-  ModifyActorValuePercentage(
-    av, -std::abs(value) / GetMaximumValues().GetValue(av));
+  ModifyActorValuePercentage(av, -std::abs(value) / GetScaledMaximum(av));
+}
+
+float MpActor::GetHealthScale() const
+{
+  static const std::string kProperty = HealthScale::kProperty;
+  return HealthScale::FromDump(GetDynamicFields().GetValueDump(kProperty));
+}
+
+float MpActor::GetScaledMaximum(espm::ActorValue av)
+{
+  const float maximum = GetMaximumValues().GetValue(av);
+  return av == espm::ActorValue::Health
+    ? HealthScale::Maximum(maximum, GetHealthScale())
+    : maximum;
 }
 
 BaseActorValues MpActor::GetBaseValues()

@@ -271,6 +271,9 @@ public:
   // Ability and Disease skill modifiers scale weapon damage and blocking
   bool effectModifiers = false;
 
+  // Magic resistance abilities reduce hostile spell damage inside the rebalance formula
+  bool nativeMagicResistance = false;
+
   // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
   std::shared_ptr<ItemRowResolver> itemRowResolver;
 

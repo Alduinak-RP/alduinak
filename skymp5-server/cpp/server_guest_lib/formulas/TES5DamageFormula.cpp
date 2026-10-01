@@ -5,12 +5,14 @@
 #include "EffectModifiers.h"
 #include "EvaluateTemplate.h"
 #include "HitData.h"
+#include "MagicRules.h"
 #include "MpActor.h"
 #include "SpellCastData.h"
 #include "SpellEffectUtils.h"
 #include "WorldState.h"
 #include "libespm/espm.h"
 #include <algorithm>
+#include <optional>
 #include <spdlog/spdlog.h>
 
 namespace internal {
@@ -199,27 +201,30 @@ class TES5SpellDamageFormulaImpl
 
 public:
   TES5SpellDamageFormulaImpl(const MpActor& aggressor_, const MpActor& target_,
-                             const SpellCastData& spellCastData_);
+                             const SpellCastData& spellCastData_,
+                             bool magicResistance_);
 
-  [[nodiscard]] float CalculateDamage() const;
+  [[nodiscard]] SpellDamageParts CalculateDamage() const;
 
 private:
   const MpActor& aggressor;
   const MpActor& target;
   const SpellCastData& spellCastData;
   WorldState* espmProvider;
+  bool magicResistance;
 
 private:
-  [[nodiscard]] float GetBaseSpellDamage() const;
+  [[nodiscard]] SpellDamageParts GetBaseSpellDamage() const;
 };
 
 TES5SpellDamageFormulaImpl::TES5SpellDamageFormulaImpl(
   const MpActor& aggressor_, const MpActor& target_,
-  const SpellCastData& spellCastData_)
+  const SpellCastData& spellCastData_, bool magicResistance_)
   : aggressor(aggressor_)
   , target(target_)
   , spellCastData(spellCastData_)
   , espmProvider(aggressor.GetParent())
+  , magicResistance(magicResistance_)
 {
 }
 
@@ -408,9 +413,10 @@ float GetEffectModifierMult(espm::ActorValue av, const MpActor& holder,
     SumPassiveValueModifiers(av, holder, opponent, true));
 }
 
-float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
+SpellDamageParts TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
 {
-  float damage = 0.f;
+  SpellDamageParts parts;
+  std::optional<float> magicMult;
   const bool isSpell = ForEachSpellEffectRecord(
     espmProvider, spellCastData.spell,
     [&](const espm::LookupResult& spellLookup, const espm::SPEL::Data& spell,
@@ -430,18 +436,37 @@ float TES5SpellDamageFormulaImpl::GetBaseSpellDamage() const
           (ConditionsHold(effect.conditions, spellLookup, aggressor,
                           target) &&
            ConditionsHold(mgef.conditions, mgefLookup, aggressor, target))) {
-        damage += effect.effectItem->magnitude *
-          GetResistMult(mgef.data.resistAV, aggressor, target);
+        const bool ignoresResistance = spell.spellItem &&
+          (static_cast<uint32_t>(spell.spellItem->flags) &
+           static_cast<uint32_t>(espm::SPEL::SpellFlags::IgnoreResistance));
+        const bool ownIsMagicResist =
+          mgef.data.resistAV == espm::ActorValue::MagicResist;
+        const bool countsMagic =
+          magicResistance && !ignoresResistance && !ownIsMagicResist;
+        if (countsMagic && !magicMult) {
+          magicMult =
+            GetResistMult(espm::ActorValue::MagicResist, aggressor, target);
+        }
+        if (countsMagic) {
+          parts.magicResistMult = *magicMult;
+        }
+        parts.ignoresResistance = ignoresResistance;
+        parts.unresisted += effect.effectItem->magnitude;
+        parts.damage += effect.effectItem->magnitude *
+          MagicRules::EffectMult(
+                          GetResistMult(mgef.data.resistAV, aggressor, target),
+                          magicMult.value_or(1.f), magicResistance,
+                          ignoresResistance, ownIsMagicResist);
       }
     });
   if (!isSpell) {
     spdlog::warn("TES5SpellDamageFormula - {:#x} is not a SPEL, ignored",
                  spellCastData.spell);
   }
-  return damage;
+  return parts;
 }
 
-float TES5SpellDamageFormulaImpl::CalculateDamage() const
+SpellDamageParts TES5SpellDamageFormulaImpl::CalculateDamage() const
 {
   return GetBaseSpellDamage();
 }
@@ -465,6 +490,22 @@ float* PoisonBucket(PoisonHit& hit, espm::ActorValue av)
   }
 }
 
+}
+
+SpellDamageParts CalculateSpellDamageParts(const MpActor& aggressor,
+                                           const MpActor& target,
+                                           const SpellCastData& spellCastData,
+                                           bool magicResistance)
+{
+  return internal::TES5SpellDamageFormulaImpl(aggressor, target, spellCastData,
+                                              magicResistance)
+    .CalculateDamage();
+}
+
+float GetMagicResistMult(const MpActor& target, const MpActor& aggressor)
+{
+  return internal::GetResistMult(espm::ActorValue::MagicResist, aggressor,
+                                 target);
 }
 
 float GetBlockEffectMult(const MpActor& blocker, const MpActor& attacker)
@@ -596,6 +637,6 @@ float TES5DamageFormula::CalculateDamage(
   const MpActor& aggressor, const MpActor& target,
   const SpellCastData& spellCastData) const
 {
-  return internal::TES5SpellDamageFormulaImpl(aggressor, target, spellCastData)
-    .CalculateDamage();
+  return CalculateSpellDamageParts(aggressor, target, spellCastData, false)
+    .damage;
 }

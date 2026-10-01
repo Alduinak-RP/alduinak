@@ -7,6 +7,7 @@
 #include "EvaluateTemplate.h"
 #include "Exceptions.h"
 #include "GetBaseActorValues.h"
+#include "HealthScale.h"
 #include "HitData.h"
 #include "MathUtils.h"
 #include "MovementValidation.h"
@@ -1401,9 +1402,11 @@ bool IsUnarmedAttack(const uint32_t sourceFormId)
   return sourceFormId == 0x1f4;
 }
 
+// Health share left after the damage; outMaxHealth receives the points a full bar stands for, the base maximum x private.healthScale
 float CalculateCurrentHealthPercentage(const MpActor& actor, float damage,
                                        float healthPercentage,
-                                       float* outBaseHealth)
+                                       float* outMaxHealth,
+                                       bool logScale = true)
 {
   const uint32_t baseId = actor.GetBaseId();
   const uint32_t raceId = actor.GetRaceId();
@@ -1412,12 +1415,20 @@ float CalculateCurrentHealthPercentage(const MpActor& actor, float damage,
   const float baseHealth =
     GetBaseActorValues(espmProvider, baseId, raceId, actor.GetTemplateChain())
       .health;
+  const float healthScale = actor.GetHealthScale();
+  const float maxHealth = HealthScale::Maximum(baseHealth, healthScale);
 
-  if (outBaseHealth) {
-    *outBaseHealth = baseHealth;
+  if (outMaxHealth) {
+    *outMaxHealth = maxHealth;
+  }
+  if (logScale && healthScale != 1.f && damage > 0.f) {
+    spdlog::info("CalculateCurrentHealthPercentage - {:x} takes {} damage "
+                 "against {} health ({} base x private.healthScale {})",
+                 actor.GetFormId(), damage, maxHealth, baseHealth,
+                 healthScale);
   }
 
-  const float damagePercentage = damage / baseHealth;
+  const float damagePercentage = damage / maxHealth;
   const float currentHealthPercentage = healthPercentage - damagePercentage;
 
   if (espmProvider && espmProvider->alduinakDamageFormula) {
@@ -2778,8 +2789,8 @@ float ActionListener::GuardReportedHealth(const MpActor& actor, float current,
   }
   float baseHealth = 0.f;
   const float absorbable = current -
-    CalculateCurrentHealthPercentage(actor, guard.budget, current,
-                                     &baseHealth);
+    CalculateCurrentHealthPercentage(actor, guard.budget, current, &baseHealth,
+                                     false);
   const float allowed = std::min(current, reported + absorbable);
   const float refused = (allowed - reported) * baseHealth;
   guard.budget -= refused;

@@ -5,6 +5,7 @@
 #include "DurabilityRules.h"
 #include "HitData.h"
 #include "ItemRowResolver.h"
+#include "MagicRules.h"
 #include "MpActor.h"
 #include "SpellCastData.h"
 #include "TemperCap.h"
@@ -404,8 +405,42 @@ float AlduinakDamageFormula::CalculateDamage(
   const MpActor& aggressor, const MpActor& target,
   const SpellCastData& spellCastData) const
 {
+  const auto& magic = resolver->GetSettings().magic;
+  const WorldState* worldState = target.GetParent();
+  const auto parts =
+    CalculateSpellDamageParts(aggressor, target, spellCastData,
+                              worldState && worldState->nativeMagicResistance);
+
+  LastSpellHit hit;
+  hit.aggressor = aggressor.GetFormId();
+  hit.target = target.GetFormId();
+  hit.spell = spellCastData.spell;
+  hit.unresisted = parts.unresisted;
+  hit.resisted = parts.damage;
+  hit.magicResistMult = parts.magicResistMult;
+  hit.ignoresResistance = parts.ignoresResistance;
+  hit.damage = parts.damage;
+  if (parts.damage > 0.f && magic.dtShare > 0.f) {
+    hit.wornDT = GetWornDT(target).Total();
+    hit.spellDT = MagicRules::SpellDT(hit.wornDT, magic.dtShare);
+    hit.damage = MagicRules::SpellAfterDT(parts.damage, hit.wornDT,
+                                          magic.dtShare, magic.floor);
+  }
+
+  if (hit.damage != hit.unresisted) {
+    spdlog::info(
+      "AlduinakDamageFormula - spell {:x} of {:x} on {:x}: {} before "
+      "resistances, {} after (magic resistance x{}{}), worn DT {} x {} "
+      "takes {}, {} lands",
+      hit.spell, hit.aggressor, hit.target, hit.unresisted, hit.resisted,
+      hit.magicResistMult,
+      hit.ignoresResistance ? ", the spell ignores resistance" : "",
+      hit.wornDT, magic.dtShare, hit.resisted - hit.damage, hit.damage);
+  }
+
   // OnSpellHit caps the hit after the outer wrappers
-  return spellFormula.CalculateDamage(aggressor, target, spellCastData);
+  lastSpellHit = hit;
+  return hit.damage;
 }
 
 float AlduinakDamageFormula::GetHitInterval(const MpActor& aggressor,
@@ -574,6 +609,11 @@ nlohmann::json AlduinakDamageFormula::GetCombatStats(
   std::string fistRow;
   const auto fists = GetAttack(actor, kUnarmedSource, false, &fistRow);
 
+  // What a hostile spell meets on this actor
+  const bool magicResistance = worldState->nativeMagicResistance;
+  const float magicResistMult =
+    magicResistance ? GetMagicResistMult(actor, actor) : 1.f;
+
   return nlohmann::json{
     { "actorId", actor.GetFormId() },
     { "isPlayer", IsPlayer(actor) },
@@ -583,6 +623,14 @@ nlohmann::json AlduinakDamageFormula::GetCombatStats(
     { "naturalDT", Num(GetNaturalDT(actor)) },
     { "pieces", std::move(pieces) },
     { "weapons", std::move(weapons) },
+    { "magic",
+      nlohmann::json{
+        { "dtShare", Num(settings.magic.dtShare) },
+        { "floor", Num(settings.magic.floor) },
+        { "spellDT",
+          Num(MagicRules::SpellDT(wornDT.Total(), settings.magic.dtShare)) },
+        { "resistance", magicResistance },
+        { "resistMult", Num(magicResistMult) } } },
     { "unarmed",
       AttackJson(settings, fists, fistRow,
                  std::max(HitRules::HitInterval(settings, fists), 0.f)) }
