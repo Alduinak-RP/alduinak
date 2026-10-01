@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, ACCESS_REFRESHED_EVENT } from "./system";
 import { resolveEditorIds } from "./espmEditorIds";
-import { addSpellTo, removeSpellFrom } from "./actorUtil";
+import { addSpellTo, hex, removeSpellFrom } from "./actorUtil";
 import { FactionSystem } from "./factionSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -16,9 +16,14 @@ type Mp = any;
 // lives in the backend, never in the game's own factions, so this system is
 // what ties the two together: it hands a character the marker of every faction
 // whose rank carries the craft permission and takes back the rest. Hold
-// uniforms are never issued: the Captain rank carries craft (the Jarl and an
-// acting regent craft through leader authority), so only they make the guard
-// armour, helmet, shield and cloaks and hand them to their guards.
+// uniforms are never issued: only the ranks the editor gives craft (the
+// Captain, and the Jarl and an acting regent through leader authority) make the
+// guard armour, helmet, shield and cloaks, and the recipe's profession tier
+// still applies on top of the marker.
+//
+// Log: "[factionCraft] <actor> at login|after a rank reload holds the craft
+// marker of <faction ids>[, granted <ids>][, revoked <ids>]", at login and on
+// every change.
 //
 // The editor id drops the punctuation of the faction id, so "hold:the-rift"
 // becomes AldFaction_holdtherift, exactly as the patcher writes it.
@@ -98,7 +103,7 @@ export class FactionCraftSystem implements System {
     });
     // applyAccess writes every online character's own copy before it fires
     ctx.gm.on(ACCESS_REFRESHED_EVENT, () => {
-      for (const actorId of this.online.values()) this.sync(ctx, actorId);
+      for (const actorId of this.online.values()) this.sync(ctx, actorId, "after a rank reload");
     });
   }
 
@@ -108,7 +113,7 @@ export class FactionCraftSystem implements System {
     for (const [actorId, dueAt] of Array.from(this.pending)) {
       if (now < dueAt) continue;
       this.pending.delete(actorId);
-      this.sync(ctx, actorId);
+      this.sync(ctx, actorId, "at login");
     }
   }
 
@@ -118,8 +123,8 @@ export class FactionCraftSystem implements System {
     if (actorId !== undefined) this.pending.delete(actorId);
   }
 
-  // Hand over the markers of every faction whose rank may craft, take back the rest.
-  private sync(ctx: SystemContext, actorId: number): void {
+  // Hand over the markers of every faction whose rank may craft, take back the rest; logged at login and on every change
+  private sync(ctx: SystemContext, actorId: number, when: string): void {
     if (!this.enabled) return;
     const mp = ctx.svr as Mp;
     let wanted: Set<number>;
@@ -132,19 +137,35 @@ export class FactionCraftSystem implements System {
     }
     const held = this.read(ctx, actorId);
     const keep: number[] = [];
+    const revoked: number[] = [];
+    const granted: number[] = [];
+    // A failed call keeps the old state, so the next sync tries again
     for (const spellId of held) {
-      if (wanted.has(spellId)) keep.push(spellId);
-      else this.cast(ctx, actorId, spellId, false);
+      if (wanted.has(spellId) || !this.cast(ctx, actorId, spellId, false)) keep.push(spellId);
+      else revoked.push(spellId);
     }
     for (const spellId of wanted) {
-      if (keep.indexOf(spellId) === -1) {
-        this.cast(ctx, actorId, spellId, true);
+      if (keep.indexOf(spellId) === -1 && this.cast(ctx, actorId, spellId, true)) {
         keep.push(spellId);
+        granted.push(spellId);
       }
     }
-    if (keep.length !== held.length || keep.some((id, i) => id !== held[i])) {
+    const changed = granted.length > 0 || revoked.length > 0;
+    if (changed) {
       try { mp.set(actorId, MARKER_PROP, keep); } catch { /* actor gone */ }
     }
+    if (changed || (when === "at login" && keep.length)) {
+      this.log(`[factionCraft] ${hex(actorId)} ${when} holds the craft marker of ${this.factionsOf(keep)}` +
+        (granted.length ? `, granted ${this.factionsOf(granted)}` : "") + (revoked.length ? `, revoked ${this.factionsOf(revoked)}` : ""));
+    }
+  }
+
+  private factionsOf(spellIds: number[]): string {
+    if (!spellIds.length) return "nothing";
+    return spellIds.map((spellId) => {
+      for (const [factionId, id] of this.spells) if (id === spellId) return markerFactionOf(factionId);
+      return hex(spellId);
+    }).join(", ");
   }
 
   private read(ctx: SystemContext, actorId: number): number[] {
@@ -157,12 +178,14 @@ export class FactionCraftSystem implements System {
   }
 
   // A console addspell would be client-local and lost on the next actor sync.
-  private cast(ctx: SystemContext, actorId: number, spellId: number, grant: boolean): void {
+  private cast(ctx: SystemContext, actorId: number, spellId: number, grant: boolean): boolean {
     try {
       if (grant) addSpellTo(ctx.svr as Mp, actorId, spellId);
       else removeSpellFrom(ctx.svr as Mp, actorId, spellId);
+      return true;
     } catch (e) {
-      this.log(`[factionCraft] could not ${grant ? "grant" : "revoke"} ${spellId.toString(16)}: ${e}`);
+      this.log(`[factionCraft] could not ${grant ? "grant" : "revoke"} ${hex(spellId)} ${grant ? "to" : "from"} ${hex(actorId)}: ${e}`);
+      return false;
     }
   }
 

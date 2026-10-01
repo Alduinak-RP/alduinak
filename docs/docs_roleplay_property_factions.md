@@ -397,13 +397,13 @@ Guilds hold 20:
 The College's Master-Wizard and Headmaster recruit Students, remove members and
 craft; the Master-Wizard also promotes everything below itself.
 
-Hold uniforms are crafted, not issued: only the Captain rank of a hold court
-carries `craft` (the Jarl and an acting regent craft through leader authority),
-so only they see the hold's guard armour, helmet, shield and cloak recipes
+Hold uniforms are crafted, not issued: only the ranks of a hold court that
+carry `craft` (the Captain in the seeded ladders, the Courtier of every court
+since the owner's 2026-09-30 edit; the Jarl and an acting regent craft through
+leader authority) see the hold's guard armour, helmet, shield and cloak recipes
 (`HasSpell AldFaction_hold<name>`, the vanilla city guard set of that hold) and
-hand them to their guards. Guards, housecarls and courtiers no longer carry
-`craft`. The Eastmarch captain's cuirass is the Stormcloak cuirass and the
-Eastmarch helmet had no recipe; the r15 plugin gives the Eastmarch court the
+hand them to their guards. The Eastmarch captain's cuirass is the Stormcloak
+cuirass and the Eastmarch helmet had no recipe; the r15 plugin gives the Eastmarch court the
 cuirass recipe and a new `AldRecipeArmorGuardHelmetFullEastmarch`. Since r17
 they also make their hold's Sentinel City Guards set (light and heavy armour,
 boots, gauntlets, helmets, shields, cloaks and the hold's sword or war axe).
@@ -461,7 +461,13 @@ the Falkreath Warhammer) stays Master.
   account once no living character is left. Each removal writes a staff log line.
 - **Faction crafting**: only ranks with `craft` carry the `AldFaction_<id>`
   marker spell the recipes test, so gear follows the rank rather than plain
-  membership.
+  membership. The recipe's profession tier applies on top of the marker, so a
+  craft rank without that tier of the profession sees nothing. The server logs
+  `[factionCraft] <actor> at login holds the craft marker of <faction ids>` at
+  each login of a character with a marker, and `... after a rank reload holds
+  ..., granted <ids>, revoked <ids>` whenever a rank change or a definition edit
+  hands one over or takes one back; a grant or revoke that fails is logged
+  (`could not grant <spell> to <actor>`) and tried again at the next sync.
 - **Territory**: a territory's powers reach only inside its own hold (the
   court of `hold:the-rift` inside the Rift, the same court-to-hold mapping as
   hold property below). A territory whose hold has no land in the load order
