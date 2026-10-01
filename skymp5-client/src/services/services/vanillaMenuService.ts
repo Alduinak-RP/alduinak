@@ -108,7 +108,8 @@ export class VanillaMenuService extends ClientListener {
   // The Crafting Menu pushes the HUD's InventoryMode, which hides all three bars; the magicka bar, which carries fatigue, stays up in the health bar's place above the bottom bar and the health bar stays hidden
   private holdCraftingMagicka(): void {
     const ui = this.sp.Ui;
-    if (!ui.isMenuOpen(Menu.HUD)) return;
+    // The update after the menu closes comes before the menuClose task, when the HUD may already show the health bar again
+    if (!ui.isMenuOpen(Menu.HUD) || !ui.isMenuOpen(Menu.Crafting)) return;
     let meter = this.craftingMeter;
     if (!meter) {
       const health = ui.getString(Menu.HUD, `${HUD_HEALTH}._name`);

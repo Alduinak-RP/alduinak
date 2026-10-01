@@ -205,7 +205,12 @@ line to `skyrim-platform.log`.
   `_y += safeRect.y - _height + 17`); the magicka art ends 15.5 px above its
   origin, so the lift keeps it above the bar for any safe zone. A health bar
   that shows while the menu is open is hidden (`Health._visible`, checked
-  every update) and shown again at the close. The clips are found by their
+  every update) and shown again at the close. The check runs only while
+  `Ui.isMenuOpen("Crafting Menu")` holds: SkyrimPlatform sends the update
+  before it runs the queued `menuClose`, so one more update follows the
+  close, by when the HUD may have shown the health bar again on its own, and
+  the line below would then report a health bar the menu never had.
+  The clips are found by their
   `_name`, compared without case: Papyrus pools strings without case, so
   `Health` can come back as another script first wrote it. A
   full, idle bar fades out, so the clip is held on frame 40 (`Pause`,
