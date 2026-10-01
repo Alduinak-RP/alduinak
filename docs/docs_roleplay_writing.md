@@ -71,11 +71,30 @@ the client answers "Take the writing into your pack to read it."
 Reading an item in the inventory fires the game's equip event. The client
 recognises the two keywords, closes the vanilla Book Menu and the inventory
 (the browser is hidden while either is open), and sends `writingUse` with
-the base id. The server answers from what the player carries:
+the base id and `name`, the name of the entry the player read. The equip
+event carries only the base, so the client reads SkyUI's selection
+(`_root.Menu_mc.inventoryLists.itemList.selectedEntry`, `text` when its
+`formId` is that base) and sends `""` when it cannot tell. The server answers
+from what the player carries:
 
-- a blank: the composer for that kind;
-- a written item of that base, one copy: its document;
-- several copies of that base: a list to pick from.
+- the entry read carries a document id the pack holds: that document;
+- the entry read has no id (a Blank Parchment, Journal or Book, or an unnamed
+  written item) and a blank of that base is carried: the composer;
+- no name: the composer when nothing written of that base is carried; the
+  document when one written copy is carried and no blank of that base;
+  otherwise a list to pick from, led by **Write a new letter** (journal,
+  book) while an unnamed copy of that base is carried. That row sends
+  `writingOpen` with id `new` and opens the composer on it.
+
+Before K4 (2026-09-30) the server saw only the base, and the composer opened
+only when no written copy of that base was carried, so an unnamed Letter from
+the Item Spawner read beside a received letter opened that letter, or a list
+without it, until the letters left the pack.
+The server logs every read: `[writing] <actor> reads <base> "<name>": <id> |
+the composer | a list of N [and a new one] | nothing, carrying B blank and W
+written of that base`, and skyrim-platform.log `WritingService: reading <base>
+from the pack, selected entry "<name>"` (or `selected entry unread`).
+`node tools/test-writing-use.js` in `skymp5-server` covers these cases.
 
 The composer has a title field (40 characters) and pages: a letter is one
 page of 2,000 characters, a journal up to 50 and a book up to 100 pages of
@@ -417,8 +436,8 @@ from door 1a2b3c (claim 1a2b3c "Breezehome")` to `admin.log`.
 Every message is a CustomPacket carrying JSON:
 
     Client -> Server:
-      { customPacketType: "writingUse", baseId }
-      { customPacketType: "writingOpen", id }
+      { customPacketType: "writingUse", baseId, name }   // name of the entry read, "" unknown
+      { customPacketType: "writingOpen", id }            // id "new": the list's Write a new row
       { customPacketType: "writingCreate", title, pages, signed }
       { customPacketType: "writingSave", id, title, pages }
       { customPacketType: "writingFinish" | "writingSeal" | "writingBreak" | "writingCopy" | "writingBurn", id }
@@ -490,7 +509,15 @@ In this order:
 
 - Reading a Blank Parchment from the pack closes the inventory and opens the
   composer, without the vanilla book flashing for long; note whether the Book
-  Menu or the equip event came first (client log `Reading writing`).
+  Menu or the equip event came first (skyrim-platform.log `WritingService:
+  reading`).
+- Blanks beside letters (K4): carry two received letters, a Blank Parchment
+  and an unnamed Letter (Item Spawner). Read each from the pack: the Blank
+  Parchment and the unnamed Letter open the composer, each letter opens
+  itself; the server log names the entry (`reads 330020cb "Mysterious Note
+  (W...)": W...`) and skyrim-platform.log shows `selected entry "..."`. With
+  `selected entry unread`, reading a letter shows the list with **Write a new
+  letter** first.
 - The written item shows its name in the inventory, trade window and a chest.
 - Two letters in one chest, taken back one by one, each keep their own text.
 - Seal (wax used), trade to a second player, break the seal: the break line is

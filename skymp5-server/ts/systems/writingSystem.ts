@@ -56,6 +56,8 @@ const COUNTER_PROP = "private.writings";
 const LOG_FILE = "writing.log";
 const ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const TAG = /\((W[0-9A-Z]{5})\)$/;
+// The list row that writes on a blank of the base read; never a document id
+const NEW_ROW_ID = "new";
 const OPEN_COOLDOWN_MS = 1000;
 const SAVE_COOLDOWN_MS = 2000;
 const DAY_MS = 24 * 3600000;
@@ -84,7 +86,7 @@ type View = "compose" | "read" | "sealed" | "list";
 interface Session {
   view: View;
   kind?: WritingKind;
-  // The blank base the composer writes on
+  // The blank base the composer, or the list's new row, writes on
   blank?: number;
 }
 
@@ -116,6 +118,9 @@ const tagOf = (name: unknown): string => {
   const m = typeof name === "string" ? TAG.exec(name) : null;
   return m ? m[1] : "";
 };
+
+// The id anywhere in a name the client read off its inventory list; titles hold no brackets
+const pickedTag = (name: string): string => /\((W[0-9A-Z]{5})\)/.exec(name)?.[1] || "";
 
 // Printable Latin-1 without the brackets the name tag relies on
 const cleanTitle = (raw: unknown, max: number): string =>
@@ -184,8 +189,8 @@ export class WritingSystem implements System {
     }
     const id = String(content["id"] ?? "");
     switch (type) {
-      case "writingUse": return this.onUse(mp, userId, actorId, toFormId(content["baseId"]));
-      case "writingOpen": return this.cooled(this.lastOpenMs, userId, OPEN_COOLDOWN_MS) ? this.openDoc(mp, userId, actorId, id) : undefined;
+      case "writingUse": return this.onUse(mp, userId, actorId, toFormId(content["baseId"]), content["name"]);
+      case "writingOpen": return this.cooled(this.lastOpenMs, userId, OPEN_COOLDOWN_MS) ? this.onOpen(mp, userId, actorId, id) : undefined;
       case "writingCreate": return this.onCreate(mp, userId, actorId, content);
       case "writingSave": return this.onSave(mp, userId, actorId, id, content);
       case "writingFinish": return this.onFinish(mp, userId, actorId, id);
@@ -219,17 +224,23 @@ export class WritingSystem implements System {
 
   // ── Opening ─────────────────────────────────────────────────────────────────
 
-  private onUse(mp: Mp, userId: number, actorId: number, baseId: number): void {
+  // picked is the inventory entry the player read as the client names it, absent when the client cannot tell
+  private onUse(mp: Mp, userId: number, actorId: number, baseId: number, picked: unknown): void {
     const key = this.keyOf.get(baseId);
     const kind = key ? KIND_OF[key] : undefined;
     if (!key || !kind || !this.cooled(this.lastOpenMs, userId, OPEN_COOLDOWN_MS)) return;
-    if (this.plainCount(mp, actorId, baseId) > 0 && !this.carried(mp, actorId).some((c) => c.entry.baseId >>> 0 === baseId)) {
-      this.openCompose(mp, userId, kind, baseId);
-      return;
-    }
+    const name = typeof picked === "string" ? picked.slice(0, 256) : "";
+    const tag = pickedTag(name);
+    const blanks = this.plainCount(mp, actorId, baseId);
     const written = this.carried(mp, actorId).filter((c) => c.entry.baseId >>> 0 === baseId);
-    if (written.length === 1) this.openDoc(mp, userId, actorId, written[0].id);
-    else if (written.length > 1) this.openList(mp, userId, written);
+    // An entry read without an id is a blank; unnamed, a lone written copy opens only when no blank shares its base
+    const open = written.find((c) => c.id === tag)?.id || (written.length === 1 && !blanks ? written[0].id : "");
+    const compose = !open && !tag && blanks > 0 && (!!name || !written.length);
+    if (open) this.openDoc(mp, userId, actorId, open);
+    else if (compose) this.openCompose(mp, userId, kind, baseId);
+    else if (written.length) this.openList(mp, userId, written, kind, blanks > 0 ? baseId : 0);
+    const shown = open || (compose ? "the composer" : written.length ? `a list of ${written.length}${blanks > 0 ? " and a new one" : ""}` : "nothing");
+    this.log(`[writing] ${hex(actorId)} reads ${hex(baseId)} ${JSON.stringify(name)}: ${shown}, carrying ${blanks} blank and ${written.length} written of that base`);
   }
 
   // A written item without a name counts as a blank of its kind
@@ -238,16 +249,24 @@ export class WritingSystem implements System {
     this.sendMenu(mp, userId, { view: "compose", compose: { kind, blankName: BLANK_LABEL[kind] } });
   }
 
-  private openList(mp: Mp, userId: number, written: Carried[]): void {
-    this.sessions.set(userId, { view: "list" });
-    this.sendMenu(mp, userId, {
-      view: "list",
-      list: written.map((c) => {
-        const kind = KIND_OF[c.key] || "letter";
-        const sealed = c.key === "sealed";
-        return { id: c.id, kind, title: sealed ? "Sealed Letter" : this.store.load(c.id)?.title || KIND_LABEL[kind], sealed };
-      }),
+  // The written copies of one base, led by a row that writes on a blank of it when one is carried
+  private openList(mp: Mp, userId: number, written: Carried[], kind: WritingKind, blank: number): void {
+    this.sessions.set(userId, { view: "list", kind, blank });
+    const rows = written.map((c) => {
+      const rowKind = KIND_OF[c.key] || "letter";
+      const sealed = c.key === "sealed";
+      return { id: c.id, kind: rowKind, title: sealed ? "Sealed Letter" : this.store.load(c.id)?.title || KIND_LABEL[rowKind], sealed };
     });
+    if (blank) rows.unshift({ id: NEW_ROW_ID, kind, title: `Write a new ${KIND_LABEL[kind].toLowerCase()}`, sealed: false });
+    this.sendMenu(mp, userId, { view: "list", list: rows });
+  }
+
+  private onOpen(mp: Mp, userId: number, actorId: number, id: string): void {
+    if (id !== NEW_ROW_ID) return this.openDoc(mp, userId, actorId, id);
+    const session = this.sessions.get(userId);
+    if (session?.view !== "list" || !session.kind || !session.blank) return;
+    if (this.plainCount(mp, actorId, session.blank) < 1) return this.notice(mp, userId, `You have no ${BLANK_LABEL[session.kind]} left.`);
+    this.openCompose(mp, userId, session.kind, session.blank);
   }
 
   private openDoc(mp: Mp, userId: number, actorId: number, id: string): void {
