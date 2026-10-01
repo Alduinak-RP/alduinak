@@ -140,6 +140,17 @@ private:
   float GuardReportedHealth(const MpActor& actor, float current,
                             float reported);
 
+  // Health reports cropped while healthRegenerationMultiplier is set
+  struct RefusedHealthIncreases
+  {
+    std::chrono::steady_clock::time_point since;
+    uint32_t count = 0;
+    float largest = 0.f;
+  };
+
+  void NoteRefusedHealthIncrease(const MpActor& actor, float refused,
+                                 std::chrono::steady_clock::time_point now);
+
   void TickRestorationChannel(uint32_t casterId, uint32_t generation);
   MpActor* GetRestorationChannelTarget(uint32_t casterId,
                                        const RestorationChannel& channel);
@@ -174,6 +185,7 @@ private:
   std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
     paralyzedUntil;
   std::unordered_map<uint32_t, BlockedHitGuard> blockedHitGuards;
+  std::unordered_map<uint32_t, RefusedHealthIncreases> refusedHealthIncreases;
   // Until when a player's reports can still carry an unblocked hit's poison
   std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
     unblockedPoisonUntil;

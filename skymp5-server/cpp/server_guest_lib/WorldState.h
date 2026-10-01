@@ -260,9 +260,14 @@ public:
   NpcSettingsEntry defaultSetting;
   bool enableConsoleCommandsForAll = false;
   float regenerationMultiplier = 1.f;
+  // Takes the place of regenerationMultiplier for health when set
+  std::optional<float> healthRegenerationMultiplier;
 
   // Share of an NPC's weapon hit that still lands through a player's block
   float npcBlockedDamageShare = 0.2f;
+
+  // Ability and Disease skill modifiers scale weapon damage and blocking
+  bool effectModifiers = false;
 
   bool disableVanillaScriptsInExterior = true;
 

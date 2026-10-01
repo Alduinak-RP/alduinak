@@ -182,7 +182,14 @@ TEST_CASE("Temper quality without a rank marker is capped at Fine",
   p.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
   auto& ac = p.worldState.GetFormAt<MpActor>(0xff000000);
 
-  REQUIRE_THAT(craftService->GetMaxTemperHealth(&ac, p.GetEspm().GetBrowser()),
+  const uint32_t IronIngot = 0x5ace4, IronDagger = 0x1397e;
+  auto temper = craftService->FindRecipe(
+    std::nullopt, std::nullopt, p.GetEspm().GetBrowser(),
+    Inventory().AddItem(IronIngot, 1), IronDagger, true);
+  REQUIRE(temper.size() > 0);
+
+  REQUIRE_THAT(craftService->GetMaxTemperHealth(
+                 &ac, p.GetEspm().GetBrowser(), temper[0]),
                Catch::Matchers::WithinAbs(1.1, 0.001));
 
   p.DestroyActor(0xff000000);

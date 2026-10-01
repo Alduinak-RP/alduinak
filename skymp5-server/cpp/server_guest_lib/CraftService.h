@@ -1,7 +1,10 @@
 #pragma once
+#include "TemperCap.h"
 #include "libespm/Loader.h"
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 class PartOne;
@@ -32,7 +35,8 @@ public:
     uint32_t resultObjectId, bool temper = false);
 
   // public for CraftTest.cpp
-  float GetMaxTemperHealth(MpActor* me, const espm::CombineBrowser& br);
+  float GetMaxTemperHealth(MpActor* me, const espm::CombineBrowser& br,
+                           const espm::LookupResult& recipe);
 
   // public for CraftTest.cpp
   bool EvaluateCraftRecipeConditions(MpActor* me,
@@ -54,13 +58,17 @@ private:
                       espm::CompressedFieldsCache& cache,
                       const espm::CombineBrowser& br, int espmIdx);
 
-  void UseTemperRecipe(MpActor* me, const espm::COBJ* recipeUsed,
-                       const espm::CombineBrowser& br, int espmIdx,
-                       uint32_t itemId, float temperHealth);
+  void UseTemperRecipe(MpActor* me, const espm::LookupResult& recipe,
+                       const espm::CombineBrowser& br, uint32_t itemId,
+                       float temperHealth);
+
+  void LoadRankMarkers(const espm::CombineBrowser& br);
 
   PartOne& partOne;
-  // AldProf_<Label>_<Rank> marker spell ids and their rank index
-  std::optional<std::vector<std::pair<uint32_t, int>>> rankMarkers;
+  // AldProf_<Label>_<Rank> marker spell ids with their profession and rank
+  std::optional<std::unordered_map<uint32_t, TemperCap::Marker>> rankMarkers;
+  // Professions whose markers gate a recipe of the bench keyword
+  std::unordered_map<uint32_t, std::vector<std::string>> benchProfessions;
   std::vector<espm::LookupResult> allRecipes;
   espm::CompressedFieldsCache cache;
 };

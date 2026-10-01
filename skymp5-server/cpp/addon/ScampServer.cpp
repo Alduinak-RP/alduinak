@@ -16,6 +16,7 @@
 #include "condition_functions/ConditionFunctionFactory.h"
 #include "formulas/DamageMultConditionalFormula.h"
 #include "formulas/DamageMultFormula.h"
+#include "formulas/EffectModifiers.h"
 #include "formulas/SweetPieDamageFormula.h"
 #include "formulas/SweetPieSpellDamageFormula.h"
 #include "formulas/TES5DamageFormula.h"
@@ -359,6 +360,52 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
         spdlog::error(
           "Unexpected value of regenerationMultiplier, should be a number");
       }
+    }
+
+    // healthRegenerationMultiplier: takes the place of regenerationMultiplier for health only, 0 refuses every health increase a client reports
+    if (auto it = serverSettings.find("healthRegenerationMultiplier");
+        it != serverSettings.end()) {
+      if (it->is_number() && it->get<float>() >= 0.f) {
+        partOne->worldState.healthRegenerationMultiplier = it->get<float>();
+      } else {
+        spdlog::error("Unexpected value of healthRegenerationMultiplier, "
+                      "should be a number of 0 or more, health keeps "
+                      "regenerationMultiplier");
+      }
+    }
+    if (partOne->worldState.healthRegenerationMultiplier) {
+      logger->info("healthRegenerationMultiplier is {}: health reported by "
+                   "clients regenerates at that share of the base rate, "
+                   "magicka and stamina keep regenerationMultiplier {}",
+                   *partOne->worldState.healthRegenerationMultiplier,
+                   partOne->worldState.regenerationMultiplier);
+    } else {
+      logger->info("healthRegenerationMultiplier is not set: health "
+                   "regenerates by regenerationMultiplier {}",
+                   partOne->worldState.regenerationMultiplier);
+    }
+
+    // alduinakDamageFormulaSettings.effectModifiers: Ability and Disease skill modifiers scale weapon damage and blocking, only while enabled or durability.enabled is true
+    if (auto it = serverSettings.find("alduinakDamageFormulaSettings");
+        it != serverSettings.end() && it->is_object()) {
+      const auto flag = [](const nlohmann::json& object, const char* key,
+                           bool fallback) {
+        auto found = object.find(key);
+        return found != object.end() && found->is_boolean()
+          ? found->get<bool>()
+          : fallback;
+      };
+      auto durability = it->find("durability");
+      const bool enabled = flag(*it, "enabled", false);
+      const bool durabilityEnabled = durability != it->end() &&
+        durability->is_object() && flag(*durability, "enabled", false);
+      const bool effectModifiers = flag(*it, "effectModifiers", true);
+      partOne->worldState.effectModifiers = EffectModifiersActive(
+        true, enabled, durabilityEnabled, effectModifiers);
+      logger->info("alduinakDamageFormulaSettings: effect modifiers are {} "
+                   "(effectModifiers {}, enabled {}, durability.enabled {})",
+                   partOne->worldState.effectModifiers ? "on" : "off",
+                   effectModifiers, enabled, durabilityEnabled);
     }
 
     // npcBlockedDamageShare: share of an NPC's weapon hit a player's block lets through, 0 blocks it fully
