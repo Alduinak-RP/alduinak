@@ -105,18 +105,18 @@ interface DebugServer {
   tzOffsetMin: number; // server-side Date.getTimezoneOffset()
 }
 
-// The crosshair target (adminMenuService.ts DebugTarget); ref and server ids arrive empty on another player's character unless staff.
+// The crosshair target (adminMenuService.ts DebugTarget); the ref id arrives empty on another player's character unless staff.
 interface DebugTarget {
   name: string;
   dist: number;
   live: boolean; // false once the crosshair left it while the menu stayed open
   player: boolean;
-  refId: string;
+  refId: string; // the server's id (a player's character id), the client's own id only when clientOnly
   refDesc: string; // "hex:Plugin", empty for a ref created in game
-  serverId: string; // empty for a client-only ref
+  clientOnly: boolean; // a ref the server does not know
   baseId: string;
   baseDesc: string;
-  localBaseId: string; // the client's own base when it differs from baseId
+  localBaseId: string; // the client's own plugin base when it differs from baseId
   localBaseDesc: string;
   cell: string;
   cellName: string;
@@ -314,8 +314,7 @@ const withDesc = (id: string, desc: string): string => hexId(id) + (desc ? ' (' 
 // One line for bug reports; the descs paste straight into the Item Spawner search
 const targetReport = (t: DebugTarget): string => {
   const parts = [t.name || '(no name)'];
-  if (t.refId) parts.push('ref ' + withDesc(t.refId, t.refDesc));
-  if (t.serverId && t.serverId !== t.refId) parts.push('server ' + hexId(t.serverId));
+  if (t.refId) parts.push((t.player ? 'character ' : 'ref ') + withDesc(t.refId, t.refDesc) + (t.clientOnly ? ' client only' : ''));
   if (t.baseId) parts.push('base ' + withDesc(t.baseId, t.baseDesc));
   if (t.localBaseId) parts.push('local base ' + withDesc(t.localBaseId, t.localBaseDesc));
   if (t.cell) parts.push('cell ' + hexId(t.cell) + (t.cellName ? ' ' + t.cellName : ''));
@@ -384,8 +383,16 @@ const debugCells = (d: DebugData, now: number): DebugCell[] => {
     { label: 'Game Time/Date', value: gameClock(d.gameTime), sub: gameDate(d.gameTime) },
     { label: 'Local Time/Date', value: formatClock(now, new Date(now).getTimezoneOffset()) },
     { label: 'Server Time/Date', value: server ? formatClock(now + server.offsetMs, server.tzOffsetMin) : 'unknown' },
-    { label: 'Target Ref ID', value: !t ? '-' : hidden ? 'Staff only' : hexId(t.refId), sub: t && !hidden ? inGame(t.refDesc) : undefined },
-    { label: 'Target Server ID', value: !t ? '-' : hidden ? 'Staff only' : !t.serverId ? 'client only' : t.serverId === t.refId ? 'same as ref' : hexId(t.serverId) },
+    {
+      label: 'Target Ref ID',
+      value: !t ? '-' : hidden ? 'Staff only' : hexId(t.refId),
+      sub: !t || hidden ? undefined : t.clientOnly ? 'client only' : t.player ? 'character' : inGame(t.refDesc),
+    },
+    {
+      label: 'Target POS (X Y Z)',
+      value: t ? (t.pos || []).map((n) => Math.round(n)).join(' ') || '-' : '-',
+      sub: t && t.cell ? hexId(t.cell) + (t.cellName ? ' ' + t.cellName : '') : undefined,
+    },
     {
       label: 'Target Base ID',
       value: t ? hexId(t.baseId) : '-',

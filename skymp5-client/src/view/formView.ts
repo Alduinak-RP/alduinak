@@ -686,12 +686,13 @@ export class FormView {
           this.createdTagColor = this.tagColor(model);
           this.textNameId = createText(textXPos, textYPos, this.createdTagName, this.createdTagColor);
           setTextSize(this.textNameId, 0.5);
-          // Local (ffxxxxxx) actor id on a second line under the name
-          if (this.createdActorIdLine) {
+          // The server's actor id (a player's character id) on a second line under the name
+          const serverId = this.createdActorIdLine ? localIdToRemoteId(this.refrId) : 0;
+          if (serverId) {
             this.textActorIdId = createText(
               textXPos,
               textYPos + FormView.actorIdLineOffset,
-              this.refrId.toString(16).toUpperCase().padStart(8, "0"),
+              serverId.toString(16).toUpperCase().padStart(8, "0"),
               [1, 1, 1, 0.6]
             );
             setTextSize(this.textActorIdId, 0.4);

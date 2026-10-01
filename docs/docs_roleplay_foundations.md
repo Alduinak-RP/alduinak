@@ -95,8 +95,11 @@ Rules:
   disables the checkbox.
 - The two nametag toggles are saved with the other chat settings:
   **show player names** (off by default, draws the nametag
-  over other players) and **show form ids** (off by default, the `ffxxxxxx`
-  line under the name; it never shows while names are hidden). A settings
+  over other players) and **show form ids** (off by default, a line under
+  the name with the server's actor id, which for a player is the character
+  id the admin panel's Players tab and the server logs use, never the
+  client's own `ff` copy id that differs from client to client; it never
+  shows while names are hidden). A settings
   file from before the rename (no `showPlayerNames` key) counts as fresh for
   both, so everyone starts hidden until they tick the boxes. With names
   hidden, a talking player still shows the lone VOIP glyph over their head.

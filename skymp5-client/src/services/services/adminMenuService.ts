@@ -21,6 +21,8 @@ declare const window: any;
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
+// The server leaves the Player base (7:Skyrim.esm) out of createActor
+const PLAYER_BASE_ID = 0x7;
 const DEBUG_REFRESH_MS = 5000;
 const TARGET_REFRESH_MS = 250;
 // Looking around off the crosshair raises no event, so the facing scan runs on its own beat
@@ -106,7 +108,7 @@ interface DebugServer {
   tzOffsetMin: number;
 }
 
-// Crosshair target read-outs; player marks another player's character or body
+// Crosshair target read-outs; player marks another player's character or body, refId is the server's id unless clientOnly
 interface DebugTarget {
   name: string;
   dist: number;
@@ -114,7 +116,7 @@ interface DebugTarget {
   player: boolean;
   refId: string;
   refDesc: string;
-  serverId: string;
+  clientOnly: boolean;
   baseId: string;
   baseDesc: string;
   localBaseId: string;
@@ -487,16 +489,18 @@ export class AdminMenuService extends ClientListener {
       return;
     }
     const descOf = (id: number): string => (id && formDesc(id)) || "";
-    const refId = safe(() => ref.getFormID(), 0) >>> 0;
-    const serverId = safe(() => localIdToRemoteId(refId), 0) >>> 0;
+    // A clone's local ff id differs on every client, so only the server's id is shown
+    const localId = safe(() => ref.getFormID(), 0) >>> 0;
+    const serverId = safe(() => localIdToRemoteId(localId), 0) >>> 0;
+    const refId = serverId || localId;
     const character = safe(() => isPlayerCharacterId(this.controller, serverId), false);
     // Refs created in game read their base from the server's world model
     const serverBase = serverId >= FIRST_DYNAMIC_ID
-      ? safe(() => this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === serverId)?.baseId, 0) >>> 0
+      ? safe(() => this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === serverId)?.baseId || (character ? PLAYER_BASE_ID : 0), 0) >>> 0
       : 0;
     const localBase = safe(() => ref.getBaseObject()?.getFormID(), 0) >>> 0;
     const baseId = serverBase || localBase;
-    const localBaseId = localBase !== baseId ? localBase : 0;
+    const localBaseId = localBase !== baseId && localBase < FIRST_DYNAMIC_ID ? localBase : 0;
     let name = safe(() => ref.getDisplayName(), "") || safe(() => ref.getBaseObject()?.getName(), "");
     if (character) name = safe(() => introducedName(ref, serverId, sp.Actor.from(ref)?.isDead() === true), "Stranger");
     this.target = {
@@ -506,7 +510,7 @@ export class AdminMenuService extends ClientListener {
       player: character,
       refId: hex(refId),
       refDesc: descOf(refId),
-      serverId: hex(serverId),
+      clientOnly: !serverId,
       baseId: hex(baseId),
       baseDesc: descOf(baseId),
       localBaseId: hex(localBaseId),
@@ -558,10 +562,10 @@ export class AdminMenuService extends ClientListener {
     this.pushData();
   }
 
-  // A player character's ref and server ids stay the same across masks and sessions, so only staff see them
+  // A player character's id stays the same across masks and sessions, so only staff see it
   private shownTarget(): DebugTarget | null {
     const t = this.target;
-    return t && t.player && !panelData.admin ? { ...t, refId: "", refDesc: "", serverId: "" } : t;
+    return t && t.player && !panelData.admin ? { ...t, refId: "", refDesc: "" } : t;
   }
 
   private onBrowserMessage(e: BrowserMessageEvent) {
