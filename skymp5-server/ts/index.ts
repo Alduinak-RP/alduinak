@@ -259,7 +259,7 @@ const main = async () => {
   // Living NPCs are searched too; hosting's aggro says whether one is fighting
   const searchSystem = new SearchSystem(log, hostingSystem);
   const huntingSystem = new HuntingSystem(log, masterySystem, needsSystem);
-  // A hunter's interaction with a dead animal or a dead player's own body skins it before it is searched
+  // A hunter's interaction with a dead animal, a dead player's own body or a PK body skins it before it is searched
   searchSystem.bodyAction = (ctx, searcherId, bodyId) => huntingSystem.trySkin(ctx, searcherId, bodyId);
   searchSystem.hidesItem = (ctx, _viewerId, bodyId, baseId) => huntingSystem.hidesMeat(ctx, bodyId, baseId);
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
@@ -288,9 +288,10 @@ const main = async () => {
   const factionSystem = new FactionSystem(log, housingSystem);
   // A PK leaves a lootable body at the spot of death
   const bodySystem = new BodySystem(log);
-  // A player's body being skinned or skinned is not searched until the respawn
+  // A player's own body is not searched from its skinning until the respawn, a PK body only while it is skinned
   searchSystem.bodyRefusal = (searcherId, bodyId) => huntingSystem.searchRefusal(bodyId) || bodySystem.refusalFor(searcherId, bodyId);
   huntingSystem.leftBody = (victimId) => bodySystem.hasBodyFor(victimId);
+  huntingSystem.pkBodyOf = (bodyId) => bodySystem.bodyOf(bodyId);
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
   const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem, furnitureSeatSystem);
   adminSystem.setExecutionSystem(executionSystem);

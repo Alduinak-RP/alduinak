@@ -17,9 +17,10 @@ type Mp = any;
 // more cut. The skinner also takes what else the carcass carries, then the body disappears for everyone: a zone corpse on the
 // corpseConsumed event (NpcSpawnSystem), any other body disabled for good, as no other NPC respawns (placed ones never do and the
 // gamemode's death hook gives the rest a 1e9 s delay). A pet's body stays and gives only its meat. Skinning costs half a kill of fatigue by hunter rank and credits hunter hours.
-// A player character's own body, which lies dead until its respawn (respawnSeconds), is skinned the same way, only through bodyAction, once per death for
-// Human Flesh and a chance of a Human Heart; nothing of the victim's pack goes to the skinner, the body stays where it lies, and
-// SearchSystem refuses every search of it from the start of the skinning until the respawn. The clone a PK leaves is only searched.
+// A player character's own body, which lies dead until its respawn (respawnSeconds), or the body a PK leaves instead (BodySystem) is skinned the same way,
+// only through bodyAction, once per death for Human Flesh, a chance of a Human Heart and, on a body that looks Khajiit, a chance of a Khajiit Pelt;
+// nothing of the pack goes to the skinner and the body stays where it lies. SearchSystem refuses every search of an own body from the start of the
+// skinning until the respawn, and of a PK body only during the skinning, after which it keeps its pack for the usual loot rules.
 //
 // server-settings.json keys (all optional):
 //   huntingButcherChance         chance an Expert or better hunter's skinning gives one more cut of meat, default 0.25
@@ -33,6 +34,8 @@ type Mp = any;
 //   huntingHumanFlesh            item a skinned player's body gives, editor id or desc, default HumanFlesh (Skyrim.esm 001016B3)
 //   huntingHumanHeart            item it may add, default HumanHeart (Skyrim.esm 000B18CD); "" gives none
 //   huntingHumanHeartChance      chance of the heart, default 0.1
+//   huntingKhajiitPelt           item a body showing KhajiitRace or KhajiitRaceVampire may add, default AldKhajiitPelt; "" gives none
+//   huntingKhajiitPeltChance     chance of that pelt, default 0.2
 
 const NOTICE_PACKET = "masteryNotice";
 const DEFAULT_BUTCHER_CHANCE = 0.25;
@@ -55,12 +58,32 @@ type PlayerSkinMode = typeof PLAYER_SKIN_MODES[number];
 const DEFAULT_HUMAN_FLESH = "HumanFlesh";
 const DEFAULT_HUMAN_HEART = "HumanHeart";
 const DEFAULT_HEART_CHANCE = 0.1;
+const DEFAULT_KHAJIIT_PELT = "AldKhajiitPelt";
+const DEFAULT_KHAJIIT_PELT_CHANCE = 0.2;
+// Skyrim.esm 13745 and 88845, matched against the race a body's appearance shows
+const KHAJIIT_RACES = ["KhajiitRace", "KhajiitRaceVampire"];
 
-interface PlayerSkin {
-  skinnerId: number;
+// A dead player character's own actor, or the body a PK left of them
+interface PlayerBody {
   bodyId: number;
+  victimId: number;
   profileId: number;
+  pk: boolean;
 }
+
+interface PlayerSkin extends PlayerBody {
+  skinnerId: number;
+}
+
+const chanceOf = (raw: unknown, fallback: number): number => {
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+};
+
+const pct = (chance: number): string => `${Math.round(chance * 100)}%`;
+
+const bodyName = (body: PlayerBody): string =>
+  body.pk ? `the PK body ${hex(body.bodyId)} of player ${hex(body.victimId)}` : `the body of player ${hex(body.bodyId)}`;
 
 // Raw meat the vanilla and DLC animals drop; VendorItemFoodRaw misses most of the meat, so they are listed.
 const DEFAULT_MEATS = ["FoodVenison", "FoodRabbit", "FoodBeef", "FoodGoatMeat", "FoodHorseMeat", "FoodHorkerMeat", "FoodMammothMeat", "FoodChicken", "FoodDogMeat", "BYOHFoodMudcrabLegs", "DLC2FoodBoarMeat", "DLC2FoodAshHopperLeg", "DLC2FoodAshHopperMeat"];
@@ -106,8 +129,7 @@ export class HuntingSystem implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
     const all = s.allSettings as Record<string, unknown> | null;
-    const butcher = Number(all?.["huntingButcherChance"]);
-    this.butcherChance = Number.isFinite(butcher) && butcher >= 0 && butcher <= 1 ? butcher : DEFAULT_BUTCHER_CHANCE;
+    this.butcherChance = chanceOf(all?.["huntingButcherChance"], DEFAULT_BUTCHER_CHANCE);
     const meats = Array.isArray(all?.["huntingMeats"]) ? (all!["huntingMeats"] as unknown[]).filter((x): x is string => typeof x === "string" && !!x) : DEFAULT_MEATS;
     const rawMap = all?.["huntingPeltMap"];
     const peltMap = rawMap && typeof rawMap === "object" ? rawMap as Record<string, string> : DEFAULT_PELT_MAP;
@@ -117,23 +139,24 @@ export class HuntingSystem implements System {
     const mode = PLAYER_SKIN_MODES.find((m) => m === rawMode);
     if (rawMode !== undefined && !mode) this.log(`[hunting] huntingSkinPlayers ${JSON.stringify(rawMode)} is not one of ${PLAYER_SKIN_MODES.join(", ")}, "crouch" is used`);
     this.playerSkinMode = mode ?? "crouch";
-    const heart = Number(all?.["huntingHumanHeartChance"]);
-    this.heartChance = Number.isFinite(heart) && heart >= 0 && heart <= 1 ? heart : DEFAULT_HEART_CHANCE;
+    this.heartChance = chanceOf(all?.["huntingHumanHeartChance"], DEFAULT_HEART_CHANCE);
+    this.khajiitPeltChance = chanceOf(all?.["huntingKhajiitPeltChance"], DEFAULT_KHAJIIT_PELT_CHANCE);
     const itemName = (raw: unknown, fallback: string): string => typeof raw === "string" ? raw.trim() : fallback;
-    const human = [itemName(all?.["huntingHumanFlesh"], DEFAULT_HUMAN_FLESH), itemName(all?.["huntingHumanHeart"], DEFAULT_HUMAN_HEART)];
+    const human = [itemName(all?.["huntingHumanFlesh"], DEFAULT_HUMAN_FLESH), itemName(all?.["huntingHumanHeart"], DEFAULT_HUMAN_HEART), itemName(all?.["huntingKhajiitPelt"], DEFAULT_KHAJIIT_PELT)];
     await this.resolveItems(ctx, meats, peltMap, meatMap, human, s.dataDir, s.loadOrder);
     chainMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => !this.trySkin(ctx, casterId >>> 0, targetId >>> 0, false));
     chainMpHook(ctx.svr as Mp, "onRespawn", (actorId: number) => { this.onRespawn(ctx, actorId >>> 0); });
+    const khajiit = this.khajiitPeltId && this.khajiitRaces.size ? `, the Khajiit pelt ${hex(this.khajiitPeltId)} at ${pct(this.khajiitPeltChance)} for race ${Array.from(this.khajiitRaces, hex).join(", ")}` : ", no Khajiit pelt";
     const players = this.playerSkinMode === "off" || !this.humanFleshId ? "players not skinned"
-      : `players skinned on ${this.playerSkinMode} for ${hex(this.humanFleshId)}${this.humanHeartId ? ` and the heart ${hex(this.humanHeartId)} at ${Math.round(this.heartChance * 100)}%` : ", no heart"}`;
-    this.log(`[hunting] ready, ${this.pelts.length} pelt and ${this.meatRules.length} meat rule(s) for skinning, butcher ${Math.round(this.butcherChance * 100)}%, ${players}`);
+      : `players skinned on ${this.playerSkinMode} for ${hex(this.humanFleshId)}${this.humanHeartId ? ` and the heart ${hex(this.humanHeartId)} at ${pct(this.heartChance)}` : ", no heart"}${khajiit}`;
+    this.log(`[hunting] ready, ${this.pelts.length} pelt and ${this.meatRules.length} meat rule(s) for skinning, butcher ${pct(this.butcherChance)}, ${players}`);
   }
 
   private async resolveItems(ctx: SystemContext, meats: string[], peltMap: Record<string, string>, meatMap: Record<string, [string, number]>, human: string[], dataDir: string, loadOrder: string[]): Promise<void> {
     const pelts = Object.values(peltMap).filter((v) => typeof v === "string");
     const meatNames = Object.values(meatMap).map((v) => Array.isArray(v) ? String(v[0]) : "").filter((v) => v);
-    const names = meats.concat(pelts, meatNames, human.filter((v) => v), [ANIMAL_KEYWORD]);
-    const scan = await resolveEditorIds(names.filter(isEditorId), dataDir, loadOrder, this.log, ["ALCH", "MISC", "INGR", "KYWD"]);
+    const names = meats.concat(pelts, meatNames, human.filter((v) => v), [ANIMAL_KEYWORD], KHAJIIT_RACES);
+    const scan = await resolveEditorIds(names.filter(isEditorId), dataDir, loadOrder, this.log, ["ALCH", "MISC", "INGR", "KYWD", "RACE"]);
     const mp = ctx.svr as Mp;
     const idOf = (name: string): number => {
       try {
@@ -159,11 +182,17 @@ export class HuntingSystem implements System {
       const count = Array.isArray(rule) ? Math.max(1, Math.floor(Number(rule[1])) || 1) : 1;
       if (id) this.meatRules.push({ fragment: fragment.toLowerCase(), meatId: id, count }); else unresolved.push(String(Array.isArray(rule) ? rule[0] : rule));
     }
-    const [flesh, heart] = human;
+    const [flesh, heart, khajiitPelt] = human;
     this.humanFleshId = flesh ? idOf(flesh) : 0;
     this.humanHeartId = heart ? idOf(heart) : 0;
+    this.khajiitPeltId = khajiitPelt ? idOf(khajiitPelt) : 0;
     if (flesh && !this.humanFleshId) unresolved.push(flesh);
     if (heart && !this.humanHeartId) unresolved.push(heart);
+    if (khajiitPelt && !this.khajiitPeltId) unresolved.push(khajiitPelt);
+    for (const race of KHAJIIT_RACES) {
+      const id = idOf(race);
+      if (id) this.khajiitRaces.add(id); else unresolved.push(race);
+    }
     this.animalKeyword = idOf(ANIMAL_KEYWORD);
     if (!this.animalKeyword) unresolved.push(ANIMAL_KEYWORD);
     if (unresolved.length) this.log(`[hunting] not in the load order, ignored: ${unresolved.join(", ")}`);
@@ -198,13 +227,13 @@ export class HuntingSystem implements System {
     return true;
   }
 
-  // A player character's own body until its respawn, once per death; the PK clone has no profile, and a PK victim's stripped actor respawns within seconds
+  // A player character's own body until its respawn, or the body a PK left of them, once per death
   private trySkinPlayer(ctx: SystemContext, actorId: number, bodyId: number): boolean {
     const mp = ctx.svr as Mp;
-    const profileId = this.profileOf(mp, bodyId);
-    if (this.playerSkinMode === "off" || !this.humanFleshId || profileId < 0) return false;
+    const body = this.playerBodyOf(mp, bodyId);
+    if (this.playerSkinMode === "off" || !this.humanFleshId || !body) return false;
     const rank = this.mastery.rankOf(ctx, actorId, "hunter");
-    if (!rank || this.playerSkins.has(bodyId) || this.skinnedPlayers.has(bodyId) || this.leftBody?.(bodyId) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
+    if (!rank || this.playerSkins.has(bodyId) || this.wasSkinned(mp, body) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
     const knife = holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE_ID);
     const crouched = this.playerSkinMode !== "crouch" || isSneaking(mp, actorId);
     const refusal = !crouched ? (knife ? "Crouch and interact to skin the body instead." : "")
@@ -212,37 +241,60 @@ export class HuntingSystem implements System {
       : !this.needs.canPay(actorId, "fight", rank, true) ? "You are too tired to skin it. Rest a while." : "";
     if (refusal) setImmediate(() => notifyActor(mp, actorId, refusal));
     if (refusal || !crouched) return false;
-    const job: PlayerSkin = { skinnerId: actorId, bodyId, profileId };
+    const job: PlayerSkin = { ...body, skinnerId: actorId };
     this.playerSkins.set(bodyId, job);
     setImmediate(() => sendActionLock(mp, actorId, SKIN_ANIM, SKIN_SECONDS));
-    this.log(`[hunting] ${hex(actorId)} skins the body of player ${hex(bodyId)} (profile ${profileId})`);
+    this.log(`[hunting] ${hex(actorId)} skins ${bodyName(job)} (profile ${job.profileId})`);
     setTimeout(() => this.finishPlayerSkin(ctx, job), SKIN_SECONDS * 1000);
     return true;
   }
 
-  // Flesh and maybe the heart, never the victim's pack; the body stays and SearchSystem refuses it until the respawn
+  // The fallen character a player body stands for; the stripped actor of a PK victim is passed over, as the PK body holds that death
+  private playerBodyOf(mp: Mp, bodyId: number): PlayerBody | undefined {
+    const pk = this.pkBodyOf?.(bodyId);
+    if (pk) return { bodyId, victimId: pk.victimId, profileId: pk.profileId, pk: true };
+    const profileId = this.profileOf(mp, bodyId);
+    return profileId >= 0 && !this.leftBody?.(bodyId) ? { bodyId, victimId: bodyId, profileId, pk: false } : undefined;
+  }
+
+  // A PK body keeps its mark for good, an own body until the respawn
+  private wasSkinned(mp: Mp, body: PlayerBody): boolean {
+    return body.pk ? this.isSkinned(mp, body.bodyId) : this.skinnedPlayers.has(body.bodyId);
+  }
+
+  // Flesh, maybe the heart and on a Khajiit maybe the pelt, never the pack; an own body is then refused to searches until the respawn
   private finishPlayerSkin(ctx: SystemContext, job: PlayerSkin): void {
     if (this.playerSkins.get(job.bodyId) !== job) return;
     this.playerSkins.delete(job.bodyId);
     const mp = ctx.svr as Mp;
     const { skinnerId, bodyId } = job;
-    const stop = this.isBody(mp, bodyId) ? this.interruption(ctx, skinnerId, bodyId) : "the body is gone";
+    const stop = !this.isBody(mp, bodyId) ? "the body is gone" : !job.pk && this.leftBody?.(bodyId) ? "a PK body took their pack"
+      : this.interruption(ctx, skinnerId, bodyId);
     if (stop) {
-      this.log(`[hunting] ${hex(skinnerId)} stopped skinning the body of player ${hex(bodyId)}: ${stop}`);
+      this.log(`[hunting] ${hex(skinnerId)} stopped skinning ${bodyName(job)}: ${stop}`);
       return;
     }
     try {
       const heart = !!this.humanHeartId && Math.random() < this.heartChance;
+      const khajiit = !!this.khajiitPeltId && this.looksKhajiit(mp, bodyId);
+      const pelt = khajiit && Math.random() < this.khajiitPeltChance;
+      if (job.pk) mp.set(bodyId, SKINNED_PROP, skinnerId); else this.skinnedPlayers.set(bodyId, skinnerId);
       addItemTo(mp, skinnerId, this.humanFleshId, 1);
       if (heart) addItemTo(mp, skinnerId, this.humanHeartId, 1);
-      this.skinnedPlayers.set(bodyId, skinnerId);
+      if (pelt) addItemTo(mp, skinnerId, this.khajiitPeltId, 1);
       this.needs.pay(ctx, skinnerId, "fight", this.mastery.rankOf(ctx, skinnerId, "hunter"), "skin", true);
       this.mastery.creditWork(skinnerId, "hunter");
-      notifyActor(mp, bodyId, "Your body was skinned by a hunter. Nothing was taken from your pack.");
-      this.log(`[hunting] ${hex(skinnerId)} skinned the body of player ${hex(bodyId)} (profile ${job.profileId}): ${hex(this.humanFleshId)} x1, ${heart ? `heart ${hex(this.humanHeartId)}` : "no heart"}${this.humanHeartId ? ` (${Math.round(this.heartChance * 100)}% chance)` : ""}, nothing of the pack taken`);
+      notifyActor(mp, job.victimId, job.pk ? "The body you left behind was skinned by a hunter." : "Your body was skinned by a hunter. Nothing was taken from your pack.");
+      const peltPart = khajiit ? `, ${pelt ? `Khajiit pelt ${hex(this.khajiitPeltId)}` : "no Khajiit pelt"} (${pct(this.khajiitPeltChance)} chance)` : "";
+      this.log(`[hunting] ${hex(skinnerId)} skinned ${bodyName(job)} (profile ${job.profileId}): ${hex(this.humanFleshId)} x1, ${heart ? `heart ${hex(this.humanHeartId)}` : "no heart"}${this.humanHeartId ? ` (${pct(this.heartChance)} chance)` : ""}${peltPart}, ${job.pk ? "the body keeps its pack" : "nothing of the pack taken"}`);
     } catch (e) {
-      this.log(`[hunting] skinning the body of player ${hex(bodyId)} by ${hex(skinnerId)} failed: ${e}`);
+      this.log(`[hunting] skinning ${bodyName(job)} by ${hex(skinnerId)} failed: ${e}`);
     }
+  }
+
+  // By the race the body shows, so a PK body and a polymorphed character count by their look
+  private looksKhajiit(mp: Mp, bodyId: number): boolean {
+    try { return this.khajiitRaces.has(Number(mp.get(bodyId, "appearance")?.raceId) >>> 0); } catch { return false; }
   }
 
   // A respawn ends the body: a skinning under way stops and the next death is a fresh body
@@ -393,10 +445,15 @@ export class HuntingSystem implements System {
   private humanFleshId = 0;
   private humanHeartId = 0;
   private heartChance = DEFAULT_HEART_CHANCE;
-  // Player bodies being skinned right now
+  // Player bodies, own or PK, being skinned right now
   private playerSkins = new Map<number, PlayerSkin>();
-  // Player bodies skinned since their death -> the skinner; cleared by the respawn
+  // Own bodies skinned since their death -> the skinner; cleared by the respawn, while a PK body carries SKINNED_PROP
   private skinnedPlayers = new Map<number, number>();
+  private khajiitPeltId = 0;
+  private khajiitPeltChance = DEFAULT_KHAJIIT_PELT_CHANCE;
+  private khajiitRaces = new Set<number>();
   // Set by index.ts: a PK left a body for this victim moments ago, so their own stripped actor is about to respawn
   leftBody?: (victimId: number) => boolean;
+  // Set by index.ts: the victim and account of a body a PK left, undefined for any other actor
+  pkBodyOf?: (bodyId: number) => { victimId: number; profileId: number } | undefined;
 }

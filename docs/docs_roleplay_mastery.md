@@ -711,7 +711,9 @@ Non-hunters just search. The kneel's wait, checks and fallbacks come with the cl
 A player character who dies lies where they fell until the engine respawns
 them after `respawnSeconds` (15 s; `docs_roleplay_survival_loop.md` section 8,
 "A player's own body"). During that wait a hunter may skin the body instead of
-searching it (`huntingSkinPlayers`, default `crouch`): a hunter of any rank who
+searching it (`huntingSkinPlayers`, default `crouch`), and the body a PK
+leaves in the victim's place (`BodySystem`, section 8, "The body") is skinned
+the same way for as long as it lies: a hunter of any rank who
 holds the Hunting Knife crouches and presses the interact key on the body. The
 search request the client sends for any body reaches `HuntingSystem.trySkin`
 through `SearchSystem.bodyAction` as for an animal, so no client change is
@@ -725,43 +727,77 @@ Then the skinner gets one Human Flesh (`huntingHumanFlesh`, Skyrim.esm
 `HumanFlesh` `001016B3`) and, when the server's roll is under
 `huntingHumanHeartChance` (0.1), one Human Heart (`huntingHumanHeart`, Skyrim.esm
 `HumanHeart` `000B18CD`); no plugin in the load order overrides either record.
-The butcher's eye does not apply. Nothing of the victim's pack moves: the body
-stays and keeps it, and from the start of the skinning until the respawn every
-search of it is refused for everyone through `SearchSystem.bodyRefusal` ("A
-hunter is skinning this body.", then "This body has been skinned. Nothing can
-be taken from it."), so the rest of that death's loot is out of reach. The
-victim reads "Your body was skinned by a hunter. Nothing was taken from your
-pack." and respawns with everything as after any death.
+On a body that looks Khajiit a second roll under `huntingKhajiitPeltChance`
+(0.2) adds one Khajiit Pelt (`huntingKhajiitPelt`, `AldKhajiitPelt`, a MISC
+the Alduinak plugin r24 adds with the Sabre Cat Pelt's model, inventory art,
+sounds, value, weight and keywords). The look decides: the `raceId` of the
+body's `appearance` is `KhajiitRace` (`00013745`) or its vampire form
+`KhajiitRaceVampire` (`00088845`, both Skyrim.esm, resolved by editor id at
+boot), so a PK body counts by the appearance it copied from the victim and a
+polymorphed character by the race they show. Until the plugin carries the
+record the boot logs `[hunting] not in the load order, ignored: ...,
+AldKhajiitPelt` once, the boot line reads `no Khajiit pelt`, and a Khajiit
+body gives only the flesh and the heart roll; a server restart with the new
+plugin picks it up. Khajiit NPCs are not skinned (only animals and players
+are). The butcher's eye does not apply. Nothing of the pack moves to the
+skinner. A player's own body stays and keeps its pack, and from the start of
+the skinning until the respawn every search of it is refused for everyone
+through `SearchSystem.bodyRefusal` ("A hunter is skinning this body.", then
+"This body has been skinned. Nothing can be taken from it."), so the rest of
+that death's loot is out of reach. The victim reads "Your body was skinned by a
+hunter. Nothing was taken from your pack." and respawns with everything as
+after any death. A PK body keeps its pack too, but it is refused to searches
+only during the 5 s; after that it opens again under the PK body rules
+(anyone but the victim's own account, until it is emptied or removed), so the
+skinner gets only the flesh, heart and pelt rolls and the loot stays on the
+body for whoever searches it, the skinner included. The victim reads "The body
+you left behind was skinned by a hunter."
 
-A body is skinned once per death: the marks live in memory and the respawn
-(`onRespawn`) clears them, so the next death is a fresh body. A second hunter
+A body is skinned once per death. On a player's own body the mark lives in
+memory and the respawn (`onRespawn`) clears it, so the next death is a fresh
+body. A PK body carries the mark as `private.skinned` (the skinner's actor
+id), which is saved with it, so it is skinned once for as long as it lies,
+across restarts too. One death is never skinned through both bodies: once a
+PK body is left, the victim's own stripped actor is passed over while that
+body is recent (`BodySystem.hasBodyFor`, 30 s, longer than the own body ever
+lies: 4 s after the PK, `respawnSeconds` at most), and an own-body skinning
+already under way when a PK body is left for the same death (a soul trap PK is
+noticed up to 100 ms after the death) gives nothing (`... a PK body took their
+pack`), as the PK body now holds that death. A second hunter
 is refused through the same search refusal, and a body someone is searching
 cannot be skinned ("... is already being searched."). Only that search
 request skins a player's body: the native activation the same key press also
 sends (`mp.onActivate`, the path of plugin-placed animals) passes it over
 (`trySkin` with `players` false), so the search session and pending prompt
 checks always come first and every refusal shows once. If the victim respawns
-during the 5 s, the skinner is stood up (an `actionLock` of 0 s) and told "The
+during the 5 s on their own body, the skinner is stood up (an `actionLock` of 0 s) and told "The
 body is gone before you could finish."; a skinner who goes offline, dies, goes
-down, is restrained or ends up out of reach leaves the body skinnable again.
-Only the player's own actor is skinned: a downed player is alive, so neither
-the client (it opens the X menu on a living player) nor the server offers it;
-the clone a PK leaves (no profile id) only opens for search, and the stripped
-actor of a PK victim, which respawns 4 s after its clone is left, is passed
-over (`BodySystem.hasBodyFor`). Without the `ff_body` registration no clone is
-left and a PK victim's own actor keeps the pack for the whole wait, so it is
-skinned like any other death; the afterlife routing still takes the respawn
-to the realm. Staff and admin modes change nothing on either side: skinning
-takes nothing from a victim, and god and ghost mode never die from damage.
+down, is restrained or ends up out of reach leaves the body skinnable again,
+and a PK body removed meanwhile (emptied, left alone) gives nothing (`the body
+is gone`). A downed player is alive, so neither
+the client (it opens the X menu on a living player) nor the server offers it.
+A PK body is known through `BodySystem.bodyOf` (the bodies it registered,
+re-adopted after a restart), which gives the victim and their profile id; any
+other dead actor without a profile id is passed over. Without the `ff_body`
+registration no PK body is left and a PK victim's own actor keeps the pack for
+the whole wait, so it is skinned like any other death; the afterlife routing
+still takes the respawn to the realm. Staff and admin modes change nothing on
+either side: skinning takes nothing from a victim, and god and ghost mode never
+die from damage.
 
 Log lines: `[hunting] <skinner> skins the body of player <victim> (profile
-<id>)`, `[hunting] <skinner> skinned the body of player <victim> (profile
-<id>): 1016b3 x1, heart b18cd|no heart (10% chance), nothing of the pack
-taken`, `[hunting] <skinner> stopped skinning the body of player <victim>:
-offline|dead|downed|restrained|out of reach|they respawned|the body is gone`,
-and the boot line ends `players skinned on crouch for 1016b3 and the heart
-b18cd at 10%` (`players not skinned` when off or when the flesh is not in the
-load order). The test: `node skymp5-server/tools/test-player-skinning.js`.
+<id>)` (`the PK body <body> of player <victim>` for a PK body, the same in
+every line below), `[hunting] <skinner> skinned the body of player <victim>
+(profile <id>): 1016b3 x1, heart b18cd|no heart (10% chance)[, Khajiit pelt
+<id>|no Khajiit pelt (20% chance)], nothing of the pack taken|the body keeps
+its pack` (the pelt part only on a Khajiit body while the pelt resolves),
+`[hunting] <skinner> stopped skinning the body of player <victim>:
+offline|dead|downed|restrained|out of reach|they respawned|the body is
+gone|a PK body took their pack`, and the boot line ends `players skinned on
+crouch for 1016b3 and the heart b18cd at 10%, the Khajiit pelt <id> at 20% for
+race 13745, 88845` (`, no Khajiit pelt` without the record; `players not
+skinned` when off or when the flesh is not in the load order). The test: `node
+skymp5-server/tools/test-player-skinning.js`.
 
 ---
 

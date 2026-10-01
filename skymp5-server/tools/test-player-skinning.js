@@ -1,6 +1,6 @@
 'use strict'
 
-// huntingSystem.ts skinning a dead player's own body against a stub mp: modes, refusals, the search lock, the heart roll, respawns and interruptions: node tools/test-player-skinning.js
+// huntingSystem.ts skinning a dead player's own body or a PK body against a stub mp: modes, refusals, the search lock, the heart and Khajiit pelt rolls, respawns and interruptions: node tools/test-player-skinning.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -10,6 +10,10 @@ const { EventEmitter } = require('events')
 
 const FLESH = 0x1016b3
 const HEART = 0xb18cd
+const KPELT = 0x4013e0
+const KHAJIIT = 0x13745
+const KHAJIIT_VAMPIRE = 0x88845
+const NORD = 0x13746
 const KNIFE = 0x1f25a
 const HUNTER = 0xff000a01
 const OTHER_HUNTER = 0xff000a02
@@ -27,9 +31,11 @@ const stubs = {
     build.onLoad({ filter: /^settings$/, namespace: 'stub' }, () => ({ contents: 'exports.Settings = { get: async () => ({ allSettings: globalThis.__skinSettings, dataDir: "", loadOrder: [] }) }', loader: 'js' }))
     build.onLoad({ filter: /^espm$/, namespace: 'stub' }, () => ({
       contents: `
-        const known = { humanflesh: '1016b3:Skyrim.esm', humanheart: 'b18cd:Skyrim.esm', wolfpelt: '3ad74:Skyrim.esm', actortypeanimal: '13798:Skyrim.esm' }
+        const known = { humanflesh: '1016b3:Skyrim.esm', humanheart: 'b18cd:Skyrim.esm', wolfpelt: '3ad74:Skyrim.esm', actortypeanimal: '13798:Skyrim.esm',
+          aldkhajiitpelt: '4013e0:AlduinakAdditions.esp', khajiitrace: '13745:Skyrim.esm', khajiitracevampire: '88845:Skyrim.esm' }
+        const has = (n) => known[n.toLowerCase()] && !(globalThis.__skinMissing || []).includes(n)
         exports.isEditorId = (s) => !s.includes(':') && !/^[0-9a-f]{8}$/i.test(s)
-        exports.resolveEditorIds = async (names) => ({ resolved: new Map(names.filter((n) => known[n.toLowerCase()]).map((n) => [n.toLowerCase(), known[n.toLowerCase()]])), unresolved: [], scannedMs: 0 })`,
+        exports.resolveEditorIds = async (names) => ({ resolved: new Map(names.filter(has).map((n) => [n.toLowerCase(), known[n.toLowerCase()]])), unresolved: [], scannedMs: 0 })`,
       loader: 'js',
     }))
   },
@@ -51,8 +57,8 @@ function stubMp () {
     [HUNTER, actor(1, { inventory: { entries: [{ baseId: KNIFE, count: 1 }] } })],
     [OTHER_HUNTER, actor(2, { pos: [50, 0, 0], inventory: { entries: [{ baseId: KNIFE, count: 1 }] } })],
     [LOOTER, actor(3, { pos: [0, 50, 0] })],
-    [VICTIM, actor(4, { isDead: true, pos: [100, 0, 0], inventory: { entries: [{ baseId: 0xf, count: 300 }, { baseId: 0x12eb7, count: 1, worn: true }] } })],
-    [CLONE, actor(-1, { isDead: true, pos: [120, 0, 0], inventory: { entries: [{ baseId: 0xf, count: 50 }] } })],
+    [VICTIM, actor(4, { isDead: true, pos: [100, 0, 0], appearance: { raceId: NORD }, inventory: { entries: [{ baseId: 0xf, count: 300 }, { baseId: 0x12eb7, count: 1, worn: true }] } })],
+    [CLONE, actor(-1, { isDead: true, pos: [120, 0, 0], appearance: { raceId: KHAJIIT }, inventory: { entries: [{ baseId: 0xf, count: 50 }] } })],
     [WOLF, actor(-1, { isDead: true, baseDesc: '23aba:Skyrim.esm', pos: [80, 0, 0] })],
   ])
   const users = new Map([[HUNTER, 1], [OTHER_HUNTER, 2], [LOOTER, 3], [VICTIM, 4]])
@@ -90,8 +96,9 @@ function stubMp () {
   return { mp, forms, users, state, packets, added }
 }
 
-async function setup (settings = {}) {
+async function setup (settings = {}, missing = []) {
   globalThis.__skinSettings = settings
+  globalThis.__skinMissing = missing
   const s = stubMp()
   const lines = []
   const paid = []
@@ -120,7 +127,7 @@ async function setup (settings = {}) {
 
   {
     const t = await setup()
-    assert.match(t.lines.join('\n'), /players skinned on crouch for 1016b3 and the heart b18cd at 10%/)
+    assert.match(t.lines.join('\n'), /players skinned on crouch for 1016b3 and the heart b18cd at 10%, the Khajiit pelt 4013e0 at 20% for race 13745, 88845$/m)
     assert.equal(t.skin(LOOTER), false, 'a non-hunter only searches')
     assert.deepEqual(t.notices(LOOTER), [])
     assert.equal(t.skin(HUNTER), false, 'standing, the hunter searches')
@@ -201,7 +208,7 @@ async function setup (settings = {}) {
     t.forms.get(VICTIM).isDead = false
     t.forms.get(VICTIM)['private.bleedout'] = { since: 1 }
     assert.equal(t.skin(HUNTER), false, 'a downed player is not skinned')
-    assert.equal(t.skin(HUNTER, CLONE), false, 'the PK clone is only searched')
+    assert.equal(t.skin(HUNTER, CLONE), false, 'a clone BodySystem does not know is passed over')
     assert.equal(t.sys.searchRefusal(CLONE), '')
     t.forms.get(VICTIM).isDead = true
     t.sys.leftBody = (id) => id === VICTIM
@@ -243,6 +250,95 @@ async function setup (settings = {}) {
   {
     const t = await setup({ huntingSkinPlayers: 'sometimes' })
     assert.match(t.lines.join('\n'), /huntingSkinPlayers "sometimes" is not one of crouch, interact, off, "crouch" is used/)
+  }
+
+  {
+    const t = await setup()
+    t.forms.get(VICTIM).appearance = { raceId: KHAJIIT }
+    t.state.sneaking.add(HUNTER)
+    assert.equal(t.skin(HUNTER), true)
+    roll = 0.15
+    runTimers()
+    assert.deepEqual(t.added, [{ to: HUNTER, item: FLESH, count: 1 }, { to: HUNTER, item: KPELT, count: 1 }], 'a Khajiit body adds the pelt under 20%')
+    assert.match(t.lines.join('\n'), /skinned the body of player ff000b01 \(profile 4\): 1016b3 x1, no heart \(10% chance\), Khajiit pelt 4013e0 \(20% chance\), nothing of the pack taken/)
+    t.forms.get(VICTIM).isDead = false
+    t.mp.onRespawn(VICTIM)
+    t.forms.get(VICTIM).isDead = true
+    t.forms.get(VICTIM).appearance = { raceId: KHAJIIT_VAMPIRE }
+    assert.equal(t.skin(HUNTER), true)
+    runTimers()
+    assert.deepEqual(t.added.slice(2), [{ to: HUNTER, item: FLESH, count: 1 }, { to: HUNTER, item: KPELT, count: 1 }], 'the vampire form counts too')
+    t.forms.get(VICTIM).isDead = false
+    t.mp.onRespawn(VICTIM)
+    t.forms.get(VICTIM).isDead = true
+    roll = 0.25
+    assert.equal(t.skin(HUNTER), true)
+    runTimers()
+    assert.deepEqual(t.added.slice(4), [{ to: HUNTER, item: FLESH, count: 1 }], 'no pelt above the chance')
+    assert.match(t.lines.join('\n'), /no heart \(10% chance\), no Khajiit pelt \(20% chance\), nothing of the pack taken/)
+  }
+
+  {
+    const t = await setup()
+    t.sys.pkBodyOf = (id) => id === CLONE ? { victimId: VICTIM, profileId: 4 } : undefined
+    t.sys.leftBody = (id) => id === VICTIM
+    t.state.sneaking.add(HUNTER)
+    t.state.sneaking.add(OTHER_HUNTER)
+    assert.equal(t.skin(LOOTER, CLONE), false, 'a non-hunter only searches the PK body')
+    assert.equal(t.skin(HUNTER, CLONE), true, 'a hunter skins the PK body')
+    assert.match(t.lines.join('\n'), /ff000a01 skins the PK body ff000c01 of player ff000b01 \(profile 4\)/)
+    assert.equal(t.sys.searchRefusal(CLONE), 'A hunter is skinning this body.')
+    assert.equal(t.skin(OTHER_HUNTER, CLONE), false, 'one hunter at a time')
+    assert.equal(t.skin(OTHER_HUNTER), false, 'the stripped victim is passed over')
+    roll = 0.15
+    runTimers()
+    assert.deepEqual(t.added, [{ to: HUNTER, item: FLESH, count: 1 }, { to: HUNTER, item: KPELT, count: 1 }], 'a PK body that looks Khajiit adds the pelt')
+    assert.deepEqual(t.forms.get(CLONE).inventory.entries, [{ baseId: 0xf, count: 50 }], 'the PK body keeps its pack')
+    assert.equal(t.forms.get(CLONE)['private.skinned'], HUNTER)
+    assert.equal(t.sys.searchRefusal(CLONE), '', 'the PK body opens for the usual loot rules')
+    assert.deepEqual(t.notices(VICTIM), ['The body you left behind was skinned by a hunter.'])
+    assert.deepEqual(t.paid, [[HUNTER, 'fight', 'skin', true]])
+    assert.match(t.lines.join('\n'), /ff000a01 skinned the PK body ff000c01 of player ff000b01 \(profile 4\): 1016b3 x1, no heart \(10% chance\), Khajiit pelt 4013e0 \(20% chance\), the body keeps its pack/)
+    assert.equal(t.skin(OTHER_HUNTER, CLONE), false, 'a PK body is skinned once')
+    assert.equal(t.skin(OTHER_HUNTER), false, 'and the own body of that death is passed over')
+    t.forms.get(VICTIM).isDead = false
+    t.mp.onRespawn(VICTIM)
+    t.sys.leftBody = undefined
+    assert.equal(t.skin(OTHER_HUNTER, CLONE), false, 'the mark on the PK body outlives the respawn')
+    t.forms.get(VICTIM).isDead = true
+    assert.equal(t.skin(OTHER_HUNTER), true, 'a later death is a fresh body')
+  }
+
+  {
+    const t = await setup()
+    t.state.sneaking.add(HUNTER)
+    assert.equal(t.skin(HUNTER), true)
+    t.sys.leftBody = (id) => id === VICTIM
+    runTimers()
+    assert.deepEqual(t.added, [], 'a PK body left during the skinning holds that death')
+    assert.match(t.lines.join('\n'), /stopped skinning the body of player ff000b01: a PK body took their pack/)
+    assert.equal(t.sys.searchRefusal(VICTIM), '')
+  }
+
+  {
+    const t = await setup({}, ['AldKhajiitPelt'])
+    assert.match(t.lines.join('\n'), /not in the load order, ignored: .*AldKhajiitPelt/)
+    assert.match(t.lines.join('\n'), /players skinned on crouch for 1016b3 and the heart b18cd at 10%, no Khajiit pelt$/m)
+    t.forms.get(VICTIM).appearance = { raceId: KHAJIIT }
+    t.state.sneaking.add(HUNTER)
+    roll = 0
+    assert.equal(t.skin(HUNTER), true)
+    runTimers()
+    assert.deepEqual(t.added, [{ to: HUNTER, item: FLESH, count: 1 }, { to: HUNTER, item: HEART, count: 1 }], 'no pelt record, no pelt')
+    assert.match(t.lines.join('\n'), /1016b3 x1, heart b18cd \(10% chance\), nothing of the pack taken/)
+  }
+
+  {
+    const t = await setup({ huntingKhajiitPelt: '', huntingKhajiitPeltChance: 0.5 })
+    assert.match(t.lines.join('\n'), /, no Khajiit pelt$/m)
+    assert.doesNotMatch(t.lines.join('\n'), /ignored: .*AldKhajiitPelt/)
+    const u = await setup({ huntingKhajiitPeltChance: 0.5 })
+    assert.match(u.lines.join('\n'), /the Khajiit pelt 4013e0 at 50% for race 13745, 88845/)
   }
 
   console.log('test-player-skinning: all checks passed')

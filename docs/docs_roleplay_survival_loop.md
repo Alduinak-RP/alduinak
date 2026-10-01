@@ -319,7 +319,12 @@ behaviour-graph events — no ESP required.**
   refuses a search of it by any character of that profile ("You cannot loot
   the body of your own fallen character."), so an alt cannot walk over and
   undo the loss; a take needs the search's occupancy, so no take gets past
-  it. `createActor` only adds the form and never streams it, so
+  it. A hunter may skin the body (`docs_roleplay_mastery.md`, Skinning a
+  player's body) for Human Flesh, a 10% chance of a Human Heart and, when it
+  looks Khajiit, a 20% chance of a Khajiit Pelt, once for as long as it lies
+  (`private.skinned` on the body); its pack stays on it for the loot rules
+  above, and searches are refused only during the 5 s skinning. The victim's
+  own stripped actor is then never skinned for the same death. `createActor` only adds the form and never streams it, so
   once the clone is dressed and dead it is put on the grid with
   `mp.set(body, "locationalData", ...)` (`MpActor::Teleport`, whose first
   `SetPos` runs `ForceSubscriptionsUpdate`) and every client nearby creates
@@ -369,7 +374,8 @@ behaviour-graph events — no ESP required.**
   stripped this actor and respawns it 4 s later; without the `ff_body`
   registration it keeps the pack for the whole wait like any other death. A
   hunter may skin the body instead (`docs_roleplay_mastery.md`, Skinning a
-  player's body): Human Flesh and a 10% chance of a Human Heart, nothing of
+  player's body): Human Flesh, a 10% chance of a Human Heart and on a
+  Khajiit a 20% chance of a Khajiit Pelt, nothing of
   the pack, and from the start of the skinning until the respawn nobody can
   search the body ("A hunter is skinning this body.", "This body has been
   skinned. Nothing can be taken from it."). A downed player is alive and is

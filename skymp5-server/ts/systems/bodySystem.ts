@@ -164,6 +164,12 @@ export class BodySystem implements System {
     return !!this.recentBodyOf(victimId);
   }
 
+  // The victim and account a body stands for, undefined for any other actor
+  bodyOf(bodyId: number): { victimId: number; profileId: number } | undefined {
+    const body = this.bodies.get(bodyId);
+    return body && { victimId: body.victimId, profileId: body.profileId };
+  }
+
   private recentBodyOf(victimId: number): Body | undefined {
     return Array.from(this.bodies.values()).find((b) => b.victimId === victimId && Date.now() - b.at < REPEAT_MS);
   }
