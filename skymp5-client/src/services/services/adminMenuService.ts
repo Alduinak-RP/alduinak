@@ -114,6 +114,7 @@ interface DebugTarget {
   dist: number;
   live: boolean;
   player: boolean;
+  body: boolean;
   refId: string;
   refDesc: string;
   clientOnly: boolean;
@@ -495,9 +496,10 @@ export class AdminMenuService extends ClientListener {
     const refId = serverId || localId;
     const character = safe(() => isPlayerCharacterId(this.controller, serverId), false);
     // Refs created in game read their base from the server's world model
-    const serverBase = serverId >= FIRST_DYNAMIC_ID
-      ? safe(() => this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === serverId)?.baseId || (character ? PLAYER_BASE_ID : 0), 0) >>> 0
-      : 0;
+    const form = serverId >= FIRST_DYNAMIC_ID ? safe(() => this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === serverId), undefined) : undefined;
+    const serverBase = form ? (form.baseId || (character ? PLAYER_BASE_ID : 0)) >>> 0 : 0;
+    // The body a PK leaves wears the victim's look under an id of its own
+    const body = character && (form as Record<string, unknown> | undefined)?.["ff_body"] === true;
     const localBase = safe(() => ref.getBaseObject()?.getFormID(), 0) >>> 0;
     const baseId = serverBase || localBase;
     const localBaseId = localBase !== baseId && localBase < FIRST_DYNAMIC_ID ? localBase : 0;
@@ -508,6 +510,7 @@ export class AdminMenuService extends ClientListener {
       dist: Math.round(safe(() => player.getDistance(ref), 0)),
       live: true,
       player: character,
+      body,
       refId: hex(refId),
       refDesc: descOf(refId),
       clientOnly: !serverId,

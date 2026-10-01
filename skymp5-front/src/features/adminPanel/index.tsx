@@ -111,6 +111,7 @@ interface DebugTarget {
   dist: number;
   live: boolean; // false once the crosshair left it while the menu stayed open
   player: boolean;
+  body: boolean; // the body a PK leaves, which wears the victim's look under its own id
   refId: string; // the server's id (a player's character id), the client's own id only when clientOnly
   refDesc: string; // "hex:Plugin", empty for a ref created in game
   clientOnly: boolean; // a ref the server does not know
@@ -314,7 +315,7 @@ const withDesc = (id: string, desc: string): string => hexId(id) + (desc ? ' (' 
 // One line for bug reports; the descs paste straight into the Item Spawner search
 const targetReport = (t: DebugTarget): string => {
   const parts = [t.name || '(no name)'];
-  if (t.refId) parts.push((t.player ? 'character ' : 'ref ') + withDesc(t.refId, t.refDesc) + (t.clientOnly ? ' client only' : ''));
+  if (t.refId) parts.push((t.body ? 'body ' : t.player ? 'character ' : 'ref ') + withDesc(t.refId, t.refDesc) + (t.clientOnly ? ' client only' : ''));
   if (t.baseId) parts.push('base ' + withDesc(t.baseId, t.baseDesc));
   if (t.localBaseId) parts.push('local base ' + withDesc(t.localBaseId, t.localBaseDesc));
   if (t.cell) parts.push('cell ' + hexId(t.cell) + (t.cellName ? ' ' + t.cellName : ''));
@@ -386,7 +387,7 @@ const debugCells = (d: DebugData, now: number): DebugCell[] => {
     {
       label: 'Target Ref ID',
       value: !t ? '-' : hidden ? 'Staff only' : hexId(t.refId),
-      sub: !t || hidden ? undefined : t.clientOnly ? 'client only' : t.player ? 'character' : inGame(t.refDesc),
+      sub: !t || hidden ? undefined : t.clientOnly ? 'client only' : t.body ? 'body' : t.player ? 'character' : inGame(t.refDesc),
     },
     {
       label: 'Target POS (X Y Z)',

@@ -686,7 +686,7 @@ export class FormView {
           this.createdTagColor = this.tagColor(model);
           this.textNameId = createText(textXPos, textYPos, this.createdTagName, this.createdTagColor);
           setTextSize(this.textNameId, 0.5);
-          // The server's actor id (a player's character id) on a second line under the name
+          // The server's actor id (a player's character id, a PK body's own id) on a second line under the name
           const serverId = this.createdActorIdLine ? localIdToRemoteId(this.refrId) : 0;
           if (serverId) {
             this.textActorIdId = createText(
@@ -1097,8 +1097,8 @@ export class FormView {
     return { n: tag["n"], t: tag["t"] };
   }
 
-  // The id line never shows without the name above it
+  // The id line never shows without the name above it, and only to staff since a character's id would follow a mask or a Stranger
   private static showsActorIdLine(): boolean {
-    return FormView.isDisplayingNicknames && FormView.isDisplayingActorIds;
+    return FormView.isDisplayingNicknames && FormView.isDisplayingActorIds && FormView.viewerIsAdmin();
   }
 }
