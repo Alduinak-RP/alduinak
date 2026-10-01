@@ -36,7 +36,11 @@ to the character's own race.
 - **Server side**, everything that reads the appearance race follows it while
   transformed: base health, magicka and stamina from the race record, the race
   spells in the spawn packet, unarmed damage and reach. The character's
-  roleplay race (`private.rp`) never changes.
+  roleplay race (`private.rp`) never changes, and the base magicka
+  MasterySystem writes with `professionState` stays that of the character's
+  own race (`RacialSystem.baseBonus` reads `private.polymorph.appearance.raceId`),
+  so a mastery grant or rank change while transformed leaves the right value
+  for the revert.
 
 ### Head and face
 

@@ -11,7 +11,22 @@ export interface Profession {
   blurbs?: string[];
 }
 
-// The server's masteryMenu reply, rendered by the Personal Menu's Skills tab.
+// One configured craft slot (0 primary, 1 secondary, 2 tertiary); profession is null while the slot is empty
+export interface MasterySlot {
+  slot: number;
+  name: string;
+  profession: string | null;
+  label: string;
+  rank: number;
+  rankName: string;
+  hours: number;
+  cap: number;
+  capName: string;
+  // Hours for each rank indexed by rank, Free first
+  rankHours: number[];
+}
+
+// The server's masteryMenu reply, rendered by the Personal Menu's Skills tab; the top-level fields are the primary's.
 export interface MasteryInfo {
   profession: string | null;
   rank: number;
@@ -19,7 +34,27 @@ export interface MasteryInfo {
   rankHours: number[];
   resetsLeft: number;
   professions: Profession[];
+  // Empty from a server without craft slots
+  slots: MasterySlot[];
 }
+
+const text = (v: unknown): string => (typeof v === "string" ? v : "");
+
+const parseSlots = (raw: unknown): MasterySlot[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((s) => s && typeof s === "object" && Number.isInteger(s["slot"])).map((s: Record<string, unknown>) => ({
+    slot: s["slot"] as number,
+    name: text(s["name"]),
+    profession: text(s["profession"]) || null,
+    label: text(s["label"]),
+    rank: Number(s["rank"]) || 0,
+    rankName: text(s["rankName"]),
+    hours: Number(s["hours"]) || 0,
+    cap: Number(s["cap"]) || 0,
+    capName: text(s["capName"]),
+    rankHours: Array.isArray(s["rankHours"]) ? (s["rankHours"] as unknown[]).map((h) => Number(h) || 0) : [],
+  }));
+};
 
 export function parseMasteryMenu(content: Record<string, unknown>): MasteryInfo {
   const professions = Array.isArray(content["professions"]) ? content["professions"] : [];
@@ -31,29 +66,38 @@ export function parseMasteryMenu(content: Record<string, unknown>): MasteryInfo 
     rankHours: rankHours as number[],
     resetsLeft: Number(content["resetsLeft"]) || 0,
     professions: professions as Profession[],
+    slots: parseSlots(content["slots"]),
   };
 }
 
 /**
- * Mastery: one profession per character, ranked by time played. There is no
- * key and no standalone screen; the Personal Menu's Skills tab
+ * Mastery: a primary profession per character, and a secondary and a tertiary
+ * craft when the server configures craft slots, ranked by time played. There is
+ * no key and no standalone screen; the Personal Menu's Skills tab
  * (AdminMenuService) requests masteryMenu, renders it with parseMasteryMenu
- * and sends the one-time choice. This service shows the server's feedback.
+ * and sends the choices. This service shows the server's feedback.
  *
  * Protocol - all messages are MsgType.CustomPacket with a JSON dump.
  *
  *   Client -> Server: { "customPacketType": "masteryInfoRequest" }
  *   Server -> Client: { "customPacketType": "masteryMenu", "profession", "rank",
- *                       "hours", "rankHours", "professions" }
- *   Client -> Server: { "customPacketType": "masteryChoose", "profession" }
+ *                       "hours", "rankHours", "resetsLeft", "professions", "slots" }
+ *   Client -> Server: { "customPacketType": "masteryChoose", "profession", "slot"? }
+ *   Client -> Server: { "customPacketType": "masteryResetRequest", "profession"? }
  *   Server -> Client: { "customPacketType": "masteryNotice", "text" }
  *   Server -> Client: { "customPacketType": "professionState", "profession", "rank",
- *                       "rankName", "hours", "skills": { <av>: level }, "magicka" }
+ *                       "rankName", "hours", "skills": { <av>: level }, "magicka", "slots" }
+ *   skills and magicka already fold in every slot, so applyState reads no slot.
  */
 export class MasteryService extends ClientListener {
+  // The base Magicka applyState last wrote since the player's spawn, null when it wrote none; the racialReport carries it
+  writtenMagicka: number | null = null;
+
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    // A spawn loads base values afresh
+    this.controller.emitter.on("createActorMessage", (e) => { if (e.message.isMe) this.writtenMagicka = null; });
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -75,7 +119,9 @@ export class MasteryService extends ClientListener {
     for (const av of Object.keys(skills)) {
       if (player.getBaseActorValue(av) !== skills[av]) player.setActorValue(av, skills[av]);
     }
-    if (magicka !== null && player.getBaseActorValue("Magicka") !== magicka) player.setActorValue("Magicka", magicka);
+    if (magicka === null) return;
+    if (player.getBaseActorValue("Magicka") !== magicka) player.setActorValue("Magicka", magicka);
+    this.writtenMagicka = magicka;
   }
 }
 

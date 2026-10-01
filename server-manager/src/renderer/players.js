@@ -3,6 +3,15 @@
 // Account changes (ban, kick, delete, faction ranks) go through the backend or the game console; character edits write the store.
 
 const PROFESSIONS = ['alchemist', 'blacksmith', 'cook', 'farmer', 'hunter', 'mage', 'miner', 'tailor', 'warrior', 'woodworker']
+const RANK_NAMES = ['Free', 'Novice', 'Adept', 'Expert', 'Master', 'Legendary']
+const titleCase = x => x[0].toUpperCase() + x.slice(1)
+const craftText = s => s.profession ? `${titleCase(s.profession)}, ${RANK_NAMES[s.rank] || 'Free'}, ${s.hours} h` : 'None'
+
+// A profession a sub-slot follows cannot become the primary; main.js applyMastery refuses it too
+function profOption(x, c) {
+  const sub = x === c.profession ? null : (c.crafts || []).slice(1).find(s => s.profession === x)
+  return `<option value="${x}"${x === c.profession ? ' selected' : ''}${sub ? ' disabled' : ''}>${titleCase(x)}${sub ? ` (${sub.name.toLowerCase()} craft)` : ''}</option>`
+}
 const FLAG_FILTERS = ['Online', 'GM', 'Banned', 'Dead']
 const GENDER_FILTERS = ['Male', 'Female']
 const SORTS = {
@@ -258,8 +267,9 @@ function renderCmMain() {
     `<div class="sfield"><label>Max health change</label><input id="cm-hp" class="sinput" type="number" value="${c.attrBonus.health}" /></div>` +
     `<div class="sfield"><label>Max stamina change</label><input id="cm-sp" class="sinput" type="number" value="${c.attrBonus.stamina}" /></div>` +
     `<div class="sfield"><label>Max magicka change</label><input id="cm-mp" class="sinput" type="number" value="${c.attrBonus.magicka}" /></div>` +
-    `<div class="sfield"><label>Profession</label><select id="cm-prof" class="sinput"><option value="">None</option>${PROFESSIONS.map(x => `<option value="${x}"${x === c.profession ? ' selected' : ''}>${x[0].toUpperCase() + x.slice(1)}</option>`).join('')}</select></div>` +
+    `<div class="sfield"><label>Profession</label><select id="cm-prof" class="sinput"><option value="">None</option>${PROFESSIONS.map(x => profOption(x, c)).join('')}</select></div>` +
     `<div class="sfield"><label>Hours in profession</label><input id="cm-hours" class="sinput" type="number" min="0" value="${c.professionHours}" /></div>` +
+    (c.crafts || []).slice(1).map(s => `<div class="sfield"><label>${esc(s.name)} craft</label><input class="sinput" type="text" readonly title="Chosen in game from the Skills tab; the in-game admin panel grants its hours and resets it" value="${esc(craftText(s))}" /></div>`).join('') +
     `<div class="sfield"><label>Coordinates (x, y, z)</label><input id="cm-pos" type="text" class="sinput" value="${esc(pos)}" /></div>` +
     `<div class="sfield"><label>Cell ID</label><input id="cm-cell" type="text" class="sinput" value="${esc(c.worldOrCell || '')}" /></div>`
   const row = el('div', { className: 'row span-all' })

@@ -154,9 +154,15 @@ def actors_allowed(spec):
     return lambda k, rec: on and k[0] in ('ACHR', 'CELL', 'WRLD')
 
 
+def survival_allowed(spec):
+    # The survival section adds one global of the plugin's own, the freezing area switch the client sets
+    fw = json.load(open(spec, encoding='utf-8')).get('survival', {}).get('freezingWater', {})
+    return lambda k, rec: k[0] == 'GLOB' and k[1] == 'self' and k[2] == fw.get('global')
+
+
 def spec_allowed(spec):
     # Each spec section that adds or changes records of other types brings its own rule; verify_r13.py applies the same
-    rules = [f(spec) for f in (meadery_allowed, spec_overrides, world_allowed, actors_allowed)]
+    rules = [f(spec) for f in (meadery_allowed, spec_overrides, world_allowed, actors_allowed, survival_allowed)]
     return lambda k, rec: any(rule(k, rec) for rule in rules)
 
 
@@ -228,10 +234,13 @@ def stage_settings(settings, plugin, out):
     # The live settings cut after the plugin: the plugins after it would leak their records into the winners; DynDOLOD.esm loads before it and stays
     s = json.load(open(settings, encoding='utf-8'))
     names = [os.path.basename(p).lower() for p in s['loadOrder']]
-    order = [p for p in s['loadOrder'][:names.index(plugin.lower()) + 1] if os.path.basename(p).lower() not in NEVER_MASTERS[1:]]
+    here = names.index(plugin.lower())
+    order = [p for p in s['loadOrder'][:here + 1] if os.path.basename(p).lower() not in NEVER_MASTERS[1:]]
+    # The plugins loaded after it, for verify_r13.py's load-order win check; the patcher reads only dataDir and loadOrder
+    after = [os.path.basename(p) for p in s['loadOrder'][here + 1:]]
     path = os.path.join(out, 'settings.stage.json')
     with open(path, 'w', encoding='utf-8') as f:
-        json.dump({'dataDir': s['dataDir'], 'loadOrder': order}, f, indent=1)
+        json.dump({'dataDir': s['dataDir'], 'loadOrder': order, 'after': after}, f, indent=1)
     return path, s['dataDir']
 
 

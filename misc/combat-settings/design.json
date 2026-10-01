@@ -1,0 +1,3036 @@
+{
+ "version": "r27 (final-2 of 2026-09-29 with the r27 changes: claws on dagger rows, condition durability, D6 retier planned)",
+ "formula": {
+  "healthPool": 100,
+  "floor": 0.2,
+  "minDamage": 0.5,
+  "critDTMult": 0.5,
+  "powerMult": 2.0,
+  "npcNaturalPowerMult": 1.25,
+  "bashMult": 0.3,
+  "playerHitCap": 45.0,
+  "shieldShare": 0.06,
+  "lightItemHeavyRowFactor": 0.7,
+  "speedNorm": {
+   "min": 0.4,
+   "max": 1.0,
+   "rule": "s = clamp(cycle(recordSpeed) / cycle(rowSpeed), 0.4, 1.0); final damage x s; melee rate limit = 0.888 x cycle(typeSpeed) x s. Records slower than their row are set to the row speed in the ESP, so s <= 1 never costs DPS"
+  },
+  "rateLimitFactor": 0.888,
+  "rangedLimits": {
+   "hitArrival": "unchanged from today: 0.77 / speed (speed > 0.75), else 0.605 / speed (crossbow 0.77 s)",
+   "shotInterval": "0.888 x draw cycle x s (bows; x 0.7 with the Hunter QuickShot perk) or 0.888 x 1.9 s (crossbows), checked at PlayerBowShot, log-only first",
+   "quickShotDrawMult": 0.7,
+   "crossbowReload": 1.9
+  },
+  "poisonFloor": 0.5,
+  "healthSnap": 0.00011,
+  "sneak": {
+   "minSneakSeconds": 1.0,
+   "targetCalmSeconds": 10.0,
+   "calmRuleTargets": "players",
+   "rule": "accepted only if the aggressor has been sneaking for >= 1 s; against a player target, the target must also have dealt, taken and blocked no hit for 10 s (first strike). Otherwise the hit counts as a normal hit"
+  },
+  "power": {
+   "eventWindowSeconds": 1.6,
+   "minIntervalSeconds": 1.5,
+   "splashWindowSeconds": 0.1,
+   "logOnly": true,
+   "npcFlags": "trusted from the hosting client (AnimationSystem sees only the sender's own actor), bounded by x1.25 (creatures) / x2 (humanoids) and the 45 cap",
+   "rule": "a player power flag counts only if one unconsumed attackPowerStart* event from that aggressor arrived within 1.6 s; the event validates every hit landing inside the 0.1 s splash window of its first hit (Sweep); power hits at least 1.5 s apart. No stamina check. Log-only until a play test measures the false-refusal rate"
+  },
+  "wrappersAfter": [
+   "DamageMultFormula (NPC->player x1, unchanged)",
+   "DamageMultConditional (hunterOverDraw x1.2 for Hunter Master bows/crossbows vs NPCs; practiceArrows x0 on Test)"
+  ]
+ },
+ "order": [
+  "blocked: a player on a player -> 0 with an intact shield or weapon, a broken shield (or a parry with a broken weapon) lets durability.effect.brokenBlockPass x the unblocked post-DT damage through (durability design 3.2.4); an NPC on a player -> the unblocked post-DT damage x npcBlockedDamageShare (the top-level server setting of r28 G10, not part of this block), or x durability.effect.brokenBlockPass when larger for a broken shield or weapon; a blocked hit stays flagged blocked in every case (no poison, no disease); dummy / staff rows -> 0 (the hit is ignored)",
+  "base damage: weapons[row].base x weaponTypes[type].dmgMult (override > keyword > AldCatMat > fallback)",
+  "tempering x(1 + 0.015 q)",
+  "validated dagger sneak -> crit; bash x0.30 and never crits",
+  "crit roll (server RNG): damage x critMult",
+  "creature natural attack on a player: damage capped at 45 before DT",
+  "target DT: one piece per slot (head slots merged), temper x(1 + 0.015 q), light item on heavy row x0.7, + shield 6%, + creature natural DT; crit -> DT x0.5",
+  "penetration: DT x (1 - pen)",
+  "subtract with floor: max(D - DTe, floor x D, 0.5)",
+  "power x2 (creatures x1.25) or validated sneak x sneakMult, whichever is bigger (they never stack)",
+  "speed normalisation x s (s <= 1)",
+  "player -> NPC x playerToNpcMult",
+  "existing wrappers (DamageMult, DamageMultConditional)",
+  "poison: + max(P - DT, 0.5 P), unblocked non-bash hits only",
+  "cap: min(total, 45) when the target is a player"
+ ],
+ "weaponTypes": {
+  "dagger": {
+   "label": "Dagger",
+   "hands": 1,
+   "speed": 1.3,
+   "swing": 0.6669,
+   "interval": 0.5922,
+   "dmgMult": 0.67,
+   "critChance": 0.3,
+   "critMult": 2.0,
+   "penetration": 0.0,
+   "powerMult": 2.0,
+   "sneakMult": 2.0,
+   "floor": 0.2,
+   "autoCritOnSneak": true,
+   "niche": "fastest; 30% crits at x2 that halve DT dig into plate; the opener"
+  },
+  "sword": {
+   "label": "Sword",
+   "hands": 1,
+   "speed": 1.0,
+   "swing": 0.867,
+   "interval": 0.7699,
+   "dmgMult": 1.0,
+   "critChance": 0.2,
+   "critMult": 1.5,
+   "penetration": 0.0,
+   "powerMult": 2.0,
+   "sneakMult": 1.5,
+   "floor": 0.2,
+   "autoCritOnSneak": false,
+   "niche": "all-rounder; best 1H against light armor and cloth"
+  },
+  "waraxe": {
+   "label": "War axe",
+   "hands": 1,
+   "speed": 0.9,
+   "swing": 0.9633,
+   "interval": 0.8554,
+   "dmgMult": 1.05,
+   "critChance": 0.12,
+   "critMult": 2.0,
+   "penetration": 0.0,
+   "powerMult": 2.0,
+   "sneakMult": 1.5,
+   "floor": 0.2,
+   "autoCritOnSneak": false,
+   "niche": "cleave: crits deal x2"
+  },
+  "mace": {
+   "label": "Mace",
+   "hands": 1,
+   "speed": 0.8,
+   "swing": 1.0837,
+   "interval": 0.9624,
+   "dmgMult": 1.1,
+   "critChance": 0.05,
+   "critMult": 1.5,
+   "penetration": 0.15,
+   "powerMult": 2.0,
+   "sneakMult": 1.5,
+   "floor": 0.2,
+   "autoCritOnSneak": false,
+   "niche": "1H armor breaker: ignores 15% of DT, steady hits"
+  },
+  "greatsword": {
+   "label": "Greatsword",
+   "hands": 2,
+   "speed": 0.7,
+   "swing": 1.08,
+   "interval": 0.959,
+   "dmgMult": 1.17,
+   "critChance": 0.12,
+   "critMult": 1.5,
+   "penetration": 0.0,
+   "powerMult": 2.0,
+   "sneakMult": 1.25,
+   "floor": 0.2,
+   "autoCritOnSneak": false,
+   "niche": "reach, steady 2H"
+  },
+  "battleaxe": {
+   "label": "Battleaxe",
+   "hands": 2,
+   "speed": 0.7,
+   "swing": 1.08,
+   "interval": 0.959,
+   "dmgMult": 1.12,
+   "critChance": 0.12,
+   "critMult": 2.0,
+   "penetration": 0.0,
+   "powerMult": 2.0,
+   "sneakMult": 1.25,
+   "floor": 0.2,
+   "autoCritOnSneak": false,
+   "niche": "reach, cleave crits x2"
+  },
+  "warhammer": {
+   "label": "Warhammer",
+   "hands": 2,
+   "speed": 0.6,
+   "swing": 1.26,
+   "interval": 1.1189,
+   "dmgMult": 1.2,
+   "critChance": 0.05,
+   "critMult": 1.5,
+   "penetration": 0.15,
+   "powerMult": 2.0,
+   "sneakMult": 1.25,
+   "floor": 0.2,
+   "autoCritOnSneak": false,
+   "niche": "biggest hit, ignores 15% of DT: anti-plate"
+  },
+  "bow": {
+   "label": "Bow",
+   "hands": 2,
+   "speed": "row speed",
+   "swing": "draw cycle 0.5 + 1/speed (speed clamped 0.5..1.0)",
+   "interval": "hit arrival: today's limit; shots: 0.888 x draw cycle (log-only)",
+   "dmgMult": 1.0,
+   "critChance": 0.1,
+   "critMult": 1.5,
+   "penetration": 0.0,
+   "powerMult": 1.0,
+   "sneakMult": 1.5,
+   "floor": 0.2,
+   "autoCritOnSneak": false,
+   "niche": "range; only a raised shield blocks it"
+  },
+  "crossbow": {
+   "label": "Crossbow",
+   "hands": 2,
+   "speed": 1.0,
+   "swing": 1.9,
+   "interval": "hit arrival: today's 0.77 s; shots: 0.888 x 1.9 s (log-only)",
+   "dmgMult": 1.0,
+   "critChance": 0.08,
+   "critMult": 1.5,
+   "penetration": 0.5,
+   "powerMult": 1.0,
+   "sneakMult": 1.5,
+   "floor": 0.2,
+   "autoCritOnSneak": false,
+   "niche": "Dawnguard faction weapon: the bolt ignores half of DT; slower than a bow against cloth"
+  },
+  "unarmed": {
+   "label": "Unarmed",
+   "hands": 1,
+   "speed": 1.0,
+   "swing": 0.867,
+   "interval": 0.7699,
+   "dmgMult": 1.0,
+   "critChance": 0.05,
+   "critMult": 1.5,
+   "penetration": 0.5,
+   "powerMult": 2.0,
+   "sneakMult": 1.5,
+   "floor": 0.5,
+   "autoCritOnSneak": false,
+   "niche": "brawling: fists ignore half of DT and keep at least half their damage"
+  },
+  "natural": {
+   "label": "Creature natural attack",
+   "hands": 0,
+   "speed": 1.0,
+   "swing": 1.5,
+   "interval": "engine",
+   "dmgMult": 1.0,
+   "critChance": 0.0,
+   "critMult": 1.0,
+   "penetration": "band: 0.5 up to 20 damage, 0 above",
+   "powerMult": 1.25,
+   "sneakMult": 1.0,
+   "floor": 0.3,
+   "autoCritOnSneak": false,
+   "niche": "critters bite through half of DT; big creatures are capped at 45 before DT and meet full DT; never crit"
+  }
+ },
+ "weapons": {
+  "Wood": {
+   "label": "Wood / tools",
+   "tier": "Tool",
+   "base": 10.0,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 6.7,
+    "sword": 10.0,
+    "waraxe": 10.5,
+    "mace": 11.0,
+    "greatsword": 11.7,
+    "battleaxe": 11.2,
+    "warhammer": 12.0
+   }
+  },
+  "Iron": {
+   "label": "Iron",
+   "tier": "Novice",
+   "base": 15.0,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 10.05,
+    "sword": 15.0,
+    "waraxe": 15.75,
+    "mace": 16.5,
+    "greatsword": 17.55,
+    "battleaxe": 16.8,
+    "warhammer": 18.0
+   }
+  },
+  "Forsworn": {
+   "label": "Forsworn",
+   "tier": "Novice",
+   "base": 15.0,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 10.05,
+    "sword": 15.0,
+    "waraxe": 15.75,
+    "mace": 16.5,
+    "greatsword": 17.55,
+    "battleaxe": 16.8,
+    "warhammer": 18.0
+   }
+  },
+  "Falmer": {
+   "label": "Falmer",
+   "tier": "Novice",
+   "base": 15.0,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 10.05,
+    "sword": 15.0,
+    "waraxe": 15.75,
+    "mace": 16.5,
+    "greatsword": 17.55,
+    "battleaxe": 16.8,
+    "warhammer": 18.0
+   }
+  },
+  "Draugr": {
+   "label": "Ancient Nord (Draugr)",
+   "tier": "Novice",
+   "base": 15.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 10.38,
+    "sword": 15.5,
+    "waraxe": 16.28,
+    "mace": 17.05,
+    "greatsword": 18.13,
+    "battleaxe": 17.36,
+    "warhammer": 18.6
+   }
+  },
+  "Steel": {
+   "label": "Steel",
+   "tier": "Adept",
+   "base": 16.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 11.06,
+    "sword": 16.5,
+    "waraxe": 17.32,
+    "mace": 18.15,
+    "greatsword": 19.3,
+    "battleaxe": 18.48,
+    "warhammer": 19.8
+   }
+  },
+  "Imperial": {
+   "label": "Imperial",
+   "tier": "Adept",
+   "base": 16.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 11.06,
+    "sword": 16.5,
+    "waraxe": 17.32,
+    "mace": 18.15,
+    "greatsword": 19.3,
+    "battleaxe": 18.48,
+    "warhammer": 19.8
+   }
+  },
+  "Silver": {
+   "label": "Silver",
+   "tier": "Adept",
+   "base": 16.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 11.06,
+    "sword": 16.5,
+    "waraxe": 17.32,
+    "mace": 18.15,
+    "greatsword": 19.3,
+    "battleaxe": 18.48,
+    "warhammer": 19.8
+   }
+  },
+  "ccGolden": {
+   "label": "Golden (cc)",
+   "tier": "Adept",
+   "base": 16.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 11.06,
+    "sword": 16.5,
+    "waraxe": 17.32,
+    "mace": 18.15,
+    "greatsword": 19.3,
+    "battleaxe": 18.48,
+    "warhammer": 19.8
+   }
+  },
+  "DraugrHoned": {
+   "label": "Ancient Nord Honed",
+   "tier": "Expert",
+   "base": 17.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 11.73,
+    "sword": 17.5,
+    "waraxe": 18.38,
+    "mace": 19.25,
+    "greatsword": 20.47,
+    "battleaxe": 19.6,
+    "warhammer": 21.0
+   }
+  },
+  "FalmerHoned": {
+   "label": "Falmer Honed",
+   "tier": "Expert",
+   "base": 17.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 11.73,
+    "sword": 17.5,
+    "waraxe": 18.38,
+    "mace": 19.25,
+    "greatsword": 20.47,
+    "battleaxe": 19.6,
+    "warhammer": 21.0
+   }
+  },
+  "Orcish": {
+   "label": "Orcish",
+   "tier": "Expert",
+   "base": 18.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 12.4,
+    "sword": 18.5,
+    "waraxe": 19.43,
+    "mace": 20.35,
+    "greatsword": 21.64,
+    "battleaxe": 20.72,
+    "warhammer": 22.2
+   }
+  },
+  "Dwarven": {
+   "label": "Dwarven",
+   "tier": "Expert",
+   "base": 18.0,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.1
+   },
+   "damageDisplay": {
+    "dagger": 12.06,
+    "sword": 18.0,
+    "waraxe": 18.9,
+    "mace": 19.8,
+    "greatsword": 21.06,
+    "battleaxe": 20.16,
+    "warhammer": 21.6
+   }
+  },
+  "Elven": {
+   "label": "Elven",
+   "tier": "Expert",
+   "base": 17.5,
+   "trait": {
+    "critChance": 0.05,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 11.73,
+    "sword": 17.5,
+    "waraxe": 18.38,
+    "mace": 19.25,
+    "greatsword": 20.47,
+    "battleaxe": 19.6,
+    "warhammer": 21.0
+   }
+  },
+  "Nordic": {
+   "label": "Nordic",
+   "tier": "Master",
+   "base": 19.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.05
+   },
+   "damageDisplay": {
+    "dagger": 13.07,
+    "sword": 19.5,
+    "waraxe": 20.48,
+    "mace": 21.45,
+    "greatsword": 22.81,
+    "battleaxe": 21.84,
+    "warhammer": 23.4
+   }
+  },
+  "Glass": {
+   "label": "Glass",
+   "tier": "Master",
+   "base": 19.0,
+   "trait": {
+    "critChance": 0.05,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 12.73,
+    "sword": 19.0,
+    "waraxe": 19.95,
+    "mace": 20.9,
+    "greatsword": 22.23,
+    "battleaxe": 21.28,
+    "warhammer": 22.8
+   }
+  },
+  "Stalhrim": {
+   "label": "Stalhrim",
+   "tier": "Master",
+   "base": 19.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 13.07,
+    "sword": 19.5,
+    "waraxe": 20.48,
+    "mace": 21.45,
+    "greatsword": 22.81,
+    "battleaxe": 21.84,
+    "warhammer": 23.4
+   }
+  },
+  "ccDark": {
+   "label": "Dark (cc)",
+   "tier": "Master",
+   "base": 19.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 13.07,
+    "sword": 19.5,
+    "waraxe": 20.48,
+    "mace": 21.45,
+    "greatsword": 22.81,
+    "battleaxe": 21.84,
+    "warhammer": 23.4
+   }
+  },
+  "Ebony": {
+   "label": "Ebony",
+   "tier": "Master",
+   "base": 20.0,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 13.4,
+    "sword": 20.0,
+    "waraxe": 21.0,
+    "mace": 22.0,
+    "greatsword": 23.4,
+    "battleaxe": 22.4,
+    "warhammer": 24.0
+   }
+  },
+  "Daedric": {
+   "label": "Daedric",
+   "tier": "Legendary",
+   "base": 21.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 14.41,
+    "sword": 21.5,
+    "waraxe": 22.57,
+    "mace": 23.65,
+    "greatsword": 25.15,
+    "battleaxe": 24.08,
+    "warhammer": 25.8
+   }
+  },
+  "Dragonbone": {
+   "label": "Dragonbone / IW Dragonsteel",
+   "tier": "Legendary",
+   "base": 21.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 14.41,
+    "sword": 21.5,
+    "waraxe": 22.57,
+    "mace": 23.65,
+    "greatsword": 25.15,
+    "battleaxe": 24.08,
+    "warhammer": 25.8
+   }
+  },
+  "ccAmber": {
+   "label": "Amber (cc)",
+   "tier": "Legendary",
+   "base": 21.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 14.41,
+    "sword": 21.5,
+    "waraxe": 22.57,
+    "mace": 23.65,
+    "greatsword": 25.15,
+    "battleaxe": 24.08,
+    "warhammer": 25.8
+   }
+  },
+  "ccMadness": {
+   "label": "Madness (cc)",
+   "tier": "Legendary",
+   "base": 21.5,
+   "trait": {
+    "critChance": 0.0,
+    "penetration": 0.0
+   },
+   "damageDisplay": {
+    "dagger": 14.41,
+    "sword": 21.5,
+    "waraxe": 22.57,
+    "mace": 23.65,
+    "greatsword": 25.15,
+    "battleaxe": 24.08,
+    "warhammer": 25.8
+   }
+  }
+ },
+ "weaponsNote": "damage = base x weaponTypes[type].dmgMult, unrounded (damageDisplay is rounded for tables only)",
+ "bows": {
+  "bows": {
+   "Long": {
+    "label": "Long Bow (Iron, Wood)",
+    "tier": "Novice",
+    "base": 13.25,
+    "speed": 1.0,
+    "cycle": 1.5,
+    "cycleQuickShot": 1.2,
+    "shotInterval": 1.332
+   },
+   "Forsworn": {
+    "label": "Forsworn Bow",
+    "tier": "Novice",
+    "base": 13.75,
+    "speed": 0.875,
+    "cycle": 1.6429,
+    "cycleQuickShot": 1.3,
+    "shotInterval": 1.4589
+   },
+   "Falmer": {
+    "label": "Falmer Bow",
+    "tier": "Novice",
+    "base": 14.5,
+    "speed": 0.75,
+    "cycle": 1.8333,
+    "cycleQuickShot": 1.4333,
+    "shotInterval": 1.628
+   },
+   "Hunting": {
+    "label": "Hunting Bow (Steel, Silver)",
+    "tier": "Adept",
+    "base": 14.75,
+    "speed": 0.9375,
+    "cycle": 1.5667,
+    "cycleQuickShot": 1.2467,
+    "shotInterval": 1.3912
+   },
+   "Draugr": {
+    "label": "Ancient Nord Bow",
+    "tier": "Adept",
+    "base": 15.25,
+    "speed": 0.875,
+    "cycle": 1.6429,
+    "cycleQuickShot": 1.3,
+    "shotInterval": 1.4589
+   },
+   "Imperial": {
+    "label": "Imperial Bow (Imperial, cc Golden)",
+    "tier": "Adept",
+    "base": 15.25,
+    "speed": 0.875,
+    "cycle": 1.6429,
+    "cycleQuickShot": 1.3,
+    "shotInterval": 1.4589
+   },
+   "Dwarven": {
+    "label": "Dwarven Bow",
+    "tier": "Expert",
+    "base": 17.0,
+    "speed": 0.75,
+    "cycle": 1.8333,
+    "cycleQuickShot": 1.4333,
+    "shotInterval": 1.628
+   },
+   "Orcish": {
+    "label": "Orcish Bow",
+    "tier": "Expert",
+    "base": 16.75,
+    "speed": 0.8126,
+    "cycle": 1.7306,
+    "cycleQuickShot": 1.3614,
+    "shotInterval": 1.5368
+   },
+   "Elven": {
+    "label": "Elven Bow",
+    "tier": "Expert",
+    "base": 17.5,
+    "speed": 0.6875,
+    "cycle": 1.9545,
+    "cycleQuickShot": 1.5182,
+    "shotInterval": 1.7356
+   },
+   "DraugrHoned": {
+    "label": "Ancient Nord Honed / Nord Hero Bow",
+    "tier": "Expert",
+    "base": 16.0,
+    "speed": 0.875,
+    "cycle": 1.6429,
+    "cycleQuickShot": 1.3,
+    "shotInterval": 1.4589
+   },
+   "Nordic": {
+    "label": "Nordic Bow",
+    "tier": "Master",
+    "base": 17.5,
+    "speed": 0.6875,
+    "cycle": 1.9545,
+    "cycleQuickShot": 1.5182,
+    "shotInterval": 1.7356
+   },
+   "Glass": {
+    "label": "Glass Bow (cc Dark)",
+    "tier": "Master",
+    "base": 18.25,
+    "speed": 0.625,
+    "cycle": 2.1,
+    "cycleQuickShot": 1.62,
+    "shotInterval": 1.8648
+   },
+   "Ebony": {
+    "label": "Ebony Bow",
+    "tier": "Master",
+    "base": 18.75,
+    "speed": 0.5625,
+    "cycle": 2.2778,
+    "cycleQuickShot": 1.7444,
+    "shotInterval": 2.0227
+   },
+   "Stalhrim": {
+    "label": "Stalhrim Bow",
+    "tier": "Master",
+    "base": 18.75,
+    "speed": 0.5625,
+    "cycle": 2.2778,
+    "cycleQuickShot": 1.7444,
+    "shotInterval": 2.0227
+   },
+   "Dragonbone": {
+    "label": "Dragonbone Bow",
+    "tier": "Legendary",
+    "base": 17.75,
+    "speed": 0.75,
+    "cycle": 1.8333,
+    "cycleQuickShot": 1.4333,
+    "shotInterval": 1.628
+   },
+   "Daedric": {
+    "label": "Daedric Bow (cc Amber, cc Madness)",
+    "tier": "Legendary",
+    "base": 20.25,
+    "speed": 0.5,
+    "cycle": 2.5,
+    "cycleQuickShot": 1.9,
+    "shotInterval": 2.22
+   }
+  },
+  "crossbows": {
+   "Crossbow": {
+    "label": "Crossbow and Enhanced Crossbow (steel; Woodworker Novice + Dawnguard)",
+    "tier": "Novice",
+    "base": 10.5,
+    "speed": 1.0,
+    "cycle": 1.9,
+    "shotInterval": 1.6872
+   },
+   "Dwarven": {
+    "label": "Dwarven and Enhanced Dwarven Crossbow (Woodworker Expert + Dawnguard)",
+    "tier": "Expert",
+    "base": 11.75,
+    "speed": 1.0,
+    "cycle": 1.9,
+    "shotInterval": 1.6872
+   }
+  },
+  "crossbowRule": "row by material keyword (WeapMaterialSteel -> Crossbow, WeapMaterialDwarven -> Dwarven); DLC1CrossbowIsEnhanced changes nothing (same recipe rank as its plain version)",
+  "rowForMaterial": {
+   "Iron": "Long",
+   "Wood": "Long",
+   "Steel": "Hunting",
+   "Silver": "Hunting",
+   "Imperial": "Imperial",
+   "ccGolden": "Imperial",
+   "Draugr": "Draugr",
+   "Forsworn": "Forsworn",
+   "Falmer": "Falmer",
+   "FalmerHoned": "Falmer",
+   "DraugrHoned": "DraugrHoned",
+   "Orcish": "Orcish",
+   "Dwarven": "Dwarven",
+   "Elven": "Elven",
+   "Nordic": "Nordic",
+   "Glass": "Glass",
+   "ccDark": "Glass",
+   "Ebony": "Ebony",
+   "Stalhrim": "Stalhrim",
+   "Daedric": "Daedric",
+   "ccAmber": "Daedric",
+   "ccMadness": "Daedric",
+   "Dragonbone": "Dragonbone"
+  },
+  "fallback": "Long row"
+ },
+ "arrows": {
+  "rule": "bonus = clamp(0.25 x (AMMO DATA damage - 8), 0, 4), read from the arrow the server saw fired (OnPlayerBowShot), else the worn AMMO",
+  "scale": 0.25,
+  "zero": 8.0,
+  "max": 4.0,
+  "examples": {
+   "Iron": 8,
+   "Forsworn": 7,
+   "Falmer": 7,
+   "Steel": 10,
+   "Draugr": 10,
+   "Orcish": 12,
+   "Dwarven": 14,
+   "Nordic": 14,
+   "Elven": 16,
+   "Glass": 18,
+   "Ebony": 20,
+   "Stalhrim": 20,
+   "Daedric": 24,
+   "NordHero": 24,
+   "Dragonbone": 25,
+   "SteelBolt": 10,
+   "DwarvenBolt": 14,
+   "alikrarrow (mod, 1000)": 1000
+  },
+  "bonus": {
+   "Iron": 0.0,
+   "Forsworn": 0.0,
+   "Falmer": 0.0,
+   "Steel": 0.5,
+   "Draugr": 0.5,
+   "Orcish": 1.0,
+   "Dwarven": 1.5,
+   "Nordic": 1.5,
+   "Elven": 2.0,
+   "Glass": 2.5,
+   "Ebony": 3.0,
+   "Stalhrim": 3.0,
+   "Daedric": 4.0,
+   "NordHero": 4.0,
+   "Dragonbone": 4.0,
+   "SteelBolt": 0.5,
+   "DwarvenBolt": 1.5,
+   "alikrarrow (mod, 1000)": 4.0
+  }
+ },
+ "unarmed": {
+  "base": 5.0,
+  "raceOverride": {
+   "KhajiitRace": {
+    "weaponRow": "Steel",
+    "type": "dagger"
+   },
+   "KhajiitRaceVampire": {
+    "weaponRow": "Steel",
+    "type": "dagger"
+   },
+   "ArgonianRace": {
+    "weaponRow": "Iron",
+    "type": "dagger"
+   },
+   "ArgonianRaceVampire": {
+    "weaponRow": "Iron",
+    "type": "dagger"
+   }
+  },
+  "raceKey": "RACE editor id, resolved on first use like the keywords; claws use the row and type of a weapon (its damage, crit, penetration and floor) at the unarmed swing, never tempered, never worn, no poison",
+  "source": "settings for playable races; a playable race without a raceOverride entry hits with base and the fist rules; non-playable races use RACE.unarmedDamage as a creature natural attack",
+  "penetration": 0.5,
+  "floor": 0.5,
+  "critChance": 0.05,
+  "critMult": 1.5,
+  "gauntletBonus": 0.0,
+  "clawTooltipWeapon": {
+   "Steel": "SteelDagger",
+   "Iron": "IronDagger"
+  }
+ },
+ "armor": {
+  "Clothing": {
+   "label": "Clothing, robes, jewelry",
+   "tier": "Free",
+   "class": "clothing",
+   "setDT": 0.0,
+   "dt": {
+    "cuirass": 0.0,
+    "helmet": 0.0,
+    "gauntlets": 0.0,
+    "boots": 0.0,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 1,
+    "helmet": 0.5,
+    "gauntlets": 0.5,
+    "boots": 1,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 1,
+    "helmet": 0.5,
+    "gauntlets": 0.5,
+    "boots": 1,
+    "shield": null
+   },
+   "set4Weight": 3.0,
+   "set4WeightCurrent": 3.0,
+   "moveSpeed": -0.8
+  },
+  "Fur": {
+   "label": "Fur (Bandit set)",
+   "tier": "Free",
+   "class": "light",
+   "setDT": 5.25,
+   "dt": {
+    "cuirass": 3.15,
+    "helmet": 0.7875,
+    "gauntlets": 0.65625,
+    "boots": 0.65625,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 6,
+    "helmet": 1,
+    "gauntlets": 1,
+    "boots": 2,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 6,
+    "helmet": 1,
+    "gauntlets": 1,
+    "boots": 2,
+    "shield": null
+   },
+   "set4Weight": 10,
+   "set4WeightCurrent": 10,
+   "moveSpeed": -2.6
+  },
+  "Hide": {
+   "label": "Hide",
+   "tier": "Novice",
+   "class": "light",
+   "setDT": 6.0,
+   "dt": {
+    "cuirass": 3.6,
+    "helmet": 0.9,
+    "gauntlets": 0.75,
+    "boots": 0.75,
+    "shield": 0.36
+   },
+   "weight": {
+    "cuirass": 5,
+    "helmet": 2,
+    "gauntlets": 1,
+    "boots": 1,
+    "shield": 4
+   },
+   "weightCurrent": {
+    "cuirass": 5,
+    "helmet": 2,
+    "gauntlets": 1,
+    "boots": 1,
+    "shield": 4
+   },
+   "set4Weight": 9,
+   "set4WeightCurrent": 9,
+   "moveSpeed": -2.3
+  },
+  "Chitin": {
+   "label": "Chitin light",
+   "tier": "Novice",
+   "class": "light",
+   "setDT": 5.75,
+   "dt": {
+    "cuirass": 3.45,
+    "helmet": 0.8625,
+    "gauntlets": 0.71875,
+    "boots": 0.71875,
+    "shield": 0.345
+   },
+   "weight": {
+    "cuirass": 4,
+    "helmet": 1,
+    "gauntlets": 2,
+    "boots": 1,
+    "shield": 8
+   },
+   "weightCurrent": {
+    "cuirass": 4,
+    "helmet": 1,
+    "gauntlets": 2,
+    "boots": 1,
+    "shield": 8
+   },
+   "set4Weight": 8,
+   "set4WeightCurrent": 8,
+   "moveSpeed": -2.1
+  },
+  "Forsworn": {
+   "label": "Forsworn",
+   "tier": "Novice",
+   "class": "light",
+   "setDT": 6.25,
+   "dt": {
+    "cuirass": 3.75,
+    "helmet": 0.9375,
+    "gauntlets": 0.78125,
+    "boots": 0.78125,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 6,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 6,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": null
+   },
+   "set4Weight": 12,
+   "set4WeightCurrent": 12,
+   "moveSpeed": -3.1
+  },
+  "Stormcloak": {
+   "label": "Stormcloak / guard light",
+   "tier": "Novice",
+   "class": "light",
+   "setDT": 6.5,
+   "dt": {
+    "cuirass": 3.9,
+    "helmet": 0.975,
+    "gauntlets": 0.8125,
+    "boots": 0.8125,
+    "shield": 0.39
+   },
+   "weight": {
+    "cuirass": 8,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": 8
+   },
+   "weightCurrent": {
+    "cuirass": 8,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": 8
+   },
+   "set4Weight": 14,
+   "set4WeightCurrent": 14,
+   "moveSpeed": -3.7
+  },
+  "Studded": {
+   "label": "Studded",
+   "tier": "Adept",
+   "class": "light",
+   "setDT": 7.75,
+   "dt": {
+    "cuirass": 4.65,
+    "helmet": 1.1625,
+    "gauntlets": 0.96875,
+    "boots": 0.96875,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 6,
+    "helmet": 2,
+    "gauntlets": 1,
+    "boots": 1,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 6,
+    "helmet": 2,
+    "gauntlets": 1,
+    "boots": 1,
+    "shield": null
+   },
+   "set4Weight": 10,
+   "set4WeightCurrent": 10,
+   "moveSpeed": -2.6
+  },
+  "ImperialLight": {
+   "label": "Imperial light",
+   "tier": "Adept",
+   "class": "light",
+   "setDT": 8.0,
+   "dt": {
+    "cuirass": 4.8,
+    "helmet": 1.2,
+    "gauntlets": 1.0,
+    "boots": 1.0,
+    "shield": 0.48
+   },
+   "weight": {
+    "cuirass": 7,
+    "helmet": 4,
+    "gauntlets": 2,
+    "boots": 3,
+    "shield": 12
+   },
+   "weightCurrent": {
+    "cuirass": 7,
+    "helmet": 4,
+    "gauntlets": 2,
+    "boots": 3,
+    "shield": 12
+   },
+   "set4Weight": 16,
+   "set4WeightCurrent": 16,
+   "moveSpeed": -4.2
+  },
+  "Elven": {
+   "label": "Elven",
+   "tier": "Expert",
+   "class": "light",
+   "setDT": 9.0,
+   "dt": {
+    "cuirass": 5.4,
+    "helmet": 1.35,
+    "gauntlets": 1.125,
+    "boots": 1.125,
+    "shield": 0.54
+   },
+   "weight": {
+    "cuirass": 4,
+    "helmet": 1,
+    "gauntlets": 1,
+    "boots": 1,
+    "shield": 4
+   },
+   "weightCurrent": {
+    "cuirass": 4,
+    "helmet": 1,
+    "gauntlets": 1,
+    "boots": 1,
+    "shield": 4
+   },
+   "set4Weight": 7,
+   "set4WeightCurrent": 7,
+   "moveSpeed": -1.8
+  },
+  "Leather": {
+   "label": "Leather (Thieves Guild, Vampire, Hunter, Nightingale, Dark Brotherhood)",
+   "tier": "Expert",
+   "class": "light",
+   "setDT": 9.5,
+   "dt": {
+    "cuirass": 5.7,
+    "helmet": 1.425,
+    "gauntlets": 1.1875,
+    "boots": 1.1875,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 6,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 6,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": null
+   },
+   "set4Weight": 12,
+   "set4WeightCurrent": 12,
+   "moveSpeed": -3.1
+  },
+  "ElvenGilded": {
+   "label": "Elven Gilded",
+   "tier": "Master",
+   "class": "light",
+   "setDT": 9.5,
+   "dt": {
+    "cuirass": 5.7,
+    "helmet": 1.425,
+    "gauntlets": 1.1875,
+    "boots": 1.1875,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 4,
+    "helmet": 1,
+    "gauntlets": 1,
+    "boots": 1,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 4,
+    "helmet": 1,
+    "gauntlets": 1,
+    "boots": 1,
+    "shield": null
+   },
+   "set4Weight": 7,
+   "set4WeightCurrent": 7,
+   "moveSpeed": -1.8
+  },
+  "Scaled": {
+   "label": "Scaled (Morag Tong, IA Advanced Scale)",
+   "tier": "Master",
+   "class": "light",
+   "setDT": 10.25,
+   "dt": {
+    "cuirass": 6.15,
+    "helmet": 1.5375,
+    "gauntlets": 1.28125,
+    "boots": 1.28125,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 6,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 6,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": null
+   },
+   "set4Weight": 12,
+   "set4WeightCurrent": 12,
+   "moveSpeed": -3.1
+  },
+  "Glass": {
+   "label": "Glass (cc Dark)",
+   "tier": "Master",
+   "class": "light",
+   "setDT": 10.75,
+   "dt": {
+    "cuirass": 6.45,
+    "helmet": 1.6125,
+    "gauntlets": 1.34375,
+    "boots": 1.34375,
+    "shield": 0.645
+   },
+   "weight": {
+    "cuirass": 7,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": 6
+   },
+   "weightCurrent": {
+    "cuirass": 7,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": 6
+   },
+   "set4Weight": 13,
+   "set4WeightCurrent": 13,
+   "moveSpeed": -3.4
+  },
+  "StalhrimLight": {
+   "label": "Stalhrim light",
+   "tier": "Master",
+   "class": "light",
+   "setDT": 10.75,
+   "dt": {
+    "cuirass": 6.45,
+    "helmet": 1.6125,
+    "gauntlets": 1.34375,
+    "boots": 1.34375,
+    "shield": 0.645
+   },
+   "weight": {
+    "cuirass": 7,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": 10
+   },
+   "weightCurrent": {
+    "cuirass": 7,
+    "helmet": 2,
+    "gauntlets": 2,
+    "boots": 2,
+    "shield": 10
+   },
+   "set4Weight": 13,
+   "set4WeightCurrent": 13,
+   "moveSpeed": -3.4
+  },
+  "Dragonscale": {
+   "label": "Dragonscale (cc Amber)",
+   "tier": "Legendary",
+   "class": "light",
+   "setDT": 12.0,
+   "dt": {
+    "cuirass": 7.2,
+    "helmet": 1.8,
+    "gauntlets": 1.5,
+    "boots": 1.5,
+    "shield": 0.72
+   },
+   "weight": {
+    "cuirass": 10,
+    "helmet": 4,
+    "gauntlets": 3,
+    "boots": 3,
+    "shield": 6
+   },
+   "weightCurrent": {
+    "cuirass": 10,
+    "helmet": 4,
+    "gauntlets": 3,
+    "boots": 3,
+    "shield": 6
+   },
+   "set4Weight": 20,
+   "set4WeightCurrent": 20,
+   "moveSpeed": -5.2
+  },
+  "AncientNord": {
+   "label": "Ancient Nord (draugr), Dragon Priest masks",
+   "tier": "Novice",
+   "class": "heavy",
+   "setDT": 7.0,
+   "dt": {
+    "cuirass": 4.2,
+    "helmet": 1.05,
+    "gauntlets": 0.875,
+    "boots": 0.875,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 28,
+    "helmet": 4,
+    "gauntlets": 4,
+    "boots": 5,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 28,
+    "helmet": 4,
+    "gauntlets": 4,
+    "boots": 5,
+    "shield": null
+   },
+   "set4Weight": 41,
+   "set4WeightCurrent": 41,
+   "moveSpeed": -10.7
+  },
+  "Falmer": {
+   "label": "Falmer, Falmer Hardened, Chitin heavy",
+   "tier": "Novice",
+   "class": "heavy",
+   "setDT": 7.25,
+   "dt": {
+    "cuirass": 4.35,
+    "helmet": 1.0875,
+    "gauntlets": 0.90625,
+    "boots": 0.90625,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 30,
+    "helmet": 4,
+    "gauntlets": 4,
+    "boots": 5,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 30,
+    "helmet": 4,
+    "gauntlets": 4,
+    "boots": 5,
+    "shield": null
+   },
+   "set4Weight": 43,
+   "set4WeightCurrent": 43,
+   "moveSpeed": -11.2
+  },
+  "Iron": {
+   "label": "Iron",
+   "tier": "Novice",
+   "class": "heavy",
+   "setDT": 7.5,
+   "dt": {
+    "cuirass": 4.5,
+    "helmet": 1.125,
+    "gauntlets": 0.9375,
+    "boots": 0.9375,
+    "shield": 0.45
+   },
+   "weight": {
+    "cuirass": 30,
+    "helmet": 4,
+    "gauntlets": 5,
+    "boots": 6,
+    "shield": 12
+   },
+   "weightCurrent": {
+    "cuirass": 30,
+    "helmet": 4,
+    "gauntlets": 5,
+    "boots": 6,
+    "shield": 12
+   },
+   "set4Weight": 45,
+   "set4WeightCurrent": 45,
+   "moveSpeed": -11.7
+  },
+  "IronBanded": {
+   "label": "Banded Iron",
+   "tier": "Novice",
+   "class": "heavy",
+   "setDT": 8.0,
+   "dt": {
+    "cuirass": 4.8,
+    "helmet": 1.2,
+    "gauntlets": 1.0,
+    "boots": 1.0,
+    "shield": 0.48
+   },
+   "weight": {
+    "cuirass": 35,
+    "helmet": 4,
+    "gauntlets": 5,
+    "boots": 6,
+    "shield": 12
+   },
+   "weightCurrent": {
+    "cuirass": 35,
+    "helmet": 4,
+    "gauntlets": 5,
+    "boots": 6,
+    "shield": 12
+   },
+   "set4Weight": 50,
+   "set4WeightCurrent": 50,
+   "moveSpeed": -13.0
+  },
+  "ImperialHeavy": {
+   "label": "Imperial heavy (Penitus)",
+   "tier": "Adept",
+   "class": "heavy",
+   "setDT": 8.75,
+   "dt": {
+    "cuirass": 5.25,
+    "helmet": 1.3125,
+    "gauntlets": 1.09375,
+    "boots": 1.09375,
+    "shield": 0.525
+   },
+   "weight": {
+    "cuirass": 25,
+    "helmet": 5,
+    "gauntlets": 4,
+    "boots": 8,
+    "shield": 12
+   },
+   "weightCurrent": {
+    "cuirass": 25,
+    "helmet": 5,
+    "gauntlets": 4,
+    "boots": 8,
+    "shield": 12
+   },
+   "set4Weight": 42,
+   "set4WeightCurrent": 42,
+   "moveSpeed": -11.0
+  },
+  "Bonemold": {
+   "label": "Bonemold",
+   "tier": "Adept",
+   "class": "heavy",
+   "setDT": 9.5,
+   "dt": {
+    "cuirass": 5.7,
+    "helmet": 1.425,
+    "gauntlets": 1.1875,
+    "boots": 1.1875,
+    "shield": 0.57
+   },
+   "weight": {
+    "cuirass": 34,
+    "helmet": 4.5,
+    "gauntlets": 3.5,
+    "boots": 7,
+    "shield": 8
+   },
+   "weightCurrent": {
+    "cuirass": 34,
+    "helmet": 4.5,
+    "gauntlets": 3.5,
+    "boots": 7,
+    "shield": 8
+   },
+   "set4Weight": 49.0,
+   "set4WeightCurrent": 49.0,
+   "moveSpeed": -12.8
+  },
+  "Steel": {
+   "label": "Steel (Dawnguard, MCE Wolf)",
+   "tier": "Adept",
+   "class": "heavy",
+   "setDT": 9.75,
+   "dt": {
+    "cuirass": 5.85,
+    "helmet": 1.4625,
+    "gauntlets": 1.21875,
+    "boots": 1.21875,
+    "shield": 0.585
+   },
+   "weight": {
+    "cuirass": 35,
+    "helmet": 5,
+    "gauntlets": 4,
+    "boots": 8,
+    "shield": 12
+   },
+   "weightCurrent": {
+    "cuirass": 35,
+    "helmet": 5,
+    "gauntlets": 4,
+    "boots": 8,
+    "shield": 12
+   },
+   "set4Weight": 52,
+   "set4WeightCurrent": 52,
+   "moveSpeed": -13.6
+  },
+  "SteelPlate": {
+   "label": "Steel Plate (Blades, Tullius, IA Advanced Plate, cc Golden)",
+   "tier": "Adept",
+   "class": "heavy",
+   "setDT": 10.75,
+   "dt": {
+    "cuirass": 6.45,
+    "helmet": 1.6125,
+    "gauntlets": 1.34375,
+    "boots": 1.34375,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 38,
+    "helmet": 6,
+    "gauntlets": 6,
+    "boots": 9,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 38,
+    "helmet": 6,
+    "gauntlets": 6,
+    "boots": 9,
+    "shield": null
+   },
+   "set4Weight": 59,
+   "set4WeightCurrent": 59,
+   "moveSpeed": -15.4
+  },
+  "Dwarven": {
+   "label": "Dwarven",
+   "tier": "Expert",
+   "class": "heavy",
+   "setDT": 11.25,
+   "dt": {
+    "cuirass": 6.75,
+    "helmet": 1.6875,
+    "gauntlets": 1.40625,
+    "boots": 1.40625,
+    "shield": 0.675
+   },
+   "weight": {
+    "cuirass": 41,
+    "helmet": 10,
+    "gauntlets": 8,
+    "boots": 9,
+    "shield": 12
+   },
+   "weightCurrent": {
+    "cuirass": 45,
+    "helmet": 12,
+    "gauntlets": 8,
+    "boots": 10,
+    "shield": 12
+   },
+   "set4Weight": 68,
+   "set4WeightCurrent": 75,
+   "moveSpeed": -17.7
+  },
+  "Orcish": {
+   "label": "Orcish",
+   "tier": "Expert",
+   "class": "heavy",
+   "setDT": 12.25,
+   "dt": {
+    "cuirass": 7.35,
+    "helmet": 1.8375,
+    "gauntlets": 1.53125,
+    "boots": 1.53125,
+    "shield": 0.735
+   },
+   "weight": {
+    "cuirass": 52,
+    "helmet": 13,
+    "gauntlets": 10,
+    "boots": 10,
+    "shield": 16
+   },
+   "weightCurrent": {
+    "cuirass": 35,
+    "helmet": 8,
+    "gauntlets": 7,
+    "boots": 7,
+    "shield": 14
+   },
+   "set4Weight": 85,
+   "set4WeightCurrent": 57,
+   "moveSpeed": -22.2
+  },
+  "Nordic": {
+   "label": "Nordic (Tsun)",
+   "tier": "Master",
+   "class": "heavy",
+   "setDT": 12.5,
+   "dt": {
+    "cuirass": 7.5,
+    "helmet": 1.875,
+    "gauntlets": 1.5625,
+    "boots": 1.5625,
+    "shield": 0.75
+   },
+   "weight": {
+    "cuirass": 37,
+    "helmet": 7,
+    "gauntlets": 6,
+    "boots": 6,
+    "shield": 10
+   },
+   "weightCurrent": {
+    "cuirass": 37,
+    "helmet": 7,
+    "gauntlets": 6,
+    "boots": 6,
+    "shield": 10
+   },
+   "set4Weight": 56,
+   "set4WeightCurrent": 56,
+   "moveSpeed": -14.6
+  },
+  "StalhrimHeavy": {
+   "label": "Stalhrim heavy",
+   "tier": "Master",
+   "class": "heavy",
+   "setDT": 13.0,
+   "dt": {
+    "cuirass": 7.8,
+    "helmet": 1.95,
+    "gauntlets": 1.625,
+    "boots": 1.625,
+    "shield": null
+   },
+   "weight": {
+    "cuirass": 38,
+    "helmet": 7,
+    "gauntlets": 7,
+    "boots": 7,
+    "shield": null
+   },
+   "weightCurrent": {
+    "cuirass": 38,
+    "helmet": 7,
+    "gauntlets": 7,
+    "boots": 7,
+    "shield": null
+   },
+   "set4Weight": 59,
+   "set4WeightCurrent": 59,
+   "moveSpeed": -15.4
+  },
+  "Ebony": {
+   "label": "Ebony",
+   "tier": "Master",
+   "class": "heavy",
+   "setDT": 13.5,
+   "dt": {
+    "cuirass": 8.1,
+    "helmet": 2.025,
+    "gauntlets": 1.6875,
+    "boots": 1.6875,
+    "shield": 0.81
+   },
+   "weight": {
+    "cuirass": 38,
+    "helmet": 10,
+    "gauntlets": 7,
+    "boots": 7,
+    "shield": 14
+   },
+   "weightCurrent": {
+    "cuirass": 38,
+    "helmet": 10,
+    "gauntlets": 7,
+    "boots": 7,
+    "shield": 14
+   },
+   "set4Weight": 62,
+   "set4WeightCurrent": 62,
+   "moveSpeed": -16.2
+  },
+  "Dragonplate": {
+   "label": "Dragonplate",
+   "tier": "Legendary",
+   "class": "heavy",
+   "setDT": 14.0,
+   "dt": {
+    "cuirass": 8.4,
+    "helmet": 2.1,
+    "gauntlets": 1.75,
+    "boots": 1.75,
+    "shield": 0.84
+   },
+   "weight": {
+    "cuirass": 40,
+    "helmet": 8,
+    "gauntlets": 8,
+    "boots": 8,
+    "shield": 15
+   },
+   "weightCurrent": {
+    "cuirass": 40,
+    "helmet": 8,
+    "gauntlets": 8,
+    "boots": 8,
+    "shield": 15
+   },
+   "set4Weight": 64,
+   "set4WeightCurrent": 64,
+   "moveSpeed": -16.7
+  },
+  "Daedric": {
+   "label": "Daedric (cc Madness)",
+   "tier": "Legendary",
+   "class": "heavy",
+   "setDT": 15.0,
+   "dt": {
+    "cuirass": 9.0,
+    "helmet": 2.25,
+    "gauntlets": 1.875,
+    "boots": 1.875,
+    "shield": 0.9
+   },
+   "weight": {
+    "cuirass": 50,
+    "helmet": 15,
+    "gauntlets": 6,
+    "boots": 10,
+    "shield": 15
+   },
+   "weightCurrent": {
+    "cuirass": 50,
+    "helmet": 15,
+    "gauntlets": 6,
+    "boots": 10,
+    "shield": 15
+   },
+   "set4Weight": 81,
+   "set4WeightCurrent": 81,
+   "moveSpeed": -21.1
+  },
+  "GuardShield": {
+   "label": "Hold guard shields (9)",
+   "tier": "Novice",
+   "class": "heavy",
+   "setDT": null,
+   "dt": {
+    "cuirass": null,
+    "helmet": null,
+    "gauntlets": null,
+    "boots": null,
+    "shield": 0.27
+   },
+   "weight": {
+    "shield": 3
+   },
+   "weightCurrent": {
+    "shield": 3
+   },
+   "set4Weight": 0,
+   "set4WeightCurrent": 0,
+   "moveSpeed": 0.0
+  }
+ },
+ "armorRules": {
+  "slotDT": "piece DT = set DT x slot share; shares cuirass 0.60, helmet 0.15, gauntlets 0.125, boots 0.125 (the average weight split of the vanilla sets, so mixing light and heavy pieces stays on the light-heavy line)",
+  "slotShare": {
+   "cuirass": 0.6,
+   "helmet": 0.15,
+   "gauntlets": 0.125,
+   "boots": 0.125
+  },
+  "slots": {
+   "head": "biped 30, 31, 41, 42, 43 merged: only the highest-DT head piece counts",
+   "cuirass": "biped 32",
+   "gauntlets": "biped 33",
+   "boots": "biped 37",
+   "shield": "ETYP shield / biped 39",
+   "other": "any other slot (44-61, rings 36, amulets 35) adds 0"
+  },
+  "clothing": "BOD2 type Clothing, ArmorClothing, ArmorJewelry = 0",
+  "enchantDamageResist": "ignored (no DT from enchantments; none exist in the load order today)",
+  "lightToHeavy": "light sets carry about 80% of the same-tier heavy DT"
+ },
+ "blockStamina": {
+  "base": 0.1,
+  "warrior": 0.05,
+  "perArmorWeight": 0.006,
+  "rule": "a blocked hit costs the blocker base (Warrior 0.05) x (1 + 0.006 x min(worn armor weight, 115)) of max stamina (server TS, needsSystem.ts); heavy armor tires a guard faster",
+  "weightCap": 115
+ },
+ "tempering": {
+  "steps": "q = clamp(round((health - 1.0) x 10), 0, 6)",
+  "weaponPerStep": 0.015,
+  "armorPerStep": 0.015,
+  "names": [
+   "Plain",
+   "Fine",
+   "Superior",
+   "Exquisite",
+   "Flawless",
+   "Epic",
+   "Legendary"
+  ],
+  "rankCap": {
+   "Free": 1,
+   "Novice": 2,
+   "Adept": 3,
+   "Expert": 4,
+   "Master": 5,
+   "Legendary": 6
+  },
+  "practicalCeiling": "q5 (Master rank; Legendary rank needs 6000 h and path B must be closed first)"
+ },
+ "durability": {
+  "enabled": false,
+  "model": "B (r27): a per-copy condition 0..1 on Inventory::ExtraData; each row has an HP pool of wear points; tempering stays a permanent quality",
+  "weaponHP": {
+   "Wood": 120,
+   "Iron": 250,
+   "Forsworn": 250,
+   "Falmer": 250,
+   "Draugr": 250,
+   "Steel": 350,
+   "Imperial": 350,
+   "Silver": 350,
+   "ccGolden": 350,
+   "Elven": 350,
+   "DraugrHoned": 400,
+   "FalmerHoned": 400,
+   "Orcish": 500,
+   "Dwarven": 550,
+   "Glass": 300,
+   "Nordic": 550,
+   "Stalhrim": 450,
+   "ccDark": 450,
+   "Ebony": 650,
+   "Daedric": 700,
+   "Dragonbone": 700,
+   "ccAmber": 700,
+   "ccMadness": 700
+  },
+  "bowHP": {
+   "Long": 250,
+   "Forsworn": 250,
+   "Falmer": 250,
+   "Hunting": 350,
+   "Draugr": 350,
+   "Imperial": 350,
+   "DraugrHoned": 400,
+   "Elven": 350,
+   "Orcish": 500,
+   "Dwarven": 550,
+   "Nordic": 550,
+   "Glass": 300,
+   "Stalhrim": 450,
+   "Ebony": 650,
+   "Dragonbone": 700,
+   "Daedric": 700
+  },
+  "crossbowHP": {
+   "Crossbow": 450,
+   "Dwarven": 550
+  },
+  "armorSetHP": {
+   "Fur": 150,
+   "Forsworn": 180,
+   "Hide": 200,
+   "Chitin": 200,
+   "Stormcloak": 220,
+   "Elven": 220,
+   "Glass": 240,
+   "StalhrimLight": 240,
+   "Studded": 250,
+   "ImperialLight": 250,
+   "ElvenGilded": 260,
+   "Leather": 280,
+   "AncientNord": 280,
+   "Falmer": 300,
+   "Scaled": 320,
+   "Iron": 350,
+   "IronBanded": 380,
+   "ImperialHeavy": 380,
+   "Bonemold": 400,
+   "Dragonscale": 400,
+   "Steel": 450,
+   "SteelPlate": 480,
+   "StalhrimHeavy": 500,
+   "Dwarven": 550,
+   "Nordic": 550,
+   "Orcish": 600,
+   "Ebony": 600,
+   "Dragonplate": 650,
+   "Daedric": 700,
+   "GuardShield": 200
+  },
+  "shieldHPShare": 0.8,
+  "fallbackHP": {
+   "weapon": 250,
+   "armorSet": 300
+  },
+  "wear": {
+   "landedHit": 1,
+   "powerExtra": 1,
+   "parriedHit": 1,
+   "bash": 1,
+   "bowHit": 1,
+   "shieldBlock": 1,
+   "armorHit": 1,
+   "armorMinPreDT": 8
+  },
+  "effect": {
+   "kneeCondition": 0.5,
+   "effectAtZero": 0.75,
+   "brokenWeaponMult": 0.25,
+   "brokenArmorDT": 0,
+   "brokenBlockPass": 0.5
+  },
+  "flush": {
+   "minSeconds": 5,
+   "calmSeconds": 10
+  },
+  "npcGearWears": false,
+  "exempt": [],
+  "deathWear": 0,
+  "nameTag": {
+   "showAtFull": true,
+   "brokenLabel": "Broken"
+  },
+  "repair": {
+   "unitsPerMissing": {
+    "weapon": 0.5,
+    "cuirass": 0.5,
+    "other": 1.0
+   },
+   "fallbackMaterialDefault": {
+    "weapon": {
+     "*": "IngotIron",
+     "Imperial": "IngotSteel",
+     "FalmerHoned": "ChaurusChitin"
+    },
+    "bow": {
+     "*": "IngotIron",
+     "Nordic": "IngotQuicksilver"
+    },
+    "crossbow": {
+     "*": "IngotSteel"
+    },
+    "armor": {
+     "*": "Leather01"
+    }
+   },
+   "requireProfessionRank": false,
+   "fatigue": 0,
+   "anyBench": false,
+   "menuOnActivate": true,
+   "chatCommand": "repair",
+   "lowNoticeBelow": 0.25
+  },
+  "fallbackMaterialRule": "generated per kind and row: the ingredient most temper recipes (ArmorTable, SharpeningWheel) of that row's playable records use; a row without a temper recipe takes fallbackMaterialDefault[kind][row], else [kind]['*']"
+ },
+ "npc": {
+  "creatures": {
+   "Skeever": {
+    "label": "Skeever",
+    "hp": 15,
+    "damage": 5,
+    "dt": 0.0,
+    "race": "SkeeverRace",
+    "variants": [
+     "SkeeverWhiteRace"
+    ]
+   },
+   "Wolf": {
+    "label": "Wolf",
+    "hp": 12,
+    "damage": 5,
+    "dt": 0.0,
+    "race": "WolfRace",
+    "variants": [
+     "C06WolfSpiritRace"
+    ]
+   },
+   "Mudcrab": {
+    "label": "Mudcrab",
+    "hp": 25,
+    "damage": 5,
+    "dt": 3.0,
+    "race": "MudcrabRace",
+    "variants": [
+     "DLC2MudcrabSolstheimRace",
+     "ccBGSSSE001_MudcrabRaceFrenzied",
+     "ccBGSSSE001_MudcrabRaceFlamingPot"
+    ]
+   },
+   "FrostbiteSpider": {
+    "label": "Frostbite spider",
+    "hp": 15,
+    "damage": 5,
+    "dt": 1.0,
+    "race": "FrostbiteSpiderRace"
+   },
+   "FrostbiteSpiderLarge": {
+    "label": "Large frostbite spider",
+    "hp": 100,
+    "damage": 15,
+    "dt": 2.0,
+    "race": "FrostbiteSpiderRaceLarge"
+   },
+   "DwarvenSpider": {
+    "label": "Dwarven spider",
+    "hp": 150,
+    "damage": 15,
+    "dt": 4.0,
+    "race": "DwarvenSpiderRace"
+   },
+   "Spriggan": {
+    "label": "Spriggan",
+    "hp": 125,
+    "damage": 25,
+    "dt": 2.0,
+    "race": "SprigganRace",
+    "variants": [
+     "SprigganMatronRace",
+     "SprigganEarthMotherRace",
+     "DLC2SprigganBurntRace",
+     "ccBGSSSE025_CorruptedSprigganRaceDementia",
+     "ccBGSSSE025_CorruptedSprigganRaceMania"
+    ]
+   },
+   "Hagraven": {
+    "label": "Hagraven",
+    "hp": 300,
+    "damage": 25,
+    "dt": 0.0,
+    "race": "HagravenRace"
+   },
+   "Dragon": {
+    "label": "Dragon (bite)",
+    "hp": 500,
+    "damage": 25,
+    "dt": 6.0,
+    "race": "DragonRace",
+    "variants": [
+     "DragonBlackRace",
+     "DLC2DragonBlackRace",
+     "UndeadDragonRace",
+     "DLC1UndeadDragonRace"
+    ]
+   },
+   "BrownBear": {
+    "label": "Brown bear",
+    "hp": 200,
+    "damage": 30,
+    "dt": 2.0,
+    "race": "BearBrownRace"
+   },
+   "SabreCat": {
+    "label": "Sabre cat",
+    "hp": 100,
+    "damage": 35,
+    "dt": 1.0,
+    "race": "SabreCatRace",
+    "variants": [
+     "SabreCatSnowyRace",
+     "DLC1SabreCatGlowRace"
+    ]
+   },
+   "BlackBear": {
+    "label": "Black bear",
+    "hp": 150,
+    "damage": 35,
+    "dt": 2.0,
+    "race": "BearBlackRace"
+   },
+   "Troll": {
+    "label": "Troll",
+    "hp": 150,
+    "damage": 35,
+    "dt": 2.0,
+    "race": "TrollRace",
+    "variants": [
+     "DLC1TrollRaceArmored"
+    ]
+   },
+   "SnowBear": {
+    "label": "Snow bear",
+    "hp": 200,
+    "damage": 45,
+    "dt": 2.5,
+    "race": "BearSnowRace"
+   },
+   "FrostbiteSpiderGiant": {
+    "label": "Giant frostbite spider",
+    "hp": 250,
+    "damage": 45,
+    "dt": 3.0,
+    "race": "FrostbiteSpiderRaceGiant"
+   },
+   "Sphere": {
+    "label": "Dwarven sphere",
+    "hp": 200,
+    "damage": 55,
+    "dt": 6.0,
+    "race": "DwarvenSphereRace"
+   },
+   "Giant": {
+    "label": "Giant",
+    "hp": 250,
+    "damage": 60,
+    "dt": 2.5,
+    "race": "GiantRace",
+    "variants": [
+     "DLC2GhostFrostGiantRace",
+     "C00GiantOutsideWhiterunRace"
+    ]
+   },
+   "FrostTroll": {
+    "label": "Frost troll",
+    "hp": 250,
+    "damage": 65,
+    "dt": 3.0,
+    "race": "TrollFrostRace",
+    "variants": [
+     "DLC1TrollFrostRaceArmored"
+    ]
+   },
+   "Mammoth": {
+    "label": "Mammoth",
+    "hp": 500,
+    "damage": 65,
+    "dt": 4.0,
+    "race": "MammothRace"
+   },
+   "Centurion": {
+    "label": "Dwarven centurion",
+    "hp": 400,
+    "damage": 100,
+    "dt": 8.0,
+    "race": "DwarvenCenturionRace",
+    "variants": [
+     "DLC1LD_ForgemasterRace"
+    ]
+   }
+  },
+  "creatureDamageSource": "RACE.unarmedDamage of the non-playable race (the creatures table copies it for the sim and the calculator)",
+  "playerToNpcMult": 1.0,
+  "naturalPenetration": {
+   "critterMaxDamage": 20,
+   "critter": 0.5,
+   "other": 0.0
+  },
+  "naturalCapBeforeDT": true,
+  "naturalFloor": 0.3,
+  "naturalCanCrit": false,
+  "naturalPowerMult": 1.25,
+  "humanoidNpcCanCrit": true,
+  "humanoidNpcPowerTrusted": true,
+  "outfitsCount": true,
+  "npcGearTempered": false,
+  "outfittedExamples": {
+   "Bandit (fur cuirass + boots)": {
+    "hp": 100,
+    "armor": [
+     [
+      "Fur",
+      "cuirass"
+     ],
+     [
+      "Fur",
+      "boots"
+     ]
+    ]
+   },
+   "Bandit chief (Steel + shield)": {
+    "hp": 150,
+    "armor": [
+     [
+      "Steel",
+      "set"
+     ],
+     [
+      "Steel",
+      "shield"
+     ]
+    ]
+   },
+   "Draugr deathlord (Ancient Nord)": {
+    "hp": 150,
+    "armor": [
+     [
+      "AncientNord",
+      "set"
+     ]
+    ]
+   },
+   "Imperial soldier (Imperial heavy + shield)": {
+    "hp": 100,
+    "armor": [
+     [
+      "ImperialHeavy",
+      "set"
+     ],
+     [
+      "Iron",
+      "shield"
+     ]
+    ]
+   }
+  },
+  "creatureVariantsNote": "variants: sibling RACE records of the same creature that take its DT (plan correction of the r27a review); an armored troll keeps the plain troll's DT until the owner gives it more. Every other non-playable race with unarmed damage has no natural DT, and report.md lists them for the owner"
+ },
+ "keywordMap": {
+  "order": [
+   "form-id override (generated settings: plugin:localid -> row; template variants included)",
+   "specific keyword (DLC, cc, Honed, Gilded, SteelPlate, IronBanded) in list order",
+   "generic WeapMaterial*/ArmorMaterial*",
+   "mod aliases (IAKMaterial*, MCE_*, WAF_*, TH_*)",
+   "owner AldCatMat_* keyword",
+   "fallback (logged once per base id)"
+  ],
+  "weapons": [
+   [
+    "DLC1WeapMaterialDragonbone",
+    "Dragonbone"
+   ],
+   [
+    "DLC2WeaponMaterialStalhrim",
+    "Stalhrim"
+   ],
+   [
+    "DLC2WeaponMaterialNordic",
+    "Nordic"
+   ],
+   [
+    "WeapMaterialDraugrHoned",
+    "DraugrHoned"
+   ],
+   [
+    "WeapMaterialDraugr",
+    "Draugr"
+   ],
+   [
+    "WeapMaterialFalmerHoned",
+    "FalmerHoned"
+   ],
+   [
+    "WeapMaterialFalmer",
+    "Falmer"
+   ],
+   [
+    "ccBGSSSE025_WeapMaterialAmber",
+    "ccAmber"
+   ],
+   [
+    "ccBGSSSE025_WeapMaterialMadness",
+    "ccMadness"
+   ],
+   [
+    "ccBGSSSE025_WeapMaterialDark",
+    "ccDark"
+   ],
+   [
+    "ccBGSSSE025_WeapMaterialGolden",
+    "ccGolden"
+   ],
+   [
+    "WeapMaterialDaedric",
+    "Daedric"
+   ],
+   [
+    "WeapMaterialEbony",
+    "Ebony"
+   ],
+   [
+    "WeapMaterialGlass",
+    "Glass"
+   ],
+   [
+    "WeapMaterialElven",
+    "Elven"
+   ],
+   [
+    "WeapMaterialDwarven",
+    "Dwarven"
+   ],
+   [
+    "DLC1LD_CraftingMaterialAetherium",
+    "Dwarven"
+   ],
+   [
+    "WeapMaterialOrcish",
+    "Orcish"
+   ],
+   [
+    "WeapMaterialSilver",
+    "Silver"
+   ],
+   [
+    "WeapMaterialImperial",
+    "Imperial"
+   ],
+   [
+    "WeapMaterialSteel",
+    "Steel"
+   ],
+   [
+    "WeapMaterialIron",
+    "Iron"
+   ],
+   [
+    "WeapMaterialWood",
+    "Wood"
+   ],
+   [
+    "ArmorMaterialDragonplate",
+    "Dragonbone"
+   ],
+   [
+    "ccBGSSSE001_FishingPoleKW",
+    "Wood"
+   ],
+   [
+    "TH_MaterialCommon",
+    "Iron"
+   ],
+   [
+    "TH_MaterialGuard",
+    "Steel"
+   ],
+   [
+    "TH_MaterialBosmer",
+    "Elven"
+   ]
+  ],
+  "armor": [
+   [
+    "DLC2ArmorMaterialStalhrimHeavy",
+    "StalhrimHeavy"
+   ],
+   [
+    "DLC2ArmorMaterialStalhrimLight",
+    "StalhrimLight"
+   ],
+   [
+    "DLC2ArmorMaterialNordicHeavy",
+    "Nordic"
+   ],
+   [
+    "DLC2ArmorMaterialNordicLight",
+    "Nordic"
+   ],
+   [
+    "DLC2ArmorMaterialBonemoldHeavy",
+    "Bonemold"
+   ],
+   [
+    "DLC2ArmorMaterialBonemoldLight",
+    "Bonemold"
+   ],
+   [
+    "DLC2ArmorMaterialChitinHeavy",
+    "Falmer"
+   ],
+   [
+    "DLC2ArmorMaterialChitinLight",
+    "Chitin"
+   ],
+   [
+    "DLC2ArmorMaterialMoragTong",
+    "Scaled"
+   ],
+   [
+    "DLC1ArmorMaterialDawnguard",
+    "Steel"
+   ],
+   [
+    "DLC1ArmorMaterialFalmerHardened",
+    "Falmer"
+   ],
+   [
+    "DLC1ArmorMaterielFalmerHeavyOriginal",
+    "Falmer"
+   ],
+   [
+    "DLC1ArmorMaterialHunter",
+    "Leather"
+   ],
+   [
+    "DLC1ArmorMaterialVampire",
+    "Leather"
+   ],
+   [
+    "ccBGSSSE025_ArmorMaterialAmber",
+    "Dragonscale"
+   ],
+   [
+    "ccBGSSSE025_ArmorMaterialMadness",
+    "Daedric"
+   ],
+   [
+    "ccBGSSSE025_ArmorMaterialDark",
+    "Glass"
+   ],
+   [
+    "ccBGSSSE025_ArmorMaterialGolden",
+    "SteelPlate"
+   ],
+   [
+    "ArmorMaterialDragonplate",
+    "Dragonplate"
+   ],
+   [
+    "ArmorMaterialDragonscale",
+    "Dragonscale"
+   ],
+   [
+    "ArmorMaterialDaedric",
+    "Daedric"
+   ],
+   [
+    "ArmorMaterialEbony",
+    "Ebony"
+   ],
+   [
+    "ArmorMaterialGlass",
+    "Glass"
+   ],
+   [
+    "ArmorMaterialElvenGilded",
+    "ElvenGilded"
+   ],
+   [
+    "ArmorMaterialElven",
+    "Elven"
+   ],
+   [
+    "ArmorMaterialDwarven",
+    "Dwarven"
+   ],
+   [
+    "ArmorMaterialOrcish",
+    "Orcish"
+   ],
+   [
+    "ArmorMaterialSteelPlate",
+    "SteelPlate"
+   ],
+   [
+    "ArmorMaterialBlades",
+    "SteelPlate"
+   ],
+   [
+    "ArmorMaterialScaled",
+    "Scaled"
+   ],
+   [
+    "ArmorMaterialPenitus",
+    "ImperialHeavy"
+   ],
+   [
+    "ArmorMaterialFalmer",
+    "Falmer"
+   ],
+   [
+    "ArmorMaterialSteel",
+    "Steel"
+   ],
+   [
+    "ArmorMaterialIronBanded",
+    "IronBanded"
+   ],
+   [
+    "ArmorMaterialImperialHeavy",
+    "ImperialHeavy"
+   ],
+   [
+    "ArmorMaterialImperialLight",
+    "ImperialLight"
+   ],
+   [
+    "ArmorMaterialImperialStudded",
+    "Studded"
+   ],
+   [
+    "ArmorMaterialBearStormcloak",
+    "Stormcloak"
+   ],
+   [
+    "ArmorMaterialStormcloak",
+    "Stormcloak"
+   ],
+   [
+    "ArmorMaterialIron",
+    "Iron"
+   ],
+   [
+    "ArmorMaterialStudded",
+    "Studded"
+   ],
+   [
+    "ArmorMaterialThievesGuildLeader",
+    "Leather"
+   ],
+   [
+    "ArmorMaterialThievesGuild",
+    "Leather"
+   ],
+   [
+    "ArmorMaterialLeather",
+    "Leather"
+   ],
+   [
+    "ArmorMaterialHide",
+    "Hide"
+   ],
+   [
+    "ArmorMaterialMS02Forsworn",
+    "Forsworn"
+   ],
+   [
+    "ArmorMaterialForsworn",
+    "Forsworn"
+   ],
+   [
+    "IAKMaterialDragonPlate",
+    "Dragonplate"
+   ],
+   [
+    "IAKMaterialDragonScale",
+    "Dragonscale"
+   ],
+   [
+    "IAKMaterialDaedric",
+    "Daedric"
+   ],
+   [
+    "IAKMaterialEbony",
+    "Ebony"
+   ],
+   [
+    "IAKMaterialGlass",
+    "Glass"
+   ],
+   [
+    "IAKMaterialElven",
+    "Elven"
+   ],
+   [
+    "IAKMaterialDwarven",
+    "Dwarven"
+   ],
+   [
+    "IAKMaterialOrcish",
+    "Orcish"
+   ],
+   [
+    "IAKMaterialAdvancedPlate",
+    "SteelPlate"
+   ],
+   [
+    "IAKMaterialAdvancedScale",
+    "Scaled"
+   ],
+   [
+    "IAKMaterialSteelChain",
+    "Leather"
+   ],
+   [
+    "IAKMaterialSteel",
+    "Steel"
+   ],
+   [
+    "IAKMaterialIron",
+    "Iron"
+   ],
+   [
+    "IAKMaterialLeather",
+    "Leather"
+   ],
+   [
+    "MCE_ArmorMaterialWolf",
+    "Steel"
+   ],
+   [
+    "MCE_ArmorMaterialExecutioner",
+    "Leather"
+   ],
+   [
+    "MCE_ArmorMaterialGiant",
+    "Hide"
+   ],
+   [
+    "MCE_ArmorMaterialTsun",
+    "Nordic"
+   ],
+   [
+    "MCE_ArmorMaterialThievesGuildAlt",
+    "Leather"
+   ],
+   [
+    "MCE_ArmorMaterialThievesGuildKarliah",
+    "Leather"
+   ],
+   [
+    "WAF_ArmorMaterialAdvanced",
+    "SteelPlate"
+   ],
+   [
+    "WAF_ArmorMaterialDraugr",
+    "AncientNord"
+   ],
+   [
+    "WAF_ArmorMaterialThalmor",
+    "Elven"
+   ],
+   [
+    "WAF_MaterialChitin",
+    "Chitin"
+   ],
+   [
+    "WAF_MaterialNordic",
+    "Nordic"
+   ],
+   [
+    "TH_MaterialAltmer",
+    "Elven"
+   ],
+   [
+    "TH_MaterialThalmor",
+    "Elven"
+   ],
+   [
+    "TH_MaterialBosmer",
+    "Leather"
+   ],
+   [
+    "TH_MaterialDunmer",
+    "Chitin"
+   ],
+   [
+    "TH_MaterialFur",
+    "Fur"
+   ],
+   [
+    "DLC1LD_CraftingMaterialAetherium",
+    "Dwarven"
+   ],
+   [
+    "WeapMaterialSilver",
+    "Steel"
+   ],
+   [
+    "WeapMaterialImperial",
+    "ImperialLight"
+   ],
+   [
+    "WeapMaterialElven",
+    "Elven"
+   ]
+  ],
+  "aldCatMat": [
+   [
+    "AldCatMat_Daedric",
+    "Daedric"
+   ],
+   [
+    "AldCatMat_Ebony",
+    "Ebony"
+   ],
+   [
+    "AldCatMat_Stalhrim",
+    "StalhrimHeavy"
+   ],
+   [
+    "AldCatMat_Glass",
+    "Glass"
+   ],
+   [
+    "AldCatMat_Dwarven",
+    "Dwarven"
+   ],
+   [
+    "AldCatMat_Orichalcum",
+    "Orcish"
+   ],
+   [
+    "AldCatMat_Moonstone",
+    "Elven"
+   ],
+   [
+    "AldCatMat_Corundum",
+    "SteelPlate"
+   ],
+   [
+    "AldCatMat_Steel",
+    "Steel"
+   ],
+   [
+    "AldCatMat_Iron",
+    "Iron"
+   ],
+   [
+    "AldCatMat_Chitin",
+    "Chitin"
+   ],
+   [
+    "AldCatMat_Leather",
+    "Leather"
+   ],
+   [
+    "AldCatMat_NetchLeather",
+    "Leather"
+   ],
+   [
+    "AldCatMat_Fur",
+    "Fur"
+   ],
+   [
+    "AldCatMat_Bone",
+    "AncientNord"
+   ],
+   [
+    "AldCatMat_Silver",
+    "Steel"
+   ],
+   [
+    "AldCatMat_Gold",
+    "Steel"
+   ],
+   [
+    "AldCatMat_Wood",
+    "Wood"
+   ]
+  ],
+  "multiKeyword": "an item with 3 or more IAKMaterial keywords goes to the fallback (IA multi-material pieces); otherwise the first keyword in list order wins (the lists run specific before generic)",
+  "weaponType": "WEAP DNAM animType: OneHandDagger/Sword/Axe/Mace, TwoHandSword, TwoHandAxe (+ WeapTypeWarhammer keyword = warhammer, else battleaxe), Bow, Crossbow; HandToHand = unarmed row; Staff = 0 (staves never melee)",
+  "fallback": {
+   "weapon": "Iron row of its type (Novice); bow: Long row; crossbow: Crossbow row",
+   "armorLight": "Fur row",
+   "armorHeavy": "Iron row",
+   "shield": "Iron shield",
+   "clothing": 0
+  },
+  "recipeRankAudit": "generator step (misc/combat-settings): a craftable item (WEAP incl. bows and crossbows, ARMO) whose row is above its recipe rank is overridden to the reference row of that rank; the override also covers every template variant of that record; _CLS closed-helmet conversions are exempt",
+  "rankReferenceRows": {
+   "weapon": {
+    "Novice": "Iron",
+    "Adept": "Steel",
+    "Expert": "Elven",
+    "Master": "Glass",
+    "Legendary": "Daedric"
+   },
+   "crossbow": {
+    "Novice": "Crossbow",
+    "Adept": "Crossbow",
+    "Expert": "Dwarven",
+    "Master": "Dwarven",
+    "Legendary": "Dwarven"
+   },
+   "light": {
+    "Free": "Fur",
+    "Novice": "Hide",
+    "Adept": "Studded",
+    "Expert": "Leather",
+    "Master": "Scaled",
+    "Legendary": "Dragonscale"
+   },
+   "heavy": {
+    "Novice": "Iron",
+    "Adept": "Steel",
+    "Expert": "Dwarven",
+    "Master": "Nordic",
+    "Legendary": "Dragonplate"
+   }
+  },
+  "overridesArmor": [
+   [
+    "^(Ench)?ArmorDraugr",
+    "AncientNord",
+    "Ancient Nord armor (and its enchanted variants) keyed ArmorMaterialDaedric"
+   ],
+   [
+    "^(ArmorAncientNord|DraugrArmorForNonDraugr|ArmorDraugrUnplayable)",
+    "AncientNord",
+    "NPC-only Ancient Nord pieces 001019CA-CD keyed Daedric"
+   ],
+   [
+    "^(DragonPriestMask|MaskDragonPriest|DLC2MKMiraakMask|DLC2dunKolbjornMask|ArmorBoneCrown|DLC2ArmorAcolyteMask|ArmorDragonPriestMask|dunLabyrinthianMask)",
+    "AncientNord",
+    "Dragon Priest, Miraak and Acolyte masks, Jagged Crown: keyed Daedric, weight 2-9"
+   ],
+   [
+    "^ArmorFalmer(Cuirass|Boots|Gauntlets|Helmet)$",
+    "Falmer",
+    "Falmer cuirass keyed ArmorMaterialSteel"
+   ],
+   [
+    "^ArmorGuardShield",
+    "GuardShield",
+    "9 hold shields keyed Iron+Stormcloak, AR 17 weight 3"
+   ],
+   [
+    "^GeneralTulliusArmor$",
+    "SteelPlate",
+    "keyed ArmorMaterialEbony"
+   ],
+   [
+    "^(DIS_.*Emperor|XTD.*TitusMede|DA05SaviorsHide)",
+    "Leather",
+    "Emperor / Titus Mede sets and Savior's Hide keyed Ebony"
+   ],
+   [
+    "^(ArmorBandit|armorBandit)",
+    "Fur",
+    "Bandit fur set, no material keyword"
+   ],
+   [
+    "^ArmorBladesCuirass$",
+    "SteelPlate",
+    "no material keyword"
+   ],
+   [
+    "(?i)^DLC1ArmorFalmerHeavy",
+    "Falmer",
+    "Dawnguard Falmer heavy set (Tailor Novice recipe), no keyword"
+   ],
+   [
+    "MoonMonk|Redgarb",
+    "Leather",
+    "no keyword, AR 38 at weight 1-4"
+   ],
+   [
+    "^(ArmorNightingale|DBArmor)",
+    "Leather",
+    "Nightingale and Dark Brotherhood sets: Expert light (faction gear)"
+   ],
+   [
+    "^ArmorTsun",
+    "Nordic",
+    "Tsun armor"
+   ],
+   [
+    "^DA13Spellbreaker$",
+    "Dwarven",
+    "Spellbreaker (Dwemer shield), no keyword"
+   ]
+  ],
+  "overridesWeapons": [
+   [
+    "^(Axe01|weapPickaxe|dunVolunruudPickaxe|DLC2.*Pickaxe|SSDRocksplinterPickaxe|WBWRJottunsPickaxe|dunHaltedStreamPoachersAxe|weapBasicKnife01|weapBasicFork01|MS02Shiv|ccBGSSSE001_FishingRod.*)$",
+    "Wood",
+    "tools: Wood row (pickaxes carry WeapMaterialIron + WeapTypeWarAxe)"
+   ],
+   [
+    "^(testVorpalSword|CWDummy.*|Dummy.*|DemoQuestSword1)$",
+    "Dummy",
+    "never a real hit: damage 0, the hit is ignored"
+   ],
+   [
+    "^(TH_Common(Sword|WarAxe|Battleaxe|Dagger).*|RihadSword|IWSteelTanto|.*CamonnaClub.*|.*Hearthguard.*|.*MoragTong(Sword|Dagger).*)$",
+    "Iron",
+    "Novice recipes keyed Steel or Elven: capped at their recipe rank"
+   ],
+   [
+    "^IWDragonsteel",
+    "Dragonbone",
+    "IW Dragonsteel, no material keyword"
+   ],
+   [
+    "^C06BladeOfYsgramor$",
+    "Ebony",
+    "Wuuthrad, no keyword"
+   ],
+   [
+    "^(DragonPriestDagger|WBWRSarlundsAxe)$",
+    "Steel",
+    "uniques with no keyword"
+   ],
+   [
+    "^(DA10MaceofMolagBal|DA02Dagger|DA06Volendrung|DA07MehrunesRazor.*|DA09Dawnbreaker)$",
+    "Daedric",
+    "Daedric artifacts with no or wrong keyword: Legendary row"
+   ],
+   [
+    "^(DA03RuefulAxe|DA08(Real)?EbonyBlade|Nightingale(Blade|Bow)[0-9]+)$",
+    "Ebony",
+    "Rueful Axe, Ebony Blade, Nightingale blade and bow (all levels): Master row"
+   ],
+   [
+    "^(T03Nettlebane|dunAnsilvundGhostblade)$",
+    "Steel",
+    "minor uniques: Adept row"
+   ],
+   [
+    "^(FalmerBow|FalmerBowSupple)$",
+    "Falmer",
+    "Falmer bows have no material keyword"
+   ],
+   [
+    "^AshWarriorBow$",
+    "Draugr",
+    "Ashlander bow: Adept-tier bow row"
+   ],
+   [
+    "^ForswornBow$",
+    "Forsworn",
+    "Forsworn bow is keyed WeapMaterialSteel: Forsworn bow row"
+   ]
+  ],
+  "generator": "misc/combat-settings/generate.py resolves the override regexes and the recipe-rank audit against the Test load order into {\"<hex local id>:<plugin>\": row} (the server FormDesc) for every matching record and every template variant, and writes alduinakDamageFormulaSettings.overrides; rerun after every Update Modlist and every plugin change",
+  "fallbackRows": {
+   "weapon": "Iron",
+   "bow": "Long",
+   "crossbow": "Crossbow",
+   "armorLight": "Fur",
+   "armorHeavy": "Iron",
+   "shield": "Iron"
+  },
+  "multiIAKFallback": 3
+ },
+ "notes": [
+  "All tuning lives in server-settings.json -> alduinakDamageFormulaSettings (gitignored live file; restart to retune). The block is protected from Migrate settings (PROTECTED_SETTINGS) and is copied to live by hand at sign-off.",
+  "Weights, record speeds and the tooltip sync live in AlduinakAdditions.esp (Mutagen patcher); a server table cannot change them.",
+  "Magic is out of scope except the 45 cap on player-targeted spell hits: spells stay on TES5DamageFormula and ignore DT.",
+  "Weapon enchantments do nothing in the server hit path today (critic G4) and are unchanged.",
+  "Hit counts are to DOWN (0 HP); a downed player needs one more hit of any damage to be finished.",
+  "Without the alduinakDamageFormulaSettings block (or with enabled false) every new ActionListener behaviour is off and the server behaves exactly as today.",
+  "Blocked NPC hits (ADDENDUM, r28 G10): the formula reads npcBlockedDamageShare from the top level of server-settings.json, the same key the block lane reads for today's formula; this block never carries a second copy."
+ ],
+ "recipeRetier": {
+  "comment": "D6: the vanilla Studded and Scaled forge recipes move to the documented Tailor ladder in plugin r27b; generate.py --assume-retier applies these ranks to the recipe-rank audit before that plugin exists",
+  "rules": [
+   {
+    "created": "^ArmorStudded",
+    "profession": "Tailor",
+    "rank": "Adept"
+   },
+   {
+    "created": "^ArmorScaled",
+    "profession": "Tailor",
+    "rank": "Master"
+   }
+  ]
+ },
+ "effectModifiers": true
+}

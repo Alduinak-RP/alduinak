@@ -24,9 +24,11 @@ import { QueueSystem } from "./systems/queueSystem";
 import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
 import { NeedsSystem } from "./systems/needsSystem";
+import { RacialSystem } from "./systems/racialSystem";
 import { GatheringSystem } from "./systems/gatheringSystem";
 import { FactionCraftSystem } from "./systems/factionCraftSystem";
 import { HuntingSystem } from "./systems/huntingSystem";
+import { SurvivalSystem } from "./systems/survivalSystem";
 import { BountyBoardSystem } from "./systems/bountyBoardSystem";
 import { WritingSystem } from "./systems/writingSystem";
 import { CaptureSystem } from "./systems/captureSystem";
@@ -241,6 +243,12 @@ const main = async () => {
   const npcSpawnSystem = new NpcSpawnSystem(log);
   const masterySystem = new MasterySystem(log);
   const needsSystem = new NeedsSystem(log, masterySystem);
+  // Race numbers from racialPassives scale hunger drain and fatigue costs
+  const racialSystem = new RacialSystem(log);
+  needsSystem.addModifierSource(racialSystem);
+  // Base magicka keeps the race's bonus, a mage's on top of the rank value, and the race check compares what was sent
+  masterySystem.setRacial(racialSystem);
+  racialSystem.writtenMagicka = (actorId) => masterySystem.lastMagicka(actorId);
   const furnitureSeatSystem = new FurnitureSeatSystem(log);
   const companionSystem = new CompanionSystem(log, hostingSystem);
   // NPC AI runs on the client that hosts it; the audit moves hosting to the aggro holder, the owner or the nearest player
@@ -287,6 +295,9 @@ const main = async () => {
   // Per-region weather; the admin panel's Weather sub-tab forces and clears it
   const weatherSystem = new WeatherSystem(log);
   adminSystem.setWeatherSystem(weatherSystem);
+  // Survival Mode on the server; its diseases scale needs like the race factors
+  const survivalSystem = new SurvivalSystem(log, racialSystem, huntingSystem, weatherSystem);
+  needsSystem.addModifierSource(survivalSystem);
   const factionSystem = new FactionSystem(log, housingSystem);
   // A PK leaves a lootable body at the spot of death
   const bodySystem = new BodySystem(log);
@@ -338,6 +349,8 @@ const main = async () => {
     new TimeSystem(log),
     weatherSystem,
     furnitureSeatSystem,
+    // Before needs, whose boot line lists the race factors this one parses
+    racialSystem,
     // Before mastery, whose hooks wrap this one's, so a craft refused for fatigue is never credited
     needsSystem,
     masterySystem,
@@ -346,6 +359,8 @@ const main = async () => {
     new FactionCraftSystem(log, factionSystem),
     // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
+    // After hunting, whose raw meat it reads, and after needs, whose eat hook it wraps
+    survivalSystem,
     bountyBoardSystem,
     writingSystem,
     new UntouchableSystem(log),

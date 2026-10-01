@@ -510,6 +510,147 @@ menu closes.
 }
 ```
 
+## racialPassives
+
+What a playable race gets comes from two places: the plugin (`AlduinakAdditions.esp` from r27a: the `AldRacial_*`
+resistance abilities, the RACE starting health, magicka and stamina, the claws and the powers) and this block, which
+holds every race number a server system reads. `RacialSystem` (`skymp5-server/ts/systems/racialSystem.ts`) is its
+only reader; NeedsSystem and SurvivalSystem ask it for a character's traits. The race is the character's appearance
+race, a vampire or child race through `aliases`, cached per character until its next spawn, creation finish or
+accepted race menu; a character still in creation gets neutral traits. All optional: with no block every race is
+neutral. With a block that is not `enabled: false`, a character whose race menu is accepted gets `racialBase` with its
+race's base health and stamina (the creation spawn carries the Player NPC_ race's). Not a protected setting, so
+Migrate settings carries it to live. Read at boot. The whole race table is in `docs/docs_racial_passives.md`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | `false` makes every race neutral, gives no start items and refuses no power |
+| `aliases` | the 10 vampire races and `ImperialRaceChild`, `NordRaceChild`, `RedguardRaceChild`, `BretonRaceChild`, `BretonRaceChildVampire` to their base race | `{ "<race editor id>": "<race editor id of the entry>" }`, merged over the built-in map; a race with its own `races` entry uses that before its alias |
+| `races` | none | `{ "<race editor id>": { ... } }` with the keys below |
+| `powers` | none | `{ "<SPEL editor id>": { cooldownHours, consumeOnMiss, commandAnimal } }`: the powers the server rations, see Powers below |
+| `selfCheck` | `"off"` | The race check of each client's `racialReport`: `"off"` compares nothing, `"log"` logs `check ok` or `MISMATCH` lines, `"resync"` also sends one `racialResync` per spawn for what the race sync can fix (a wrong race, a missing, unheld or stopped race spell, another race's spell). Off whatever it says without a block or with `enabled: false`; a polymorphed character is never checked. The Test value is `"resync"`; an unknown value is named in a warning and reads `"off"` |
+| `startItemsSince` | `"2026-10-01T16:00:00-07:00"` (the 1.0 launch) | Epoch ms or a date string. A character created at or after it (the earliest of `private.startLocation.at`, `private.rp.createdAt` and `private.starterGold.at`) whose race has `startingItems` and that never got them gets them once at its next login, under the same slot guard, so holding them back past the launch costs nobody anything. A character with no creation time is recorded once as `creation time unknown` and gets nothing |
+
+Race entry keys. A missing multiplier is 1, a missing warmth 0 and a missing flag false; an unusable value keeps that
+and is named in a `[racial] warning: racialPassives...` boot line, as are an unknown key and a race editor id that no
+RACE of the load order has.
+
+| Key | Meaning | Read by |
+|---|---|---|
+| `fatigueCostMult` | Multiplies every fatigue cost the character pays: crafts, the bench check, gathering, skinning, kills, casts and the concentration drain. Above 0. It multiplies with the drink discount and the alchemist flora discount; mastery hours and the hour bank are untouched | NeedsSystem |
+| `hungerRateMult` | Multiplies the hunger drain, online and, with `needsHungerOffline`, offline. Above 0 | NeedsSystem |
+| `coldRateMult` | Multiplies every cold gain: the cold step, the freezing water jump, frost spell hits and frost venom hits. `0` never grows cold. 0 or more | SurvivalSystem |
+| `warmth` | Warmth points on top of what the character wears. The race ability's `Survival_FortifyWarmthConstant` makes the inventory's Warmth total agree, and the boot report warns when the two differ | SurvivalSystem |
+| `rawMeatSafe` | `true`: raw meat never gives food poisoning | SurvivalSystem |
+| `freezingWaterImmune` | Printed in the boot report only; no system acts on it in this build. Freezing water cold follows `coldRateMult`, and its damage follows the plugin's frost resistance, so the water hurts every race (owner decision O2) | none |
+| `startingItems` | `[{ baseId, count }]`, the shape of `startingItems`. Given once when the character's creation finishes, on top of the kit, guarded per profile and character slot by the `<profileId>:<slot>:race` key in `starter-grants.json` and recorded in `private.racial.startItems`; a character recreated in a slot that had them gets nothing. Gold goes through `addGold` and never marks `private.starterGold`, so the profession kit keeps its gold | RacialSystem |
+
+The Test Server block (staged with a README in `Desktop/alduinak-r13/live/r27-RC4/`):
+
+```json5
+{
+  // ...
+  "racialPassives": {
+    "enabled": true,
+    "startItemsSince": "2026-10-01T16:00:00-07:00",
+    "races": {
+      "NordRace":     { "coldRateMult": 0, "freezingWaterImmune": false },
+      "ArgonianRace": { "coldRateMult": 1.25, "rawMeatSafe": true },
+      "KhajiitRace":  { "coldRateMult": 1.25, "rawMeatSafe": true },
+      "OrcRace":      { "hungerRateMult": 0.85, "fatigueCostMult": 0.85, "warmth": 10 },
+      "WoodElfRace":  { "fatigueCostMult": 0.75 },
+      "DarkElfRace":  { "fatigueCostMult": 0.75 },
+      "HighElfRace":  { "fatigueCostMult": 0.75 },
+      "ImperialRace": { "startingItems": [{ "baseId": "0x0000000F", "count": 50 }] }
+    },
+    "powers": {
+      "AldPowerCommandAnimal": {
+        "cooldownHours": 20,
+        "consumeOnMiss": false,
+        "commandAnimal": { "durationSec": 60, "maxLevel": 99, "range": 2048, "coneDeg": 25, "conditionsFrom": "RaceWoodElfCommandAnimal" }
+      }
+    }
+  }
+  // ...
+}
+```
+
+**Powers.** A player's cast of a power listed in `powers` is refused while its cooldown runs, with the notice
+"Command Animal is ready again in 13 h 20 min." (the native logs `gamemode refused spell`). NPC casters, powers not
+listed and `enabled: false` are never gated. The cooldown is real time from the last use, stored on the character as
+`private.racial.powers["<spell desc>"]` (epoch ms), so offline time, relogs, deaths and restarts all count. Keys:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `cooldownHours` | `0` | Real hours from a use to the next allowed cast; `0` stamps nothing and never refuses |
+| `consumeOnMiss` | `false` | For a power with an effect block: `true` also starts the cooldown when the effect finds no target |
+| `commandAnimal` | none | The Command Animal effect block (`durationSec`, `maxLevel`, `range`, `coneDeg`, `conditionsFrom`), read by plan task RC6 (test release B). Until that effect is built a power carrying the block is refused at every cast with "Command Animal is not available yet." and nothing is stamped; plugin r27a also leaves `AldPowerCommandAnimal` off every race |
+
+A power with no effect block is stamped at every cast. The client gets `racialState { powers: [{ spellId, name,
+readyInMs, available }] }` at login, after each race check, use and refusal, and refuses a cast of a power that is
+not ready before relaying it. Khajiit Night Eye is not listed and stays unlimited (owner decision O28); the RC5 quick
+test that lists it with `cooldownHours: 0.05` must be removed before any Migrate settings, since this block is not
+protected. Boot line: `[racial] powers: AldPowerCommandAnimal 5604133a "Command Animal" on no race (cooldown 20 h of
+real time, counting offline, a miss is free, effect commandAnimal not built yet, so casts are refused)`, or `...
+not in the load order yet (...)` before r27a, or `none rationed`; a configured entry that is no power and an
+`AldPower*` lesser power on a race with no entry are warnings. Play lines: `[racial] <id> <edid> refused: ready again
+in 13 h 20 min, last used <iso>`, `... refused: its commandAnimal effect is not built yet`, `[racial] <id> <edid>
+used, ready again at <iso> (20 h, counting offline)`, `... cast with no effect, the power stays ready`, `... used, no
+cooldown`.
+
+Breton and Orc magic resistance is not in this block. The plugin's abilities resist magic in the client engine, and
+server spell damage needs two `damageMultConditionalFormulaSettings` entries, x0.5 for a Breton target and x0.75 for
+an Orc, vampire forms included. They wrap every server spell hit, not poisons, and stand in until the native magic
+pass (plan task NV7), which replaces them:
+
+```json5
+{
+  // ...
+  "damageMultConditionalFormulaSettings": {
+    // ... the existing entries
+    "racialMagicResistBreton": {
+      "magicDamageMultiplier": 0.5,
+      "conditions": [
+        { "function": "GetIsRace", "runsOn": "Target", "comparison": "==", "value": 1, "parameter1": "0x00013741", "parameter2": "0x0", "logicalOperator": "OR" },
+        { "function": "GetIsRace", "runsOn": "Target", "comparison": "==", "value": 1, "parameter1": "0x0008883C", "parameter2": "0x0", "logicalOperator": "AND" }
+      ]
+    },
+    "racialMagicResistOrc": {
+      "magicDamageMultiplier": 0.75,
+      "conditions": [
+        { "function": "GetIsRace", "runsOn": "Target", "comparison": "==", "value": 1, "parameter1": "0x00013747", "parameter2": "0x0", "logicalOperator": "OR" },
+        { "function": "GetIsRace", "runsOn": "Target", "comparison": "==", "value": 1, "parameter1": "0x000A82B9", "parameter2": "0x0", "logicalOperator": "AND" }
+      ]
+    }
+  }
+  // ...
+}
+```
+
+Boot lines in `C:\logs\test\gameserver.log`:
+
+- `[racial] ready: on, 8 race entries (NordRace, ...), 15 aliases, powers ..., start items once per slot, backfilled
+  at login for characters created since 2026-10-01T23:00Z; self-check resync on racialReport (...); racialBase with the
+  race's base health and stamina after an accepted race menu; Player NPC_ offsets H/M/S 50/50/50`, or
+  `no racialPassives block, every race neutral`, or `off (enabled false), every race neutral`.
+- `[racial] magic damage entries: racialMagicResistBreton x0.5 on BretonRace, BretonRaceVampire; racialMagicResistOrc
+  x0.75 on OrcRace, OrcRaceVampire` (or `none`).
+- One line per playable race with what the plugin and the settings give it, for example on plugin r22
+  `[racial] NordRace: resist frost 50, base H/M/S 100/100/100, cold x0 (immune), freezing water hurts, fatigue x1,
+  hunger x1, warmth 0, raw meat unsafe, start items none, claws 4 (race unarmed), magic damage x1, abilities RaceNord +
+  AldRaceSpeed_Nord, powers -, AldRacial_Nord not in plugin yet`; on r27a it reads `resist frost 75`, `base H/M/S
+  100/100/150` and `AldRacial_Nord on the race`.
+- `[racial] warning: ...`: races without their `AldRacial_*` ability (expected before r27a), an `AldRacial_*` in the
+  load order that its race does not list (a wrong or stale plugin in the server Data folder), a race whose ability
+  resists magic with no entry above, an entry that names a race but not its vampire race, settings warmth that differs
+  from the plugin's, and every ignored value.
+- `[needs] modifier sources: race (hunger OrcRace x0.85; fatigue OrcRace x0.85, WoodElfRace x0.75, DarkElfRace x0.75,
+  HighElfRace x0.75)`.
+
+In play: `[racial] <id> ImperialRace start items: 50 gold (slot 0, creation)` (or `login` for the backfill),
+`... start items: none, slot <n> of profile <p> had them already (...)` and `... start items: none, creation time
+unknown`; the `[needs]` cost lines end `, race x0.75` (see Hunger and fatigue).
+
 ## npcHostRange
 
 How far, in game units, a player can be from a server NPC (a spawn zone NPC or a companion) and still be picked as its new host. Only players the server streams the NPC to count: the server sends an actor to the players in its 4096-unit grid cell and the eight cells around it, so a player 4.1k units away across two cell lines may not have it, while one 11k units away diagonally may. The server moves an NPC's hosting to the player it is fighting, to its owner, or to the nearest such player within this range. A host that still streams the NPC keeps it when nobody else qualifies, so an NPC is unhosted only once its host no longer receives it (see `docs_roleplay_npc_spawns.md`, Hosting). Default 8192. Needs the `scam_native` build with `setHoster`; older builds log once at boot and keep client-driven hosting. A player whose game is paused, alt-tabbed or loading is never picked; that test needs `getMovementAgeMs`, and a build without it logs once and skips such a player only after another client claims its NPC.
@@ -822,7 +963,7 @@ Deaths are never posted to Discord. Every player death, with the killer (player 
 Every player opens the Personal Menu with the interact key (X by default) while looking at nothing, a world NPC or anything else that is not a player, door, container or bounty board. It has four tabs, in this order:
 
 - **Admin**, shown only once the server confirms the player's admin tier, with the sub-tabs:
-  - Players: roster, teleport to, summon, Reset needs (the selected online character's hunger and fatigue go back to the new-character values, `needsHungerStart` and a full fatigue bar, with the stage abilities and penalties following at once; logged `[needs] <actor> reset by profile <id>` and in admin.log; answered "Needs are switched off on this server" while `needsEnabled` is `false`), kick, PK (the selected online character dies, leaves a body and goes to Sovngarde, the finish off PK, see `docs_roleplay_survival_loop.md` section 8), ban, mastery grant and reset, a permanent max health, magicka and stamina change of the selected online character (-1000..1000 each, absolute not additive, 0 for the plugins' own values; it is stored on the character, survives a relog and the hunger and fatigue penalties recompute against the new maximum), and Revive for the selected profile's fallen characters (Sovngarde, the Soul Cairn or perma-dead, online or not; refused while a character made in the extra slot is alive, see `docs_roleplay_survival_loop.md` section 8);
+  - Players: roster, teleport to, summon, Reset needs (the selected online character's hunger and fatigue go back to the new-character values, `needsHungerStart` and a full fatigue bar, with the stage abilities and penalties following at once; logged `[needs] <actor> reset by profile <id>` and in admin.log; answered "Needs are switched off on this server" while `needsEnabled` is `false`), kick, PK (the selected online character dies, leaves a body and goes to Sovngarde, the finish off PK, see `docs_roleplay_survival_loop.md` section 8), ban, mastery grant and reset (with `masterySlots` configured, for the Primary, Secondary or Tertiary craft picked beside them; an admin reset never spends the player's resets), with survival on a survival row (the cold, area, warmth and sickness readout; Set cold, Details, Reset, give or set a disease stage, Cure and Cure all, sent as `survivalCold`, `survivalInfo`, `survivalReset`, `survivalDisease` and `survivalCure` under the `players` cap, logged in admin.log and posted as the Discord `admin` alert like the other panel actions; the Disease row picks one of the 27 catalog diseases and a stage, see the Survival section of `docs_roleplay_creations_and_needs.md`), a permanent max health, magicka and stamina change of the selected online character (-1000..1000 each, absolute not additive, 0 for the plugins' own values; it is stored on the character, survives a relog and the hunger and fatigue penalties recompute against the new maximum), and Revive for the selected profile's fallen characters (Sovngarde, the Soul Cairn or perma-dead, online or not; refused while a character made in the extra slot is alive, see `docs_roleplay_survival_loop.md` section 8);
   - Teleport: named locations, map markers and temples in collapsible sections;
   - Modes: God, NoClip, Invisible, Ghost, Freecam (the movement keys fly the camera while the character stays put; toggled here, no console needed; X always opens this menu while it is on, and it ends when turned off, on logout, on a character switch, on death or on respawn), Smite, Heal on Hit, Speed (raised movement speed that ends when turned off, on logout, on a character switch or on respawn) and Show account name (while it is on, everyone near the admin sees the admin's own account name on the admin's floating tag in place of the character name, so players know they are dealing with staff and not a character: red for the senior tier, blue for developers, green for GMs; it shows whatever the viewer's chat name toggle or introductions say, through sneaking, a mask (`SweetHidePerson`) or invisibility, within the usual 1000 units and line of sight, and an Invisible admin stays hidden; off restores the character tag, and on a character switch the tag leaves the old character and, with the mode still on, goes to the new one. It rides the neighbour-visible `ff_adminTag` actor property, `{ n: account name, t: senior | developer | gm }` while on and `null` while off, registered in `build/dist/server/gamemode_extensions/50_properties.js` (live file) with the same `makeProperty` line as `ff_adminModes`, built with Build gamemode only);
   - NPCs: list, add, teleport to, reset and delete the spawn zones of `NPC-Spawns.json`, see `docs_roleplay_npc_spawns.md`, grant pets, and place, teleport to either end of and delete the passive jobs of `Jobs.json`, see `docs_roleplay_jobs.md`;
@@ -1082,7 +1223,7 @@ If "damageMultFormulaSettings" is not present, the server will use some default 
 
 ## damageMultConditionalFormulaSettings
 
-Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. Two rules ship in the settings. `practiceArrows` makes a bow or crossbow deal nothing while Practice Arrows (Skyrim.esm AMMO `0xCAB52`, 0 damage in the plugin but the server only reads the bow's damage) are nocked, for players and NPC archers alike; a bow bash with them nocked deals nothing too, since the rule cannot tell a bash from a shot. `hunterOverDraw` is the hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from the `proficiency-ids.json` of the last plugin run: the full slot of `AlduinakAdditions.esp` followed by its local id `002032`, today `0x33002032` because `DynDOLOD.esm` is a full plugin loaded before it; a plugin added or removed before it moves the slot):
+Named damage rules, each a multiplier applied when its conditions hold. Conditions use the server's condition functions (`skymp5-server/cpp/server_guest_lib/condition_functions`) with global form ids as parameters; `runsOn` is `Subject` (the attacker) or `Target`. Consecutive `OR` conditions form one group, groups are joined with `AND`. `magicDamageMultiplier` scales server spell hits the same way; the two racial magic resistance entries of the Test Server are under `racialPassives`. Two rules ship in the settings. `practiceArrows` makes a bow or crossbow deal nothing while Practice Arrows (Skyrim.esm AMMO `0xCAB52`, 0 damage in the plugin but the server only reads the bow's damage) are nocked, for players and NPC archers alike; a bow bash with them nocked deals nothing too, since the rule cannot tell a bash from a shot. `hunterOverDraw` is the hunter's Over Draw rule from the proficiency system, 20% more bow and crossbow damage against NPCs only (take the Hunter Master id from the `proficiency-ids.json` of the last plugin run: the full slot of `AlduinakAdditions.esp` followed by its local id `002032`, today `0x33002032` because `DynDOLOD.esm` is a full plugin loaded before it; a plugin added or removed before it moves the slot):
 
 ```json5
 {
@@ -1153,14 +1294,141 @@ fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a
 | `needsFatigueStageAbilities` | `true` | Grant the Survival exhaustion stage ability of the current stage |
 | `needsExhaustionMax` | `960` | Exhaustion of an empty fatigue bar (`Survival_ExhaustionNeedMaxValue`) |
 | `needsAttributePenalties` | `true` | `false` sends no max stamina or max magicka penalty |
-| `needsSurvivalModeFlag` | `true` | Clients set the Creation's `Survival_ModeToggle` (`SRVT`, esl 0x828) to 1 with every `needsState`. `HUDMenu::AdvanceMovie` polls that global every frame and calls the HUD's `ShowSurvivalElements(true, penalties)` under it; with the toggle at 0 the engine calls it once with false after each load and never again, so `false` hides the red penalty segments whatever the penalty globals hold. `Survival_ModeEnabled` is script-only and nothing in the engine reads it. `true` also brings the engine's own Survival extras on every client: arrows, bolts and the lockpick weigh their record weight, armour cards and the inventory bar show Warmth. Survival's quests and scripts stay off (the plugin drops `Survival_MainScript`, which would otherwise start them from this toggle), so no hunger, cold or exhaustion effect starts from it. Read at boot |
-| `needsAlcoholDiscount` | `0.25` | Warmed by drink: the share of the fatigue cost a cook or alchemist (Novice or better) saves on the crafts priced by their own rank after drinking an alcohol; `0` turns the rule off. Any other character gets the hunger only. Read at boot |
-| `needsAlcoholMinutes` | `10` | How long one drink warms; another drink refreshes the timer and never stacks |
+| `needsSurvivalModeFlag` | `true` | Clients set the Creation's `Survival_ModeToggle` (`SRVT`, esl 0x828) to 1 with every `needsState`. `HUDMenu::AdvanceMovie` polls that global every frame and calls the HUD's `ShowSurvivalElements(true, penalties)` under it; with the toggle at 0 the engine calls it once with false after each load and never again, so `false` hides the red penalty segments whatever the penalty globals hold. `Survival_ModeEnabled` is script-only and nothing in the engine reads it. `true` also brings the engine's own Survival extras on every client: arrows, bolts and the lockpick weigh their record weight (0.1 each: every vanilla and DLC arrow and bolt record, and the lockpick through Update.esm; with the flag off they weigh nothing), armour cards and the inventory bar show Warmth. Survival's quests and scripts stay off (the plugin drops `Survival_MainScript`, which would otherwise start them from this toggle), so no hunger, cold or exhaustion effect starts from it. Read at boot |
+| `needsAlcoholDiscount` | `0.25` | Steadied by drink: the share of the fatigue cost a cook or alchemist (Novice or better in any craft slot) saves, after drinking an alcohol, on the crafts their cook or alchemist rank prices, so a Blacksmith with a Cook tertiary still pays full price for smithing; `0` turns the rule off. Any other character gets the hunger only. The notice reads "The drink steadies your hands: your Cook work costs 25% less fatigue for 10 minutes." (alcohol does not warm, owner decision O16). Read at boot |
+| `needsAlcoholMinutes` | `10` | How long one drink steadies; another drink refreshes the timer and never stacks |
 | `needsAlcoholItems` | `{}` | `{ "<ALCH editor id or hex id>": true \| false }` counting an item as alcohol or not, over the record rule (an ALCH drunk with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate effect: every vanilla ale, mead, wine, brandy, flin, sujamma, shein and matze; not juice, water, milk or skooma). Rotgut and Battle-Brew Special carry no rate effect and need `true` here to count |
 | `blockStaminaCost` | `0.1` | Share of max stamina a blocked weapon hit costs the blocker; applies with needs off too, `0` turns it off |
 | `blockStaminaCostWarrior` | `0.05` | What a warrior pays instead |
 | `blockStaggerWithoutStamina` | `true` | A blocker whose stamina is below the block cost still blocks that hit but is staggered on their own screen and on their copies (at most once a second, never while downed, mounted or seated); logs `[needs] <id> staggered: blocked without stamina`. Needs the matching client |
 | `blockStaggerMagnitude` | `0.5` | The stagger's `staggerMagnitude`, clamped to 0.1 to 1 |
+
+**Per-character factors.** NeedsSystem multiplies every fatigue cost and the hunger drain by the factors of its
+modifier sources, which have no keys of their own here. The first source is the race: `fatigueCostMult` and
+`hungerRateMult` of `racialPassives`. The second, while `survivalEnabled` and `survivalDiseasesEnabled` are on, is the
+diseases a character holds, by stage: Collywobbles x1.25/1.5/1.75 on the hunger drain, Gutworm x0.75/0.5/0.25 on
+a food's hunger restore and Brown Rot x0.75/0.5/0.25 on the fatigue refill, online and in the offline refill at
+login. The factors of all sources multiply with each other and with a caller's own
+factor (the drink discount, the alchemist flora discount); one that is not a positive number counts as 1. The seven
+fatigue paths (craft, the bench check, cast attempt with the concentration drain, cast, kill, and every gather or skin
+through `canPay` and `pay`) all price with them; mastery hours never do. The log shows them:
+
+- boot: `[needs] modifier sources: race (hunger OrcRace x0.85; fatigue OrcRace x0.85, WoodElfRace x0.75, ...)`, or
+  `none`;
+- a craft: `[needs] <id> craft <recipe> r<rank>[ half][, drink x0.75]: -N%, fatigue F%, race x0.75`; the spend lines
+  (gather, kill, skin, flora) and the refused and too-tired lines end `, race x0.75` the same way, only when a factor
+  is in force;
+- the login line: `[needs] <id> online: ..., hunger drain race x0.85, fatigue costs race x0.85` (and `, fatigue
+  refill survival x0.5` with Brown Rot); the offline refill `[needs] <id> rested offline <time>: fatigue A% -> B%,
+  refill survival x0.5`; a meal `[needs] <id> ate <edid>: hunger -50 of 100, survival x0.5, hunger N`.
+
+## Survival
+
+Every number of the survival system (`docs/docs_roleplay_creations_and_needs.md`, section Survival; the file header
+of `skymp5-server/ts/systems/survivalSystem.ts` lists the same keys) is one of these keys, all optional and read at
+boot. The race numbers it uses (`coldRateMult`, `warmth`, `rawMeatSafe`) live in `racialPassives`. Nothing runs
+until `survivalEnabled` is true, which only the Test settings set; it is one of the manager's protected settings, so
+Migrate settings never carries it to live. Each part has its own switch: `survivalColdEnabled`,
+`survivalDiseasesEnabled`, `survivalAfflictions: false`, `survivalCarryWeightSpell: ""`, `survivalNoHealthRegen:
+false`, `survivalFreezingWater: false`, `survivalRespawnHealth: 1` and `survivalFoodPoisoningChance: 0`. A master or
+part switch turned off undoes, at each character's next login, what an earlier session granted (the body abilities,
+the respawn health, food poisoning, afflictions, diseases and the cold stage ability); server code older than r27 does not,
+so a rollback runs one session with the switch off first. An unusable value keeps its default and is named in
+`[survival] settings ignored: ...`. The records the server grants come with plugin r27a (`AldSurvival_*`,
+`AldDisease_*`); with an older plugin they are logged as skipped and the rest runs.
+
+Body rules, raw meat and the cure:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `survivalEnabled` | `false` | The master switch. Protected (plan task M0): set it on live by hand once survival is signed off |
+| `survivalRespawnHealthPoints` | `1` | Health points a respawn after a death wakes with (temple, afterlife arrival, a looted PK body's respawn) and a staff revive out of a realm sets, measured against the race's base health (100, an Orc 150); the client is sent the value right after the native respawn; magicka and stamina keep theirs; `0` uses the share below instead |
+| `survivalRespawnHealth` | `0.01` | Share of base health used when the points are 0 or the race cannot be read, above 0 up to 1; `1` turns the respawn rule off, whatever the points say |
+| `survivalCarryWeightSpell` | `"Survival_abLowerCarryWeightSpell"` | Editor id or desc of the carry weight ability (Survival esl 0x887, carry weight 150); `""` turns it off |
+| `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a); potions, food and Restoration still heal. The server-side refusal of client regeneration is the native `healthRegenerationMultiplier` of plan task NV1 (top level; 0 refuses every health increase a client reports), which needs a native server build from `ea63f69a` or later |
+| `survivalFreezingWater` | `true` | Grants `AldSurvival_FreezingWaterDamage` once (it hurts only while swimming with the client's `AldSurvival_FreezingArea` at 1) and runs the freezing water cold; `false` turns both off |
+| `survivalFoodPoisoningChance` | `0.5` | Chance raw meat (`Survival_FoodRawMeat`, the hunting meats and `survivalRawMeatExtra`) gives food poisoning, times (1 - disease resistance); 0 to 1, `0` turns it off. A race with `rawMeatSafe` never gets it |
+| `survivalFoodPoisoningHours` | `24` | Real hours food poisoning lasts, offline included |
+| `survivalRawMeatExtra` | `[]` | More raw meat: editor ids, hex ids or descs |
+| `survivalCure` | `"cureDiseaseOrHealth"` | What cures diseases, food poisoning and afflictions: a Cure Disease potion, or a potion (not a food or poison) restoring `survivalCureMinHealth` health or more (owner's "requiring health potions", critique A.1). `"cureDisease"`: Cure Disease potions only. Shrines never cure and say so at most once a minute |
+| `survivalCureMinHealth` | `25` | Health a potion must restore to cure under `cureDiseaseOrHealth` |
+
+Cold and warmth:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `survivalColdEnabled` | `true` | `false` stops cold and warmth |
+| `survivalColdHoursToNumb` | `1.3334` | Real hours in which cold level 20 with no warmth fills the bar, 20 times slower than single-player Survival |
+| `survivalColdLevelMult` | `50` | `Survival_ColdLevelMult`: with no warmth, cold rises this much per cold level in `survivalColdHoursToNumb` hours |
+| `survivalColdStages` | `[50, 120, 300, 500, 800]` | Cold at which Comfortable, Chilly, Very Cold, Freezing and Numb begin (Warm lasts from 0 until the first after warming to 0); five rising numbers below 1000 |
+| `survivalColdStart` | `55` | Cold of a new character, after a respawn and after an admin reset; offline warming stops here |
+| `survivalColdLevels` | `{ "warm": 0, "cool": 3, "freezing": 6, "chillyInterior": 6, "warmNight": 1, "coolNight": 2, "freezingNight": 4, "rain": 3, "snow": 6, "blizzard": 10, "freezingWater": 30 }` | Cold level by area class, night, weather and swimming in freezing water; merged key by key |
+| `survivalColdLevelCaps` | `[1, 4, 7, 10, 13]` | Cold level that lets cold reach stages 1 to 5; five rising numbers |
+| `survivalNightHours` | `[19, 7]` | Night from the first to the second hour of the players' game clock |
+| `survivalRegionClimate` | the 45 weather regions of `survivalClimate.ts` | `{ "<weather region id>": "warm" \| "cool" \| "freezing" \| "none" }`, merged over the defaults |
+| `survivalWorldClimate` | Whiterun, Windhelm, Solitude and Markarth worlds cool, Riften world warm, Sovngarde, the Soul Cairn, the Boneyard, Apocrypha and the Blue Palace wing none | `{ "<worldspace editor id>": class }`, merged over the defaults; a world entry wins over the region |
+| `survivalHighAltitude` | `{ "freezingZ": 19000, "fallForest": 15150 }` | Freezing above `freezingZ`, and above the height given for a weather region id |
+| `survivalColdWarmPerMinute` | `40` | Cold lost per minute above the level's cap, not within 10 s of a hit given or taken |
+| `survivalColdOfflineWarmPerHour` | `1000` | Cold lost per hour logged out, down to `survivalColdStart` |
+| `survivalHeatRadius`, `survivalHeatRestore`, `survivalHeatCheckSeconds`, `survivalHeatStillUnits` | `580`, `75`, `6`, `48` | A character who moved less than the last value in the last check, within the radius of a heat source of `heatSources.ts`, loses the restore every check |
+| `survivalHeatExtraBases`, `survivalHeatKeywords` | `[]`, `["CraftingCookpot", "AldCraftingKiln"]` | More heat sources by base, and the furniture keywords that warm. Read by `misc/gen-heat-sources.py`, which writes `heatSources.ts`: rerun it and Build server after a change (the boot line says when they differ from the ones the list was made with) |
+| `survivalWarmth` | `{ "normal": [27, 18, 13, 13], "warm": [54, 29, 24, 24], "cold": [17, 8, 7, 7], "torch": 50, "cloak": 0, "max": 206, "maxReduction": 0.85 }` | Warmth of body, head, hands and feet for plain gear, `Survival_ArmorWarm` and `Survival_ArmorCold` gear, a torch in hand and cloaks; `max` warmth cuts cold gain by `maxReduction`. Merged key by key |
+| `survivalWarmthTable` | `true` | The server rates the pieces the engine's keywords leave out from `armorWarmth.ts` (made by `misc/gen-armor-warmth.py` from the load order): mod pieces and enchanted copies on the body, head, hands and feet count as warm or cold like the comparable base game piece, and cloaks, capes, collars, scarves and masks add 3 to 20 points (the warmest on the back and the warmest at the neck or face). A piece with `Survival_ArmorWarm` or `Survival_ArmorCold` keeps its keyword rating. `false` counts keywords only, as the item cards show. The item cards and the inventory total do not change (they are the engine's); the readout's Cold line shows the server's total. The boot line reads `armorWarmth.ts rates 620 more pieces` |
+| `survivalHotFoodWarmth`, `survivalHotFoodWarmthMinutes` | `25`, `100` | Warmth of a hot meal and for how many real minutes |
+| `survivalSpellHitCold` | `30` | Cold a frost spell hit adds (up to 500, Freezing) and a fire spell hit takes off (down to 120, Chilly) |
+| `survivalColdOnHit` | `{ "frostbitespider": 30, "falmer": 30 }` | `{ "<race editor id fragment>": cold }` an unblocked hit of those races adds, merged over the default |
+| `survivalColdKills` | `false` | `true` kills at cold 1000 |
+| `survivalColdStageAbilities` | `true` | The `Survival_ColdStage0..5` ability of the current stage (speed, lockpicking, the frost shader at Freezing and Numb) |
+| `survivalColdHealthPenalty` | `true` | Clients shrink maximum health by the cold share `(cold - 119) / 881`, as hunger and fatigue shrink stamina and magicka |
+| `survivalColdMaxHealthPenalty` | `0.8` | The largest share of maximum health cold takes, 0 to 1, so a Numb character keeps a fifth of the bar (critique A.3) |
+| `survivalColdHealthScale` | `false` | `true` also writes `private.healthScale` for the native health scale (plan task NV4), which this build does not read |
+| `survivalFreezingWaterWorlds` | `["DLC1HunterHQWorld"]` | Worldspaces whose water always freezes, besides freezing areas and cold interiors |
+
+Afflictions (Weakened at Starving, Addled at Debilitated, Frostbitten at Numb):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `survivalAfflictions` | `{ "weakened": { "chance": 0.2, "tickMinutes": 15 }, "addled": { "chance": 0.3, "tickMinutes": 30 }, "frostbitten": { "chance": 0.16, "tickMinutes": 5 } }` | Chance rolled at the need's stage 5, at most once every `tickMinutes` (leaving stage 5 and coming back inside that time rolls nothing); merged over the defaults; `false` for one or for the whole key turns it off |
+| `survivalAfflictionHours` | `24` | Real hours an affliction lasts, offline included |
+
+Diseases:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `survivalDiseasesEnabled` | `true` | `false` gives no disease and removes those held at login |
+| `survivalDiseases` | `{}` | `{ "<disease id>": false \| { "name", "contagious", "stageHours": [h1, h2] } }` over the 27 catalog diseases of `survivalDiseases.ts` (`ataxia`, `rockjoint`, `collywobbles`, ...); `false` drops one |
+| `survivalDiseaseCarriers` | 20 carriers (skeever, wolf, fox, bear, chaurus, sabre cat, dog, hagraven, ash hopper, goat, boar, mudcrab and ice wraith 10%, troll 6%, slaughterfish, skeleton, ash spawn, wisp and dragon priest 5%, draugr 3%) | `{ "<race editor id fragment>": false \| { "chance": 0 to 1, "diseases": [ids] } }`, merged over the defaults; the longest matching fragment wins |
+| `survivalDiseaseCarrierExclude` | `["werewolf", "werebear"]` | Race editor id fragments no carrier matches |
+| `survivalDiseaseStageHours` | `[84, 84]` | Real hours from stage 1 to 2 and from 2 to 3, offline included; stage 3 stays until cured |
+| `survivalMaxDiseases` | `4` | Diseases a character can catch at once; an admin may give more |
+| `survivalContagionChance` | `0.05` | Chance a player catches a contagious disease they lack when their client reports a carrier in range, times (1 - disease resistance); the server rolls once per reported disease it confirms and pair of players per `survivalContagionCooldownMinutes`; `0` turns contagion off |
+| `survivalContagionRange` | `chatRanges.whisper`, else `150` | Units (same cell or world) within which the client counts a carrier; defaults to the chat's whisper range and goes to the client in `survivalState` |
+| `survivalContagionCheckSeconds` | `60` | Seconds between one client's contagion checks, the first at a random second; the server accepts one report per player per this less 5 s (55 s), never less than half of it |
+| `survivalContagionCooldownMinutes` | `30` | Minutes before the same disease and pair of players (carrier and reporter) roll again, so one carrier beside you is one roll per disease every 30 min (about 10% an hour at 5%); kept in memory, a restart or the reporter's relog starts it over; `0` rolls at every accepted report |
+
+Contagion is a client check (the owner's call, to keep the calculations off the server): each player's `ff_contagious`
+actor property lists the contagious diseases they carry, each client reports the loaded players within range whose list
+names one it lacks, and the server checks only that the disease is contagious, that the source carries it and that the
+reporter does not, then rolls, at most once per disease and pair every `survivalContagionCooldownMinutes`. A modified
+client could skip its reports and avoid catching diseases; it cannot infect anyone else. `ff_contagious` must be
+registered in the gamemode (staged in `Desktop/alduinak-r13/live/r27-SV4b/`).
+
+The Test Server values are the defaults with `survivalEnabled: true` (staged with READMEs in
+`Desktop/alduinak-r13/live/r27-SV1/` to `r27-SV4/`). Quick-test values, to be removed before any Migrate settings
+(every key here but `survivalEnabled` goes live with it): `survivalColdHoursToNumb` 0.02, `survivalAfflictionHours`
+0.1, `survivalDiseaseStageHours` [0.05, 0.05], `survivalContagionChance` 1. The boot lines are `[survival] ready:
+...`, `[survival] cold: ...` and `[survival] diseases: ...` with every number in force, or `[survival] off
+(survivalEnabled false): ...`.
+
+```json5
+{
+  // ...
+  "survivalEnabled": true,
+  "survivalColdHoursToNumb": 1.3334,
+  "survivalDiseaseStageHours": [84, 84]
+  // ...
+}
+```
 
 ## Mastery, gathering and hunting
 
@@ -1168,9 +1436,12 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `masteryRankHours` | `[40, 100, 180, 6000]` | Worked hours for Adept, Expert, Master, Legendary; four numbers |
-| `masteryPointIntervalMinutes` | `60` | Minimum gap between two counted hours |
-| `masteryHourBank` | `2` | Hours that extra crafts inside a counted hour may bank; each is counted after another interval of online time with no counted work. `0` turns the bank off |
+| `masteryRankHours` | `[40, 100, 180, 6000]` | Worked hours for Adept, Expert, Master, Legendary; four numbers. The primary's ladder unless `masterySlots` gives it one |
+| `masteryPointIntervalMinutes` | `60` | Minimum gap between two counted hours, per craft slot: each slot has its own clock |
+| `masteryHourBank` | `2` | Hours that extra crafts inside a counted hour may bank, per craft slot; each is counted after another interval of online time with no counted work. `0` turns the bank off |
+| `masterySlots` | `[{ "name": "Primary", "cap": "Legendary" }]` (multiclassing off) | Craft slots in pick order, 1 to 3: `[{ name, cap, rankHours }]`. `cap` is a rank name or index from Novice to Legendary; `rankHours` the hours for each rank from Novice, one per rank up to the cap, never falling (the primary's defaults to `0` plus `masteryRankHours`). A sub-slot starts at Free and earns its Novice hours only from its class's free work. One entry turns multiclassing off without losing data: at the next login the sub-slots' markers are revoked and their records kept, and restoring the key grants them again. A malformed value keeps the default and logs `[mastery] masterySlots <reason>, default kept`. Protected (plan task M0): Migrate settings never copies it to live. The Test value, staged in `Desktop/alduinak-r13/live/r27-MC3/` for once the native temper cap (plan task NV1) is on the Test Server: `[{ "name": "Primary", "cap": "Legendary" }, { "name": "Secondary", "cap": "Adept", "rankHours": [20, 60] }, { "name": "Tertiary", "cap": "Novice", "rankHours": [20] }]`. Boot line `[mastery] slots: Primary to Legendary (0/40/100/180/6000 h), Secondary to Adept (20/60 h), Tertiary to Novice (20 h); each slot has its own 60 min clock and 2 hours bank, ...`, then `[mastery] free recipes by bench: ...`. See `docs_roleplay_mastery.md`, Secondary and tertiary crafts |
+| `masterySlotKits` | `true` | A secondary or tertiary pick hands over that craft's `masteryKits` items, never gold, once per craft per character, and none when the primary's kit was that craft's |
+| `masteryResetsPerCharacter` | `1` | How many times a player may set a craft aside from the profession menu on one character, the hours going with it. One count is shared by all slots, a reset clears one slot, and a sub-slot never moves up into an empty primary |
 | `masterySpells` | plugin markers | `{ "<profession>": [novice, adept, expert, master, legendary] }` form ids; a profession left out uses the plugin's `AldProf_<Label>_<Rank>` spells |
 | `masteryActivities` | see `masterySystem.ts` | What counts as work per profession |
 | `masteryKits` | see `DEFAULT_KITS` in `masterySystem.ts` | `{ "<profession>": [{ baseId, count }] }` kit a character receives with its first profession, same shape as `startingItems`; a profession left out keeps its default, `[]` gives nothing, an unknown key or item is logged at boot |

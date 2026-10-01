@@ -3,6 +3,26 @@ export const RANK_NAMES = ['Free', 'Novice', 'Adept', 'Expert', 'Master', 'Legen
 
 export const DEFAULT_RANK_HOURS = [0, 0, 40, 100, 180, 6000];
 
+// Craft slot names by slot index, used when the server sends none
+export const SLOT_NAMES = ['Primary', 'Secondary', 'Tertiary'];
+
+// Profession list tag of the slot that holds the craft
+export const SLOT_TAGS = ['1st', '2nd', '3rd'];
+
+// The free work that earns a secondary or tertiary craft its hours toward Novice
+export const FREE_WORK: Record<string, string> = {
+  blacksmith: 'nails, iron fittings, locks and hinges at the forge, the Bandit armour tempers, and sea salt and charcoal at the smelter.',
+  tailor: 'leather strips, fur armour and blank parchment, journals and books at the tanning rack, thread and the roughspun tunic at the loom, and the Bandit armour tempers.',
+  woodworker: 'the blank parchment, journal and book at the woodcrafting bench, charcoal, and chopping wood at a chopping block.',
+  alchemist: 'honey at the alchemy lab, any drink at a meadery boiler, and picking plants and trees.',
+  cook: 'salmon steak, rabbit haunch, pheasant roast, chicken breast and honey at the cooking pot, and any drink at a meadery boiler.',
+  miner: 'mining iron veins and sea salt deposits, and sea salt and charcoal at the smelter.',
+  farmer: 'picking plants and trees, and crops with a hoe.',
+  hunter: 'killing animals, and the free recipes of the tanning rack.',
+  warrior: 'any kill of a person or creature.',
+  mage: 'casting any spell; learn one from a tome first.'
+};
+
 export const PROFESSION_TYPES: Record<string, string> = {
   blacksmith: 'Crafter',
   tailor: 'Crafter',

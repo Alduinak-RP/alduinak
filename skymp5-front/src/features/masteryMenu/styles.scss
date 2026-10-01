@@ -151,6 +151,90 @@ $text-dim: rgba(232, 224, 208, 0.6);
     color: $gold;
   }
 
+  // Which craft slot holds the profession
+  &__item-slot {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: $gold-dim;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+  }
+
+  // ── Craft slot chips ───────────────────────────────────────────────────────
+
+  // A shorter title row and the chips under it; the body moves down a row
+  &__frame--slots {
+    grid-template-rows: 56px auto minmax(0, 1fr);
+
+    .mastery__list,
+    .mastery__stage,
+    .mastery__ranks,
+    .mastery__empty {
+      grid-row: 3;
+    }
+  }
+
+  &__slots {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    border-bottom: 1px solid $border-dim;
+  }
+
+  // Slot name over its craft and progress
+  &__slot {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 14px 7px;
+    border: 0;
+    border-right: 1px solid $border-dim;
+    background: transparent;
+    color: $text;
+    font-family: inherit;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    text-align: left;
+    cursor: pointer;
+    transition: color $fast, background $fast;
+
+    &:last-child {
+      border-right: 0;
+    }
+
+    &:hover:not(:disabled) {
+      background: rgba(200, 180, 138, 0.06);
+    }
+
+    &:disabled {
+      color: $text-dim;
+      cursor: default;
+    }
+
+    &--viewing {
+      color: $gold;
+      background: rgba(200, 180, 138, 0.1);
+    }
+  }
+
+  &__slot-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__slot-name {
+    color: $gold;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
   // ── Centre stage ───────────────────────────────────────────────────────────
 
   &__stage {
@@ -246,6 +330,11 @@ $text-dim: rgba(232, 224, 208, 0.6);
       opacity: 1;
       background: linear-gradient(90deg, rgba(200, 180, 138, 0.08), transparent);
     }
+
+    // Above the viewed slot's cap
+    &--capped {
+      opacity: 0.28;
+    }
   }
 
   &__rank-name {
@@ -269,6 +358,16 @@ $text-dim: rgba(232, 224, 208, 0.6);
     color: $text;
     font-size: 16px;
     letter-spacing: 0.04em;
+  }
+
+  &__rank-work {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    margin: 0;
+    padding: 4px 0 0 18px;
+    color: $text-dim;
+    font-size: 14px;
+    letter-spacing: 0.03em;
   }
 
   &__rank-cost {
@@ -357,6 +456,15 @@ $text-dim: rgba(232, 224, 208, 0.6);
       grid-template-rows: 64px minmax(0, 1fr);
     }
 
+    &__frame--slots {
+      grid-template-rows: 48px auto minmax(0, 1fr);
+    }
+
+    &__slot {
+      padding: 5px 10px 6px;
+      font-size: 14px;
+    }
+
     &__rank {
       min-height: 76px;
       padding: 8px 10px;
@@ -365,6 +473,11 @@ $text-dim: rgba(232, 224, 208, 0.6);
     &__rank-perk {
       padding-left: 10px;
       font-size: 15px;
+    }
+
+    &__rank-work {
+      padding-left: 10px;
+      font-size: 13px;
     }
   }
 }

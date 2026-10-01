@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
 import { copyText } from '../../utils/copyText';
-import MasteryMenu, { MasteryData } from '../masteryMenu';
+import MasteryMenu, { MasteryData, MasterySlot, slotName } from '../masteryMenu';
 import ItemSpawner, { ItemResults } from './itemSpawner';
 import FactionTab, { FactionMenuData } from './factionTab';
 import FactionAssign from './factionAssign';
@@ -10,7 +10,8 @@ import Dropdown from './dropdown';
 import Jobs, { AdminPos, JobRow } from './jobs';
 import WeatherTab, { WeatherMenuData } from './weatherTab';
 import PolymorphTab, { RaceMenuData } from './polymorphTab';
-import { formatCountdown, isBlankOrNum, isNum, optionalNumber, pad2 } from './util';
+import { diseaseStageName } from '../survivalReadout';
+import { formatCountdown, formatTimeLeft, isBlankOrNum, isNum, optionalNumber, pad2 } from './util';
 import './styles.scss';
 
 // One roster row as merged by the server (online actor data + backend record).
@@ -26,6 +27,7 @@ interface PanelPlayer {
   ping: number | null;
   m?: PanelMastery; // online rows only, absent on older servers
   av?: PanelAttrs; // online rows only, absent on older servers
+  sv?: PanelSurvival; // online rows once survival settled on the character, absent with survival off
   f?: PanelFallen[]; // the profile's fallen characters, absent when none or on older servers
   ok?: boolean; // a revive is allowed: the profile's living characters are below the limit
 }
@@ -45,6 +47,26 @@ interface PanelAttrs {
   stamina: number;
 }
 
+// One character's survival state (survivalSystem.ts SurvivalSummary); epochs in server ms
+interface PanelSurvival {
+  cold: number; // -1 with cold off
+  stage: string; // cold stage name, '' with cold off
+  area: string; // '' until the first cold step
+  level: number;
+  warmth: number;
+  freezingArea: boolean;
+  diseases: Array<{ id: string; name: string; stage: number; nextAt: number }>; // nextAt 0 at the last stage
+  afflictions: Array<{ name: string; until: number }>;
+  foodPoisonUntil: number;
+}
+
+// What the survival row may give (survivalSystem.ts SurvivalCatalog)
+interface SurvivalCatalog {
+  diseases: Array<{ id: string; name: string; contagious: boolean }>;
+  coldMax: number;
+  coldStages: number[];
+}
+
 // One character's profession standing (masterySystem.ts MasterySummary).
 interface PanelMastery {
   profession: string | null;
@@ -52,6 +74,7 @@ interface PanelMastery {
   rank: number;
   rankName: string;
   hours: number;
+  slots?: MasterySlot[]; // every configured craft slot, primary first; absent on older servers
 }
 
 interface PanelLocation {
@@ -165,6 +188,7 @@ export interface AdminPanelData {
   faction?: FactionMenuData | null; // the factionMenu reply, absent until it arrives
   jobs?: JobRow[] | null; // the adminJobs reply, absent until it arrives
   weather?: WeatherMenuData | null; // the adminWeather reply, absent until it arrives
+  survival?: SurvivalCatalog | null; // null with survival off, absent on older clients
   races?: RaceMenuData | null; // the adminRaces reply, absent until it arrives
 }
 
@@ -299,10 +323,39 @@ const isAttrAmount = (text: string): boolean =>
 const attrForm = (av: PanelAttrs | null | undefined): Record<string, string> =>
   ({ health: String(av ? av.health : 0), magicka: String(av ? av.magicka : 0), stamina: String(av ? av.stamina : 0) });
 
+// The craft slots when the server configures more than one, null otherwise
+const craftSlots = (m: PanelMastery | null | undefined): MasterySlot[] | null => (m && m.slots && m.slots.length > 1 ? m.slots : null);
+
 const masteryText = (m: PanelMastery | null | undefined): string => {
   if (!m) return 'unknown';
+  const slots = craftSlots(m);
+  if (slots) return slots.map((s) => (s.profession ? (s.label || s.profession) + ', ' + s.rankName + ', ' + s.hours + ' h' : 'no ' + slotName(s).toLowerCase())).join(' \u00b7 ');
   if (!m.profession) return 'No craft chosen' + (m.hours ? ' (' + m.hours + ' h banked)' : '');
   return m.label + ' \u00b7 ' + m.rankName + ' \u00b7 ' + m.hours + (m.hours === 1 ? ' hour' : ' hours');
+};
+
+// survivalClimate.ts COLD_STAGE_NAMES
+const COLD_STAGE_NAMES = ['Warm', 'Comfortable', 'Chilly', 'Very Cold', 'Freezing', 'Numb'];
+
+// survivalClimate.ts coldStageOf without the hot food bonus
+const coldStageName = (cold: number, stages: number[]): string => COLD_STAGE_NAMES[1 + stages.slice(1).filter((s) => cold >= s).length] || '';
+
+const AREA_NAMES: Record<string, string> = { none: 'no cold', interior: 'warm interior', chillyInterior: 'chilly interior' };
+
+const DISEASE_STAGE_CHOICES = [1, 2, 3].map((n) => ({ value: String(n), label: diseaseStageName('Stage ' + n, n) }));
+
+const survivalText = (sv: PanelSurvival): string => {
+  const cold = sv.cold < 0 ? 'cold off' : 'cold ' + sv.cold + ' (' + sv.stage + '), warmth ' + sv.warmth;
+  const area = sv.area ? 'area ' + (AREA_NAMES[sv.area] || sv.area) + ', level ' + sv.level + (sv.freezingArea ? ', freezing water' : '') : 'area not known yet';
+  return cold + ' \u00b7 ' + area;
+};
+
+// Diseases with their next stage, then afflictions and food poisoning with the time they have left
+const sicknessText = (sv: PanelSurvival, now: number): string => {
+  const sick = sv.diseases.map((d) => diseaseStageName(d.name, d.stage) + (d.nextAt ? ', worse in ' + formatTimeLeft(d.nextAt, now) : ''))
+    .concat(sv.afflictions.map((a) => a.name + ', ' + formatTimeLeft(a.until, now) + ' left'))
+    .concat(sv.foodPoisonUntil > now ? ['Food poisoning, ' + formatTimeLeft(sv.foodPoisonUntil, now) + ' left'] : []);
+  return sick.length ? 'Sick: ' + sick.join('; ') : 'No sickness';
 };
 
 const MONTHS = ['Morning Star', "Sun's Dawn", 'First Seed', "Rain's Hand", 'Second Seed', 'Midyear', "Sun's Height", 'Last Seed', 'Hearthfire', 'Frostfall', "Sun's Dusk", 'Evening Star'];
@@ -423,7 +476,13 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   // An Add or Save waits for the server's answer; a refusal keeps the form as it was
   const [zonePending, setZonePending] = useState(false);
   const [grantHours, setGrantHours] = useState('1');
+  // Craft slot index the grant and reset act on
+  const [grantSlot, setGrantSlot] = useState('0');
   const [attrs, setAttrs] = useState<Record<string, string>>(attrForm(null));
+  // Survival row: the cold to set, the picked disease and its stage
+  const [coldText, setColdText] = useState('');
+  const [sickPick, setSickPick] = useState('');
+  const [sickStage, setSickStage] = useState('1');
   const [petKind, setPetKind] = useState<PetKind>('horse');
   const [petBase, setPetBase] = useState('');
   const [petName, setPetName] = useState('');
@@ -520,6 +579,11 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   useEffect(() => {
     setAttrs(attrForm(selectedPlayer ? selectedPlayer.av : null));
     setPkArmed('');
+    setGrantSlot('0');
+    const selectedSv = selectedPlayer ? selectedPlayer.sv : undefined;
+    setColdText(selectedSv && selectedSv.cold >= 0 ? String(selectedSv.cold) : '');
+    setSickPick('');
+    setSickStage('1');
   }, [selected]);
 
   // Mastery rows stay tied to the selected character.
@@ -528,6 +592,35 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const canGrant = !!ev.masteryGrant && isGrantAmount(grantHours);
   // Filled from the selected row, so the fields show what the character carries now
   const canSetAttrs = !!ev.attrSet && actionsEnabled && ATTR_FIELDS.every((f) => isAttrAmount(attrs[f.key]));
+
+  // The survival row shows once the server sends its catalog or a row carries a state; the actions need a client that forwards them
+  const catalog = data.survival || null;
+  const showSurvival = !!selectedPlayer && (!!catalog || players.some((pl) => !!pl.sv));
+  const survivalActs = !!ev.survival && !!catalog;
+  const sv = actionsEnabled && selectedPlayer ? selectedPlayer.sv : undefined;
+  const heldDisease = (id: string) => (sv ? sv.diseases.find((d) => d.id === id) : undefined);
+  // Held diseases first, so a cure is one click away
+  const diseaseOptions = (catalog ? catalog.diseases : []).slice()
+    .sort((x, y) => Number(!!heldDisease(y.id)) - Number(!!heldDisease(x.id)) || x.name.localeCompare(y.name))
+    .map((d) => {
+      const held = heldDisease(d.id);
+      return { value: d.id, label: d.name + (d.contagious ? ', contagious' : '') + (held ? ' (has stage ' + held.stage + ')' : '') };
+    });
+  const diseaseId = diseaseOptions.some((o) => o.value === sickPick) ? sickPick : diseaseOptions.length ? diseaseOptions[0].value : '';
+  const diseaseHeld = heldDisease(diseaseId);
+  const coldMax = catalog ? catalog.coldMax : 0;
+  const coldNumber = isNum(coldText) ? Number(coldText) : NaN;
+  const coldOk = !!sv && sv.cold >= 0 && Number.isInteger(coldNumber) && coldNumber >= 0 && coldNumber <= coldMax;
+  const survivalNow = Date.now();
+  const hasSickness = !!sv && (sv.diseases.length > 0 || sv.afflictions.length > 0 || sv.foodPoisonUntil > survivalNow);
+  const survivalHint = !actionsEnabled
+    ? 'Select an online player to see their cold and sickness'
+    : !sv
+      ? 'Survival has not settled on this character yet (just logged in or still in creation)'
+      : sicknessText(sv, survivalNow) + (coldOk && coldNumber !== sv.cold && catalog ? ' · cold ' + coldNumber + ' is ' + coldStageName(coldNumber, catalog.coldStages) : '');
+  const survivalAct = (action: string, fields?: Record<string, unknown>): void => {
+    if (selectedPlayer && selectedPlayer.a) send(ev.survival, JSON.stringify({ action, target: selectedPlayer.a, ...fields }));
+  };
 
   const locFilter = locSearch.trim().toLowerCase();
   const shownLocations = locations.filter((l) => !locFilter || (l.name + ' ' + (l.kind || '')).toLowerCase().indexOf(locFilter) !== -1);
@@ -760,14 +853,30 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 {masteryRows.length === 0 ? (
                   <span className="admin-panel__hint">Select an online player to grant mastery hours</span>
                 ) : (
-                  masteryRows.map((r) => (
-                    <div key={r.key} className="admin-panel__mastery-row">
-                      <span className="admin-panel__mastery-who" title={r.who}>{r.who}</span>
-                      <span className="admin-panel__mastery-info" title={masteryText(r.m)}>{masteryText(r.m)}</span>
-                      <Button text="Grant" width={96} height={30} disabled={!canGrant} onClick={() => send(ev.masteryGrant, r.target, Number(grantHours))} />
-                      <Button text="Reset craft" width={116} height={30} disabled={!(r.m && r.m.profession)} onClick={() => send(ev.masteryReset, r.target)} />
-                    </div>
-                  ))
+                  masteryRows.map((r) => {
+                    const slots = craftSlots(r.m);
+                    const picked = slots ? slots.filter((s) => String(s.slot) === grantSlot)[0] || slots[0] : null;
+                    const slot = picked ? picked.slot : 0;
+                    // A sub-slot takes hours only once its craft is chosen; the primary banks them either way
+                    const grantOk = canGrant && !(picked && slot > 0 && !picked.profession);
+                    const resetOk = picked ? !!picked.profession : !!(r.m && r.m.profession);
+                    return (
+                      <div key={r.key} className="admin-panel__mastery-row">
+                        <span className="admin-panel__mastery-who" title={r.who}>{r.who}</span>
+                        <span className="admin-panel__mastery-info" title={masteryText(r.m)}>{masteryText(r.m)}</span>
+                        {slots ? (
+                          <Dropdown
+                            className="admin-panel__mastery-slot"
+                            value={String(slot)}
+                            options={slots.map((s) => ({ value: String(s.slot), label: slotName(s) + ': ' + (s.profession ? s.label || s.profession : 'empty') }))}
+                            onChange={setGrantSlot}
+                          />
+                        ) : null}
+                        <Button text="Grant" width={96} height={30} disabled={!grantOk} onClick={() => send(ev.masteryGrant, r.target, Number(grantHours), slot)} />
+                        <Button text="Reset craft" width={116} height={30} disabled={!resetOk} onClick={() => send(ev.masteryReset, r.target, slot)} />
+                      </div>
+                    );
+                  })
                 )}
               </div>
             ) : null}
@@ -798,6 +907,53 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     ? 'Health, magicka and stamina, permanent and kept through relogs; 0 leaves the character on its base values'
                     : 'Select an online player to change their max attributes'}
                 </span>
+              </div>
+            ) : null}
+            {showSurvival ? (
+              <div className="admin-panel__mastery">
+                <div className="admin-panel__mastery-row">
+                  <span className="admin-panel__mastery-who">Survival</span>
+                  <span className="admin-panel__mastery-info" title={sv ? survivalText(sv) : ''}>{sv ? survivalText(sv) : '-'}</span>
+                  {survivalActs ? (
+                    <>
+                      <input
+                        className="admin-panel__input admin-panel__survival-cold"
+                        placeholder="Cold"
+                        title={'Cold from 0 to ' + coldMax}
+                        value={coldText}
+                        disabled={!sv || sv.cold < 0}
+                        onChange={(e) => setColdText(e.target.value)}
+                      />
+                      <Button text="Set cold" width={96} height={30} disabled={!coldOk} onClick={() => survivalAct('survivalCold', { cold: coldNumber })} />
+                      <Button text="Details" width={96} height={30} disabled={!actionsEnabled} onClick={() => survivalAct('survivalInfo')} />
+                      <Button text="Reset" width={96} height={30} disabled={!sv} onClick={() => survivalAct('survivalReset')} />
+                    </>
+                  ) : null}
+                </div>
+                {survivalActs ? (
+                  <div className="admin-panel__mastery-row">
+                    <span className="admin-panel__mastery-who">Disease</span>
+                    <Dropdown
+                      className="admin-panel__survival-disease"
+                      value={diseaseId}
+                      options={diseaseOptions}
+                      placeholder="No diseases in the plugin"
+                      disabled={!sv || !diseaseOptions.length}
+                      onChange={setSickPick}
+                    />
+                    <Dropdown className="admin-panel__survival-stage" value={sickStage} options={DISEASE_STAGE_CHOICES} disabled={!sv} onChange={setSickStage} />
+                    <Button
+                      text={diseaseHeld ? 'Set stage' : 'Give'}
+                      width={104}
+                      height={30}
+                      disabled={!sv || !diseaseId || (!!diseaseHeld && diseaseHeld.stage === Number(sickStage))}
+                      onClick={() => survivalAct('survivalDisease', { disease: diseaseId, stage: Number(sickStage) })}
+                    />
+                    <Button text="Cure" width={80} height={30} disabled={!diseaseHeld} onClick={() => survivalAct('survivalCure', { disease: diseaseId })} />
+                    <Button text="Cure all" width={96} height={30} disabled={!hasSickness} onClick={() => survivalAct('survivalCure')} />
+                  </div>
+                ) : null}
+                <span className="admin-panel__hint">{survivalHint}</span>
               </div>
             ) : null}
             {ev.revive && selectedPlayer && selectedPlayer.f && selectedPlayer.f.length ? (

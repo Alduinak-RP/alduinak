@@ -214,7 +214,8 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
   Small effect in the plugin, like raw apples and tomatoes (the patcher spec's `overrides.foods`). `LargeVampire` (the
   blood potion) restores its global's Large amount only to an actor with the `Vampire` keyword, from its `HasKeyword`
   condition. Several hunger effects on one food add up, as their scripts would. A food the server refuses for its 10
-  second cooldown restores nothing. Survival's gutworm disease multiplier is not applied (no disease).
+  second cooldown restores nothing. Gutworm, one of the survival diseases, scales the restore through the modifier
+  sources below (0.75/0.5/0.25 by stage, see [Survival](#survival)).
 - Eating, drinking or applying a poison from the inventory takes the item out of the pack with no container and no
   world reference, which `DropItemService` read as a drop: whenever the same item lay in the world within 2000 units
   (the cabbages, potatoes and cheese bowls of every inn and kitchen, the potions of a dungeon) it deleted those local
@@ -252,8 +253,19 @@ in `ccQDRSSE001-SurvivalMode.bsa`), except where the owner set the rates.
 is logged in, and at `needsFatigueOfflinePerHour` (default 1, the same 100% per hour; 0 turns it off) for the time the
 character was logged out, from its last save to the next login. The offline share is added once at login, the bar stops
 at 100%, and the server logs `[needs] <id> rested offline <time>: fatigue A% -> B%` just before the `online` line (no
-line when the bar was already full). Nothing else speeds it up or slows it down: no bed, no racial or membership
-discount, no free bench. Eating never costs fatigue.
+line when the bar was already full). Nothing speeds it up: no bed, no membership discount, no free bench. Eating never
+costs fatigue.
+
+**Modifier sources.** Systems registered with `NeedsSystem.addModifierSource` scale a character's needs, and every
+factor in force multiplies: the hunger drain (`hungerDrainMult`), every fatigue cost (`fatigueCostMult`), the hunger a
+food takes off (`foodHungerMult`) and the rate the bar refills at, online and in the offline refill
+(`fatigueRegenMult`). RacialSystem is the first source (the `racialPassives` hunger and fatigue factors); SurvivalSystem
+is the second (its diseases, such as Gutworm on food and Brown Rot on the refill). A factor that is not a positive
+number counts as 1. The lines name what is in force: cost lines end `, race x0.75`, the `online` line adds
+`hunger drain race x0.85, fatigue costs race x0.85, fatigue refill survival x0.5`, the offline line adds
+`refill survival x0.5`, and a scaled meal logs `[needs] <id> ate <editor id>: hunger -50 of 100, survival x0.5, hunger N`.
+Every hunger or fatigue stage change of an online character, and every minute tick, emits `needsStage` (actorId, hunger
+stage, fatigue stage) on the gamemode bus for the survival afflictions.
 
 Every action costs a share of the bar by the character's rank **in the profession the action belongs to**; a character
 of another profession or none pays the Free price (`FATIGUE_COST` and `fatigueCost` in `needsSystem.ts`):
@@ -276,15 +288,20 @@ alchemist pays a farmer's price for flora at the same rank and the Free price fo
 off) takes that share off again for an alchemist of Novice or better on alchemy flora, flora that hands over an
 ingredient (flowers, mushrooms, herbs, berries, eggs, nirnroot).
 
-**Warmed by drink.** A cook or alchemist of Novice or better who drinks an alcohol pays `needsAlcoholDiscount` (25%)
-less fatigue for the crafts priced by their own rank (the cooking pot and oven for a cook, the alchemy lab for an
-alchemist, every drink at a meadery boiler for both, shared recipes) for `needsAlcoholMinutes` (10); another drink
-refreshes the timer and never stacks, and the discount multiplies the half cost of those benches. Anyone else gets the drink's hunger only. An alcohol is an ALCH drunk
+**Steadied by drink.** A cook or alchemist of Novice or better, in any profession slot, who drinks an alcohol pays
+`needsAlcoholDiscount` (25%) less fatigue for the crafts their cook or alchemist rank prices (the cooking pot and oven
+for a cook, the alchemy lab for an alchemist, every drink at a meadery boiler for both, shared recipes) for `needsAlcoholMinutes` (10); a craft another
+profession prices (a Blacksmith primary's smithing, say) pays in full, and so does the check that keeps a too-tired
+character out of a bench menu: it prices the bench by the slot that works it, so a Cook Adept beside a Blacksmith Adept
+opens a forge only with a full forge craft's fatigue. Another drink refreshes the timer and never
+stacks, and the discount multiplies the half cost of those benches. Anyone else gets the drink's hunger only. The drink
+does nothing against the cold. An alcohol is an ALCH drunk
 with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate effect: every vanilla ale, mead, wine,
 brandy, flin, sujamma, shein and matze, the Windhelm and Dawnstar meads and wines; not juice, water, milk or skooma, and
-not Rotgut or Battle-Brew Special unless `needsAlcoholItems` names them. The drinker sees "The drink warms you: your Cook
-work costs 25% less fatigue for 10 minutes." and the server logs `[needs] <id> drinks <editor id>: Cook crafts -25%
-until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so the warmth survives a relog.
+not Rotgut or Battle-Brew Special unless `needsAlcoholItems` names them. The drinker sees "The drink steadies your
+hands: your Cook work costs 25% less fatigue for 10 minutes." ("your Cook and Alchemist work" for both, "The drink keeps
+your hands steady for another 10 minutes." on a refresh) and the server logs `[needs] <id> drinks <editor id>: Cook
+crafts -25% until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so it survives a relog.
 
 - Gathering is one swing of the axe (woodworker rank), one ore off a vein (miner), one harvest of a plant or nirnroot
   (farmer or alchemist; a crop is priced by the farmer rank alone). Yields double at Adept and triple at Master (`YIELD_BY_RANK` in `gatheringSystem.ts`).
@@ -394,10 +411,14 @@ nothing: a Novice crafter (1/12 a craft) sees no red end for 2 crafts and then 1
 an Expert (1/36) for 6 and then 3.5%, a Master or Legendary (1/48) for 8 and then 2.6%, twice as many at the
 half-cost benches, while 10 minutes online refill 16.7%; only a Free character (1/3) sees it from the first craft. While the
 Crafting Menu is open the magicka bar shows in the health bar's place at the bottom centre, above the menu's bottom bar, and no health bar shows (`docs_roleplay_frostfall_client.md`, Vanilla
-menus). `needsService.ts` writes the share into the
+menus). Widget id 39 is now the survival readout (`features/survivalReadout`), fed by `needsService.ts` with what
+`SurvivalService` hands over: a `SICK` line and a `COLD <stage>` line from Chilly on with the server's `warmth <n>`
+(see [Survival](#survival)), shown only while `survivalMode` is on (`needsSurvivalModeFlag`) and hidden with the rest
+of the browser (menus, hidden interface); it has no fatigue line. `needsService.ts` writes the share into the
 Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
 (0x2EDF, `SRHP`) and `Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100 (the penalty share times
-100, nothing else), `Survival_ColdAttributePenaltyPercent` (0x2EDE, `SRCP`) at 0. With `needsSurvivalModeFlag` on (default on since r15) it also sets the Creation's
+100, nothing else); `Survival_ColdAttributePenaltyPercent` (0x2EDE, `SRCP`) belongs to `SurvivalService` (see
+[Survival](#survival)). With `needsSurvivalModeFlag` on (default on since r15) it also sets the Creation's
 `Survival_ModeToggle` (`SRVT`, esl 0x828) to 1, and that global is what makes the segments show. The engine's
 `HUDMenu::AdvanceMovie` polls the `SRVT` global every frame (found in the AE 1.6.1179 exe for r16) together with the
 temperature and the three penalty globals, and posts the HUD's `ShowSurvivalElements(abShow, values, abForce)` when
@@ -408,7 +429,7 @@ false after each save load and never again, so no client write to the penalty gl
 flag is off (the r14 test: max stamina and magicka dropped, no red bar). `Survival_ModeEnabled` (`SRVE`, esl 0x826),
 which r13 to r15 wrote instead, is script-only: nothing in the engine reads it, which is why the r15 live flip changed
 nothing on screen. Nothing is left that starts Survival's quests (`Survival_MainScript` is dropped), so no hunger, cold
-or exhaustion effect starts from the global; the compass temperature icon stays at level 0 ("Neutral") either way,
+or exhaustion effect starts from the global; the compass temperature icon moves only when `SurvivalService` sets it,
 and the Settings > Gameplay Survival toggle stays hidden because it hangs on `Survival_ModeCanBeEnabled` (`SRVS`),
 kept at 0. The engine's own Survival extras do come with it on every client: arrows and bolts and the lockpick weigh
 their record weight (0.1 for ammo) and armour cards and the inventory bar show Warmth; sleep-to-level is moot with
@@ -423,6 +444,420 @@ The live `server-settings.json` carries the key explicitly (the manager Settings
 `Survival_ModeEnabledShared`, which vanilla scripts read, is never touched.
 The segments follow Survival's curve, starting at stage 2 (exhaustion 160 of 960, fatigue below about 83%); a lighter
 spend shows nothing on the HUD, and the stage notice from stage 2 and the "too tired" notice are the other cues.
+
+## Survival
+
+`skymp5-server/ts/systems/survivalSystem.ts`, with its pure rules in `survivalClimate.ts` (cold) and
+`survivalDiseases.ts` (diseases) and the generated heat list `heatSources.ts`; registered after HuntingSystem and
+NeedsSystem. The client half is `SurvivalService` (`skymp5-client/src/services/services/survivalService.ts`). It covers
+the owner's survival list of r27: cold and warmth, clothing warmth, the race cold rules, raw meat, freezing water, no
+health regeneration with a 1 health point respawn, carry weight 150, creature diseases, Oblivion diseases, contagion, the three
+afflictions and shrines that no longer cure.
+
+No Survival Mode script runs on a client (SkyrimPlatform drops every Papyrus event but `OnUpdate`, and the plugin keeps
+Survival's quests off), so the server keeps every number and decision: it grants Survival's and the plugin's spells
+through Papyrus `AddSpell` (learned spells persist and sync natively) and sends the client what only the engine can show.
+Every number is a `server-settings.json` key, listed with its default in `docs_server_configuration_reference.md`
+(group "Survival"); the file header of `survivalSystem.ts` lists them too.
+
+**Switches.** `survivalEnabled` is **false in code**: nothing below runs until the Test settings switch it on, and it is
+one of the manager's protected settings (plan task M0), so Migrate settings never carries it to live. Each part has its
+own switch: `survivalColdEnabled`, `survivalDiseasesEnabled`, `survivalAfflictions: false`,
+`survivalCarryWeightSpell: ""`, `survivalNoHealthRegen: false`, `survivalFreezingWater: false`,
+`survivalRespawnHealth: 1`, `survivalFoodPoisoningChance: 0`. Switching survival or a part off undoes, at each
+character's next login, what an earlier session granted (the abilities, the respawn health, food poisoning, afflictions,
+diseases, the cold stage ability): `[survival] <id> body rules off: respawn 100%, abilities removed: ...`. Server code
+older than r27 does not undo them, so a rollback first runs one session with the switch off.
+
+**Plugin r27a** (`AlduinakAdditions.esp`, proficiency patcher `survival` section) carries the records the server grants:
+`AldSurvival_AbNoHealthRegen` (0x041340), the 81 disease stage spells `AldDisease_<Id>1..3` (0x041341 to 0x041391), the
+global `AldSurvival_FreezingArea` (0x041392) and `AldSurvival_FreezingWaterDamage` (0x041393); it strips the screen
+effects of `Survival_ColdStage0..5` (the Freezing and Numb frost shader stays), removes Cure Disease from the HearthFires
+garlic bread and moves the Cure Disease potion to Alchemist Adept. With an older plugin those records are missing: the
+server logs them as skipped and runs the rest.
+
+### Body rules
+
+At each login, about 5 s after the spawn (the login delay of the shared `StageAbilityTracker`, with the same login window
+re-send as the hunger stages), and at creation finish:
+- **Carry weight 150**: `Survival_abLowerCarryWeightSpell` (Survival esl 0x887, CarryWeight -150). Satchels, pouches and
+  Fortify Carry Weight still add. A character over 150 is over-encumbered at the first login after it goes on.
+- **No health regeneration**: `AldSurvival_AbNoHealthRegen` (HealRateMult -100). Potions, food and Restoration still
+  heal, since the server applies them. The server-side guard against a client that still regenerates is the native
+  `healthRegenerationMultiplier` (NV1).
+- **Respawn with 1 health point** (the owner's "should respawn with 1 hp", 2026-10-01): every respawn after a death
+  wakes with `survivalRespawnHealthPoints` (1) health: the temple respawn, the arrival in Sovngarde or the Soul Cairn,
+  a death inside a realm, and the respawn a looted or skinned PK body gives its victim. A staff revive out of a realm
+  (Players tab, a living character) sets the same health. Being helped up from a bleedout by another player is not a
+  respawn and keeps `bleedoutHealedHealth`. Magicka and stamina keep their share.
+  - The point is measured against the base health the server's damage math uses (`RacialSystem.maxHealth`: the RACE
+    starting health plus the Player offset, 100, an Orc 150), so the stored share `respawnPercentages.health` is 0.01
+    for most and 1/150 for an Orc, written at login and creation finish and again at each respawn (a race changed
+    since, a polymorph included, is followed). A client whose maximum differs (Fortify Health gear, the cold penalty)
+    shows the same share of its own bar, a little above or below 1.
+  - The native respawn tells the client full health and keeps the share to itself; an untouched client showed a full
+    bar until its first report 7.5 s later and was then corrected to the share plus one second of regeneration (1.7%).
+    SurvivalSystem therefore writes `percentages` right after the native respawn, full first and then the share (the
+    native sends only a changed value), so the client stands up with the true health and the regeneration clock starts
+    at the respawn: `[survival] <id> respawned: health 1 of 100 sent to the client`, after a revive `[survival] <id>
+    revived: health 1 of 100 sent to the client (was 35%)`. At a respawn the cold reset and its `survivalState` go
+    out first, so the client lifts the cold penalty of the death before the health write: under a penalty the
+    maximum can be a fraction (an Orc at 55% has 67.5), and the client's old helper rounded it up before taking the
+    share, which left the health just below 0 and downed the player at the temple. The client helper
+    (`getMaximumActorValue`) now rounds only float noise beside a whole maximum, which also covers a staff revive of
+    a character still under the penalty.
+  - Nothing gives health back afterwards: the login and spawn sync send the stored share, the needs and cold
+    penalties move the maximum and keep the share, and `AldSurvival_AbNoHealthRegen` stops the client's regeneration.
+    NV1 is in the native source (`ea63f69a`); until a native server build with it runs with
+    `healthRegenerationMultiplier` 0, the server still accepts a client's health reports up to the race's
+    heal rate (0.7% of the maximum a second, 1 to full in about 2.5 minutes), so health regenerates on a client
+    without the ability (a plugin older than r27a, `survivalNoHealthRegen: false`) or on a modified one. Potions,
+    food, Restoration spells and the staff heal modes heal as before.
+  - `survivalRespawnHealthPoints: 0` uses the share `survivalRespawnHealth` (0.01) instead, as before S3;
+    `survivalRespawnHealth: 1` turns the rule off whatever the points say.
+- **Freezing water**: `AldSurvival_FreezingWaterDamage`, granted once. Its two effects (5 health a second, resisted by
+  frost resistance, and no health regeneration) run only while the engine says `IsSwimming` and the client holds
+  `AldSurvival_FreezingArea` at 1, which `SurvivalService` sets from `survivalState.freezingArea`, so a region border
+  never costs a spell change (critique A.14).
+- One line per login: `[survival] <id> body: carry weight Survival_abLowerCarryWeightSpell granted, no regen
+  AldSurvival_AbNoHealthRegen granted, freezing water AldSurvival_FreezingWaterDamage granted, respawn health 1 of 100 (set),
+  no food poisoning, weakened until 14:05, rockjoint 2 (stage 3 at 10-04 14:00); cold 55 (Comfortable), level 16
+  (freezing, night, snow; region coast), warmth 71 (29.3% less cold), freezing water area yes, cold ability
+  Survival_ColdStage1` (later logins read `held`; a record the plugin lacks reads `not in the plugin yet, skipped`).
+
+**Arrows and lockpicks weigh 0.1** as the owner asked, with no server rule: the engine applies the record weights
+while `Survival_ModeToggle` is 1, which `needsSurvivalModeFlag` (default true) sets on every client. With the flag off
+they weigh nothing again.
+
+### Cold and warmth
+
+- **Cold** runs 0 to 1000 on Survival Mode's stages: Warm (only after warming to 0, until 50), Comfortable, Chilly from
+  120, Very Cold from 300, Freezing from 500, Numb from 800. A new character and a respawn start at 55; logged out,
+  cold falls 1000 an hour down to 55.
+- **Cold level**, every 15 s from where the character stands: warm interior 0, cold interior 6 (Survival's cold cell and
+  location lists), warm region 0, cool 3, freezing 6; outdoors +1/+2/+4 at night (19:00 to 07:00 on the players' game
+  clock), +3 rain, +6 snow, +10 blizzard (the region's current weather, forced ones included; the ash storm is not
+  snow); swimming in freezing water 30. The class comes from the weather region (`survivalRegionClimate`, all 45
+  classed), the walled city worlds are cool (Riften warm), the realms and Oblivion planes have no cold, and it is
+  freezing above z 19000 (Fall Forest above 15150).
+- **Rate**: Survival's formula in real hours. Level 20 with no warmth fills the bar in `survivalColdHoursToNumb` (1.3334)
+  real hours, 20 times slower than single-player Survival: a new character on the Winterhold coast on a snowy night
+  (level 16) is Numb in about 75 minutes. The level also caps cold (13 or more reaches 1000, 10 up to 799, 7 up to 499,
+  4 up to 299, 1 up to 119, otherwise 49); above the cap cold falls 40 a minute, but not within 10 s of a hit.
+- **Warmth** is the rating the item cards and the inventory show: body, head, hands and feet 27/18/13/13 normal,
+  54/29/24/24 with `Survival_ArmorWarm` (fur, hide), 17/8/7/7 with `Survival_ArmorCold`; a hooded body piece warms the
+  head too; a torch in hand +50; the race's `racialPassives` warmth (Orc 10); a hot meal +25 for 100 minutes. Up to 206,
+  which cuts the rate by up to 85%. `SurvivalService` reports the engine's total 20 s after the last equip change and
+  the server logs `[survival] <id> warmth mismatch: engine 60, server 54 (gear 54, race 0), worn ...` when the two
+  differ.
+- **Warmth table** (`armorWarmth.ts`, `survivalWarmthTable`): Bethesda put the two keywords on the base game's own
+  pieces only, so the engine counts every mod piece and every enchanted copy as normal and a cloak as nothing. The
+  server rates those itself from a table `misc/gen-armor-warmth.py` makes from the load order. Of 6,343 playable
+  armours 1,107 carry a keyword and keep it. On the rated slots 475 more count as warm (415 enchanted copies of a warm
+  base game piece through their template, 60 mod pieces by name: fur, pelt, bear, snow, wool, quilted, padded,
+  gambeson, coats, mantles, Stalhrim, Skaal, a hooded robe and a mage's hood) and 26 as cold (barbarian sets,
+  bandanas, a plate harness: bare skin and thin cloth, like the base game's rags and sandals); 3,254 stay normal like
+  iron, steel plate, leather and plain clothes. A plain robe, hood or cowl is normal, as the base game rates its Monk,
+  Black and Thalmor Robes and its Thieves Guild and Shrouded hoods; real Nordic Carved pieces are warm by their
+  material keyword, not by the word Nordic. A mod piece named like a base game piece that covers the same parts
+  (body, head, hands, feet) takes that piece's class, and a mod whose author rated it for Survival (any of its own
+  records carries a keyword: Sentinel, Closed Helmets, AVExpansion, the WACCF extension and 11 more, 380 pieces) keeps
+  its unkeyworded pieces normal. 119 pieces on the back or at
+  the neck and face get points of their own: a fur cloak or pelt 20, a cloak or cape 12, a short or shoulder cape 6, a
+  fur collar or mantle 8, a scarf or neck gaiter 5 (8 when its mod marked it warm), a mask 3; the warmest on the back
+  and the warmest at the neck count once each, on top of `survivalWarmth.cloak`. Shields, jewellery, bags and
+  eyepatches (1,362) warm nothing. The item card and the inventory total are the engine's and still show the keyword
+  rating for a table piece (a mod fur hood reads 18 and counts 29, a Barbarian Armor reads 27 and counts 17, a cloak
+  has no Warmth line at all): the engine rates by the record's keyword and by the four slots only, so the cards
+  change only with a plugin that writes the keywords (the design's open Q3, not done; no plugin can give a cloak a
+  line). The player reads the server's total on the readout's Cold line, `COLD Chilly warmth 74`, from Chilly on;
+  staff read it in the admin panel's survival details at any time. The mismatch line holds the engine's total against
+  the keyword rating and adds `; gear 74 with armorWarmth.ts` when the table changes the sum. Rerun the script and
+  Build server after the modlist gains armour (`python misc/gen-armor-warmth.py --dump` lists every piece with its
+  rating and why); `survivalWarmthTable` false goes back to keywords only.
+- **Race**: every cold gain is times `racialPassives.races.<race>.coldRateMult`: Nords 0 (never colder than they are,
+  though freezing water still hurts them through their frost resistance), Khajiit and Argonians 1.25. Cold never reads
+  frost resistance.
+- **Heat**: standing still (under 48 units in 6 s) within 580 units of a heat source warms 75 every 6 s: campfires,
+  fireplaces, fire effects, forges, smelters (`Survival_WarmUpObjectsList`) and cooking pots and spits
+  (`CraftingCookpot`, `AldCraftingKiln`). `heatSources.ts` lists them by cell and world; rerun
+  `misc/gen-heat-sources.py` and Build server after a plugin adds fireplaces (the boot line says so when the heat keys
+  in the settings differ from the ones the list was made with).
+- **Hot food**: Survival's hot soups and stews take off their cold (200) down to 50 and warm +25 for 100 minutes.
+- **Hits**: a frost spell +30 up to 500, a fire spell -30 down to 120, a hit by a frostbite spider or a Falmer +30 up to
+  500 (not when blocked), gains times the race multiplier and Chills.
+- **Freezing water**: a freezing area, a cold interior or Fort Dawnguard's world. Swimming there without a flame cloak
+  (reported by the client) raises cold to 300 at once and holds level 30.
+- **Stage abilities** `Survival_ColdStage0..5` follow the stage: Warm +10 frost resistance, Chilly to Numb -10% to -40%
+  speed and lockpicking and pickpocketing penalties, and the frost shader at Freezing and Numb. The client refreshes
+  movement 2 s after a stage change so the speed counts.
+- **Maximum health**: `survivalState.coldPenalty` is Survival's `(cold - 119) / 881` share of maximum health, capped at
+  `survivalColdMaxHealthPenalty` 0.8 so a Numb character keeps a fifth of the bar (critique A.3). `SurvivalService`
+  applies it like hunger and fatigue (`Variable04`), writes it to `Survival_ColdAttributePenaltyPercent` (0x2EDE, the red
+  end of the health bar) and the thermometer level to `Survival_TemperatureLevel` (0x2EDD: 1 near heat, 2 warming, 3
+  cooling, 4 freezing). It shrinks the bar, not the server's damage math, until the native health scale (NV4,
+  `survivalColdHealthScale`). Cold never kills unless `survivalColdKills` is true.
+- **Saved** at stage changes, events, logout and every 5 minutes while cold moves.
+
+### Afflictions
+
+Survival Mode's conditions: at a need's stage 5 a character not holding the affliction rolls at most once per interval,
+as Survival's need update does. The first roll comes on reaching stage 5 when the last one is an interval old, and a
+need that leaves stage 5 and comes back inside the interval (fatigue resting just above Debilitated between crafts)
+rolls nothing new.
+
+| Affliction | Need at stage 5 | Chance, interval | Effect (Survival's spell) |
+|---|---|---|---|
+| Weakened | hunger Starving | 20%, 15 min | one-handed, two-handed and block -30% |
+| Addled | fatigue Debilitated | 30%, 30 min | magicka and stamina regeneration -30% |
+| Frostbitten | cold Numb | 16%, 5 min | lockpicking, pickpocketing and archery -30 |
+
+Hunger and fatigue stages come from NeedsSystem's `needsStage` event. An affliction lasts `survivalAfflictionHours` (24)
+real hours, offline included, or until cured; none rolls in creation, dead or in the realms. Weakened's melee and block
+part and Frostbitten's archery show in Active Effects but change no damage until the effect modifiers of the damage
+formula (NV4a, in the native source since `ea63f69a`) run: a native server build with it, and
+`alduinakDamageFormulaSettings` with `enabled` or `durability.enabled` true and `effectModifiers` not false.
+
+### Food poisoning, the cure and shrines
+
+- **Raw meat** (`Survival_FoodRawMeat` plus the hunting meats and `survivalRawMeatExtra`, 17 foods) gives
+  `Survival_DiseaseFoodPoisoning` (-50% magicka and stamina regeneration) at 50% x (1 - disease resistance / 100), for
+  `survivalFoodPoisoningHours` (24) real hours, offline included, never twice at once. A race whose `racialPassives`
+  entry is `rawMeatSafe` (Argonian, Khajiit) never gets it.
+- **Cure** (`survivalCure` "cureDiseaseOrHealth", the owner's "requiring health potions"): a Cure Disease potion, or a
+  potion (not a food or a poison) restoring `survivalCureMinHealth` (25) health or more, cures food poisoning, the three
+  afflictions and every disease; a healing potion also removes any other Disease spell, which the native code does only
+  for Cure Disease. `"cureDisease"` leaves only Cure Disease potions. `[survival] <id> cured by RestoreHealth02 (restores
+  50 health): food poisoning, Survival_AfflictionWeakened, AldDisease_Rockjoint2` and the notice "The potion cures your
+  sickness."
+- **Shrines** (`Survival_BlessingAltars`, 14 bases) cure nothing and say so at most once a minute: "The shrine offers
+  comfort, but no cure. A Cure Disease potion or a healing potion cures it." The activation itself is never refused.
+- Death cures nothing.
+
+### Diseases
+
+27 diseases with three stages each, the plugin's `AldDisease_<Id>1..3` (named "Rockjoint", "Rockjoint (advanced)",
+"Rockjoint (severe)"): the Skyrim and Survival ones and the Oblivion ones the owner asked for, with Skyrim effects picked
+for them. Effects marked * wait for NV4a like Weakened; speech does little here, so Greenspore also slows stamina
+regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
+
+| Disease | Stage 1 / 2 / 3 | Carriers (chance per hit) | Contagious |
+|---|---|---|---|
+| Ataxia | lockpicking and pickpocketing -25/50/75% | skeever 10% | yes |
+| Bone Break Fever | max stamina -25/50/75 | bear 10% | yes |
+| Brain Rot | max magicka -25/50/75 | hagraven 10% | yes |
+| Rattles | stamina regeneration -25/50/75% | chaurus 10% | yes |
+| Rockjoint | melee -25/50/75%* | wolf 10%, fox 10% | yes |
+| Witbane | magicka regeneration -25/50/75% | sabrecat 10%, dog 10% | no |
+| Droops | melee -15/30/45%* | ashhopper 10%, goat 10% | no |
+| Brown Rot | light and heavy armor -25/50/75%, server: fatigue refill x0.75/0.5/0.25 | draugr 3% | yes |
+| Greenspore | speech -25/50/75%, stamina regeneration -10/20/30% | slaughterfish 5% | no |
+| Gutworm | stamina regeneration -25/50/100%, server: food hunger x0.75/0.5/0.25 | troll 6% | no |
+| Astral Vapors | max magicka -20/40/60, magicka regeneration -15/30/45% | wisp 5%, dragonpriest 5% | no |
+| Black-Heart Blight | carry weight -10/20/30, max stamina -15/30/45 | skeleton 5%, ashspawn 5% | yes |
+| Blood Lung | stamina regeneration -20/40/60% | skeever 10% | yes |
+| Chanthrax Blight | speed -3/6/10%, lockpicking and pickpocketing -15/30/45% | boar 10% | no |
+| Chills | magicka regeneration -15/30/45%, server: cold gain x1.25/1.5/1.75 | icewraith 10%, skeleton 5% | yes |
+| Collywobbles | stamina regeneration -15/30/45%, server: hunger drain x1.25/1.5/1.75 | skeleton 5% | yes |
+| Dampworm | speed -3/6/10% | mudcrab 10% | no |
+| Feeble Limb | carry weight -15/30/45, melee -10/20/30%* | skeever 10% | no |
+| Helljoint | speed -3/6/10%, max stamina -15/30/45 | wolf 10% | yes |
+| Red Rage | magicka regeneration -20/40/60%, carry weight -10/20/30 | skeever 10% | yes |
+| Rust Chancre | speech -20/40/60%, speed -3/6/10% | draugr 3% | yes |
+| Serpiginous Dementia | max magicka -20/40/60, speech -15/30/45% | skeleton 5% | yes |
+| Shakes | lockpicking and pickpocketing -20/40/60%, archery -10/20/30%* | skeever 10% | yes |
+| Swamp Fever | max stamina -20/40/60, carry weight -10/20/30 | mudcrab 10% | yes |
+| Wither | max stamina -10/20/30, carry weight -10/20/30, melee -10/20/30%* | sabrecat 10% | yes |
+| Witless Pox | max magicka -25/50/75 | skeever 10% | yes |
+| Yellow Tick | speed -3/6/10%, carry weight -10/20/30 | bear 10% | yes |
+
+- **Catching one from a creature.** A weapon or unarmed hit a player takes (the server's `OnHit` event) from a creature
+  whose race editor id holds a carrier fragment (longest first; `SkeeverWhiteRace` is a skeever; the race comes through
+  the NPC's template chain) rolls the carrier's chance once, times (1 - disease resistance / 100), and on a success gives
+  one of that carrier's diseases the character does not have. So a skeever bite is one 10% roll for one of its six
+  diseases, not six rolls. Never from a player, a pet, a blocked hit or a spell; werewolves and werebears carry nothing
+  (`survivalDiseaseCarrierExclude`). Disease resistance is the race's (Argonian 75, Redguard 50, Wood Elf 75 with plugin
+  r27a) plus any learned ability, capped at 85 like the native resistances.
+  - Every roll writes one server line, also a bite that gives nothing: `[survival] <id> hit by SkeeverRace <npc>: skeever
+    10% x (1 - disease resist 0%) = 10%, roll 0.412, spared`. Nine skeever bites in ten end that way, so a short fight
+    with no disease and a `spared` line per bite is the system working. No line at all means the hit never reached the
+    roll: survival or diseases off, the hit blocked or a spell, the target in creation, dead or in god, ghost or invis
+    mode, the attacker's race no carrier or the attacker a pet, every disease of that carrier already held (a wolf has
+    two), the character not settled yet in the seconds after a login or respawn, or the hit dropped natively before the
+    event (a second unarmed hit within about 0.77 s).
+  - On a catch the player reads "You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming
+    days. A Cure Disease potion or a healing potion cures it.", the survival readout gains a Sick line and Active Effects
+    lists the disease.
+  - A zone creature is an NPC_ base with no appearance. Its race is the RNAM of the first record of its base and
+    evaluated template chain that keeps its own traits, so `EncSkeever` is `SkeeverRace` and a leveled base such as
+    `dunFolgunthurThralls_LvlDraugrAmbushMissile` takes the race of the NPC the server picked from its list, not the
+    Creation Kit's `FoxRace` placeholder on the record.
+  - Checked against the Test load order of 2026-10-01 (90 plugins, 175 races, the 877 zones of `NPC-Spawns.json`): each
+    of the 20 default fragments matches only the creature races it names (57 races), every carrier base the zones spawn
+    resolves to its race (the two leveled draugr bases through the template chain the server evaluates), and the one
+    carrier race a mod adds is `RiftenExtSkeletonArmorRace` (a skeleton). A creature a mod adds on a vanilla race is a
+    carrier through that race. Dragon priests and wispmothers fight with spells, which never roll, so Astral Vapors is
+    rare outside the admin panel.
+- **Contagion** (the diseases an Oblivion beggar carried) is a client check, so the server does no proximity work
+  (the owner's call, to keep the calculations off the server):
+  - The server writes each player's actor property `ff_contagious`, the ids of the contagious diseases they carry at
+    any stage (or null), only when it changes: at login when the stored value differs, at a catch and at a cure.
+    Every client gets it for itself and for the players around it.
+  - Every `survivalContagionCheckSeconds` (60), the first check at a random second after the state arrives, each client
+    looks at the players it already has loaded in its own cell or world within `survivalContagionRange`, which
+    defaults to the chat's whisper range `chatRanges.whisper` (150 units, about 2 m). When any of them carries a
+    contagious disease this player's own `ff_contagious` lacks, it sends one small `survivalExposure` packet naming
+    them and those diseases. Nobody sick near: no packet.
+  - The server takes one report per player per 55 s (the check interval less 5 s). For each disease it checks only that
+    the disease is contagious, that the named source carries it and that the reporter does not. Then it rolls
+    `survivalContagionChance` (5%) x (1 - disease resistance / 100) once per disease, named after the first source
+    that carries it whose pair with the reporter has not rolled that disease in the last
+    `survivalContagionCooldownMinutes` (30). It does no distance check.
+  - So one sick player at whispering distance is one roll per disease every 30 minutes, about 5% in half an hour and
+    10% in an hour (plan O12, as in SV4); two sick players are two pairs and roll a minute apart. The cooldowns live
+    in memory, so a restart or the reporter's relog starts them over; `0` rolls at every report.
+  - Players only (there are no beggar NPCs). Nobody in creation, dead, in an afterlife realm (Sovngarde, the Soul
+    Cairn) or in the god, ghost or invis admin mode spreads or catches it, and a player at `survivalMaxDiseases`
+    rolls nothing (the rolls stop once the player reaches it). A catch is logged, a spared roll is not.
+  - **The trade-off:** a modified client could skip its reports, or lie about the distance, and so avoid catching
+    diseases (or catch them from farther away). It cannot infect anyone else: a report only ever makes the reporter
+    sick, and only with a disease a source really carries.
+- **At most `survivalMaxDiseases` (4)** at once, which also keeps the speed penalties in check; a success beyond it is
+  refused and logged. Food poisoning does not count.
+- **Progression** by wall clock, offline included: stage 2 after `survivalDiseaseStageHours[0]` (84 h, 3.5 days) and
+  stage 3 after `[1]` (84 h) more, so a disease reaches its worst about a week after it was caught, and stays there until
+  cured. A login catches up every stage that fell due and swaps the stage spell once; online the minute tick does it,
+  with the notice "Your Rockjoint has worsened to its advanced stage."
+- **Needs**: SurvivalSystem is the second needs modifier source (after the races): Collywobbles speeds the hunger drain,
+  Gutworm cuts a food's hunger, Brown Rot slows the fatigue refill online and in the offline refill at login (read at the
+  stages the record held at logout), and the `[needs]` lines name the factor (`hunger drain survival x1.5`). Chills
+  speeds cold gain.
+- **Local infections**: the victim's own engine can still apply a vanilla creature disease (the `ATKD` attack spells);
+  `SurvivalService` drops any Disease spell the server does not list at two checks 10 s apart. The server's list is the
+  spawn's learned spells plus every `AddSpell` and `RemoveSpell` the server sent the player since (the world model
+  keeps only the spawn copy), so a disease, food poisoning or stage spell granted after the spawn stays
+  (`local disease dropped b8782 Rockjoint: not granted by the server (spawn list 41, 3 server grant(s) and removal(s)
+  since), ...` in `skyrim-platform.log`).
+- Notices: "You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming days. A Cure Disease
+  potion or a healing potion cures it." (from someone near you, for contagion). The Active Effects page lists every
+  disease, affliction and the cold stage.
+
+### Admin panel
+
+The Players tab's survival row (front and client forwarding: FR2) sends `adminAction` with `survivalReset`,
+`survivalInfo`, `survivalCold { cold 0-1000 }`, `survivalDisease { disease (id or name), stage 1-3 }` or
+`survivalCure { disease, none for every sickness }`, all needing the players cap. AdminSystem passes them to
+SurvivalSystem (`survivalReset` and `survivalAdmin` events) and answers with `adminActionResult`: "Name: now has
+Rockjoint (advanced)", "Name: cold 55 -> 600 (Freezing)", or the readout "Name: cold 340 (Very Cold); area freezing,
+level 16 (freezing, night, snow; region coast), warmth 71 (29.3% less cold), freezing water area yes; Rockjoint
+(advanced) (worse at 10-04 14:00), Weakened until 10-02 14:05". Reset sets cold to 55, clears food poisoning, afflictions
+and diseases and applies the body rules again. An admin is not bound by `survivalMaxDiseases`. Every change goes to
+`admin.log` ("profile N gave a disease to Name (profile P): now has Rockjoint (advanced)") and, as the `admin` alert
+kind, to the Discord event log channel, like every other panel action. The `adminMenu` packet carries
+`survival` (the diseases the plugin has, the cold scale) and each online row `sv` (cold, stage, area, level, warmth,
+freezing area, diseases with their next stage time, afflictions, food poisoning).
+
+The Disease row under the Survival row is how staff give and cure diseases (the owner's "add disease add to admin
+menu"; it needs a server and a client built from a tree that has SurvivalSystem, `survivalEnabled` true and a plugin
+with the `AldDisease_*` spells, otherwise the row is hidden or its picker reads "No diseases in the plugin"):
+
+- Select an online player in the Players tab. The picker lists the 27 catalog diseases the plugin has (Skyrim's,
+  Survival Mode's and Oblivion's), the ones the player holds first as "Rockjoint, contagious (has stage 2)".
+- Pick a stage (Stage 1, Stage 2 (advanced), Stage 3 (severe)) and press **Give**; on a held disease the button reads
+  **Set stage** and swaps the stage spell. The player reads "You have caught Collywobbles (advanced): ..." and the
+  server logs `[survival] <id> given collywobbles stage 2 by profile N, stage 3 at MM-DD hh:mm`.
+- **Cure** removes the picked disease, **Cure all** every sickness (diseases, food poisoning, afflictions). The answer
+  and the audit line name what went: "Name: cured Rockjoint (severe)", "profile N cured Name (profile P): cured Ataxia,
+  Chills (advanced)"; the server log keeps the spell ids (`[survival] <id> cured by profile N (admin):
+  AldDisease_Rockjoint3`).
+- A rank without the `players` cap gets "Your rank cannot use players", audited as "profile N (gm) was refused
+  survivalDisease: no players permission", and its menu carries no catalog, so it sees no Disease row. A wrong disease,
+  stage or a disease not held is answered and not audited.
+
+`tools/test-admin-survival.js` drives these packets through AdminSystem and SurvivalSystem (catalog, give, set stage,
+cure, cure all, the cap refusal, survival off).
+
+### Protocol and storage
+
+- Client -> Server: `{ customPacketType: "survivalRequest" }` after load and widget reset (the state again);
+  `{ customPacketType: "survivalReport", swimming, flameCloak, engineWarmth? }` on change;
+  `{ customPacketType: "survivalExposure", sources: [{ actorId, diseases: [id] }] }` at a contagion check that found a
+  carrier in range (at most 8 sources and 32 diseases each are read). `survivalRequest`, `needsRequest`,
+  `weatherRequest` and `gameTimeRequest` schedule the login window re-send of the survival spells.
+- Server -> Client: `{ customPacketType: "survivalState", cold, coldStage, coldStageName, coldPenalty, temperatureLevel,
+  warmth, freezingArea, afflictions: [name], diseases: [{ name, stage }], contagion: { seconds, range } | null }` on
+  change and on request (cold and coldStage -1 with cold off; while food poisoning runs, `diseases` starts with
+  `{ "name": "Food poisoning", "stage": 1 }`, so the HUD's Sick line shows it too; `contagion` is the client's check
+  interval and range, null while contagion is off); notices through `masteryNotice`.
+- `ff_contagious` on the character, seen by its owner and its neighbours: `["collywobbles", "chills"]` or null. It must
+  be registered in the gamemode (`50_properties.js`, staged in `Desktop/alduinak-r13/live/r27-SV4b/`); without it the
+  server logs `[survival] ff_contagious could not be written, ...` once and nobody catches anything by contagion.
+- `private.survival` on the character: `{ v: 1, at, body: { spells, respawn }, foodPoisonUntil, foodPoisonSpell, cold,
+  coldSpell, warmBonus, warmUntil, afflictions: { <key>: { until, spell } }, lastRoll, diseases: [{ id, stage, nextAt,
+  since, from, spell }] }`. Spells are stored as `"id:Plugin"` descs and diseases by catalog id, never raw form ids, so the
+  MongoDB purge needs no re-encode rule for it.
+
+### Logs to read (`C:\logs\test\gameserver.log`)
+
+- Boot: `[survival] ready: ...` (body rules, raw meat, cure, shrines, afflictions), `[survival] cold: ...` (every cold
+  number in force), `[survival] diseases: 27 of 27 in the plugin (19 contagious); stage 2 after 84 h and stage 3 after
+  84 h more, ...; at most 4 at once; carriers ...; contagion by client report: each client checks the players it has
+  loaded every 60 s (the first at a random second) and reports those within 150 units (the chat whisper range,
+  chatRanges.whisper) whose ff_contagious names a disease it lacks; the server takes one report per player per 55 s and
+  rolls 5% x (1 - disease resist) once per disease it confirms (...) and at most once per disease and pair every 30
+  min, ...; server factors ...` (with an older plugin `0 of 27
+  in the plugin ..., none is given`), and
+  `[needs] modifier sources: race (...); survival (diseases ...)`. With survival off: `[survival] off (survivalEnabled
+  false): ...`.
+- Play: the login `body:` line above; `[survival] <id> cold 55 -> 155 (Chilly), level ...`; `... area freezing (region
+  coast, world Tamriel, z 120), freezing water yes`; `... warmed at a fire: cold 640 -> 0`; `... ate raw FoodVenison:
+  food poisoning 50% x (1 - disease resist 0%) = 50%, roll 0.312, poisoned for 24 h until 14:05`; `... starving:
+  weakened 20%, roll 0.112, weakened for 24 h until 14:05`; `[survival] <id> hit by SkeeverRace <npc>: skeever 10% x (1 -
+  disease resist 0%) = 10%, roll 0.043, caught ataxia (AldDisease_Ataxia1), stage 2 at 10-04 14:00` (or `spared`, or
+  `refused: already sick with 4`); `[survival] contagion <exposed id> from <sick id> [profile P] "Name": collywobbles 5% x
+  (1 - disease resist 0%) = 5%, roll 0.012, caught collywobbles (AldDisease_Collywobbles1), stage 2 at 10-04 14:00`
+  (catches only); `[survival] contagion report from <id> named nothing catchable: <sick id> collywobbles not carried,
+  ...` (a report the records refute, at most once per player in 10 minutes; the reasons are `from no other online
+  player`, `from a hidden, dead, fallen or unsettled player`, `not contagious`, `not carried`, `held already`,
+  `unknown`); `... rockjoint worsened 1 -> 3 (AldDisease_Rockjoint3, due 10-01 09:00), stays until cured`; `... cured by
+  ...`; `... prayed at <shrine> <ref>: no cure, notice sent`; `... given rockjoint stage 2 by profile N, ...`.
+- Client (`skyrim-platform.log`): `SurvivalService: survival client on: ..., contagion check every 60 s within 150
+  units of the loaded players' ff_contagious`, `survival hud cold=.. temperature=.. freezingArea=..`, `movement
+  refreshed after cold stage ...`, `local disease dropped ...`, `contagion exposure reported: ff000a12
+  collywobbles/chills at 96 units` (each report sent).
+
+### Checks on the Test Server
+
+Quick-test values (remove them before any Migrate settings): `survivalColdHoursToNumb` 0.02, `survivalAfflictionHours`
+0.1, `survivalDiseaseStageHours` [0.05, 0.05], `survivalContagionChance` 1, and `survivalDiseaseCarriers` `{ "skeever":
+{ "chance": 1, "diseases": ["ataxia", "bloodLung", "feebleLimb", "redRage", "shakes", "witlessPox"] } }` so every
+unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
+1. Cold: naked on the Winterhold coast on a snowy night, the stage lines, the red end of the health bar and the
+   thermometer; fur lowers the rate and the warmth matches the inventory total. A mod fur armour, a fur cloak and a
+   scarf (Snow Bear Armor, Fur Cloak, Short Woven Scarf) lower it further than the inventory total says: the Cold
+   line of the readout (from Chilly on) and the admin panel's survival details show the server's warmth
+   (54 + 20 + 8), while the item cards keep the engine's numbers. A plain mod robe (Tribunal Light Robe) counts 27.
+2. Warming: an inn takes 40 a minute, a campfire 75 every 6 s, a hot soup 200.
+3. Races: a Nord gains no cold, a Khajiit or an Argonian 25% more; an Orc's needs lines show `race x0.85`.
+4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.
+5. Body: carry weight 150, no regeneration, a death wakes with 1 health point: the bar is a sliver as the character
+   stands up (not full for a few seconds first), the server logs `[survival] <id> respawned: health 1 of 100 sent to the
+   client` (`1 of 150` for an Orc), it is still 1 a minute later and after a relog, and a healing potion raises it.
+   The same after a death that leads to Sovngarde, and after a staff revive from there.
+6. Raw meat as a Nord about half the time, never as a Khajiit; a Cure Disease or healing potion cures.
+7. Creature diseases: fight skeevers and wolves; the hit lines, Active Effects shows the disease, it survives a relog,
+   and with the quick-test stage hours it worsens offline. At the default 10% each bite logs `spared` or `caught`; with
+   the quick-test skeever chance the first unblocked bite logs `skeever 100% x (1 - disease resist 0%) = 100%, roll
+   ..., caught ataxia (AldDisease_Ataxia1)` (25% for an Argonian or a Wood Elf, 50% for a Redguard), a blocked bite logs
+   nothing, and four diseases later `refused: already sick with 4`.
+8. Afflictions: starve with low `needsHungerStages`; Weakened within a few rolls, cured by a potion, expiring.
+9. Contagion (needs `ff_contagious` registered, `live/r27-SV4b`): one tester sick with Collywobbles, another within 2 m
+   (whispering distance) for two minutes at chance 1 catches it; the healthy tester's platform log shows `contagion
+   exposure reported: ...` with the distance and the server's contagion line names the sick tester; at 4 m nothing is
+   reported.
+10. A shrine while sick: the notice, the disease stays.
+11. Arrows and lockpicks weigh 0.1.
+12. Admin (with FR2): reset, set cold, give and cure a disease from the Players tab.
 
 ## Deploy runbook
 

@@ -1,19 +1,25 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
-import { resolveEditorIds, isEditorId } from "./espmEditorIds";
+import { System, Log, SystemContext, Content, CREATION_FINISHED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
+import { resolveEditorIds, isEditorId, scanRecords, espmDesc } from "./espmEditorIds";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
-import { spellInfo, SpellType } from "./espmMagic";
+import { hasSpellConditions, spellInfo, SpellType } from "./espmMagic";
 import { GOLD_BASE_ID, HUNTING_KNIFE_ID, addItemTo, addSpellTo, chainMpHook, hadStarterGold, hex, isCreationPending, isPlayerActor, removeSpellFrom } from "./actorUtil";
 import { parseStartingItems } from "./spawn";
+import { setIntroProfessions } from "./startLocations";
 import { BLANK_BOOK_EDID } from "./writingSystem";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
+import {
+  ADEPT, ChooseRefusal, FREE, HeldSlot, LEGENDARY, NOVICE, RANK_NAMES, RecipeGate, SLOT_NAMES, SlotConfig, SlotRecord, bestSlot, chooseRefusal,
+  creditsCraft, defaultSlots, describeSlots, duplicateSlots, emptySlotRecord, hoursToNext, isCapped, multiclassOn, nextEmptySlot, parseSlots,
+  slotRankFor, toSlotRecord,
+} from "./masterySlots";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// ── Professions: one per character, ranked by hours of work ──────────────────
+// ── Professions: up to three per character, ranked by hours of work ──────────
 //
-// docs/docs_professions_revamp_contract.md is the fixed interface. Everyone is Free (rank 0); choosing a profession
+// docs/docs_professions_revamp_contract.md is the fixed interface. Everyone is Free (rank 0); choosing a primary profession
 // makes the character a Novice of it, and hours of its work raise it to Adept, Expert, Master and Legendary. Every
 // server-observed activity of the profession is worth one hour, at most one per hour. This system chains the native
 // onCraft/onActivate/onSpellCast hooks on `mp` and the gamemode relays kills through globalThis.__alduinakMasteryEvent
@@ -22,23 +28,35 @@ type Mp = any;
 // A mage cannot rise above Adept without having cast an Adept spell, above Expert without an Expert one, and so on.
 // Hour bank: each extra craft of the profession inside a counted hour banks one hour, up to masteryHourBank; a banked hour
 // is counted once the character has been online for a full interval since the last counted hour and no work counted one.
+// Multiclassing (masterySlots with more than one slot): a secondary and a tertiary craft, picked in order after the primary,
+// start at Free and earn Novice by the hours of their class's free work (an ungated recipe, or a gated one only through a
+// marker of the slot's own profession at a rank it holds), then climb to their cap on their own ladder. Every slot has its
+// own hour clock and bank; one event credits every slot it qualifies for. The rank readers take the best slot.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
 //     { customPacketType: "masteryInfoRequest" }
-//     { customPacketType: "masteryChoose", profession: "<id>" }
-//     { customPacketType: "masteryResetRequest" }  the player sets their profession aside, at most masteryResetsPerCharacter times
+//     { customPacketType: "masteryChoose", profession: "<id>", slot?: 0|1|2 }  slot defaults to the primary
+//     { customPacketType: "masteryResetRequest", profession?: "<id>" }  the player sets a craft aside (default the primary),
+//                                                   at most masteryResetsPerCharacter times over all slots
 //   Server -> Client:
-//     { customPacketType: "masteryMenu", profession, rank, hours, rankHours, resetsLeft, professions: [...] }
+//     { customPacketType: "masteryMenu", profession, rank, hours, rankHours, resetsLeft, professions: [...],
+//       slots: [{ slot, name, profession, label, rank, rankName, hours, cap, capName, rankHours }] }
 //     { customPacketType: "masteryNotice", text }
-//     { customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka }
+//     { customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka, slots: [...] }
+//   profession, rank and hours stay the primary's; skills are the best of the slots; magicka is the mage slot's rank value
+//   plus the race's bonus, the race's base for anyone else, null while in creation.
 //
-// Persistence: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets, bank, onlineMs } on the actor.
+// Persistence on the actor: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets, bank,
+// onlineMs } (the primary) and `private.masterySlots` = { v: 1, secondary, tertiary, granted[], kits[] }, each sub-slot a
+// { profession, points, lastPointAt, rank, bank, onlineMs } or null, granted the markers held for either sub-slot.
 //
 // server-settings.json keys (all optional):
 //   masteryRankHours             [adept, expert, master, legendary] thresholds, default [40, 100, 180, 6000]
-//   masteryPointIntervalMinutes  minimum gap between two hours, default 60
-//   masteryHourBank              hours extra crafts may bank, default 2; 0 turns the bank off
+//   masterySlots                 [{ name, cap, rankHours }] in pick order, default one primary (multiclassing off), see masterySlots.ts
+//   masterySlotKits              a sub-slot pick hands over that craft's kit items, never gold, once per craft, default true
+//   masteryPointIntervalMinutes  minimum gap between two hours of one slot, default 60
+//   masteryHourBank              hours extra crafts may bank per slot, default 2; 0 turns the bank off
 //   masterySpells                { "<professionId>": [novice, adept, expert, master, legendary] } marker form ids
 //                                overriding the plugin's AldProf_<Label>_<Rank> spells
 //   masteryActivities            { "<professionId>": { craftKeywords, craftStations, activatePrefixes, activateTypes,
@@ -49,6 +67,8 @@ type Mp = any;
 //                                private.starterGold (its starting items carried gold) gets none.
 
 const MASTERY_PROP = "private.mastery";
+const SLOTS_PROP = "private.masterySlots";
+const SLOTS_VERSION = 1;
 // Set with a character's first kit and never cleared, so a reset and a new pick bring no second one
 const KIT_PROP = "private.professionKit";
 // Plugin recipes any character makes (instruments, broom, war horns) are no one's work
@@ -65,11 +85,7 @@ const HALF_COST_BENCHES_OF = ["cook", "alchemist", "miner", "hunter"];
 const HALF_COST_PRODUCTS = new Set(["mce_thread"]);
 const RECORD_VERSION = 2;
 
-export const RANK_NAMES = ["Free", "Novice", "Adept", "Expert", "Master", "Legendary"];
-export const FREE = 0;
-export const NOVICE = 1;
-export const ADEPT = 2;
-export const LEGENDARY = 5;
+export { RANK_NAMES, FREE, NOVICE, ADEPT, LEGENDARY };
 // Skill level of the character's own profession skills by rank; every other mapped skill stays at the Free level
 const RANK_SKILL = [15, 25, 40, 60, 80, 100];
 const MAGE_MAGICKA = [100, 125, 150, 175, 200, 500];
@@ -321,20 +337,73 @@ interface MasteryRecord {
   onlineMs: number;
 }
 
+// private.masterySlots; the primary stays in private.mastery
+interface SubSlots {
+  v: number;
+  secondary: SlotRecord | null;
+  tertiary: SlotRecord | null;
+  // Markers held for either sub-slot
+  granted: number[];
+  // Crafts whose sub-slot kit was handed over
+  kits: string[];
+}
+
+type SubKey = "secondary" | "tertiary";
+const subKeyOf = (index: number): SubKey | null => (index === 1 ? "secondary" : index === 2 ? "tertiary" : null);
+
+// Hours, clock and bank of one slot; the primary's record carries the same fields
+type Progress = Pick<MasteryRecord, "profession" | "points" | "lastPointAt" | "rank" | "bank" | "onlineMs">;
+
+// Both stored records of one character; subs is null until a sub-slot is taken, or while multiclassing is off and they were not read
+interface Character {
+  primary: MasteryRecord;
+  subs: SubSlots | null;
+}
+
+// One slot of a character; cfg is null for a sub-slot the settings no longer configure
+interface Slot {
+  index: number;
+  cfg: SlotConfig | null;
+  rec: Progress;
+  // The list that holds this slot's markers
+  granted: number[];
+}
+
 interface OnlineClock {
   userId: number;
-  // Epoch ms up to which online time is in the record's onlineMs
+  // Epoch ms up to which online time is in the records' onlineMs
   since: number;
   savedAt: number;
 }
 
-// What the admin panel shows for one character.
+// One configured slot as the admin panel and the Skills tab show it
+export interface SlotSummary {
+  slot: number;
+  name: string;
+  profession: string | null;
+  label: string;
+  rank: number;
+  rankName: string;
+  hours: number;
+  cap: number;
+  capName: string;
+  // Hours for each rank indexed by rank, Free first
+  rankHours: number[];
+}
+
+// What the admin panel shows for one character; the top-level fields are the primary's
 export interface MasterySummary {
   profession: string | null;
   label: string;
   rank: number;
   rankName: string;
   hours: number;
+  slots: SlotSummary[];
+}
+
+// The race's starting magicka above the common base, RacialSystem.baseBonus
+export interface MagickaBonusSource {
+  baseBonus(actorId: number): { magicka: number };
 }
 
 interface BaseInfo {
@@ -349,7 +418,9 @@ interface Location {
 }
 
 const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0, bank: 0, onlineMs: 0 });
+const emptySubs = (): SubSlots => ({ v: SLOTS_VERSION, secondary: null, tertiary: null, granted: [], kits: [] });
 const hoursText = (n: number): string => `${n} ${n === 1 ? "hour" : "hours"}`;
+const idList = (v: unknown): number[] => (Array.isArray(v) ? v.map((x) => Number(x) >>> 0).filter((x) => x) : []);
 
 export const stringList = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x) : [];
 
@@ -357,6 +428,11 @@ export class MasterySystem implements System {
   systemName = "MasterySystem";
 
   constructor(private log: Log) { }
+
+  // Mage magicka rides on the race's bonus, and anyone else is held at the race's base
+  setRacial(source: MagickaBonusSource): void {
+    this.racial = source;
+  }
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -368,6 +444,13 @@ export class MasterySystem implements System {
     } else if (hours !== undefined) {
       this.log(`[mastery] masteryRankHours needs ${DEFAULT_RANK_HOURS.length} numbers (adept, expert, master, legendary), default kept`);
     }
+    const parsed = parseSlots(all?.["masterySlots"], this.rankHours);
+    this.slots = parsed.slots;
+    if (parsed.error) this.log(`[mastery] masterySlots ${parsed.error}, default kept`);
+    setIntroProfessions(this.slots.map((slot) => ({ name: slot.name, capName: RANK_NAMES[slot.cap] })));
+    const slotKits = all?.["masterySlotKits"];
+    if (typeof slotKits === "boolean") this.slotKits = slotKits;
+    else if (slotKits !== undefined) this.log("[mastery] masterySlotKits must be true or false, default kept");
     const resets = Number(all?.["masteryResetsPerCharacter"]);
     if (Number.isInteger(resets) && resets >= 0) this.resetsPerCharacter = resets;
     const interval = Number(all?.["masteryPointIntervalMinutes"]);
@@ -388,14 +471,24 @@ export class MasterySystem implements System {
     if (Number.isInteger(kitGold) && kitGold >= 0) this.kitGold = kitGold;
     await this.loadRules(ctx, all?.["masteryActivities"], s.dataDir, s.loadOrder);
     await this.loadPluginForms(ctx, s.dataDir, s.loadOrder);
+    for (const [profession, list] of Object.entries(this.spells)) {
+      list.forEach((spellId, i) => { if (spellId) this.markers.set(spellId >>> 0, { profession, rank: NOVICE + i }); });
+    }
 
     const configured = Object.keys(this.spells).length;
     this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one hour per ${this.intervalMs / 60000} min, extra crafts bank up to ${hoursText(this.bankMax)}, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
+    const multiclass = multiclassOn(this.slots);
+    this.log(`[mastery] slots: ${describeSlots(this.slots)}${multiclass ? `; each slot has its own ${this.intervalMs / 60000} min clock and ${hoursText(this.bankMax)} bank, ${this.resetsPerCharacter} reset(s) shared, sub-slot kits ${this.slotKits ? "on (items, no gold)" : "off"}, ${this.markers.size} rank markers read as recipe gates` : ""}`);
+    if (multiclass) {
+      this.logFreeRecipes(ctx, s.dataDir, s.loadOrder).catch((e) => this.log(`[mastery] free recipe count failed: ${e}`));
+    }
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => {
       this.onActorAssigned(ctx, userId, actorId >>> 0);
     });
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
+    // Magicka follows the race once creation has settled it, after the kit trim
+    ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.pendingGrants.set(actorId >>> 0, Date.now() + LOGIN_GRANT_DELAY_MS));
 
     // Events are only queued so every property write and Papyrus call runs outside the native event call stack.
     (globalThis as any).__alduinakMasteryEvent = (kind: string, actorId: number, detail: unknown) => {
@@ -446,7 +539,7 @@ export class MasterySystem implements System {
     switch (type) {
       case "masteryInfoRequest": this.sendMenu(ctx, userId); break;
       case "masteryChoose": this.onChoose(ctx, userId, content); break;
-      case "masteryResetRequest": this.onResetRequest(ctx, userId); break;
+      case "masteryResetRequest": this.onResetRequest(ctx, userId, content); break;
       default: break;
     }
   }
@@ -467,83 +560,99 @@ export class MasterySystem implements System {
 
   // ── Worked hours ────────────────────────────────────────────────────────────
 
-  // One hour per interval; an extra craft inside a counted hour goes to the bank instead
+  // One hour per interval and slot; an extra craft inside a slot's counted hour goes to that slot's bank instead
   private creditActivity(ctx: SystemContext, ev: ActivityEvent): void {
-    const rec = this.read(ctx, ev.actorId);
-    if (!rec || !rec.profession) return;
-    if (ev.kind === "cast" && !this.noteCast(ctx, ev.actorId, rec, ev.detail["spellId"])) return;
-    const now = Date.now();
-    const elapsed = now - rec.lastPointAt;
-    const counted = elapsed >= 0 && elapsed < this.intervalMs;
-    if (counted && (ev.kind !== "craft" || rec.bank >= this.bankMax)) return;
-    const rules = this.rules[rec.profession];
-    if (!rules || !this.matches(ctx, rec, rules, ev)) return;
-    if (counted) this.deposit(ctx, ev.actorId, rec, now);
-    else this.countHour(ctx, ev.actorId, rec, now, false);
+    const char = this.load(ctx, ev.actorId);
+    const slots = char ? this.activeSlots(char) : [];
+    if (!char || !slots.length) return;
+    if (ev.kind === "cast" && !this.noteCast(ctx, ev.actorId, char, slots, ev.detail["spellId"])) return;
+    const gates = ev.kind === "craft" ? this.recipeGates(ctx, ev.detail["recipeId"]) : [];
+    for (const slot of slots) {
+      const profession = slot.rec.profession || "";
+      if (slot.index > 0 && isCapped(slot.cfg!, slot.rec.points)) continue;
+      const now = Date.now();
+      const elapsed = now - slot.rec.lastPointAt;
+      const counted = elapsed >= 0 && elapsed < this.intervalMs;
+      if (counted && (ev.kind !== "craft" || slot.rec.bank >= this.bankMax)) continue;
+      if (ev.kind === "craft" && !creditsCraft(profession, slot.rec.rank, gates)) continue;
+      const rules = this.rules[profession];
+      if (!rules || !this.matches(ctx, profession, rules, ev)) continue;
+      if (counted) this.deposit(ctx, ev.actorId, char, slot, now);
+      else this.countHour(ctx, ev.actorId, char, slot, now, false);
+    }
   }
 
   // Points one hour; banked says it came out of the bank
-  private countHour(ctx: SystemContext, actorId: number, rec: MasteryRecord, now: number, banked: boolean): void {
+  private countHour(ctx: SystemContext, actorId: number, char: Character, slot: Slot, now: number, banked: boolean): void {
+    const rec = slot.rec;
     rec.points += 1;
     rec.lastPointAt = now;
-    this.settleClock(actorId, rec, now);
+    this.settleClock(actorId, char, now);
     rec.onlineMs = 0;
-    this.write(ctx, actorId, rec);
+    this.save(ctx, actorId, char);
     const left = rec.bank ? `, ${hoursText(rec.bank)} still banked` : "";
-    this.log(`[mastery] ${hex(actorId)} ${rec.profession} hour ${banked ? `paid from the bank after ${this.intervalMs / 60000} online min` : "counted by work"}: ${rec.points}h${left}`);
+    const standing = this.standingText(slot);
+    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour ${banked ? `paid from the bank after ${this.intervalMs / 60000} online min` : "counted by work"}: ${rec.points}h${slot.index > 0 ? `, ${standing}` : ""}${left}`);
     const userId = this.userOf(ctx, actorId);
-    this.notice(ctx, userId, `Your ${banked ? "banked " : ""}work as a ${this.labelOf(rec.profession || "")} is counted: ${hoursText(rec.points)} at the craft${left}.`);
-    this.syncRank(ctx, actorId, rec, userId);
+    this.notice(ctx, userId, `Your ${banked ? "banked " : ""}work as a ${this.labelOf(rec.profession || "")} is counted: ${standing}${left}.`);
+    this.syncRank(ctx, actorId, char, slot, userId);
   }
 
-  private deposit(ctx: SystemContext, actorId: number, rec: MasteryRecord, now: number): void {
+  private deposit(ctx: SystemContext, actorId: number, char: Character, slot: Slot, now: number): void {
+    const rec = slot.rec;
     rec.bank += 1;
-    this.settleClock(actorId, rec, now);
-    this.write(ctx, actorId, rec);
+    this.settleClock(actorId, char, now);
+    this.save(ctx, actorId, char);
     const waitMin = Math.max(1, Math.ceil((this.intervalMs - rec.onlineMs) / 60000));
-    this.log(`[mastery] ${hex(actorId)} ${rec.profession} hour banked (${rec.bank}/${this.bankMax}), next paid in ${waitMin} online min`);
-    this.notice(ctx, this.userOf(ctx, actorId), `Extra work banked: ${hoursText(rec.bank)} will be counted, one per hour you stay online.`);
+    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour banked (${rec.bank}/${this.bankMax}), next paid in ${waitMin} online min`);
+    const whose = slot.index > 0 ? ` for your ${this.slotNameOf(slot.index)} craft` : "";
+    this.notice(ctx, this.userOf(ctx, actorId), `Extra work banked${whose}: ${hoursText(rec.bank)} will be counted, one per hour you stay online.`);
   }
 
-  // A banked hour is counted once a full interval of online time has passed since the last counted hour
+  // A banked hour is counted once a full interval of online time has passed since the slot's last counted hour
   private payBanks(ctx: SystemContext): void {
     const now = Date.now();
     if (!this.clocks.size || now - this.lastBankCheck < BANK_CHECK_MS) return;
     this.lastBankCheck = now;
     this.clocks.forEach((clock, actorId) => {
       try {
-        const rec = this.read(ctx, actorId);
-        if (!rec || !rec.profession || rec.bank <= 0) return;
-        if (rec.bank > this.bankMax) rec.bank = this.bankMax;
-        if (rec.onlineMs + now - clock.since < this.intervalMs || now - rec.lastPointAt < this.intervalMs) {
-          if (now - clock.savedAt < BANK_SAVE_MS) return;
-          this.settleClock(actorId, rec, now);
-          this.write(ctx, actorId, rec);
-          return;
+        const char = this.load(ctx, actorId);
+        const banked = char ? this.activeSlots(char).filter((s) => s.rec.bank > 0 && !(s.index > 0 && isCapped(s.cfg!, s.rec.points))) : [];
+        if (!char || !banked.length) return;
+        let paid = false;
+        for (const slot of banked) {
+          if (slot.rec.bank > this.bankMax) slot.rec.bank = this.bankMax;
+          if (slot.rec.onlineMs + now - clock.since < this.intervalMs || now - slot.rec.lastPointAt < this.intervalMs) continue;
+          slot.rec.bank -= 1;
+          this.countHour(ctx, actorId, char, slot, now, true);
+          paid = true;
         }
-        rec.bank -= 1;
-        this.countHour(ctx, actorId, rec, now, true);
+        if (paid || now - clock.savedAt < BANK_SAVE_MS) return;
+        this.settleClock(actorId, char, now);
+        this.save(ctx, actorId, char);
       } catch (e) {
         this.log(`[mastery] bank payout failed for ${hex(actorId)}: ${e}`);
       }
     });
   }
 
-  // Moves the online time since the clock's mark into the record; the caller writes it
-  private settleClock(actorId: number, rec: MasteryRecord, now: number): void {
+  // Moves the online time since the clock's mark into every slot in force; the caller writes them
+  private settleClock(actorId: number, char: Character, now: number): void {
     const clock = this.clocks.get(actorId);
     if (!clock) return;
-    rec.onlineMs += Math.max(0, now - clock.since);
+    const online = Math.max(0, now - clock.since);
+    for (const slot of this.activeSlots(char)) slot.rec.onlineMs += online;
     clock.since = now;
     clock.savedAt = now;
   }
 
   private goOffline(ctx: SystemContext, actorId: number): void {
+    this.sentMagicka.delete(actorId);
     if (!this.clocks.has(actorId)) return;
-    const rec = this.read(ctx, actorId);
-    if (rec) {
-      this.settleClock(actorId, rec, Date.now());
-      this.write(ctx, actorId, rec);
+    const char = this.load(ctx, actorId);
+    if (char) {
+      this.settleClock(actorId, char, Date.now());
+      this.save(ctx, actorId, char);
     }
     this.clocks.delete(actorId);
   }
@@ -554,26 +663,27 @@ export class MasterySystem implements System {
     });
   }
 
-  // A mage's cast of a real spell; a higher tier than any before may lift the rank cap. False for anything else.
-  private noteCast(ctx: SystemContext, actorId: number, rec: MasteryRecord, spellId: number): boolean {
-    if (rec.profession !== "mage") return false;
+  // A real spell cast is a mage slot's work; a higher tier than any before may lift the mage's rank cap. False for anything else.
+  private noteCast(ctx: SystemContext, actorId: number, char: Character, slots: Slot[], spellId: number): boolean {
+    const mage = slots.find((s) => s.rec.profession === "mage");
+    if (!mage) return false;
     const info = spellInfo(ctx.svr as Mp, spellId);
     if (info.type !== SpellType.Spell) return false;
-    if (info.tier > rec.spellTier) {
-      rec.spellTier = info.tier;
-      this.write(ctx, actorId, rec);
-      if (this.rankFor(rec) !== rec.rank) this.syncRank(ctx, actorId, rec, this.userOf(ctx, actorId));
+    if (info.tier > char.primary.spellTier) {
+      char.primary.spellTier = info.tier;
+      this.write(ctx, actorId, char.primary);
+      if (this.rankOfSlot(char, mage) !== mage.rec.rank) this.syncRank(ctx, actorId, char, mage, this.userOf(ctx, actorId));
     }
     return true;
   }
 
-  private matches(ctx: SystemContext, rec: MasteryRecord, rules: ResolvedRules, ev: ActivityEvent): boolean {
+  private matches(ctx: SystemContext, profession: string, rules: ResolvedRules, ev: ActivityEvent): boolean {
     switch (ev.kind) {
       case "craft": {
         const recipeId = ev.detail["recipeId"];
         const bench = this.recipeBench(ctx, recipeId);
         if (!ev.detail["held"] || !bench || this.isCommonRecipe(ctx, recipeId)) return false;
-        const byKeyword = rules.craftKeywords.has(bench) || this.sharesRecipe(ctx, recipeId, rec.profession);
+        const byKeyword = rules.craftKeywords.has(bench) || this.sharesRecipe(ctx, recipeId, profession);
         if (!byKeyword && !rules.craftStations.size) return false;
         return this.benchInReach(ctx, ev.actorId, bench, (keywords) =>
           byKeyword || Array.from(rules.craftStations).some((k) => keywords.has(k)));
@@ -591,9 +701,9 @@ export class MasterySystem implements System {
       case "kill":
         return this.killCounts(ctx, ev.actorId, ev.detail["victimId"], rules.killKeywords);
       case "cast":
-        return true;
+        return profession === "mage";
       case "work":
-        return PROFESSION_IDS[ev.detail["profession"]] === rec.profession;
+        return PROFESSION_IDS[ev.detail["profession"]] === profession;
       default:
         return false;
     }
@@ -602,51 +712,66 @@ export class MasterySystem implements System {
   // ── Admin ───────────────────────────────────────────────────────────────────
 
   summaryOf(ctx: SystemContext, actorId: number): MasterySummary {
-    const rec = this.read(ctx, actorId) || emptyRecord();
+    const char = this.load(ctx, actorId) || this.emptyCharacter();
+    const rec = char.primary;
     return {
       profession: rec.profession,
       label: rec.profession ? this.labelOf(rec.profession) : "",
       rank: rec.rank,
       rankName: RANK_NAMES[rec.rank],
       hours: rec.points,
+      slots: this.slotSummaries(char),
     };
   }
 
-  // Adds (or with a negative amount removes) worked hours; rank and marker spells follow. Null for an amount the system refuses.
-  grantPoints(ctx: SystemContext, actorId: number, amount: number): MasterySummary | null {
+  // Adds (or with a negative amount removes) one slot's worked hours; rank and marker spells follow. Null for an amount the system refuses or an empty sub-slot.
+  grantPoints(ctx: SystemContext, actorId: number, amount: number, slotIndex = 0): MasterySummary | null {
     if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > MAX_GRANT) return null;
-    const rec = this.read(ctx, actorId) || emptyRecord();
-    rec.points = Math.max(0, rec.points + amount);
-    return this.settle(ctx, actorId, rec);
+    const char = this.load(ctx, actorId, slotIndex > 0) || this.emptyCharacter();
+    const slot = this.slotAt(char, slotIndex);
+    if (!slot) return null;
+    slot.rec.points = Math.max(0, slot.rec.points + amount);
+    return this.settle(ctx, actorId, char, slot);
   }
 
-  // Lifts the character to Legendary: the hours of the last threshold, and for a mage the spell tier that allows it. Null without a profession.
+  // Lifts the primary to the top of its ladder, and for a mage the spell tier that allows it. Null without a profession.
   grantLegendary(ctx: SystemContext, actorId: number): MasterySummary | null {
-    const rec = this.read(ctx, actorId);
-    if (!rec || !rec.profession) return null;
-    rec.points = Math.max(rec.points, this.rankHours[this.rankHours.length - 1]);
-    rec.spellTier = Math.max(rec.spellTier, LEGENDARY - 1);
-    return this.settle(ctx, actorId, rec);
+    const char = this.load(ctx, actorId);
+    if (!char || !char.primary.profession) return null;
+    const ladder = this.slots[0].rankHours;
+    char.primary.points = Math.max(char.primary.points, ladder[ladder.length - 1]);
+    char.primary.spellTier = Math.max(char.primary.spellTier, LEGENDARY - 1);
+    return this.settle(ctx, actorId, char, this.slotAt(char, 0)!);
   }
 
-  private settle(ctx: SystemContext, actorId: number, rec: MasteryRecord): MasterySummary {
-    this.write(ctx, actorId, rec);
+  private settle(ctx: SystemContext, actorId: number, char: Character, slot: Slot): MasterySummary {
+    this.save(ctx, actorId, char, slot);
     const userId = this.userOf(ctx, actorId);
-    if (rec.profession) this.notice(ctx, userId, `Your hours as a ${this.labelOf(rec.profession)} now stand at ${rec.points}.`);
-    this.syncRank(ctx, actorId, rec, userId);
+    if (slot.rec.profession) this.notice(ctx, userId, `Your hours as a ${this.labelOf(slot.rec.profession)}${slot.index > 0 ? `, your ${this.slotNameOf(slot.index)} craft,` : ""} now stand at ${slot.rec.points}.`);
+    this.syncRank(ctx, actorId, char, slot, userId);
     return this.summaryOf(ctx, actorId);
   }
 
-  // Admin escape hatch: clears the choice so the character may pick again. False when there was nothing to clear.
-  resetCharacter(ctx: SystemContext, actorId: number): boolean {
-    const rec = this.read(ctx, actorId);
-    if (!rec || !rec.profession) return false;
-    this.revokeSpells(ctx, actorId, rec);
+  // Admin escape hatch: clears one slot's choice so the character may pick again; the other slots stay. False when there was nothing to clear.
+  resetCharacter(ctx: SystemContext, actorId: number, slotIndex = 0): boolean {
+    const char = this.load(ctx, actorId, true);
+    const slot = char ? this.slotAt(char, slotIndex) : null;
+    const profession = slot ? slot.rec.profession : null;
+    if (!char || !slot || !profession) return false;
+    const tag = this.tagOf(slot);
+    const points = slot.rec.points;
+    this.revokeSpells(ctx, actorId, char, slot);
     // Hours belong to the craft, so a fresh choice starts from nothing.
-    Object.assign(rec, { profession: null, points: 0, lastPointAt: 0, rank: FREE, spellTier: 0, bank: 0, onlineMs: 0 });
-    this.write(ctx, actorId, rec);
+    if (profession === "mage") char.primary.spellTier = 0;
+    const key = subKeyOf(slotIndex);
+    if (key && char.subs) char.subs[key] = null;
+    else Object.assign(char.primary, { profession: null, points: 0, lastPointAt: 0, rank: FREE, bank: 0, onlineMs: 0 });
+    this.save(ctx, actorId, char);
+    this.log(`[mastery] ${hex(actorId)} ${tag} set aside at ${points}h`);
     const userId = this.userOf(ctx, actorId);
-    this.notice(ctx, userId, "Your profession has been set aside. You may choose again.");
+    this.notice(ctx, userId, key
+      ? `Your ${this.slotNameOf(slotIndex)} craft, the ${this.labelOf(profession)}, has been set aside. You may choose again.`
+      : "Your profession has been set aside. You may choose again.");
     this.sendState(ctx, actorId, userId);
     this.sendMenu(ctx, userId);
     return true;
@@ -663,27 +788,57 @@ export class MasterySystem implements System {
     if (!isPlayerActor(mp, actorId)) return;
     const now = Date.now();
     this.clocks.set(actorId, { userId, since: now, savedAt: now });
-    const rec = this.read(ctx, actorId);
-    if (rec && rec.profession) {
-      if (rec.v !== RECORD_VERSION) this.migrate(ctx, actorId, rec);
-      const corrected = this.rankFor(rec);
-      if (corrected < rec.rank) this.revokeAbove(ctx, actorId, rec, corrected);
+    // A spawn resets the client's MasteryService write
+    this.sentMagicka.delete(actorId);
+    const char = this.load(ctx, actorId, true);
+    const rec = char ? char.primary : null;
+    if (char && rec && rec.profession) {
+      if (rec.v !== RECORD_VERSION) this.migrate(ctx, actorId, char);
+      const primary = this.slotAt(char, 0)!;
+      const corrected = this.rankOfSlot(char, primary);
+      if (corrected < rec.rank) this.revokeAbove(ctx, actorId, char, primary, corrected);
       rec.rank = corrected;
       this.write(ctx, actorId, rec);
       if (rec.bank > 0) this.log(`[mastery] ${hex(actorId)} online with ${hoursText(rec.bank)} banked, next paid in ${Math.max(1, Math.ceil((this.intervalMs - rec.onlineMs) / 60000))} online min`);
     }
+    if (char && char.subs) this.settleSubs(ctx, actorId, char);
     this.sendState(ctx, actorId, userId);
     // Grants, kits and the state again wait out the client's spawn-time spell wipe
     this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS);
   }
 
   // Markers of the old ladder that are not markers of the new one go; the ones still wanted are granted after the login delay
-  private migrate(ctx: SystemContext, actorId: number, rec: MasteryRecord): void {
+  private migrate(ctx: SystemContext, actorId: number, char: Character): void {
+    const rec = char.primary;
     const wanted = rec.profession ? this.spells[rec.profession] || [] : [];
-    for (const spellId of rec.granted.filter((id) => wanted.indexOf(id) === -1)) this.removeSpell(ctx, actorId, spellId);
-    rec.granted = rec.granted.filter((id) => wanted.indexOf(id) !== -1);
+    this.dropMarkers(ctx, actorId, char, rec.granted, rec.granted.filter((id) => wanted.indexOf(id) === -1));
     rec.v = RECORD_VERSION;
     this.log(`[mastery] ${hex(actorId)} migrated to the rank ladder: ${rec.profession} ${rec.points}h`);
+  }
+
+  // After the primary: a sub-slot in force whose craft a lower slot follows is dropped (one out of force is kept), ranks follow the slots in force, and markers no sub-slot in force holds go
+  private settleSubs(ctx: SystemContext, actorId: number, char: Character): void {
+    const subs = char.subs!;
+    const before = JSON.stringify(subs);
+    for (const index of duplicateSlots(this.professionsOf(char).slice(0, this.slots.length))) {
+      const key = subKeyOf(index);
+      const rec = key ? subs[key] : null;
+      if (!key || !rec) continue;
+      this.log(`[mastery] ${hex(actorId)} ${this.slotNameOf(index)} ${rec.profession} dropped at login: a lower slot already follows it`);
+      subs[key] = null;
+    }
+    const inForce = this.activeSlots(char).filter((s) => s.index > 0);
+    for (const slot of inForce) slot.rec.rank = this.rankOfSlot(char, slot);
+    const wanted = new Set(inForce.flatMap((s) => (this.spells[s.rec.profession || ""] || []).slice(0, s.rec.rank)));
+    const extra = subs.granted.filter((id) => !wanted.has(id));
+    if (extra.length) {
+      this.dropMarkers(ctx, actorId, char, subs.granted, extra);
+      this.log(`[mastery] ${hex(actorId)} ${extra.length} sub-slot marker(s) revoked at login: ${extra.map((id) => hex(id)).join(", ")}`);
+    }
+    if (JSON.stringify(subs) !== before) this.writeSubs(ctx, actorId, subs);
+    const text = this.slotSummaries(char).map((s) => (s.profession ? `${s.name} ${s.profession} ${s.rankName} ${s.hours}h` : `${s.name} empty`)).join(", ");
+    const banked = inForce.filter((s) => s.rec.bank > 0).map((s) => `${this.tagOf(s)} ${hoursText(s.rec.bank)} banked`);
+    this.log(`[mastery] ${hex(actorId)} slots at login: ${text}${banked.length ? `; ${banked.join(", ")}` : ""}`);
   }
 
   private flushPendingGrants(ctx: SystemContext): void {
@@ -694,31 +849,37 @@ export class MasterySystem implements System {
       this.pendingGrants.delete(actorId);
       const userId = this.userOf(ctx, actorId);
       if (userId < 0) return;
-      const rec = this.read(ctx, actorId);
-      if (rec && rec.profession) {
-        this.applySpells(ctx, actorId, rec);
-        this.giveKit(ctx, actorId, userId, rec.profession);
+      const char = this.load(ctx, actorId);
+      if (char) {
+        const inForce = this.activeSlots(char);
+        for (const slot of inForce) this.applySpells(ctx, actorId, char, slot);
+        if (char.primary.profession) this.giveKit(ctx, actorId, userId, char.primary.profession);
+        for (const slot of inForce) {
+          if (slot.index > 0) this.giveSlotKit(ctx, actorId, userId, char, slot);
+        }
       }
       this.sendState(ctx, actorId, userId);
     });
   }
 
-  // The player's own reset: the same as the admin one, counted against masteryResetsPerCharacter
-  private onResetRequest(ctx: SystemContext, userId: number): void {
+  // The player's own reset of one craft (the primary unless a profession is named): the same as the admin one, counted against masteryResetsPerCharacter over all slots
+  private onResetRequest(ctx: SystemContext, userId: number, content: Content): void {
     const now = Date.now();
     if (now - (this.lastChooseMs.get(userId) || 0) < CHOOSE_COOLDOWN_MS) return;
     this.lastChooseMs.set(userId, now);
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
-    const rec = this.read(ctx, actorId);
-    if (!rec || !rec.profession) return;
-    if (rec.resets >= this.resetsPerCharacter) {
+    const char = this.load(ctx, actorId);
+    const named = typeof content["profession"] === "string" ? content["profession"] : "";
+    const slot = !char ? null : named ? this.activeSlots(char).find((s) => s.rec.profession === named) : this.slotAt(char, 0);
+    if (!char || !slot || !slot.rec.profession) return;
+    if (char.primary.resets >= this.resetsPerCharacter) {
       this.notice(ctx, userId, "You have no profession resets left.");
       return;
     }
-    rec.resets += 1;
-    this.write(ctx, actorId, rec);
-    this.resetCharacter(ctx, actorId);
+    char.primary.resets += 1;
+    this.write(ctx, actorId, char.primary);
+    this.resetCharacter(ctx, actorId, slot.index);
   }
 
   private onChoose(ctx: SystemContext, userId: number, content: Content): void {
@@ -730,9 +891,15 @@ export class MasterySystem implements System {
     const professionId = String(content["profession"] || "");
     if (PROFESSION_IDS.indexOf(professionId) === -1) return;
 
-    const rec = this.read(ctx, actorId) || emptyRecord();
-    if (rec.profession) {
-      this.notice(ctx, userId, `You have already given yourself to the ${this.labelOf(rec.profession)}.`);
+    const slotIndex = content["slot"] === undefined || content["slot"] === null ? 0 : Number(content["slot"]);
+    const char = this.load(ctx, actorId, true) || this.emptyCharacter();
+    const refusal = chooseRefusal(this.professionsOf(char), this.slots.length, professionId, slotIndex);
+    if (refusal) {
+      const holder = this.professionsOf(char).indexOf(professionId);
+      if (refusal === "held" && holder >= this.slots.length) {
+        this.log(`[mastery] ${hex(actorId)} ${professionId} refused as ${this.slotNameOf(slotIndex)} craft: the ${this.slotNameOf(holder)} slot keeps it while this server has no such slot`);
+      }
+      this.notice(ctx, userId, this.refusalText(char, refusal, slotIndex, professionId));
       return;
     }
     // Finishing creation cuts the inventory back to the starter clothes, which would take the kit with it
@@ -740,15 +907,45 @@ export class MasterySystem implements System {
       this.notice(ctx, userId, "Finish creating your character before you choose a craft.");
       return;
     }
-    rec.profession = professionId;
-    rec.v = RECORD_VERSION;
-    rec.rank = this.rankFor(rec);
-    this.write(ctx, actorId, rec);
-    this.applySpells(ctx, actorId, rec);
-    this.notice(ctx, userId, `You take up the craft of the ${this.labelOf(professionId)}.`);
-    this.giveKit(ctx, actorId, userId, professionId);
+    const key = subKeyOf(slotIndex);
+    if (key) (char.subs || (char.subs = emptySubs()))[key] = emptySlotRecord(professionId);
+    else Object.assign(char.primary, { profession: professionId, v: RECORD_VERSION });
+    const slot = this.slotAt(char, slotIndex)!;
+    const cfg = this.slots[slotIndex];
+    slot.rec.rank = this.rankOfSlot(char, slot);
+    this.save(ctx, actorId, char, slot);
+    this.applySpells(ctx, actorId, char, slot);
+    this.log(`[mastery] ${hex(actorId)} took up ${professionId} as ${this.slotNameOf(slotIndex)} craft (up to ${RANK_NAMES[cfg.cap]}), ${RANK_NAMES[slot.rec.rank]} at ${slot.rec.points}h`);
+    const label = this.labelOf(professionId);
+    if (key) {
+      const gate = slot.rec.rank === FREE ? ` It starts at Free: ${hoursText(cfg.rankHours[0])} of its free work make you a Novice.` : "";
+      this.notice(ctx, userId, `You take up the craft of the ${label} as your ${this.slotNameOf(slotIndex)} craft, rising no higher than ${RANK_NAMES[cfg.cap]}.${gate}`);
+      this.giveSlotKit(ctx, actorId, userId, char, slot);
+    } else {
+      this.notice(ctx, userId, `You take up the craft of the ${label}.`);
+      this.giveKit(ctx, actorId, userId, professionId);
+    }
     this.sendState(ctx, actorId, userId);
     this.sendMenu(ctx, userId);
+  }
+
+  private refusalText(char: Character, refusal: ChooseRefusal, slotIndex: number, professionId: string): string {
+    switch (refusal) {
+      case "taken": {
+        const held = this.labelOf(this.slotAt(char, slotIndex)?.rec.profession || "");
+        return slotIndex === 0 ? `You have already given yourself to the ${held}.` : `Your ${this.slotNameOf(slotIndex)} craft is already the ${held}.`;
+      }
+      case "held": {
+        const holder = this.professionsOf(char).indexOf(professionId);
+        if (holder < this.slots.length) return `You already follow the ${this.labelOf(professionId)}.`;
+        const name = this.slotNameOf(holder);
+        return `Your ${name} craft, the ${this.labelOf(professionId)}, is kept for when this server offers a ${name} craft again, so you cannot take it up now.`;
+      }
+      case "out-of-order":
+        return `Choose your ${this.slotNameOf(nextEmptySlot(this.professionsOf(char), this.slots.length))} craft first.`;
+      default:
+        return "This server offers no such craft slot.";
+    }
   }
 
   // A read that throws counts as given, so a hiccup never hands out a second kit
@@ -768,15 +965,33 @@ export class MasterySystem implements System {
       return;
     }
     const kit = (this.kits[professionId] || []).concat(gold > 0 ? [{ baseId: GOLD_BASE_ID, count: gold }] : []);
+    this.handOver(ctx, actorId, kit);
+    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}`);
+    if (kit.length) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
+  }
+
+  // A sub-slot's kit items, never gold, once per craft per character; none for the craft whose kit the primary pick already gave
+  private giveSlotKit(ctx: SystemContext, actorId: number, userId: number, char: Character, slot: Slot): void {
+    const profession = slot.rec.profession || "";
+    if (!this.slotKits || !char.subs || !profession || char.subs.kits.indexOf(profession) !== -1) return;
+    let primaryKit = "";
+    try { primaryKit = String((ctx.svr as Mp).get(actorId, KIT_PROP)?.profession || ""); } catch { return; }
+    char.subs.kits.push(profession);
+    if (!this.writeSubs(ctx, actorId, char.subs)) return;
+    const kit = primaryKit === profession ? [] : this.kits[profession] || [];
+    this.handOver(ctx, actorId, kit);
+    this.log(`[mastery] ${hex(actorId)} ${this.slotNameOf(slot.index)} kit for ${profession}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || (primaryKit === profession ? "none, the primary kit was this craft's" : "none")}`);
+    if (kit.length) this.notice(ctx, userId, `The ${this.labelOf(profession)}'s kit is in your pack.`);
+  }
+
+  private handOver(ctx: SystemContext, actorId: number, kit: KitItem[]): void {
     for (const item of kit) {
       try {
-        addItemTo(mp, actorId, item.baseId, item.count);
+        addItemTo(ctx.svr as Mp, actorId, item.baseId, item.count);
       } catch (e) {
         this.log(`[mastery] kit item ${hex(item.baseId)} failed for ${hex(actorId)}: ${e}`);
       }
     }
-    this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}`);
-    if (kit.length) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
   }
 
   // ── Menu and state ──────────────────────────────────────────────────────────
@@ -784,26 +999,35 @@ export class MasterySystem implements System {
   private sendMenu(ctx: SystemContext, userId: number): void {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
-    const rec = this.read(ctx, actorId) || emptyRecord();
+    const char = this.load(ctx, actorId) || this.emptyCharacter();
+    const rec = char.primary;
     this.send(ctx, userId, {
       customPacketType: "masteryMenu",
       profession: rec.profession,
       rank: rec.rank,
       hours: rec.points,
-      rankHours: [0, 0].concat(this.rankHours),
+      rankHours: [0].concat(this.slots[0].rankHours),
       resetsLeft: Math.max(0, this.resetsPerCharacter - rec.resets),
       professions: PROFESSIONS.map(({ id, label, title, type, blurbs }) => ({ id, label, title, type, blurbs })),
+      slots: this.slotSummaries(char),
     });
   }
 
-  // Every mapped skill at the Free level, the character's own at its rank level; magicka only for a mage
+  // Every mapped skill at the Free level, each slot's own at its rank level (the best slot wins); magicka as magickaOf says
   private sendState(ctx: SystemContext, actorId: number, userId: number): void {
     if (userId < 0) return;
-    const rec = this.read(ctx, actorId) || emptyRecord();
+    const char = this.load(ctx, actorId) || this.emptyCharacter();
+    const inForce = this.activeSlots(char);
     const skills: Record<string, number> = {};
     for (const skill of ALL_SKILLS) skills[skill] = RANK_SKILL[FREE];
-    const own = PROFESSIONS.find((p) => p.id === rec.profession);
-    for (const skill of own ? own.skills : []) skills[skill] = RANK_SKILL[rec.rank];
+    for (const slot of inForce) {
+      const own = PROFESSIONS.find((p) => p.id === slot.rec.profession);
+      for (const skill of own ? own.skills : []) skills[skill] = Math.max(skills[skill], RANK_SKILL[slot.rec.rank]);
+    }
+    const rec = char.primary;
+    const magicka = this.magickaOf(ctx, actorId, inForce);
+    // The client keeps its last write through a null, so the record does too
+    if (magicka !== null) this.sentMagicka.set(actorId, magicka);
     this.send(ctx, userId, {
       customPacketType: "professionState",
       profession: rec.profession,
@@ -811,72 +1035,119 @@ export class MasterySystem implements System {
       rankName: RANK_NAMES[rec.rank],
       hours: rec.points,
       skills,
-      magicka: rec.profession === "mage" ? MAGE_MAGICKA[rec.rank] : null,
+      magicka,
+      slots: this.slotSummaries(char),
+    });
+  }
+
+  // The base Magicka the client last wrote from professionState this spawn, null for none
+  lastMagicka(actorId: number): number | null {
+    return this.sentMagicka.get(actorId >>> 0) ?? null;
+  }
+
+  // A mage slot of Novice or better sets base magicka by rank and anyone else is held at the race's base, both with the race's bonus; null in creation
+  private magickaOf(ctx: SystemContext, actorId: number, inForce: Slot[]): number | null {
+    const mage = inForce.find((s) => s.rec.profession === "mage" && s.rec.rank >= NOVICE);
+    if (isCreationPending(ctx.svr as Mp, actorId)) return mage ? MAGE_MAGICKA[mage.rec.rank] : null;
+    const bonus = this.racial ? this.racial.baseBonus(actorId).magicka : 0;
+    if (mage) return MAGE_MAGICKA[mage.rec.rank] + bonus;
+    return this.racial ? MAGE_MAGICKA[FREE] + bonus : null;
+  }
+
+  // Every configured slot, empty ones included
+  private slotSummaries(char: Character): SlotSummary[] {
+    return this.slots.map((cfg, index) => {
+      const slot = this.slotAt(char, index);
+      const profession = slot ? slot.rec.profession : null;
+      const rank = slot ? slot.rec.rank : FREE;
+      return {
+        slot: index,
+        name: cfg.name,
+        profession,
+        label: profession ? this.labelOf(profession) : "",
+        rank,
+        rankName: RANK_NAMES[rank],
+        hours: slot ? slot.rec.points : 0,
+        cap: cfg.cap,
+        capName: RANK_NAMES[cfg.cap],
+        rankHours: [0].concat(cfg.rankHours),
+      };
     });
   }
 
   // ── Ranks and marker spells ─────────────────────────────────────────────────
 
-  private rankFor(rec: MasteryRecord): number {
-    if (!rec.profession) return FREE;
-    let rank = NOVICE;
-    for (let i = 0; i < this.rankHours.length; i++) {
-      if (rec.points >= this.rankHours[i]) rank = NOVICE + i + 1;
-    }
-    // A mage rises past Adept only as far as one rank above the best spell tier cast
-    if (rec.profession === "mage") rank = Math.min(rank, Math.max(ADEPT, rec.spellTier + 1));
+  // Rank a slot's hours earn on its ladder: the primary is a Novice from the choice, a sub-slot starts Free; a mage rises past Adept only one rank above the best spell tier cast
+  private rankOfSlot(char: Character, slot: Slot): number {
+    if (!slot.rec.profession || !slot.cfg) return FREE;
+    let rank = slotRankFor(slot.cfg, slot.rec.points);
+    if (slot.index === 0) rank = Math.max(NOVICE, rank);
+    if (slot.rec.profession === "mage") rank = Math.min(rank, Math.max(ADEPT, char.primary.spellTier + 1));
     return rank;
   }
 
   // Rank follows points and the marker spells follow rank, both ways.
-  private syncRank(ctx: SystemContext, actorId: number, rec: MasteryRecord, userId: number): void {
-    const oldRank = rec.rank;
-    const newRank = this.rankFor(rec);
-    if (newRank < oldRank) this.revokeAbove(ctx, actorId, rec, newRank);
-    rec.rank = newRank;
-    this.write(ctx, actorId, rec);
-    this.applySpells(ctx, actorId, rec);
+  private syncRank(ctx: SystemContext, actorId: number, char: Character, slot: Slot, userId: number): void {
+    const oldRank = slot.rec.rank;
+    const newRank = this.rankOfSlot(char, slot);
+    if (newRank < oldRank) this.revokeAbove(ctx, actorId, char, slot, newRank);
+    slot.rec.rank = newRank;
+    this.save(ctx, actorId, char, slot);
+    this.applySpells(ctx, actorId, char, slot);
     this.sendState(ctx, actorId, userId);
-    if (newRank === oldRank || !rec.profession) return;
-    const label = this.labelOf(rec.profession);
-    this.notice(ctx, userId, newRank > oldRank
-      ? `You are now ${RANK_NAMES[newRank]} of the ${label}.`
-      : `Your standing has fallen to ${RANK_NAMES[newRank]} of the ${label}.`);
+    const profession = slot.rec.profession;
+    if (newRank === oldRank || !profession) return;
+    const label = this.labelOf(profession);
+    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} ${RANK_NAMES[oldRank]} -> ${RANK_NAMES[newRank]} at ${slot.rec.points}h`);
+    const name = this.slotNameOf(slot.index);
+    if (slot.index === 0) {
+      this.notice(ctx, userId, newRank > oldRank
+        ? `You are now ${RANK_NAMES[newRank]} of the ${label}.`
+        : `Your standing has fallen to ${RANK_NAMES[newRank]} of the ${label}.`);
+    } else {
+      this.notice(ctx, userId, newRank > oldRank
+        ? `You are now a ${RANK_NAMES[newRank]} of the ${label}, your ${name} craft.`
+        : `Your ${name} craft has fallen to ${RANK_NAMES[newRank]} of the ${label}.`);
+    }
   }
 
-  // Marker list index 0 is Novice, so a character holds the first `rank` of them.
-  private missingSpells(rec: MasteryRecord): number[] {
-    const list = rec.profession ? this.spells[rec.profession] : null;
+  // Marker list index 0 is Novice, so a slot holds the first `rank` of them.
+  private missingSpells(slot: Slot): number[] {
+    const list = slot.rec.profession && slot.cfg ? this.spells[slot.rec.profession] : null;
     if (!list) return [];
-    return list.slice(0, rec.rank).filter((spellId) => spellId && rec.granted.indexOf(spellId) === -1);
+    return list.slice(0, slot.rec.rank).filter((spellId) => spellId && slot.granted.indexOf(spellId) === -1);
   }
 
   // The plugin's recipes condition on the exact rank they belong to, so a Master still needs the Novice marker.
-  private applySpells(ctx: SystemContext, actorId: number, rec: MasteryRecord): void {
-    const missing = this.missingSpells(rec);
+  private applySpells(ctx: SystemContext, actorId: number, char: Character, slot: Slot): void {
+    const missing = this.missingSpells(slot);
     if (!missing.length) return;
     for (const spellId of missing) {
       this.addSpell(ctx, actorId, spellId);
-      rec.granted.push(spellId);
+      slot.granted.push(spellId);
     }
-    this.write(ctx, actorId, rec);
+    this.save(ctx, actorId, char, slot);
   }
 
-  private revokeAbove(ctx: SystemContext, actorId: number, rec: MasteryRecord, keepRank: number): void {
-    const list = rec.profession ? this.spells[rec.profession] : null;
-    if (!list) return;
-    for (const spellId of list.slice(keepRank)) {
-      const at = rec.granted.indexOf(spellId);
-      if (spellId && at !== -1) {
-        this.removeSpell(ctx, actorId, spellId);
-        rec.granted.splice(at, 1);
-      }
-    }
+  private revokeAbove(ctx: SystemContext, actorId: number, char: Character, slot: Slot, keepRank: number): void {
+    const list = slot.rec.profession ? this.spells[slot.rec.profession] : null;
+    if (list) this.dropMarkers(ctx, actorId, char, slot.granted, list.slice(keepRank));
   }
 
-  private revokeSpells(ctx: SystemContext, actorId: number, rec: MasteryRecord): void {
-    for (const spellId of rec.granted.slice()) this.removeSpell(ctx, actorId, spellId);
-    rec.granted = [];
+  // A primary reset drops every marker it lists, old ladders included; a sub-slot only its own craft's
+  private revokeSpells(ctx: SystemContext, actorId: number, char: Character, slot: Slot): void {
+    this.dropMarkers(ctx, actorId, char, slot.granted, slot.index === 0 ? slot.granted.slice() : this.spells[slot.rec.profession || ""] || []);
+  }
+
+  // Takes markers off a slot list; the spell itself stays while the other list still holds it
+  private dropMarkers(ctx: SystemContext, actorId: number, char: Character, list: number[], ids: number[]): void {
+    const other = list === char.primary.granted ? (char.subs ? char.subs.granted : []) : char.primary.granted;
+    for (const spellId of ids) {
+      const at = list.indexOf(spellId);
+      if (!spellId || at === -1) continue;
+      list.splice(at, 1);
+      if (other.indexOf(spellId) === -1) this.removeSpell(ctx, actorId, spellId);
+    }
   }
 
   // A console addspell would be client-local and lost on the next actor sync.
@@ -927,32 +1198,71 @@ export class MasterySystem implements System {
     return this.hoe;
   }
 
-  // Rank of a character in the given profession, Free (0) when it follows another craft or none.
+  // Rank of a character in the given profession, Free (0) when no slot follows it.
   rankOf(ctx: SystemContext, actorId: number, professionId: string): number {
     return this.rankIn(ctx, actorId, [professionId]);
   }
 
-  // Rank when the character follows one of the professions, Free otherwise.
+  // Best rank of the slots that follow one of the professions, Free otherwise.
   rankIn(ctx: SystemContext, actorId: number, professionIds: string[]): number {
-    const rec = this.read(ctx, actorId);
-    return rec && rec.profession && professionIds.indexOf(rec.profession) !== -1 ? rec.rank : FREE;
+    return bestSlot(this.heldSlots(ctx, actorId), professionIds)?.rank ?? FREE;
   }
 
-  // Rank when the character's own profession works this bench keyword, Free otherwise.
+  // Best rank of the slots whose profession works this bench keyword, Free otherwise.
   craftRank(ctx: SystemContext, actorId: number, benchKeyword: number): number {
-    const rec = this.read(ctx, actorId);
-    const rules = rec && rec.profession ? this.rules[rec.profession] : null;
-    return rules && (rules.craftKeywords.has(benchKeyword >>> 0) || rules.craftStations.has(benchKeyword >>> 0)) ? rec!.rank : FREE;
+    return this.craftSlot(ctx, actorId, benchKeyword).rank;
   }
 
-  // The rank that prices a craft and whether it costs half; shared recipes take the best of their professions
-  craftCost(ctx: SystemContext, actorId: number, recipeId: number): { rank: number; half: boolean } {
+  // The slot that prices work at this bench keyword: its rank and profession, Free and null when none works it
+  craftSlot(ctx: SystemContext, actorId: number, benchKeyword: number): { rank: number; profession: string | null } {
+    const best = bestSlot(this.heldSlots(ctx, actorId), this.benchProfessions(benchKeyword));
+    return { rank: best ? best.rank : FREE, profession: best ? best.profession : null };
+  }
+
+  // The rank that prices a craft, the profession it belongs to and whether it costs half; shared recipes take the best of their
+  // professions, any other the best slot that works the bench and qualifies for the recipe's rank gates
+  craftCost(ctx: SystemContext, actorId: number, recipeId: number): { rank: number; half: boolean; profession: string | null } {
     const bench = this.recipeBench(ctx, recipeId);
     const edid = this.baseInfo(ctx, recipeId)?.editorId || "";
     const shared = SHARED_RECIPES.find(([prefix]) => edid.startsWith(prefix));
-    const rank = shared ? this.rankIn(ctx, actorId, shared[1]) : this.craftRank(ctx, actorId, bench);
+    const held = this.heldSlots(ctx, actorId);
+    const best = shared ? bestSlot(held, shared[1]) : bestSlot(held, this.benchProfessions(bench), this.recipeGates(ctx, recipeId));
     const product = this.baseInfo(ctx, espmFieldFormIds(this.lookup(ctx, recipeId), "CNAM")[0] || 0)?.editorId || "";
-    return { rank, half: this.halfCostBench(bench) || HALF_COST_PRODUCTS.has(product.toLowerCase()) };
+    return { rank: best ? best.rank : FREE, half: this.halfCostBench(bench) || HALF_COST_PRODUCTS.has(product.toLowerCase()), profession: best ? best.profession : null };
+  }
+
+  // Professions whose recipe or station keywords include this bench keyword
+  private benchProfessions(benchKeyword: number): string[] {
+    const k = benchKeyword >>> 0;
+    return PROFESSION_IDS.filter((id) => this.rules[id] && (this.rules[id].craftKeywords.has(k) || this.rules[id].craftStations.has(k)));
+  }
+
+  // The rank markers a recipe's HasSpell conditions require, an OR group when several; cached
+  private recipeGates(ctx: SystemContext, recipeId: number): RecipeGate[] {
+    const hit = this.gateCache.get(recipeId);
+    if (hit) return hit;
+    const out = hasSpellConditions(ctx.svr as Mp, recipeId).map((id) => this.markers.get(id >>> 0)).filter((g): g is RecipeGate => !!g);
+    this.gateCache.set(recipeId, out);
+    return out;
+  }
+
+  // Ungated recipes per bench, the free work a Free sub-slot counts; a boot check against the multiclass design's table
+  private async logFreeRecipes(ctx: SystemContext, dataDir: string, loadOrder: string[]): Promise<void> {
+    const started = Date.now();
+    const mp = ctx.svr as Mp;
+    const ids = new Set<number>();
+    await scanRecords(dataDir, loadOrder, ["COBJ"], this.log, (rec) => {
+      try { ids.add(mp.getIdFromDesc(espmDesc(rec.formId, rec.masters, rec.owner)) >>> 0); } catch { /* not loaded */ }
+    });
+    const counts = new Map<string, number>();
+    for (const id of ids) {
+      const bench = this.recipeBench(ctx, id);
+      if (!bench || !this.benchProfessions(bench).length || this.isCommonRecipe(ctx, id) || this.recipeGates(ctx, id).length) continue;
+      const name = this.baseInfo(ctx, bench)?.editorId || hex(bench);
+      counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    const text = Array.from(counts).sort(([a], [b]) => a.localeCompare(b)).map(([name, n]) => `${name} ${n}`).join(", ");
+    this.log(`[mastery] free recipes by bench: ${text || "none"} (${ids.size} recipes read in ${Date.now() - started} ms)`);
   }
 
   // Whether a shared recipe also counts for this profession
@@ -1240,7 +1550,7 @@ export class MasterySystem implements System {
         points: Math.max(0, Math.floor(Number(r.points)) || 0),
         lastPointAt: Math.max(0, Number(r.lastPointAt) || 0),
         rank: Math.min(LEGENDARY, Math.max(FREE, Math.floor(Number(r.rank)) || 0)),
-        granted: Array.isArray(r.granted) ? r.granted.map((v) => Number(v) >>> 0).filter((v) => v) : [],
+        granted: idList(r.granted),
         spellTier: Math.max(0, Math.floor(Number(r.spellTier)) || 0),
         resets: Math.max(0, Math.floor(Number(r.resets)) || 0),
         bank: Math.max(0, Math.floor(Number(r.bank)) || 0),
@@ -1259,11 +1569,95 @@ export class MasterySystem implements System {
     }
   }
 
+  private readSubs(ctx: SystemContext, actorId: number): SubSlots | null {
+    try {
+      const raw = (ctx.svr as Mp).get(actorId, SLOTS_PROP);
+      if (!raw || typeof raw !== "object") return null;
+      const r = raw as Record<string, unknown>;
+      const isProfession = (id: string) => PROFESSION_IDS.indexOf(id) !== -1;
+      return {
+        v: Number(r["v"]) || 0,
+        secondary: toSlotRecord(r["secondary"], isProfession),
+        tertiary: toSlotRecord(r["tertiary"], isProfession),
+        granted: idList(r["granted"]),
+        kits: stringList(r["kits"]),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private writeSubs(ctx: SystemContext, actorId: number, subs: SubSlots): boolean {
+    subs.v = SLOTS_VERSION;
+    try {
+      (ctx.svr as Mp).set(actorId, SLOTS_PROP, subs);
+      return true;
+    } catch (e) {
+      this.log(`[mastery] sub-slot write failed for ${hex(actorId)}: ${e}`);
+      return false;
+    }
+  }
+
+  // Both records; the sub-slots are read while multiclassing is on or when forced (login, picks, resets, admin sub-slot grants). Null when neither exists.
+  private load(ctx: SystemContext, actorId: number, forceSubs = false): Character | null {
+    const primary = this.read(ctx, actorId);
+    const subs = forceSubs || multiclassOn(this.slots) ? this.readSubs(ctx, actorId) : null;
+    return primary || subs ? { primary: primary || emptyRecord(), subs } : null;
+  }
+
+  // Writes the record that holds the slot, or both
+  private save(ctx: SystemContext, actorId: number, char: Character, only?: Slot): void {
+    if (!only || only.index === 0) this.write(ctx, actorId, char.primary);
+    if (char.subs && (!only || only.index > 0)) this.writeSubs(ctx, actorId, char.subs);
+  }
+
+  private emptyCharacter(): Character {
+    return { primary: emptyRecord(), subs: null };
+  }
+
+  // The primary always, a sub-slot only when filled
+  private slotAt(char: Character, index: number): Slot | null {
+    if (index === 0) return { index, cfg: this.slots[0], rec: char.primary, granted: char.primary.granted };
+    const key = subKeyOf(index);
+    const rec = key && char.subs ? char.subs[key] : null;
+    return rec && char.subs ? { index, cfg: this.slots[index] || null, rec, granted: char.subs.granted } : null;
+  }
+
+  // Filled slots the settings configure, primary first
+  private activeSlots(char: Character): Slot[] {
+    return SLOT_NAMES.map((_, i) => this.slotAt(char, i)).filter((s): s is Slot => !!s && !!s.rec.profession && !!s.cfg);
+  }
+
+  private professionsOf(char: Character): Array<string | null> {
+    return SLOT_NAMES.map((_, i) => this.slotAt(char, i)?.rec.profession || null);
+  }
+
+  private heldSlots(ctx: SystemContext, actorId: number): HeldSlot[] {
+    const char = this.load(ctx, actorId);
+    return char ? this.activeSlots(char).map((s) => ({ profession: s.rec.profession, rank: s.rec.rank })) : [];
+  }
+
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   private labelOf(professionId: string): string {
     const p = PROFESSIONS.filter((x) => x.id === professionId)[0];
     return p ? p.label : professionId;
+  }
+
+  // "secondary", as the texts and log lines name a slot
+  private slotNameOf(index: number): string {
+    return (this.slots[index]?.name || SLOT_NAMES[index] || `slot ${index + 1}`).toLowerCase();
+  }
+
+  // Log tag: the profession for the primary, "secondary tailor" for a sub-slot
+  private tagOf(slot: Slot): string {
+    return slot.index > 0 ? `${this.slotNameOf(slot.index)} ${slot.rec.profession}` : String(slot.rec.profession);
+  }
+
+  // "7 of 20 hours toward Novice" below a sub-slot's cap, "52 hours at the craft" otherwise
+  private standingText(slot: Slot): string {
+    const next = slot.index > 0 && slot.cfg ? hoursToNext(slot.cfg, slot.rec.points) : null;
+    return next ? `${slot.rec.points} of ${hoursText(next.at)} toward ${RANK_NAMES[next.rank]}` : `${hoursText(slot.rec.points)} at the craft`;
   }
 
   private actorOf(ctx: SystemContext, userId: number): number {
@@ -1290,6 +1684,14 @@ export class MasterySystem implements System {
   }
 
   private rankHours = DEFAULT_RANK_HOURS.slice();
+  // Configured slots in pick order; one slot is multiclassing off
+  private slots: SlotConfig[] = defaultSlots(DEFAULT_RANK_HOURS);
+  private slotKits = true;
+  private racial: MagickaBonusSource | null = null;
+  // actorId -> the non-null magicka its last professionState carried this spawn
+  private sentMagicka = new Map<number, number>();
+  // Rank marker spell -> the profession and rank it stands for
+  private markers = new Map<number, RecipeGate>();
   private kits: Record<string, KitItem[]> = { ...DEFAULT_KITS };
   private kitGold = DEFAULT_KIT_GOLD;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
@@ -1309,6 +1711,7 @@ export class MasterySystem implements System {
   private pendingGrants = new Map<number, number>();
 
   private benchCache = new Map<number, number>();
+  private gateCache = new Map<number, RecipeGate[]>();
   private inputCache = new Map<number, Array<{ baseId: number; count: number }>>();
   private baseCache = new Map<number, BaseInfo | null>();
   private keywordCache = new Map<number, Set<number>>();

@@ -4,6 +4,7 @@ import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForReq
 import { NpcSpawnSystem, pick } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
 import { NEEDS_RESET_EVENT } from "./needsSystem";
+import { SURVIVAL_ADMIN_EVENT, SURVIVAL_RESET_EVENT, SurvivalAdminRequest, SurvivalAdminResult, SurvivalSummary } from "./survivalSystem";
 import { PetSystem, PetKind } from "./petSystem";
 import { JobSystem } from "./jobSystem";
 import { WeatherSystem } from "./weatherSystem";
@@ -38,11 +39,16 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "npcZoneAdd", zone }  zone: JSON string of one NPC-Spawns.json entry, plus Edit: <zone name> when it replaces that zone
 //                     { customPacketType: "adminAction", action: "npcZoneTp" | "npcZoneReset" | "npcZoneDelete" | "npcZoneActivate" | "npcZoneDeactivate", target }  target: zone name
 //                     { customPacketType: "adminAction", action: "npcZonePos" }  answered with adminPos, the admin's own location
-//                     { customPacketType: "adminAction", action: "masteryGrant", target, amount }  worked hours to add (negative removes), any tier, self allowed
-//                     { customPacketType: "adminAction", action: "masteryReset", target }  clears the character's chosen craft and its hours
+//                     { customPacketType: "adminAction", action: "masteryGrant", target, amount, slot? }  worked hours to add (negative removes) to a craft slot (0 primary, 1 secondary, 2 tertiary; default 0), any tier, self allowed
+//                     { customPacketType: "adminAction", action: "masteryReset", target, slot? }  clears the chosen craft of that slot (default the primary) and its hours; the player's own resets are not spent
 //                     { customPacketType: "adminAction", action: "masteryLegendary", target }  lifts the character to Legendary in its profession
 //                     { customPacketType: "adminAction", action: "attrSet", target, health?, magicka?, stamina? }  permanent max attribute change, -1000..1000, absolute not additive
 //                     { customPacketType: "adminAction", action: "needsReset", target }  hunger and fatigue back to the new-character values, the client re-synced
+//                     { customPacketType: "adminAction", action: "survivalReset", target }  new-character cold, food poisoning, afflictions and diseases cleared, body rules applied again
+//                     { customPacketType: "adminAction", action: "survivalInfo", target }  answered with the survival readout: cold, area, level, warmth and sickness
+//                     { customPacketType: "adminAction", action: "survivalCold", target, cold }  cold 0-1000
+//                     { customPacketType: "adminAction", action: "survivalDisease", target, disease, stage? }  disease: catalog id or name; stage 1-3, default 1; a held one is set to the stage
+//                     { customPacketType: "adminAction", action: "survivalCure", target, disease? }  that disease, or with none every sickness (diseases, food poisoning, afflictions)
 //                     { customPacketType: "adminAction", action: "revive", target }  target: a fallen character's actor id hex (online or not); refused while the profile's living limit is reached
 //                     { customPacketType: "adminAction", action: "itemSearch", query, kind }  kind: "" or an item record type (WEAP, ARMO, ...)
 //                     { customPacketType: "adminAction", action: "itemSpawn", target, item, count }  item: catalog desc, count 1..10000, self allowed
@@ -57,11 +63,13 @@ type Mp = any;
 //                     { customPacketType: "adminAction", action: "raceList" }  answered with adminRaces
 //                     { customPacketType: "adminAction", action: "polymorph", target, race } | { action: "polymorphRevert", target }  target: actor id hex, "" = the admin; race: catalog desc
 //   Server -> Client: { customPacketType: "debugInfo", serverName, serverTime, serverTzOffsetMin, actorId, profileId }  actorId: the requester's own actor id hex
-//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?, av?, f?, ok?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather, polymorph}, mastery }
+//                     { customPacketType: "adminMenu", players: [{a?, p, n, d, dn, ip, hwid, online, ping, m?, av?, sv?, f?, ok?}], locations: [{name, kind}], modes: [{id, label, active}], npcZones: [ZoneSummary], tier, caps: {players, teleport, modes, npcs, items, kick, ban, factions, weather, polymorph}, mastery, survival }
 //                       players / locations / modes / npcZones are empty without the players / teleport / modes / npcs cap
+//                       sv: the online row's SurvivalSummary {cold, stage, area, level, warmth, freezingArea, diseases: [{id, name, stage, nextAt}], afflictions: [{name, until}], foodPoisonUntil} once survival settled on it
+//                       survival: SurvivalCatalog {diseases: [{id, name, contagious}], coldMax, coldStages} for the survival row, null with survival off or without the players cap
 //                       av: the online row's permanent max attribute change {health, magicka, stamina}
 //                       f: the profile's fallen characters [{a, n, s, r}] (actor id hex, name, slot, realm or perma-dead), ok: whether a revive is allowed (living characters below the limit); both only when f is not empty
-//                       m / mastery: MasterySummary {profession, label, rank, rankName, hours} of the online row / of the admin's own character
+//                       m / mastery: MasterySummary {profession, label, rank, rankName, hours, slots} of the online row / of the admin's own character; slots lists every configured craft slot
 //                       locations[].group: cities | villages | forts | temples (adminTeleportLocations default) | oblivion | other; the front files a missing or unknown group under Other
 //                     { customPacketType: "attributeBonus", health, magicka, stamina }  the character's permanent max attribute change, re-sent on every actor assign
 //                     { customPacketType: "adminMode", mode, on }  also re-sent for every active mode when the admin's actor is assigned; speed and freecam are sent off there and on respawn
@@ -84,6 +92,7 @@ const MAX_ATTR_BONUS = 1000;
 const MAX_ITEM_SPAWN = 10000;
 const ITEM_PAGE_SIZE = 50;
 const SPAWN_COOLDOWN_MS = 250;
+const SURVIVAL_OFF = "Survival is switched off on this server";
 
 const ADMIN_MODES: Array<{ id: string; label: string }> = [
   { id: "god", label: "God" },
@@ -394,6 +403,7 @@ export class AdminSystem implements System {
         ping: pings.get(p.userId) ?? null,
         m: this.mastery.summaryOf(ctx, p.actorId),
         av: this.attrBonus(mp, p.actorId),
+        ...this.survivalRow(ctx, p.actorId),
       };
       if (p.profileId > 0) byProfile.set(p.profileId, row);
       else extra.push(row);
@@ -419,6 +429,16 @@ export class AdminSystem implements System {
       return { a: a.toString(16), n: n || "(no name)", s: Number.isInteger(s) ? s : null, r: fallenLabel(mp, a) };
     });
     return { f, ok: livingCount(mp, profileId) < profileMaxCharacters(mp, this.limits, profileId) };
+  }
+
+  // The craft slot a mastery action names (0, the primary, when absent), or why it cannot be used: a sub-slot must be configured and chosen
+  private masterySlotOf(ctx: SystemContext, actorId: number, content: Content): number | string {
+    const raw = content["slot"];
+    const slot = raw === undefined || raw === null || raw === "" ? 0 : Number(raw);
+    if (slot === 0) return 0;
+    const held = Number.isInteger(slot) && slot > 0 ? this.mastery.summaryOf(ctx, actorId).slots[slot] : undefined;
+    if (!held) return "this server has no such craft slot";
+    return held.profession ? slot : `no ${held.name.toLowerCase()} craft chosen`;
   }
 
   // Permanent max attribute change of one character, stored on the actor so it outlives the session
@@ -581,6 +601,7 @@ export class AdminSystem implements System {
             tier,
             caps,
             mastery: this.mastery.summaryOf(ctx, myActorId),
+            survival: caps.players ? this.survival(ctx, 0, "", { op: "catalog" })?.catalog ?? null : null,
           }));
         } catch (e) {
           this.log(`AdminSystem: adminMenu reply failed: ${e}`);
@@ -692,9 +713,16 @@ export class AdminSystem implements System {
         this.reply(mp, userId, true, `PK'd ${target.name}`);
       } else if (action === "masteryGrant") {
         const amount = Number(content["amount"]);
-        const summary = this.mastery.grantPoints(ctx, target.actorId, amount);
+        const slot = this.masterySlotOf(ctx, target.actorId, content);
+        if (typeof slot === "string") return this.reply(mp, userId, false, `${target.name}: ${slot}`);
+        const summary = this.mastery.grantPoints(ctx, target.actorId, amount, slot);
         if (!summary) {
           this.reply(mp, userId, false, `Hours must be a whole number between -${MAX_GRANT} and ${MAX_GRANT}`);
+        } else if (slot > 0) {
+          const s = summary.slots[slot];
+          const craft = `${s.name.toLowerCase()} ${s.label}`;
+          this.adminLog(`profile ${adminProfile} granted ${amount} mastery hour(s) to ${target.name}'s ${craft} (profile ${target.profileId}), now ${s.hours}h, ${s.rankName}`);
+          this.reply(mp, userId, true, `${target.name}: ${craft} ${s.hours}h, ${s.rankName}`);
         } else {
           const standing = summary.label ? `${summary.rankName} ${summary.label}` : "no craft chosen";
           this.adminLog(`profile ${adminProfile} granted ${amount} mastery hour(s) to ${target.name} (profile ${target.profileId}), now ${summary.hours}h, ${standing}`);
@@ -714,15 +742,21 @@ export class AdminSystem implements System {
         if (summary) this.adminLog(`profile ${adminProfile} made ${target.name} (profile ${target.profileId}) Legendary ${summary.label}, now ${summary.hours}h`);
         this.reply(mp, userId, !!summary, summary ? `${target.name}: ${summary.hours}h, ${summary.rankName} ${summary.label}` : `${target.name} has no craft`);
       } else if (action === "masteryReset") {
-        const ok = this.mastery.resetCharacter(ctx, target.actorId);
-        if (ok) this.adminLog(`profile ${adminProfile} reset the craft and hours of ${target.name} (profile ${target.profileId})`);
-        this.reply(mp, userId, ok, ok ? `Reset the craft and hours of ${target.name}` : `${target.name} has no craft to reset`);
+        const slot = this.masterySlotOf(ctx, target.actorId, content);
+        if (typeof slot === "string") return this.reply(mp, userId, false, `${target.name}: ${slot}`);
+        const held = slot > 0 ? this.mastery.summaryOf(ctx, target.actorId).slots[slot] : null;
+        const craft = held ? `${held.name.toLowerCase()} craft` : "craft";
+        const ok = this.mastery.resetCharacter(ctx, target.actorId, slot);
+        if (ok) this.adminLog(`profile ${adminProfile} reset the ${craft}${held ? ` (${held.label})` : ""} and hours of ${target.name} (profile ${target.profileId})`);
+        this.reply(mp, userId, ok, ok ? `Reset the ${craft} and hours of ${target.name}` : `${target.name} has no ${craft} to reset`);
       } else if (action === "needsReset") {
         // NeedsSystem answers synchronously; no answer means needs are switched off
         const result: { ok: boolean | null } = { ok: null };
         ctx.gm.emit(NEEDS_RESET_EVENT, target.actorId, `profile ${adminProfile}`, (done: boolean) => { result.ok = done; });
         if (result.ok) this.adminLog(`profile ${adminProfile} reset the hunger and fatigue of ${target.name} (profile ${target.profileId})`);
         this.reply(mp, userId, !!result.ok, result.ok ? `Reset the hunger and fatigue of ${target.name}` : result.ok === null ? "Needs are switched off on this server" : `${target.name} has no needs to reset yet`);
+      } else if (action.startsWith("survival")) {
+        this.survivalAction(ctx, userId, adminProfile, target, action, content);
       } else if (action === "itemSpawn") {
         this.spawnItem(mp, userId, myActorId, adminProfile, tier, target, content);
       } else {
@@ -732,6 +766,43 @@ export class AdminSystem implements System {
       this.log(`AdminSystem: action '${action}' by profile ${adminProfile} failed: ${e}`);
       this.reply(mp, userId, false, "Action failed, see server log");
     }
+  }
+
+  // The Players tab's survival row; SurvivalSystem answers synchronously and no answer means survival is off
+  private survivalAction(ctx: SystemContext, userId: number, adminProfile: number, target: OnlinePlayer, action: string, content: Content): void {
+    const mp = ctx.svr as Mp;
+    const by = `profile ${adminProfile}`;
+    const who = `${target.name} (profile ${target.profileId})`;
+    if (action === "survivalReset") {
+      const result: { ok: boolean | null } = { ok: null };
+      ctx.gm.emit(SURVIVAL_RESET_EVENT, target.actorId, by, (done: boolean) => { result.ok = done; });
+      if (result.ok) this.adminLog(`profile ${adminProfile} reset the survival state of ${who}`);
+      return this.reply(mp, userId, !!result.ok, result.ok ? `Reset the survival state of ${target.name}` : result.ok === null ? SURVIVAL_OFF : `${target.name} is not followed by survival yet`);
+    }
+    const requests: Record<string, { request: SurvivalAdminRequest; verb: string }> = {
+      survivalInfo: { request: { op: "summary" }, verb: "" },
+      survivalCold: { request: { op: "setCold", cold: content["cold"] }, verb: "set the cold of" },
+      survivalDisease: { request: { op: "giveDisease", disease: content["disease"], stage: content["stage"] }, verb: "gave a disease to" },
+      survivalCure: { request: { op: "cure", disease: content["disease"] }, verb: "cured" },
+    };
+    const known = requests[action];
+    if (!known) return this.reply(mp, userId, false, `Unknown action '${action}'`);
+    const result = this.survival(ctx, target.actorId, by, known.request);
+    if (!result) return this.reply(mp, userId, false, SURVIVAL_OFF);
+    if (result.ok && known.verb) this.adminLog(`profile ${adminProfile} ${known.verb} ${who}: ${result.text}`);
+    this.reply(mp, userId, result.ok, `${target.name}: ${result.text}`);
+  }
+
+  private survival(ctx: SystemContext, actorId: number, by: string, request: SurvivalAdminRequest): SurvivalAdminResult | null {
+    const answer: { result: SurvivalAdminResult | null } = { result: null };
+    ctx.gm.emit(SURVIVAL_ADMIN_EVENT, actorId, by, request, (result: SurvivalAdminResult) => { answer.result = result; });
+    return answer.result;
+  }
+
+  // sv for an online roster row once survival settled on the character
+  private survivalRow(ctx: SystemContext, actorId: number): { sv?: SurvivalSummary } {
+    const summary = this.survival(ctx, actorId, "", { op: "summary" })?.summary;
+    return summary ? { sv: summary } : {};
   }
 
   // The target may be offline: a fallen body keeps its form while its player is away

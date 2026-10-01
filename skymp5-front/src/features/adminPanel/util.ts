@@ -15,3 +15,11 @@ export const formatCountdown = (totalSec: number): string => {
   const s = totalSec % 60;
   return h ? h + ':' + pad2(m) + ':' + pad2(s) : m + ':' + pad2(s);
 };
+
+// Time until an epoch: minutes under an hour, hours under a day, then days and hours
+export const formatTimeLeft = (at: number, now: number): string => {
+  const min = Math.max(0, Math.round((at - now) / 60000));
+  if (min < 60) return min + ' min';
+  const h = Math.floor(min / 60);
+  return h < 24 ? h + ' h' : Math.floor(h / 24) + ' d ' + (h % 24) + ' h';
+};

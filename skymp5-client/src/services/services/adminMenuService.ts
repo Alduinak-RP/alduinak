@@ -17,7 +17,7 @@ declare const window: any;
 // Personal Menu: the interact key (default X) on nothing opens it through PlayerActionService, with Admin, Faction, Skills and Debug tabs.
 // Faction, Skills and Debug show at once; the Admin tab appears only when the server answers adminMenuRequest (Discord roles / profile ids) and each sub-tab follows its server cap.
 // Renders as the dedicated 'adminPanel' widget (skymp5-front features/adminPanel), trade-style: pure data in, sendMessage events out.
-// Admin sub-tabs: Players (also mastery grants), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), the Item Spawner (adminAction itemSearch / itemSpawn), Weather (adminAction weatherList / weatherSet / weatherClear) and Polymorph (adminAction raceList / polymorph / polymorphRevert, applied by PolymorphService); the Skills tab embeds the mastery menu.
+// Admin sub-tabs: Players (also mastery grants and the survival row: adminAction survivalReset / survivalInfo / survivalCold / survivalDisease / survivalCure), Teleport, Modes, NPCs (zones, the Pets grant: adminAction petBases / petGrant, and passive Jobs: jobList / jobAdd / jobDelete / jobTp), the Item Spawner (adminAction itemSearch / itemSpawn), Weather (adminAction weatherList / weatherSet / weatherClear) and Polymorph (adminAction raceList / polymorph / polymorphRevert, applied by PolymorphService); the Skills tab embeds the mastery menu.
 
 const WIDGET_ID = 23;
 const PLAYER_FORM_ID = 0x14;
@@ -85,6 +85,7 @@ const events = {
   weatherList: "admin::weatherlist",
   weatherSet: "admin::weatherset",
   weatherClear: "admin::weatherclear",
+  survival: "admin::survival",
   polymorphList: "admin::polymorphlist",
   polymorph: "admin::polymorph",
   polymorphRevert: "admin::polymorphrevert",
@@ -98,6 +99,9 @@ const ZONE_ACTIONS: Record<string, string> = {
   [events.npcActivate]: "npcZoneActivate",
   [events.npcDeactivate]: "npcZoneDeactivate",
 };
+
+// The survival row's actions, forwarded as adminAction
+const SURVIVAL_ACTIONS = ["survivalReset", "survivalInfo", "survivalCold", "survivalDisease", "survivalCure"];
 
 // Actions that move or transform the admin; their success reply closes the menu
 const SELF_ACTIONS = ["teleportTo", "teleportLoc", "npcZoneTp", "jobTp", "polymorph", "polymorphRevert"];
@@ -149,7 +153,7 @@ interface DebugData {
 type EffectMap = Map<number, { name: string; since: number }>;
 
 // Injected into the browser-side widget setter (module scope, not this.*)
-let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, weather: null, races: null, events };
+let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, weather: null, races: null, survival: null, events };
 
 function hex(id: number): string {
   return id ? id.toString(16) : "";
@@ -166,6 +170,21 @@ function safe<T>(fn: () => T | null | undefined, fallback: T): T {
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";
+}
+
+// A JSON object the front sends as a string argument, null when it does not parse
+function jsonArg(v: unknown): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(str(v));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// A craft slot index from the front (0 primary, 1 secondary, 2 tertiary); undefined leaves it out of the packet, which the server reads as the primary
+function slotArg(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : undefined;
 }
 
 // The server's adminItems reply, reduced to the strings and numbers the Item Spawner renders
@@ -271,6 +290,8 @@ export class AdminMenuService extends ClientListener {
         tier: String(content["tier"] ?? ""),
         // The admin's own standing; absent on older servers
         mastery: content["mastery"] && typeof content["mastery"] === "object" ? content["mastery"] : null,
+        // The survival row's catalog; null with survival off or on older servers
+        survival: content["survival"] && typeof content["survival"] === "object" ? content["survival"] : null,
         skills: panelData.skills,
         items: panelData.items,
         petBases: panelData.petBases,
@@ -586,12 +607,13 @@ export class AdminMenuService extends ClientListener {
       return;
     }
     if (kind === events.skillReset) {
-      sendCustomPacket(this.controller, { customPacketType: "masteryResetRequest" });
+      // No profession resets the primary
+      sendCustomPacket(this.controller, { customPacketType: "masteryResetRequest", profession: str(e.arguments[1]) || undefined });
       return;
     }
     if (kind === events.skillChoose) {
       const profession = str(e.arguments[1]);
-      if (profession) sendCustomPacket(this.controller, { customPacketType: "masteryChoose", profession });
+      if (profession) sendCustomPacket(this.controller, { customPacketType: "masteryChoose", profession, slot: slotArg(e.arguments[2]) });
       return;
     }
     if (kind === events.factionMenu) {
@@ -752,6 +774,24 @@ export class AdminMenuService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "needsReset", target: String(e.arguments[1] ?? "") });
       return;
     }
+    if (kind === events.survival) {
+      // The front sends {action, target, cold?, disease?, stage?} as a JSON string; the server checks the cap and every value
+      const req = jsonArg(e.arguments[1]);
+      const action = req ? str(req["action"]) : "";
+      if (!req || SURVIVAL_ACTIONS.indexOf(action) === -1) return;
+      const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      sendCustomPacket(this.controller, {
+        customPacketType: "adminAction",
+        action,
+        target: str(req["target"]),
+        cold: num(req["cold"]),
+        disease: str(req["disease"]) || undefined,
+        stage: num(req["stage"]),
+      });
+      // The roster carries the survival state; ask for a fresh one after a change
+      if (action !== "survivalInfo") sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
+      return;
+    }
     if (kind === events.revive) {
       sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "revive", target: String(e.arguments[1] ?? "") });
       // The roster carries the fallen list; ask for a fresh one
@@ -761,9 +801,9 @@ export class AdminMenuService extends ClientListener {
     if (kind === events.masteryGrant || kind === events.masteryReset) {
       const target = String(e.arguments[1] ?? "");
       if (kind === events.masteryGrant) {
-        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryGrant", target, amount: Number(e.arguments[2]) });
+        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryGrant", target, amount: Number(e.arguments[2]), slot: slotArg(e.arguments[3]) });
       } else {
-        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryReset", target });
+        sendCustomPacket(this.controller, { customPacketType: "adminAction", action: "masteryReset", target, slot: slotArg(e.arguments[2]) });
       }
       // The roster carries the standing; ask for a fresh one
       sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });

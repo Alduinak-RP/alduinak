@@ -20,11 +20,18 @@ const TIME_SCALE = 1;
 const DEFAULT_OFFSET_HOURS = 3;
 const POLL_MS = 5000;
 const BROADCAST_MS = 60000;
+const DAY_MS = 24 * 3600000;
 
 let offsetMs = DEFAULT_OFFSET_HOURS * 60 * 60 * 1000;
 
 // The clock every game-facing timestamp uses, so the Debug tab and the calendar never disagree
 export const gameTimeNow = (): number => Date.now() + offsetMs;
+
+// The hour of day, with fractions, the client calendar shows: the box's local wall clock of gameTimeNow
+export const gameHourNow = (): number => {
+  const local = gameTimeNow() - new Date().getTimezoneOffset() * 60000;
+  return (((local % DAY_MS) + DAY_MS) % DAY_MS) / 3600000;
+};
 
 export class TimeSystem implements System {
   systemName = "TimeSystem";
