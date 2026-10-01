@@ -142,6 +142,8 @@ export interface InventoryChangesEntry {
   extendDataList: BaseExtraList[]
 }
 export declare let getExtraContainerChanges: (objectReferenceId: number) => InventoryChangesEntry[] | null
+// Renames in place the first copy of baseId named fromName ("" for no name) in that worn state; false when none matches or outside an update
+export declare function setInventoryItemName(objectReferenceId: number, baseId: number, fromName: string, toName: string, worn: boolean, wornLeft: boolean): boolean;
 
 export interface InventoryEntry {
   count: number

@@ -2,6 +2,7 @@
 #include "CallNativeApi.h"
 #include "NullPointerException.h"
 #include "PapyrusTESModPlatform.h"
+#include "SkyrimPlatform.h"
 
 extern CallNativeApi::NativeCallRequirements g_nativeCallRequirements;
 
@@ -395,6 +396,117 @@ Napi::Value InventoryApi::SetInventory(const Napi::CallbackInfo& info)
   return info.Env().Undefined();
 }
 
+namespace {
+constexpr size_t kMaxItemNameLength = 255;
+
+struct ItemRename
+{
+  uint32_t refrId = 0;
+  uint32_t baseId = 0;
+  std::string fromName;
+  std::string toName;
+  bool worn = false;
+  bool wornLeft = false;
+};
+
+bool AddItemName(RE::ExtraDataList* extraList, const std::string& name)
+{
+  auto extra = extraList->_extraData.GetPresence()
+    ? RE::malloc<RE::ExtraTextDisplayData>()
+    : nullptr;
+  if (!extra) {
+    return false;
+  }
+  ::new (extra) RE::ExtraTextDisplayData(name.data());
+  if (TESModPlatform::AddExtraData(
+        extraList, static_cast<uint32_t>(RE::ExtraDataType::kTextDisplayData),
+        extra)) {
+    return true;
+  }
+  extra->~ExtraTextDisplayData();
+  RE::free(extra);
+  return false;
+}
+
+// A list without a name extra counts as the empty name; names a quest or a message owns stay
+bool RenameItemCopy(const ItemRename& rename)
+{
+  auto ui = RE::UI::GetSingleton();
+  auto refr = RE::TESForm::LookupByID<RE::TESObjectREFR>(rename.refrId);
+  if (!ui || ui->GameIsPaused() || !refr ||
+      (refr->formType != RE::FormType::ActorCharacter &&
+       refr->formType != RE::FormType::Reference)) {
+    return false;
+  }
+
+  auto cntChanges = refr->extraList.GetByType<RE::ExtraContainerChanges>();
+  if (!cntChanges || !cntChanges->changes || !cntChanges->changes->entryList) {
+    return false;
+  }
+
+  for (auto* entry : *cntChanges->changes->entryList) {
+    if (!entry || !entry->object || !entry->extraLists ||
+        entry->object->formID != rename.baseId) {
+      continue;
+    }
+    for (auto* extraList : *entry->extraLists) {
+      if (!extraList ||
+          extraList->HasType(RE::ExtraDataType::kWorn) != rename.worn ||
+          extraList->HasType(RE::ExtraDataType::kWornLeft) !=
+            rename.wornLeft) {
+        continue;
+      }
+      auto text = extraList->GetByType<RE::ExtraTextDisplayData>();
+      if (!text) {
+        if (rename.fromName.empty() && AddItemName(extraList, rename.toName)) {
+          return true;
+        }
+        continue;
+      }
+      if (text->displayNameText || text->ownerQuest ||
+          rename.fromName != text->displayName.c_str()) {
+        continue;
+      }
+      RE::BSWriteLockGuard locker(extraList->GetLock());
+      text->SetName(rename.toName.data());
+      return true;
+    }
+  }
+  return false;
+}
+}
+
+// Renames one copy where it lies, so a worn or favorited item keeps its extra list
+Napi::Value InventoryApi::SetInventoryItemName(const Napi::CallbackInfo& info)
+{
+  ItemRename rename;
+  rename.refrId = NapiHelper::ExtractUInt32(info[0], "objectReferenceId");
+  rename.baseId = NapiHelper::ExtractUInt32(info[1], "baseId");
+  rename.fromName = NapiHelper::ExtractString(info[2], "fromName");
+  rename.toName = NapiHelper::ExtractString(info[3], "toName");
+  rename.worn = NapiHelper::ExtractBoolean(info[4], "worn");
+  rename.wornLeft = NapiHelper::ExtractBoolean(info[5], "wornLeft");
+
+  // The game thread only pumps the io context while the update loop is running
+  if (rename.toName.empty() || rename.toName.size() > kMaxItemNameLength ||
+      !g_nativeCallRequirements.vm) {
+    return Napi::Boolean::New(info.Env(), false);
+  }
+
+  bool renamed = false;
+  SkyrimPlatform::GetSingleton()->PushToGameThreadAndWait(
+    [&] { renamed = RenameItemCopy(rename); });
+
+  static bool g_firstRenameLogged = false;
+  if (renamed && !g_firstRenameLogged) {
+    g_firstRenameLogged = true;
+    spdlog::info("setInventoryItemName: first in-place rename, base {:x} of "
+                 "{:x}: '{}' -> '{}'",
+                 rename.baseId, rename.refrId, rename.fromName, rename.toName);
+  }
+  return Napi::Boolean::New(info.Env(), renamed);
+}
+
 void InventoryApi::RetainCreatedEnchantment(RE::EnchantmentItem* enchantment)
 {
   auto manager = RE::BGSCreatedObjectManager::GetSingleton();
@@ -465,4 +577,7 @@ void InventoryApi::Register(Napi::Env env, Napi::Object& exports)
   exports.Set(
     "setInventory",
     Napi::Function::New(env, NapiHelper::WrapCppExceptions(SetInventory)));
+  exports.Set("setInventoryItemName",
+              Napi::Function::New(
+                env, NapiHelper::WrapCppExceptions(SetInventoryItemName)));
 }
