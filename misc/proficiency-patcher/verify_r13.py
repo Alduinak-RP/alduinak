@@ -426,7 +426,7 @@ def main():
             if why or q.flags & ~COMPRESSED != r.flags & ~COMPRESSED or len(xscl) != 4 or abs(struct.unpack('<f', xscl)[0] - over_refs[edid(q)]) > 1e-6:
                 problems.append(f'{label}: not the input\'s reference with only the scale set to {over_refs[edid(q)]} ({why or xscl.hex()})')
             checked['own references overridden for their scale'] += 1
-        elif t in ITEM_TYPES and r is None and tags:
+        elif t in ITEM_TYPES and r is None and k[0] != me and tags:
             src, flags, data, _ = ref
             why = ck.compare(t, src, flags, data, out, q.data(), skip=('KWDA', 'KSIZ'))
             before, after = keywords_of(src, data), keywords_of(out, q.data())

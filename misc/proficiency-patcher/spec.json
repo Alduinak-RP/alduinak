@@ -29,6 +29,14 @@
     "formId": "2100",
     "value": 5,
     "weight": 5.0
+   },
+   {
+    "edid": "AldKhajiitPelt",
+    "name": "Khajiit Pelt",
+    "template": "SabreCatPelt",
+    "formId": "0x0413E1",
+    "value": 25,
+    "weight": 2.0
    }
   ]
  },

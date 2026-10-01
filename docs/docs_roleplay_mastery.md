@@ -736,8 +736,10 @@ Then the skinner gets one Human Flesh (`huntingHumanFlesh`, Skyrim.esm
 `HumanHeart` `000B18CD`); no plugin in the load order overrides either record.
 On a body that looks Khajiit a second roll under `huntingKhajiitPeltChance`
 (0.2) adds one Khajiit Pelt (`huntingKhajiitPelt`, `AldKhajiitPelt`, a MISC
-the Alduinak plugin r24 adds with the Sabre Cat Pelt's model, inventory art,
-sounds, value, weight and keywords). The look decides: the `raceId` of the
+the Alduinak plugin r24 adds at `0x0413E1`, global `0x330413E1`, a copy of the
+Sabre Cat Pelt `0003AD6D` with its model, value 25, weight 2 and keyword
+`VendorItemAnimalHide`; the vanilla pelt has no inventory art or sounds of its
+own). The look decides: the `raceId` of the
 body's `appearance` is `KhajiitRace` (`00013745`) or its vampire form
 `KhajiitRaceVampire` (`00088845`, both Skyrim.esm, resolved by editor id at
 boot), so a PK body counts by the appearance it copied from the victim and a
