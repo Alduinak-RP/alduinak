@@ -1231,6 +1231,14 @@ export class MasterySystem implements System {
     return { rank: best ? best.rank : FREE, half: this.halfCostBench(bench) || HALF_COST_PRODUCTS.has(product.toLowerCase()), profession: best ? best.profession : null };
   }
 
+  // The slot that caps a temper by this recipe, as the native TemperCap: the best one holding a rank gate of the recipe, for an ungated recipe the best one working its bench; null when the gates refuse the character
+  temperCap(ctx: SystemContext, actorId: number, recipeId: number): { rank: number; profession: string | null } | null {
+    const gates = this.recipeGates(ctx, recipeId);
+    const held = this.heldSlots(ctx, actorId);
+    const best = gates.length ? bestSlot(held, gates.map((g) => g.profession), gates) : bestSlot(held, this.benchProfessions(this.recipeBench(ctx, recipeId)));
+    return best || !gates.length ? { rank: best ? best.rank : FREE, profession: best ? best.profession : null } : null;
+  }
+
   // Professions whose recipe or station keywords include this bench keyword
   private benchProfessions(benchKeyword: number): string[] {
     const k = benchKeyword >>> 0;

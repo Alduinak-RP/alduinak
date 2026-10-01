@@ -314,6 +314,11 @@ crafts -25% until <hh:mm>` (the server's local time); `drinkUntil` rides `privat
   their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal;
   all seven professions that work a crafting station get their rank for the sealing wax at every station.
   Crafts whose inputs the crafter does not hold are left to the native side uncharged.
+  A temper the server records from a `craftedExtras` report instead of the native craft pays the same price through
+  `NeedsSystem.pay` (`[needs] <id> temper <item> by <recipe> r<rank> (crafted extras): -N%, fatigue F%`) and is refused
+  when the bar cannot pay it, so a craft refused for fatigue no longer comes back through that report. This holds
+  while the temper rules are on (with the rebalance or durability, or `craftedExtrasTemperRules: true`); the late
+  report of a temper the native craft already charged is not charged again.
 - Skinning (hunter rank) costs half a kill. Only a hunter's skinning takes an animal's pelt and meat; a search of the
   body never shows its meat.
 - A kill of an NPC or creature costs the kill price by hunter rank (animals) or warrior rank (everything else),
@@ -382,6 +387,39 @@ exhaustion ability.
 blocker `blockStaminaCost` (10%) of max stamina, a warrior `blockStaminaCostWarrior` (5%). The drain is written a tick
 after the hit, because the native hit rewrites all three percentages from an earlier copy. Stamina stops at 0 and
 blocking still works there, as in vanilla. It applies to every actor and also with `needsEnabled` false.
+
+**Heavy armor tires a guard (rebalance, D19).** While `alduinakDamageFormulaSettings.enabled` is true the cost is
+multiplied by `1 + perArmorWeight x min(worn armor weight, weightCap)`, from `alduinakDamageFormulaSettings.blockStamina`
+(`perArmorWeight` 0.006, `weightCap` 115; `perArmorWeight` 0 turns the rule off). The weight is read per blocked hit
+from the native `getCombatStats(actorId)` through `systems/combatStats.ts`. It is still a share of max stamina, so a
+bigger stamina pool buys no extra blocks.
+
+| Set | Worn weight | Cost x | Blocks from full | Warrior blocks |
+|---|---|---|---|---|
+| Unarmored | 0 | 1.00 | 10.0 | 20.0 |
+| Elven | 7 | 1.04 | 9.6 | 19.2 |
+| Glass | 13 | 1.08 | 9.3 | 18.6 |
+| Steel | 52 | 1.31 | 7.6 | 15.2 |
+| Daedric | 81 | 1.49 | 6.7 | 13.5 |
+| Orcish | 85 | 1.51 | 6.6 | 13.2 |
+
+Without the block, with `enabled` false (durability alone does not count), or on a `scam_native.node` without
+`getCombatStats`, a block costs the base share as before. The server logs at boot `[needs] block stamina by armor
+weight: a block costs x (1 + 0.006 x worn armor weight, counted up to 115)`, or `[needs] block stamina by armor weight
+is off: this scam_native.node has no getCombatStats, a block costs its base share`, and for each weighted block
+`[needs] <blocker> blocked in <weight> armor weight: stamina -<cost>% (<base>% x<multiplier>)`.
+
+The boot line only says the rule was read. A block that cannot be priced by weight costs the base share, and the
+server log says why, once per reason and server start:
+
+| Log line | Meaning |
+|---|---|
+| `[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.blockStamina.perArmorWeight should be a number from 0 to 1000000, found "0"; ...` (at boot) | `perArmorWeight` or `weightCap` is present but not a number from 0, or `blockStamina` is not an object. The native rejects the whole block for the same value and prices hits by TES5, so this rule stays off as well. Write `0` as a number to switch only this rule off |
+| `[needs] getCombatStats has no stats for <actor> (...), blocks cost their base share` | The native answered null for a blocker: it prices hits without the rebalance formula, as it does after it rejected the block at boot for a value elsewhere in it (see its `alduinakDamageFormulaSettings` error lines) |
+| `[needs] getCombatStats of <actor> failed: <error>, blocks cost their base share` | The native call threw, for example on another call shape than `getCombatStats(actorId)` |
+| `[needs] getCombatStats of <actor> carries no armor weight (fields ...), blocks cost their base share` | The stats came without `armorWeight` |
+
+Test: `node tools/test-block-stamina.js` in `skymp5-server`.
 
 **Protocol**
 - Client -> Server: `{ customPacketType: "needsRequest" }`
@@ -541,12 +579,16 @@ they weigh nothing again.
   classed), the walled city worlds are cool (Riften warm), the realms and Oblivion planes have no cold, and it is
   freezing above z 19000 (Fall Forest above 15150).
 - **Rate**: Survival's formula in real hours. Level 20 with no warmth fills the bar in `survivalColdHoursToNumb` (1.3334)
-  real hours, 20 times slower than single-player Survival: a new character on the Winterhold coast on a snowy night
-  (level 16) is Numb in about 75 minutes. The level also caps cold (13 or more reaches 1000, 10 up to 799, 7 up to 499,
+  real hours, 20 times slower than single-player Survival, times the area's `survivalColdAreaRate`: warm and cool
+  areas 1, freezing areas and cold interiors 0.6667, freezing water always 1. So the coldest case, a freezing area on
+  a blizzard night (level 20) with no warmth, takes an hour from no cold to Freezing and 96 minutes to Numb, and a new
+  character on the Winterhold coast on a snowy night (level 16) is Numb in about 112 minutes. The level also caps cold
+  (13 or more reaches 1000, 10 up to 799, 7 up to 499,
   4 up to 299, 1 up to 119, otherwise 49); above the cap cold falls 40 a minute, but not within 10 s of a hit.
 - **Warmth** is the rating the item cards and the inventory show: body, head, hands and feet 27/18/13/13 normal,
   54/29/24/24 with `Survival_ArmorWarm` (fur, hide), 17/8/7/7 with `Survival_ArmorCold`; a hooded body piece warms the
-  head too; a torch in hand +50; the race's `racialPassives` warmth (Orc 10); a hot meal +25 for 100 minutes. Up to 206,
+  head too; a torch in hand +50; the race's `racialPassives` warmth (Nord 25, Orc 10); a hot meal +25 for 100 minutes.
+  Up to 206,
   which cuts the rate by up to 85%. `SurvivalService` reports the engine's total 20 s after the last equip change and
   the server logs `[survival] <id> warmth mismatch: engine 60, server 54 (gear 54, race 0), worn ...` when the two
   differ.
@@ -575,9 +617,9 @@ they weigh nothing again.
   the keyword rating and adds `; gear 74 with armorWarmth.ts` when the table changes the sum. Rerun the script and
   Build server after the modlist gains armour (`python misc/gen-armor-warmth.py --dump` lists every piece with its
   rating and why); `survivalWarmthTable` false goes back to keywords only.
-- **Race**: every cold gain is times `racialPassives.races.<race>.coldRateMult`: Nords 0 (never colder than they are,
-  though freezing water still hurts them through their frost resistance), Khajiit and Argonians 1.25. Cold never reads
-  frost resistance.
+- **Race**: every cold gain is times `racialPassives.races.<race>.coldRateMult`: Khajiit and Argonians 1.25. Nords
+  grow cold at the normal rate, in freezing water too, and carry Survival's Nord bonus of 25 warmth (about 10% less
+  cold with nothing worn). Cold never reads frost resistance.
 - **Heat**: standing still (under 48 units in 6 s) within 580 units of a heat source warms 75 every 6 s: campfires,
   fireplaces, fire effects, forges, smelters (`Survival_WarmUpObjectsList`) and cooking pots and spits
   (`CraftingCookpot`, `AldCraftingKiln`). `heatSources.ts` lists them by cell and world; rerun
@@ -838,7 +880,8 @@ unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
    line of the readout (from Chilly on) and the admin panel's survival details show the server's warmth
    (54 + 20 + 8), while the item cards keep the engine's numbers. A plain mod robe (Tribunal Light Robe) counts 27.
 2. Warming: an inn takes 40 a minute, a campfire 75 every 6 s, a hot soup 200.
-3. Races: a Nord gains no cold, a Khajiit or an Argonian 25% more; an Orc's needs lines show `race x0.85`.
+3. Races: a naked Nord shows warmth 25 and gains cold about 10% slower than a Redguard, a Khajiit or an Argonian 25%
+   faster; an Orc's needs lines show `race x0.85`.
 4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.
 5. Body: carry weight 150, no regeneration, a death wakes with 1 health point: the bar is a sliver as the character
    stands up (not full for a few seconds first), the server logs `[survival] <id> respawned: health 1 of 100 sent to the

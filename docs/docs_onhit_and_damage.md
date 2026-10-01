@@ -45,6 +45,26 @@ dagger's damage and hit rules instead, through `alduinakDamageFormulaSettings.un
 row for Khajiit, the Iron one for Argonians, vampire races included), with the fist's timing. See
 `docs_racial_passives.md`.
 
+**Item records from plugin r28.** The plugin's stat pass writes the rebalance rows into the item records, so the item
+cards show them: a weapon's damage is its row damage rounded (Iron Sword 15, Steel Dagger 11, Daedric Sword 22), an
+armour's rating its piece DT x 10 (Iron Armor 45, Daedric Armor 90, clothing 0), the Orcish and Dwarven heavy pieces
+weigh what their row says and a record slower than its row swings at the row speed. The rebalance formula never reads
+these fields; `baseWeaponDamage` and the armour ratings of the TES5 formula above do, and the claw races copy the
+synced daggers (Khajiit 11, Argonian 10). So plugin r28 and an enabled `alduinakDamageFormulaSettings` block belong
+together: with r28 and the block absent or `enabled: false`, the TES5 formula prices hits from the synced numbers,
+which are not the ones it was balanced on. `enabled: false` is therefore no switch back to the old combat while r28
+is loaded: the old numbers need plugin r27 on the server and on every client as well. The lists come from
+`misc/combat-settings/generate.py` and land through `misc/proficiency-patcher/patch.py --stats` (see its README).
+
+**Hold guard uniforms.** The light hold uniforms of `Sentinel - City Guards.esp` (`TH_<Hold>Cuirass`, `Helmet`, `Boots`
+and `Gauntlets`, 28 records) carry `ArmorMaterialSteel` but are light Novice hold work. An `overridesArmor` rule of
+`misc/combat-settings/design.json` puts them on the Stormcloak row, the guard light row the vanilla hold uniforms are
+on: cuirass DT 3.9 (card 39), helmet 0.975, boots and gauntlets 0.8125, a full set 6.5. An override is exempt from the
+recipe-rank audit, which would send a Steel-keyed Novice recipe to the Novice heavy reference (Iron) and, being light
+records on a heavy row, leave them at x `lightItemHeavyRowFactor` 0.7: a set of 5.25, the Fur row. The heavy hold
+pieces (`TH_<Hold>...Heavy`, the Rift boots and gauntlets) stay on the Steel row and the three light hold shields on
+the Iron row.
+
 Armor damage reduction:
 ```
 armorRating = armorRating1 + armorRating2 + armorRating3 + ... + armorRatingN + magicArmorRating;
@@ -182,3 +202,80 @@ The server logs at boot `npcBlockedDamageShare is <share>: a player's block lets
 through, a player's hit stays fully blocked`, and for each blocked hit on a player `OnWeaponHit - <player> blocked
 npc <npc> with <weapon>, <landed> of <unblocked> damage lands (npcBlockedDamageShare <share>)` or `OnWeaponHit -
 <player> blocked player|npc <aggressor> with <weapon>, fully blocked` (another player, or any NPC when the share is 0).
+
+## Crit notice, /armor and the pvp.log columns (rebalance)
+
+Three readouts show players and staff what the rebalance formula and durability did. Without
+`alduinakDamageFormulaSettings`, or with its `enabled` false and `durability.enabled` false, none of them exists:
+hits, chat and `pvp.log` are as before, and `/armor` is an unknown command.
+
+**Hit arguments.** A `scam_native.node` with the rebalance calls `onHitDamageAttempt` and `onHitDamage` with
+`aggressor, target, source, damage, blocked, power, bash, critical, preDT` while its formula prices hits (`enabled`
+true and the block accepted at boot); an older one, and this one with the formula off, stops after `damage`. The
+flags are the ones the hit was priced with. A spell hit carries `blocked` for a ward, `power`, `bash` and `critical`
+false, and its damage before the ward as `preDT`.
+The gamemode part `62_mastery.js` passes every argument on to `60_admin_modes.js`, which reads the
+five new ones in one place (`hitExtras`) and only while `enabled` is true. A hit without them is logged once per
+gamemode load (`[combat] a hit arrived without the arguments blocked, power, bash, critical, preDT ...`) and
+treated as before.
+
+**Crit notice** (`60_admin_modes.js`). A hit with `critical` true sends the aggressor `Critical hit! <damage>
+damage.` and the target `You took a critical hit: <damage> damage.`, each only to a player, so a player's crit on
+an NPC and a humanoid NPC's crit on a player are announced too. The damage is what landed, after DT and the cap.
+A hit that an admin mode replaced (god, smite, heal) is not announced. `combatCritNotice: false` in
+`server-settings.json` keeps the notices off (default true); the gamemode reads it when it loads. The client has
+no sound packet, so the notice is text in the System tab only.
+
+**pvp.log.** A player's hit on a player is still one line, `<aggressor> hit <target> for <damage> (source
+<weapon or spell id>)`. With the rebalance on and the new arguments present the line ends with five columns:
+`crit=1 power=0 bash=0 blocked=0 preDT=26.5` (1 or 0 each, then `preDT` rounded to a tenth). `preDT` is the
+weapon's damage after its temper, a bash and a crit and before the target's DT (`HitMath::PriceHit`). The power or
+sneak multiplier, the speed factor, `playerToNpcMult`, the effect modifiers, the blocked share, poison and the 45
+cap all come after it, so `preDT` minus the damage is what the armor took off only for a plain hit (`power=0`, no
+sneak attack, `blocked=0`, a weapon no faster than its row, no poison, under the cap). A power attack on an
+unarmored player reads about `for 33 ... power=1 ... preDT=16.5`: the damage is above `preDT` and nothing is wrong.
+
+**/armor** (`86_combat_readout.js` and `skymp5-server/ts/systems/combatReadoutSystem.ts`). The chat command lists
+what the player wears and holds, one System tab line each:
+
+```
+Armor: DT 14.31 (taken off each weapon hit), weight 52
+Steel Armor: DT 8.34, Superior, 97% (262/270)
+Steel Helmet: DT 2.03, 100% (68/68)
+Steel Cuffed Boots: DT 1.69, Broken (0/56)
+Steel Shield: DT 0.56, 50% (180/360)
+Steel Sword: damage 16.75, Fine, 88% (308/350)
+```
+
+- The DT, the temper and the weapon lines come from the native `getCombatStats(actorId)` and exist while `enabled`
+  is true. A piece below full condition reads `DT 6.4 of 8`. The temper is the quality name of its step (Fine to
+  Legendary). The total is the native's `wornDT` (pieces and shield), the weight its `armorWeight`: the worn light
+  and heavy pieces without the shield, which is the weight the block stamina rule charges.
+- A hit meets only the best piece of each slot group, so a second piece on the same slots adds nothing to the
+  total. The native sends what each piece adds as `countedDT`, and a piece that adds less than its DT says so:
+  `Iron Helmet: DT 1.5, not counted (a better piece covers its slots)`, or `1.2 counted (a better piece covers
+  some of its slots)` for a piece that spans two groups. The lines then add up to the `Armor: DT` total.
+- The native lists what is held as `weapons`, one entry per hand (`{ baseId, hand: "left" | "right", kind, damage,
+  temperStep, ... }`), and each entry gets a line, the right hand first: a dual wielder reads two damage lines. The
+  damage is the row damage with the temper in it (Steel sword 16.5, Fine x1.015). A staff or another weapon the
+  formula prices no attack for (`kind` `none`) reads `no weapon damage`; fists give no line.
+- The condition comes from the native `getDurability(actorId)` and exists while `durability.enabled` is true: the
+  percent of the name tag (rounded down, never 0 above broken), the word of `durability.nameTag.brokenLabel` at 0,
+  and the HP of the copy out of its full HP. With durability alone (TES5 damage) the command lists the worn
+  durable copies with their condition only.
+- A weapon line takes the condition of the copy in its own hand (`wornLeft` of `getDurability`), so two swords of
+  one base keep their own percent. Worn copies the stats do not name follow as condition lines. An unarmored
+  player reads `No armor worn: DT 0, every weapon hit lands in full.`
+- Staff may name an online player: `/armor <name>`.
+
+`CombatReadoutSystem` registers `globalThis.__alduinakArmorReport(actorId)` at boot only when at least one of the
+two readouts is on and its native function exists, and the gamemode part answers `Unknown or unavailable command:
+/armor` without it, so the parts can be on a server whose native or settings lack the rebalance. Boot logs
+`[combat] /armor shows DT and temper per worn piece and condition`, or for a native without a function `[combat]
+this scam_native.node has no getCombatStats (no DT lines)` (and the same for `getDurability (no condition)`, with
+`, /armor is off` when neither is left). The field names read from the two natives are listed at the top of
+`combatStats.ts` and in `copyOf` of `combatReadoutSystem.ts`; a renamed field is changed there. Tests:
+`node tools/test-combat-readout.js` in `skymp5-server`.
+
+The three gamemode parts are gitignored files of the server folder (`gamemode_extensions`): they reach the Test
+Server through "Build gamemode only" and live through Migrate server.

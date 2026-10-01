@@ -18,7 +18,7 @@ using Noggog;
 // conditions on cooking, smithing, tempering, woodworking and tailoring recipes, the meadery boiler benches, the hidden
 // and moved recipes, the few enchantment and placed reference fixes the spec names, and the writing items.
 // Run through patch.py, which pre-cleans the plugin, invokes this program and verifies the result.
-//   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--no-creations] [--hotfix]
+//   dotnet run -c Release -- --settings <server-settings.json> --plugin <precleaned AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--no-creations] [--hotfix] [--stats <esp-lists.json>]
 
 var opts = Cli.Parse(args);
 var spec = JsonNode.Parse(File.ReadAllText(opts.Spec))!.AsObject();
@@ -54,7 +54,7 @@ var overridden = mod.ConstructibleObjects.Select(x => x.FormKey).ToHashSet();
 var creationRecipes = Creations.Named(creationsSpec);
 var ctx = new PatchContext(mod, cache, additionsOrder, spec, report,
                            includes: opts.Hotfix ? r => !overridden.Contains(r.FormKey) && !creationRecipes.Contains(r.FormKey.ModKey) : null)
-          { Hotfix = opts.Hotfix, CreationKeys = creationRecipes };
+          { Hotfix = opts.Hotfix, CreationKeys = creationRecipes, Stats = opts.Stats != null ? JsonNode.Parse(File.ReadAllText(opts.Stats))!.AsObject() : null };
 if (opts.NextFormId is uint pinned)
 {
     // Pinned ids keep the marker spells stable for learnedSpells and server-settings.json; AddNew does not check for collisions
@@ -70,12 +70,12 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 // A hotfix run adds only these steps to the live plugin, which already holds everything the others build
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Items, Steps.MarkerAbilities, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
+       Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.ItemStats, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
        Steps.DisableActors, categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
+       Steps.Racial, Steps.Retier, Steps.ItemStats, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
        Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
@@ -118,11 +118,11 @@ return 0;
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-record Cli(string Settings, string Plugin, string Spec, string Out, string ReportDir, uint? NextFormId, bool NoCreations, bool Hotfix)
+record Cli(string Settings, string Plugin, string Spec, string Out, string ReportDir, uint? NextFormId, bool NoCreations, bool Hotfix, string? Stats)
 {
     public static Cli Parse(string[] args)
     {
-        string? settings = null, plugin = null, spec = null, outDir = null, reportDir = null;
+        string? settings = null, plugin = null, spec = null, outDir = null, reportDir = null, stats = null;
         uint? nextFormId = null;
         var noCreations = false;
         var hotfix = false;
@@ -138,13 +138,14 @@ record Cli(string Settings, string Plugin, string Spec, string Out, string Repor
                 case "--spec": spec = args[i + 1]; break;
                 case "--out": outDir = args[i + 1]; break;
                 case "--report": reportDir = args[i + 1]; break;
+                case "--stats": stats = args[i + 1]; break;
                 case "--next-form-id": nextFormId = Convert.ToUInt32(args[i + 1], 16); break;
                 default: throw new Exception($"unknown option {args[i]}");
             }
         }
         if (settings == null || plugin == null || spec == null || outDir == null)
-            throw new Exception("usage: --settings <server-settings.json> --plugin <AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--next-form-id <hex>] [--no-creations] [--hotfix]");
-        return new Cli(settings, plugin, spec, outDir, reportDir ?? outDir, nextFormId, noCreations, hotfix);
+            throw new Exception("usage: --settings <server-settings.json> --plugin <AlduinakAdditions.esp> --spec <spec.json> --out <dir> [--report <dir>] [--next-form-id <hex>] [--no-creations] [--hotfix] [--stats <esp-lists.json>]");
+        return new Cli(settings, plugin, spec, outDir, reportDir ?? outDir, nextFormId, noCreations, hotfix, stats);
     }
 }
 
@@ -203,6 +204,8 @@ class PatchContext
     public bool Hotfix { get; init; }
     // Plugins of the Creation Club recipes: faction rules leave them alone unless they say "creations", race rules always do
     public HashSet<ModKey> CreationKeys { get; init; } = new();
+    // The plugin lists of misc/combat-settings/generate.py (esp-lists.json), null when the run has none
+    public JsonObject? Stats { get; init; }
     public string[] Ranks => Spec["ranks"]!.AsArray().Select(r => r!.GetValue<string>()).ToArray();
     public Dictionary<FormKey, int> MaterialTiers => materialTiers ??= Steps.MaterialTiers(this);
     // Recipe editor id -> the bench and profession the routing rules give it
@@ -1671,6 +1674,37 @@ static class Steps
 
     static IEnumerable<JsonObject> Entries(JsonNode? list) =>
         (list as JsonArray)?.Select(x => x!.AsObject()) ?? Enumerable.Empty<JsonObject>();
+
+    // ---- item stats: the damage, speed, rating and weight of the rebalance rows, from the --stats lists; runs before Races, which copy a dagger's damage ----
+    // An entry holds the value its list was made on (from) and the row's (to); a record at neither is an error, so a stale list never lands
+    public static void ItemStats(PatchContext c)
+    {
+        if (c.Stats is not JsonObject lists) return;
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
+        void Apply<T, TGetter>(IGroup<T> group, JsonNode? list, string field, Func<TGetter, float?> read, Action<T, float> write)
+            where T : class, IMajorRecordInternal, TGetter where TGetter : class, IMajorRecordGetter
+        {
+            int set = 0, added = 0, held = 0;
+            foreach (var e in Entries(list))
+            {
+                var key = FormKey.Factory(e["item"]!.GetValue<string>());
+                var own = group.RecordCache.TryGetValue(key, out var mine) ? mine : null;
+                var now = own ?? (cache.TryResolve<TGetter>(key, out var winner) ? winner : null);
+                var (from, to) = (e["from"]!.GetValue<float>(), e["to"]!.GetValue<float>());
+                if (now == null || read(now) is not float value) { c.Error($"item stats: {field} of {e["edid"]} ({key}): no such record"); continue; }
+                if (Math.Abs(value - to) < 1e-3) { held++; continue; }
+                if (Math.Abs(value - from) > 1e-3) { c.Error($"item stats: {field} of {now.EditorID} ({key}) is {value}, the list was made on {from} (to {to}); run the generator again"); continue; }
+                write(c.Override(group, now), to);
+                set++;
+                if (own == null) added++;
+            }
+            c.Note($"Item stats: {field} set on {set} records ({added} of them not overridden before this list), {held} already at their value");
+        }
+        Apply<Weapon, IWeaponGetter>(c.Mod.Weapons, lists["tooltips"]?["weapons"], "weapon damage", w => w.BasicStats?.Damage, (w, v) => w.BasicStats!.Damage = (ushort)v);
+        Apply<Weapon, IWeaponGetter>(c.Mod.Weapons, lists["speeds"], "weapon speed", w => w.Data?.Speed, (w, v) => w.Data!.Speed = v);
+        Apply<Armor, IArmorGetter>(c.Mod.Armors, lists["tooltips"]?["armor"], "armour rating", a => a.ArmorRating, (a, v) => a.ArmorRating = v);
+        Apply<Armor, IArmorGetter>(c.Mod.Armors, lists["weights"], "armour weight", a => a.Weight, (a, v) => a.Weight = v);
+    }
 
     // ---- actors: no placed NPC, living or dead, ever shows ----------------------------------------------------------
     //

@@ -27,6 +27,7 @@ import {
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { createEnchantment } from "skyrimPlatform";
 import { logToPlatformLog } from "../logging";
+import { durabilityName, removalNames } from "./durabilityNames";
 
 // Vanilla boundArrow, added by bound bow effects
 const BOUND_ARROW_ID = 0x10b0a7;
@@ -59,6 +60,8 @@ export interface Extra {
   poisonId?: number;
   poisonCount?: number;
   enchantmentEffects?: EnchantmentEffect[];
+  // Share of the item's durability left, 0 to 1; absent means pristine and it never tells copies apart
+  condition?: number;
   worn?: boolean;
   wornLeft?: boolean;
 }
@@ -182,7 +185,7 @@ export const sameEffects = (a?: EnchantmentEffect[], b?: EnchantmentEffect[]): b
 export const effectsKey = (effects?: EnchantmentEffect[]): string =>
   (effects || []).map((e) => `${e.effectId >>> 0}:${Math.round(e.magnitude * 1000) / 1000}:${e.area}:${e.duration}`).join(',');
 
-const extrasEqual = (a: Entry, b: Entry, ignoreWorn = false) => {
+export const extrasEqual = (a: Entry, b: Entry, ignoreWorn = false) => {
   return (
     healthStep(a.health) === healthStep(b.health) &&
     (a.enchantmentId || 0) === (b.enchantmentId || 0) &&
@@ -335,9 +338,13 @@ const squash = (inv: Inventory): Inventory => {
   return { entries: res.filter((x) => x.count !== 0) };
 };
 
-const getExtraContainerChangesAsInventory = (
-  refr: ObjectReference
-): Inventory => {
+// Raw entries of copies without an extra list, which hold no favorite mark or hotkey either
+const looseEntries = new WeakSet<Entry>();
+
+export const isLooseEntry = (e: Entry): boolean => looseEntries.has(e);
+
+// The copies as the engine holds them: one entry per extra list, then the copies without one
+export const getRawEntries = (refr: ObjectReference): Entry[] => {
   const extraContainerChanges = getExtraContainerChanges(refr.getFormID());
   const entries = new Array<Entry>();
 
@@ -358,14 +365,15 @@ const getExtraContainerChangesAsInventory = (
     });
 
     if (entry.count !== 0) {
+      looseEntries.add(entry);
       entries.push(entry);
     }
   });
 
-  let res: Inventory = { entries };
-  res = squash(res);
-  return res;
+  return entries;
 };
+
+const getExtraContainerChangesAsInventory = (refr: ObjectReference): Inventory => squash({ entries: getRawEntries(refr) });
 
 const getBaseContainerAsInventory = (refr: ObjectReference): Inventory => {
   return {
@@ -509,6 +517,31 @@ const logWornAmmoRemoval = (refr: ObjectReference, baseId: number, count: number
   logToPlatformLog("applyInventory", `server has ${count} fewer of the equipped ammo ${baseId.toString(16)}, removed and kept equipped`);
 };
 
+// One addItemEx step of an entry's copies under the given name; a negative count removes
+export const addItemExOf = (refr: ObjectReference, f: Form, e: Entry, count: number, name: string): void => {
+  TESModPlatform.addItemEx(
+    refr,
+    f,
+    count,
+    e.health ? e.health : 1,
+    e.enchantmentEffects && e.enchantmentEffects.length
+      ? getPlayerEnchantment(e.enchantmentEffects, f)
+      : e.enchantmentId
+        ? Enchantment.from(Game.getFormEx(e.enchantmentId))
+        : null,
+    e.maxCharge ? e.maxCharge : 0,
+    !!e.removeEnchantmentOnUnequip,
+    e.chargePercent ? e.chargePercent : 0,
+    name,
+    e.soul ? e.soul : 0,
+    e.poisonId ? Potion.from(Game.getFormEx(e.poisonId)) : null,
+    e.poisonCount ? e.poisonCount : 0
+  );
+};
+
+// The name a local copy was added under
+export const localNameOf = (e: Entry, f: Form): string => (e.name ? cropName(e.name) : f.getName());
+
 export const applyInventory = (
   refr: ObjectReference,
   newInventory: Inventory,
@@ -585,47 +618,17 @@ export const applyInventory = (
       }
     }
 
+    // A server copy goes in under its condition tag, a local copy comes out under the name it carries
+    const name = localNameOf(e, f);
+    const names = e.count > 0 ? [] : removalNames(refr, f, e, target.entries);
+
     for (let i = 0; i < absCount; ++i) {
       if (worn || wornLeft) {
         TESModPlatform.pushWornState(!!worn, !!wornLeft);
         queueNiNodeUpdateNeeded = true;
       }
 
-      let addItemExArgs: [
-        ObjectReference,
-        Form,
-        number,
-        number,
-        Enchantment | null,
-        number,
-        boolean,
-        number,
-        string,
-        number,
-        Potion | null,
-        number,
-      ];
-
-      addItemExArgs = [
-        refr,
-        f,
-        oneStepCount,
-        e.health ? e.health : 1,
-        e.enchantmentEffects && e.enchantmentEffects.length
-          ? getPlayerEnchantment(e.enchantmentEffects, f)
-          : e.enchantmentId
-            ? Enchantment.from(Game.getFormEx(e.enchantmentId))
-            : null,
-        e.maxCharge ? e.maxCharge : 0,
-        !!e.removeEnchantmentOnUnequip,
-        e.chargePercent ? e.chargePercent : 0,
-        e.name ? cropName(e.name) : f.getName(),
-        e.soul ? e.soul : 0,
-        e.poisonId ? Potion.from(Game.getFormEx(e.poisonId)) : null,
-        e.poisonCount ? e.poisonCount : 0
-      ];
-
-      TESModPlatform.addItemEx(...addItemExArgs);
+      addItemExOf(refr, f, e, oneStepCount, e.count > 0 ? durabilityName(name, e.condition, f) : names[i] || name);
     }
   });
 

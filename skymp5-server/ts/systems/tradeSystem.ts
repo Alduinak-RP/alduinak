@@ -2,9 +2,10 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import {
   Item, InventoryEntry, Inventory, isNamedItem, sameBase, hasIdentityExtras, sameItem, lineKey,
-  readInventory, copyValidExtras, withCount, addEntries, describeExtras,
+  readInventory, copyValidExtras, withCount, addEntries, describeExtras, byNearestCondition, conditionOf, conditionPercent,
 } from "./inventoryExtras";
 import { isBleedingOut } from "./actorUtil";
+import { SettleWear, wearSettler } from "./durabilityNative";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -15,13 +16,14 @@ type Mp = any;
 //
 // Flow: tradeRequest -> tradeInvite accept/decline -> both edit offers (tradeSetOffer resets locks) -> both tradeLock -> both tradeAccept, then the server swaps the items atomically.
 // Every item trades; an offer line names one inventory entry by baseId plus its extras, and the swap moves the server's own entries with their extras intact.
+// A line's condition (durability) only says which copy is meant: the copy nearest to it is drawn and changes hands with the server's own condition.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server
 //     { customPacketType: "tradeRequest", recipient: <remoteActorFormId> }
 //     { customPacketType: "tradeRespond", accept: <bool> }
 //     { customPacketType: "tradeSetOffer", items: [{ baseId, count, name?, health?, enchantmentId?, maxCharge?,
-//         removeEnchantmentOnUnequip?, chargePercent?, soul?, poisonId?, poisonCount?, enchantmentEffects? }], seq? }
+//         removeEnchantmentOnUnequip?, chargePercent?, soul?, poisonId?, poisonCount?, enchantmentEffects?, condition? }], seq? }
 //     { customPacketType: "tradeLock" | "tradeUnlock" | "tradeAccept" | "tradeCancel" }
 //   Server -> Client
 //     { customPacketType: "tradeInvite", fromName }
@@ -29,7 +31,7 @@ type Mp = any;
 //         myLocked, theirLocked, bothLocked, iAccepted, theyAccepted, mySeq }
 //       mySeq is the seq of my latest tradeSetOffer this trade (0 before any), accepted or refused;
 //       myOffer echoes my lines (plain: true when the server holds no copy with those extras);
-//       theirOffer lists the server entries that will actually arrive
+//       theirOffer lists the server entries that will actually arrive, a worn copy with its condition
 //     { customPacketType: "tradeCompleted" } | { customPacketType: "tradeCancelled", reason }
 //     { customPacketType: "tradeNotice", text }
 
@@ -37,6 +39,7 @@ type Mp = any;
 const DEFAULT_MAX_TRADE_DISTANCE = 1024;      // game units; both must stay within this range
 const DEFAULT_INVITE_TTL_MS = 60 * 1000;      // pending invites auto-cancel after this
 const DEFAULT_INVITE_COOLDOWN_MS = 30 * 1000; // min gap between invites per initiator->target
+const CONDITION_NOTICE = 'An offered item is no longer in the condition shown. Check the offer and lock again.';
 
 // Which server entries an offer draws on; plain[i] marks a line the server only holds without its extras
 interface Resolution {
@@ -59,9 +62,21 @@ interface Session {
   inviteSeq: number; // bumped per (re-)invite so stale TTL timers no-op
   offerSeqA: number; // latest tradeSetOffer seq from a, echoed as mySeq
   offerSeqB: number;
+  shownA: string; // the worn copies a's offer drew when a locked (wornSig)
+  shownB: string;
+  seenA: string; // the worn copies of b's offer as last sent to a (wornSig)
+  seenB: string;
 }
 
 // ── Pure inventory helpers (operate on the JSON shape of the inventory binding; identity lives in inventoryExtras.ts) ─
+
+// One line per item and shown condition, the same split as the client's rowKey in tradeService.ts
+const offerKey = (i: Item): string => (conditionOf(i) < 1 ? lineKey(i) + '#' + conditionPercent(i.condition) : lineKey(i));
+
+// The worn copies among drawn entries by the percent their names show; empty when every copy is pristine
+const wornSig = (moved: InventoryEntry[]): string =>
+  addEntries({ entries: [] }, moved).entries.filter((e) => conditionOf(e) < 1)
+    .map((e) => offerKey(e) + 'x' + e.count).sort().join(';');
 
 // Collapse an offer to positive, integer, de-duplicated lines with validated extras.
 function normalizeOffer(items: unknown): Item[] {
@@ -77,7 +92,7 @@ function normalizeOffer(items: unknown): Item[] {
     }
     const item: Item = { baseId: baseId >>> 0, count };
     copyValidExtras(raw, item);
-    const key = lineKey(item);
+    const key = offerKey(item);
     const line = byLine.get(key);
     if (line) {
       line.count += count;
@@ -88,22 +103,30 @@ function normalizeOffer(items: unknown): Item[] {
   return Array.from(byLine.values());
 }
 
-// Draw each line from the actor's own entries: exact extras first, then a plain copy for extras the server never saved
+// Draw each line from the actor's own entries: exact extras first, then a plain copy for extras the server never saved;
+// among the copies that fit, the ones showing the line's condition go before the nearest other one
 function resolveOffer(inv: Inventory, offer: Item[]): Resolution {
   const left = inv.entries.map((e) => e.count);
   const need = offer.map((i) => i.count);
   const moved: InventoryEntry[] = [];
-  const draw = (i: number, fits: (e: InventoryEntry) => boolean): void => {
-    inv.entries.forEach((e, j) => {
-      if (need[i] <= 0 || left[j] <= 0 || !fits(e)) {
+  const draw = (i: number, fits: (e: InventoryEntry) => boolean, nearest = true): void => {
+    const shown = conditionPercent(offer[i].condition);
+    for (const j of byNearestCondition(inv.entries, offer[i].condition)) {
+      const e = inv.entries[j];
+      if (need[i] <= 0 || (!nearest && conditionPercent(e.condition) !== shown)) {
         return;
+      }
+      if (left[j] <= 0 || !fits(e)) {
+        continue;
       }
       const n = Math.min(need[i], left[j]);
       left[j] -= n;
       need[i] -= n;
       moved.push(withCount(e, n));
-    });
+    }
   };
+  // Every line takes the copies at its own condition before any line settles for the nearest
+  offer.forEach((item, i) => draw(i, (e) => sameItem(e, item), false));
   offer.forEach((item, i) => draw(i, (e) => sameItem(e, item)));
   const plain = offer.map((item, i) => {
     if (need[i] <= 0 || !hasIdentityExtras(item) || isNamedItem(item)) {
@@ -143,6 +166,7 @@ export class TradeSystem implements System {
     if (Number.isInteger(rawTtl) && rawTtl > 0) this.inviteTtlMs = rawTtl;
     const rawCooldown = Number(all?.["tradeInviteCooldownMs"]);
     if (Number.isInteger(rawCooldown) && rawCooldown >= 0) this.inviteCooldownMs = rawCooldown;
+    this.settleWear = wearSettler(ctx.svr as Mp, all, this.log);
 
     // A character switch mid-trade would swap items out of the NEW body; void the deal instead
     ctx.gm.on("userAssignActor", (userId: number) => {
@@ -154,6 +178,15 @@ export class TradeSystem implements System {
   }
   // "initiatorUserId:targetUserId" -> last invite timestamp (anti focus-steal)
   private inviteCooldowns = new Map<string, number>();
+  private settleWear: SettleWear = () => { };
+
+  // Wear a fight left in memory is written into the copies first, so the condition on offer is the one that changes hands
+  private settle(mp: Mp, ...userIds: number[]): void {
+    for (const userId of userIds) {
+      const actorId = this.actorOf(mp, userId);
+      if (actorId) this.settleWear(actorId);
+    }
+  }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
@@ -231,6 +264,7 @@ export class TradeSystem implements System {
     const myOffer = me ? s.offerA : s.offerB;
     const mine = resolveOffer(readInventory(mp, this.actorOf(mp, userId)), myOffer);
     const theirs = resolveOffer(readInventory(mp, this.actorOf(mp, partner)), me ? s.offerB : s.offerA);
+    if (me) { s.seenA = wornSig(theirs.moved); } else { s.seenB = wornSig(theirs.moved); }
     this.send(mp, userId, {
       customPacketType: 'tradeState',
       partnerName: this.nameShownTo(mp, userId, partner),
@@ -425,6 +459,8 @@ export class TradeSystem implements System {
       active: false,
       inviteSeq: 0,
       offerSeqA: 0, offerSeqB: 0,
+      shownA: '', shownB: '',
+      seenA: '', seenB: '',
     };
     if (!this.withinRange(mp, s)) {
       this.notice(mp, userId, 'You are too far away to trade.');
@@ -456,6 +492,7 @@ export class TradeSystem implements System {
       return;
     }
     s.active = true;
+    this.settle(mp, s.a, s.b);
     this.broadcastState(mp, s); // first state push tells both clients to open the window
   }
 
@@ -470,6 +507,7 @@ export class TradeSystem implements System {
       if (s.a === userId) { s.offerSeqA = seq; } else { s.offerSeqB = seq; }
     }
     const offer = normalizeOffer(content.items);
+    this.settle(mp, userId);
     const inv = readInventory(mp, this.actorOf(mp, userId));
     const res = resolveOffer(inv, offer);
     if (!res.ok) {
@@ -495,16 +533,35 @@ export class TradeSystem implements System {
       return;
     }
     // Guard the lock with a fresh affordability check.
+    this.settle(mp, userId);
+    const me = s.a === userId;
+    const partner = me ? s.b : s.a;
     const inv = readInventory(mp, this.actorOf(mp, userId));
-    const myOffer = s.a === userId ? s.offerA : s.offerB;
-    if (!offerIsAffordable(inv, myOffer)) {
+    const res = resolveOffer(inv, me ? s.offerA : s.offerB);
+    if (!res.ok) {
       this.notice(mp, userId, 'You no longer have all of those items.');
-      if (s.a === userId) { s.offerA = []; } else { s.offerB = []; }
+      if (me) { s.offerA = []; } else { s.offerB = []; }
       this.resetCommitments(s);
       this.broadcastState(mp, s);
       return;
     }
-    if (s.a === userId) { s.lockedA = true; } else { s.lockedB = true; }
+    const partnerLocked = me ? s.lockedB : s.lockedA;
+    // A lock agrees to the worn copies last sent; the partner's pack may have changed since without any offer packet
+    const theirs = resolveOffer(readInventory(mp, this.actorOf(mp, partner)), me ? s.offerB : s.offerA);
+    if (wornSig(theirs.moved) !== (me ? s.seenA : s.seenB)) {
+      this.resetCommitments(s);
+      this.notice(mp, userId, CONDITION_NOTICE);
+      if (partnerLocked) this.notice(mp, partner, CONDITION_NOTICE);
+      this.broadcastState(mp, s);
+      return;
+    }
+    const shown = wornSig(res.moved);
+    // The locked partner agreed to other copies of this offer than the ones it draws now
+    if (partnerLocked && shown !== (me ? s.seenB : s.seenA)) {
+      if (me) { s.lockedB = false; s.acceptedB = false; } else { s.lockedA = false; s.acceptedA = false; }
+      this.notice(mp, partner, CONDITION_NOTICE);
+    }
+    if (me) { s.lockedA = true; s.shownA = shown; } else { s.lockedB = true; s.shownB = shown; }
     this.broadcastState(mp, s);
   }
 
@@ -569,6 +626,7 @@ export class TradeSystem implements System {
 
     const aId = this.actorOf(mp, s.a);
     const bId = this.actorOf(mp, s.b);
+    this.settle(mp, s.a, s.b);
     const invA = readInventory(mp, aId);
     const invB = readInventory(mp, bId);
 
@@ -577,6 +635,15 @@ export class TradeSystem implements System {
     const resB = resolveOffer(invB, s.offerB);
     if (!resA.ok || !resB.ok) {
       this.cancel(mp, s, 'The trade failed - an item was no longer available.');
+      return;
+    }
+    // The partner agreed to the worn copies shown at the lock; another copy or more wear since then needs a fresh look
+    if (wornSig(resA.moved) !== s.shownA || wornSig(resB.moved) !== s.shownB) {
+      this.resetCommitments(s);
+      for (const userId of [s.a, s.b]) {
+        this.notice(mp, userId, CONDITION_NOTICE);
+      }
+      this.broadcastState(mp, s);
       return;
     }
 
@@ -649,5 +716,5 @@ export class TradeSystem implements System {
 
 // Exported for unit/manual testing of the pure inventory math.
 export const __test = {
-  lineKey, normalizeOffer, resolveOffer, offerIsAffordable, addEntries,
+  lineKey, normalizeOffer, resolveOffer, offerIsAffordable, addEntries, wornSig,
 };

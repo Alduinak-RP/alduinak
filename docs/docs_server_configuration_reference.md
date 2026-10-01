@@ -545,7 +545,8 @@ RACE of the load order has.
 | `freezingWaterImmune` | Printed in the boot report only; no system acts on it in this build. Freezing water cold follows `coldRateMult`, and its damage follows the plugin's frost resistance, so the water hurts every race (owner decision O2) | none |
 | `startingItems` | `[{ baseId, count }]`, the shape of `startingItems`. Given once when the character's creation finishes, on top of the kit, guarded per profile and character slot by the `<profileId>:<slot>:race` key in `starter-grants.json` and recorded in `private.racial.startItems`; a character recreated in a slot that had them gets nothing. Gold goes through `addGold` and never marks `private.starterGold`, so the profession kit keeps its gold | RacialSystem |
 
-The Test Server block (staged with a README in `Desktop/alduinak-r13/live/r27-RC4/`):
+The Test Server block (staged with a README in `Desktop/alduinak-r13/live/r27-RC4/`; the Nord entry of 2026-10-01,
+warmth in place of cold immunity, in `live/r39-SV6/`):
 
 ```json5
 {
@@ -554,7 +555,7 @@ The Test Server block (staged with a README in `Desktop/alduinak-r13/live/r27-RC
     "enabled": true,
     "startItemsSince": "2026-10-01T16:00:00-07:00",
     "races": {
-      "NordRace":     { "coldRateMult": 0, "freezingWaterImmune": false },
+      "NordRace":     { "warmth": 25, "freezingWaterImmune": false },
       "ArgonianRace": { "coldRateMult": 1.25, "rawMeatSafe": true },
       "KhajiitRace":  { "coldRateMult": 1.25, "rawMeatSafe": true },
       "OrcRace":      { "hungerRateMult": 0.85, "fatigueCostMult": 0.85, "warmth": 10 },
@@ -636,10 +637,12 @@ Boot lines in `C:\logs\test\gameserver.log`:
 - `[racial] magic damage entries: racialMagicResistBreton x0.5 on BretonRace, BretonRaceVampire; racialMagicResistOrc
   x0.75 on OrcRace, OrcRaceVampire` (or `none`).
 - One line per playable race with what the plugin and the settings give it, for example on plugin r22
-  `[racial] NordRace: resist frost 50, base H/M/S 100/100/100, cold x0 (immune), freezing water hurts, fatigue x1,
-  hunger x1, warmth 0, raw meat unsafe, start items none, claws 4 (race unarmed), magic damage x1, abilities RaceNord +
+  `[racial] NordRace: resist frost 50, base H/M/S 100/100/100, cold x1, freezing water hurts, fatigue x1,
+  hunger x1, warmth 25, raw meat unsafe, start items none, claws 4 (race unarmed), magic damage x1, abilities RaceNord +
   AldRaceSpeed_Nord, powers -, AldRacial_Nord not in plugin yet`; on r27a it reads `resist frost 75`, `base H/M/S
-  100/100/150` and `AldRacial_Nord on the race`.
+  100/100/150` and `AldRacial_Nord on the race`, and `warmth 25 (plugin 25)` once the plugin's Nord ability carries
+  its `Survival_FortifyWarmthConstant` 25 (a plugin built from the spec of 2026-10-01; before it a warning names the
+  difference). A race with `coldRateMult: 0` reads `cold x0 (immune)`.
 - `[racial] warning: ...`: races without their `AldRacial_*` ability (expected before r27a), an `AldRacial_*` in the
   load order that its race does not list (a wrong or stale plugin in the server Data folder), a race whose ability
   resists magic with no entry above, an entry that names a race but not its vampire race, settings warmth that differs
@@ -1266,10 +1269,256 @@ the native server at boot, which logs `npcBlockedDamageShare is <share>: ...`; e
 <player> blocked npc <npc> with <weapon>, <landed> of <unblocked> damage lands (npcBlockedDamageShare <share>)`. See
 `docs/docs_onhit_and_damage.md`, Blocked hits.
 
+Under the rebalance formula (`alduinakDamageFormulaSettings.enabled`) the same share of the NPC's unblocked damage
+after DT lands, and a player's hit on a blocking player still lands 0. Two keys of that block can open a block
+further, for a player's hit too: a blocker's `BlockMod` (`effectModifiers`) scales the blocked part, and a broken
+shield or parrying weapon lets the larger of this share and `durability.effect.brokenBlockPass` through. The line then
+reads `OnWeaponHit - <target> blocked npc|player <aggressor> with <weapon>, <landed> of <unblocked> damage lands
+(share <share>, npcBlockedDamageShare <n>)`.
+
 ```json5
 {
   // ...
   "npcBlockedDamageShare": 0.2
+  // ...
+}
+```
+
+## regenerationMultiplier, healthRegenerationMultiplier
+
+Clients regenerate health, magicka and stamina themselves and report the values; the native server crops each
+report to what the race's rates allow. `regenerationMultiplier` (a number of 0 or more, default `1`) scales that
+allowance for all three: `1` is the race record's rates, `0` accepts no natural regeneration.
+
+`healthRegenerationMultiplier` (a number of 0 or more, default: not set) takes its place for health only, so health
+can stand still while magicka and stamina regenerate. `0` crops every health increase a client reports back to the
+server's value; potions, food and Restoration still heal, because the server applies them itself. It is the server
+half of `survivalNoHealthRegen`: the ability stops regeneration in the client engine, this key refuses a client that
+regenerates anyway. Not set, health follows `regenerationMultiplier` and nothing changes. A value that is not a
+number of 0 or more logs `Unexpected value of healthRegenerationMultiplier, should be a number of 0 or more, health
+keeps regenerationMultiplier`. Protected (plan task M0): Migrate settings never carries it to live, so set it there
+by hand together with `survivalEnabled`. It needs a native server build from `ea63f69a` (plan task NV1) or later; an
+older `scam_native.node` ignores the key. Read at boot.
+
+Boot line: `healthRegenerationMultiplier is 0: health reported by clients regenerates at that share of the base
+rate, magicka and stamina keep regenerationMultiplier 1`, or `healthRegenerationMultiplier is not set: health
+regenerates by regenerationMultiplier 1`. While the key is set, a client that keeps reporting more health than
+allowed is logged per player, once the next refused report arrives after a minute: `OnChangeValues - <id> sent N
+health increase(s) above the allowed regeneration within a minute, largest X of full health refused
+(healthRegenerationMultiplier 0)`.
+
+```json5
+{
+  // ...
+  "regenerationMultiplier": 1,
+  "healthRegenerationMultiplier": 0
+  // ...
+}
+```
+
+## alduinakDamageFormulaSettings
+
+The rebalance and durability block (plan test release B): weapon hits priced by row damage against the damage
+threshold (DT) of the worn armor, and a per-copy condition on weapons, armor and shields that wears on hits and is
+repaired at a workbench or grindstone. The systems are described in `docs/docs_onhit_and_damage.md` and
+`docs/docs_durability.md`; this section lists the keys.
+
+- **Generated.** `misc/combat-settings/generate.py` writes the whole block from the load order and
+  `misc/combat-settings/design.json`. Change a number in `design.json` and run the generator again rather than
+  editing the block by hand, and run it again after every plugin change: `overrides` and `npc.naturalDT` hold form
+  keys of the load order. The current Test block is staged with a README in
+  `Desktop/alduinak-r13/live/r39-PL4/` (it replaces `r39-R1`).
+- **Absent by default.** With no block every hit, block, temper, inventory and packet is as in 1.0. The block has two
+  independent switches, `enabled` (the formula) and `durability.enabled`; with both false it is parsed and changes
+  nothing.
+- **Protected** (plan task M0). Migrate settings never carries the block to live (`kept
+  alduinakDamageFormulaSettings (protected)`); the owner copies it into the live settings by hand.
+- **Read once at boot**, by the native server (`scam_native.node` from `68dfee13`, plan tasks NV2 to NV5) and by
+  server TS: NeedsSystem (`blockStamina`), DurabilitySystem (`durability.repair`, `durability.nameTag`),
+  CraftedExtrasSystem (see `craftedExtrasTemperRules`) and the `/armor` readout. A change needs a restart. A native
+  build without the rebalance ignores the block; the TS systems then switch themselves off with one log line each
+  (`[needs] block stamina by armor weight is off: this scam_native.node has no getCombatStats ...`).
+- **All or nothing.** A value of the wrong type or outside its range rejects the whole block. The native logs one
+  error per problem (the first 20), for example `alduinakDamageFormulaSettings: durability.wear.landedHit should be a
+  number from 0 to 1000000, found "1"`, then `alduinakDamageFormulaSettings is rejected for N problem(s): the
+  rebalance formula, durability and effect modifiers stay off, the server prices hits as without the block`. An
+  unknown key is only a warning (`the key "x" is not one the server reads`), as is an override whose record is not
+  in the load order (the item then resolves by keyword).
+- **Plugin.** The numbers on the item cards come from the plugin, not from this block. Plugin r28 is the rebalance
+  stat pass, so with r28 loaded `enabled: false` prices hits by the vanilla formula from r28's records (an Iron Sword
+  15 where it was 9) and is not a return to 1.0's numbers; that needs plugin r27 on the server and every client
+  (`Desktop/alduinak-r13/esp/r28/README.md`).
+
+Switches:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | `true`: the rebalance formula prices every weapon hit (row damage against worn DT, crits rolled by the server) in place of the vanilla formula, inside the same wrappers (`damageMultFormulaSettings`, `damageMultConditionalFormulaSettings`); the hit rules below, the block stamina rule, the crit notice and the DT lines of `/armor` follow it. Spells stay vanilla with the same `playerHitCap`. `false` leaves weapon damage to the vanilla formula |
+| `durability.enabled` | `false` | `true`: worn weapons, bows, crossbows, armor pieces and shields of players wear on accepted weapon hits, show their condition in their name and are repaired at the benches. Independent of `enabled`: with the formula off the vanilla formula takes the same condition shares off the weapon's damage, each piece's armor rating and the block |
+| `effectModifiers` | `true` | The summed `OneHandedMod`, `TwoHandedMod`, `MarksmanMod` and `BlockMod` of a character's Ability and Disease spells scale weapon damage and the blocked part of a hit by clamp(1 + sum / 100, 0.25, 2), under either formula. Counts only while `enabled` or `durability.enabled` is true. The Survival hunger stage abilities carry `BlockMod` -30, -50, -70 and -90 from stage 2 to 5, so a hungry player's block leaks while this is on. `false` leaves damage and blocks alone; a value that is not true or false counts as false and logs `Unexpected value of alduinakDamageFormulaSettings.effectModifiers, should be true or false, effect modifiers stay off` |
+| `source` | generated | A text naming the generator run (plugin hash, plugin count, options). Not read |
+
+The formula's numbers, read while `enabled` is true:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `floor` | `0.2` | Share of a hit's damage before DT that always lands, whatever the armor; the default of each weapon type's own `floor`. 0 to 1 |
+| `minDamage` | `0.5` | The least damage a weapon hit that is not blocked deals, before the power, sneak and speed factors |
+| `critDTMult` | `0.5` | Share of the target's DT a critical hit meets. 0 to 1 |
+| `powerMult` | `2` | Power attack multiplier, applied after DT; the default of each weapon type's own `powerMult` |
+| `npcNaturalPowerMult` | `1.25` | Power attack multiplier of a creature's own attack |
+| `bashMult` | `0.3` | Share of the weapon's damage a bash deals; a bash never crits |
+| `playerHitCap` | `45` | The most one weapon hit (poison included) or one spell takes from a player, applied last, after `damageMultConditionalFormulaSettings`; NPC targets have no cap. Logs `... damage capped at 45` |
+| `healthSnap` | `0.00011` | A health share at or under this after a hit counts as 0, so nine hits of 11.11 down 100 health. 0 to 1 |
+| `tempering` | `{ "weaponPerStep": 0.015, "armorPerStep": 0.015 }` | Share of damage or DT one temper step (Fine is 1) adds to a player's worn copy. 0 to 1 each |
+| `arrow` | `{ "scale": 0.25, "zero": 8, "max": 4 }` | Damage an arrow or bolt adds to its bow's row: clamp(`scale` x (AMMO damage - `zero`), 0, `max`) |
+| `speedNorm` | `{ "min": 0.4, "max": 1 }` | Bounds of the factor a record that swings faster than its type row loses damage by (its swing time over the row's) |
+| `shieldShare` | `0.06` | A shield's DT is its row's `setDT` times this, unless the row has a `shieldDT`. 0 to 1 |
+| `lightItemHeavyRowFactor` | `0.7` | Share of a heavy row's DT a light armor record on that row gets. 0 to 1 |
+| `slotShare` | `{ "cuirass": 0.6, "helmet": 0.15, "gauntlets": 0.125, "boots": 0.125 }` | Share of a row's `setDT` (and of its set HP) each piece carries. A hit meets the best worn piece of each slot group plus the shield |
+| `slotBipeds` | `{ "cuirass": [32], "helmet": [30, 31, 41, 42, 43], "gauntlets": [33], "boots": [37], "shield": [39] }` | Biped slots (30 to 61) of each slot group |
+| `unarmed` | `{ "base": 5, "penetration": 0.5, "floor": 0.5, "critChance": 0.05, "critMult": 1.5, "raceOverride": { ... } }` | The fists of a playable or humanoid race. `raceOverride` is `{ "<race editor id>": { "weaponRow": "<weapons row>", "type": "<melee type>" } }`: that race's fists hit as that weapon, untempered (Khajiit claws a Steel dagger, Argonian an Iron one, their vampire races too). The old number table `unarmed.race` is not read |
+| `npc` | `{ "playerToNpcMult": 1, "naturalCapBeforeDT": true, "naturalFloor": 0.3, "naturalCanCrit": false, "humanoidNpcCanCrit": true, "naturalPenetration": { "critterMaxDamage": 20, "critter": 0.5, "other": 0 }, "naturalDT": { ... } }` | `playerToNpcMult` scales a player's hit on an NPC. A creature's own attack is its RACE unarmed damage with `naturalFloor`, capped at `playerHitCap` before DT on a player (`naturalCapBeforeDT`), with the `critter` penetration up to `critterMaxDamage` damage and `other` above it. `humanoidNpcCanCrit` and `naturalCanCrit` say whether NPCs with weapons and creatures roll crits. `naturalDT` is `{ "<hex id>:<plugin>" of a RACE: DT }`, 0 for a race without an entry |
+
+Hit rules, read while `enabled` is true:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `rateLimitFactor` | `0.888` | A melee weapon, fists or claws hit at most once per this share of the swing of their type row times the record's speed factor (dagger 0.592 s, sword and fists 0.770, war axe 0.855, mace 0.962, greatsword and battleaxe 0.959, warhammer 1.119); a faster hit is refused. Bow and crossbow shots faster than the same share of their draw cycle are only logged |
+| `quickShotDrawMult`, `crossbowReload` | `0.7`, `1.9` | The shorter draw of a Hunter from Adept up and the crossbow reload in seconds, both used by the shot log only |
+| `poisonFloor` | `0.5` | Share of a weapon poison's health damage that always lands on an unblocked hit; the rest loses the target's worn DT. A poison does nothing on a blocked hit (the charge is still spent). 0 to 1 |
+| `sneak` | `{ "minSneakSeconds": 1, "targetCalmSeconds": 10, "calmRuleTargets": "players" }` | A sneak attack counts after `minSneakSeconds` of sneaking and, on the targets `calmRuleTargets` names (`"players"`, `"all"`, anything else such as `"none"` or `""` for no calm rule), only when the target dealt, took or blocked no hit for `targetCalmSeconds`. A refused flag is priced as a normal hit and logged |
+| `power` | `{ "eventWindowSeconds": 1.6, "minIntervalSeconds": 1.5, "splashWindowSeconds": 0.1, "logOnly": true }` | A player's melee power attack needs a power attack start of its own animation within `eventWindowSeconds`, at least `minIntervalSeconds` after the last one; hits within `splashWindowSeconds` ride the same swing. `logOnly: true` only logs a failed check (`... would be refused: <reason> (power.logOnly, priced as a power attack)`), `false` prices it as a normal hit. NPC and bow hits are not checked |
+| `blockStamina` | `{ "perArmorWeight": 0.006, "weightCap": 115 }` | Read by NeedsSystem: a blocked weapon hit costs the blocker `blockStaminaCost` (a warrior `blockStaminaCostWarrior`) x (1 + `perArmorWeight` x worn armor weight, counted up to `weightCap`, the shield left out) of max stamina: Steel (52) x1.31, Daedric (81) x1.49, at most x1.69. `perArmorWeight: 0` keeps the flat cost. Numbers from 0. Logs `[needs] <id> blocked in 52 armor weight: stamina -13.1% (10% x1.31)` |
+
+Item rows, all generated. Every weapon and armor record resolves to one row: its `overrides` entry first, then the
+keyword lists in list order, then the fallback row of its type or class; clothing and jewelry have DT 0 whatever names them.
+The native reports the outcome after the plugins load (`ItemRowResolver: 125 of 125 named keywords ...`, `489 of 489
+overrides bound`, the claws per race and the count of every WEAP and ARMO by kind and rule).
+
+| Key | Meaning |
+|---|---|
+| `weaponTypes` | Required. One entry for each of `dagger`, `sword`, `waraxe`, `mace`, `greatsword`, `battleaxe`, `warhammer`, `bow`, `crossbow` and `unarmed`: `{ speed, hands, dmgMult, critChance, critMult, penetration, powerMult, sneakMult, floor, autoCritOnSneak }`. `dmgMult` (required for the melee types) multiplies the material row's `base`; the crit chance is the type's plus the material's, at most 40%; `autoCritOnSneak` makes every sneak attack of that type a crit (the dagger) |
+| `weapons` | Required. `{ "<row>": { base, penetration, critChance } }`: the damage of a material row (Iron 15, Steel 16.5) and what the material adds to penetration and crit chance |
+| `bows`, `crossbows` | Required. `{ "<row>": { base, speed } }` for bows and `{ "<row>": { base } }` for crossbows |
+| `bowRowForMaterial` | `{ "<weapons row>": "<bows row>" }`: the bow row of a bow that resolves by a weapon material |
+| `armor` | Required. `{ "<row>": { "class": "light" \| "heavy" \| "clothing", setDT, shieldDT } }`: the DT of a full set of that row; `shieldDT` takes the place of `setDT` x `shieldShare` for its shield |
+| `weaponKeywords`, `armorKeywords` | Required. Lists of `["<keyword editor id>", "<row>"]`, the first match in list order wins |
+| `aldCatMat` | The same for the plugin's `AldCatMat_*` keywords, asked after the two lists |
+| `multiIAKFallback` | `3`: a record with this many `IAKMaterial*` keywords takes the fallback row instead of the first keyword's |
+| `fallbackRows` | Required. `{ weapon, bow, crossbow, armorLight, armorHeavy, shield }`: the row of a record nothing else names |
+| `overrides` | `{ "<hex id>:<plugin>": "<row>" }`: the row of one base record, before any keyword (489 on the Test load order: rules, the recipe rank audit and template variants) |
+| `dummyRow` | `"Dummy"`: the row name whose items deal nothing and never wear |
+
+Durability, under `durability`, in force while `durability.enabled` is true:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `weaponHP`, `bowHP`, `crossbowHP` | generated | `{ "<row>": HP }` of a weapon of that row (Iron 250, Steel 350, Daedric 700). One wear point takes 1 / HP of the copy's condition |
+| `armorSetHP` | generated | `{ "<row>": HP }` of a full set; a piece has the set HP x its `slotShare`, so a full set loses the same percent on every piece |
+| `shieldHPShare` | `0.8` | A shield's HP as a share of its row's set HP |
+| `fallbackHP` | `{ "weapon": 250, "armorSet": 300 }` | HP of a row without an entry in the tables above (a boot warning names such rows) |
+| `wear` | `{ "landedHit": 1, "powerExtra": 1, "parriedHit": 1, "bash": 1, "bowHit": 1, "shieldBlock": 1, "armorHit": 1, "armorMinPreDT": 8 }` | Wear points per event: the attacker's weapon per landed hit (plus `powerExtra` on a power attack), per swing a block stopped (`parriedHit`), per bash, a bow or crossbow per arrow that lands; the target's shield per block, or without a shield the weapon it parried with; and `armorHit` spread over the worn pieces by slot share on an unblocked hit of `armorMinPreDT` damage or more before DT |
+| `effect` | `{ "kneeCondition": 0.5, "effectAtZero": 0.75, "brokenWeaponMult": 0.25, "brokenArmorDT": 0, "brokenBlockPass": 0.5 }` | A copy keeps all of its damage or DT down to `kneeCondition`, then falls in a line to `effectAtZero` just above 0. Broken (0): a weapon deals `brokenWeaponMult` and never crits, a piece or shield gives `brokenArmorDT` of its DT, and a block with a broken shield (or a parry with a broken weapon) lets the larger of the usual share and `brokenBlockPass` through. 0 to 1 each |
+| `flush` | `{ "minSeconds": 5, "calmSeconds": 10 }` | Wear waits in memory and is written to the inventory when a shown percent would move and `minSeconds` passed since the last write, after `calmSeconds` without a hit, and always before an equipment change, a drop, a put, a trade, death and disconnect |
+| `npcGearWears` | `false` | `true` lets the gear NPCs wear and hold wear too |
+| `exempt` | `[]` | `["<hex id>:<plugin>"]`: bases that never wear. Staffs, clothing, jewelry, ammunition and dummy weapons never do |
+| `deathWear` | `0` | Share of its HP every worn copy loses when its wearer dies. 0 to 1 |
+| `nameTag` | `{ "showAtFull": true, "brokenLabel": "Broken" }` | Sent to clients at login as `durabilityConfig`. `showAtFull: false` shows no "(100%)" on pristine gear. `brokenLabel` is the word a broken copy shows in brackets; the server reads it back from the names clients describe items with, so an empty text rejects the block |
+
+Repairs, under `durability.repair`, read by DurabilitySystem (server TS) while `durability.enabled` is true and the
+native has `getDurability`:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `unitsPerMissing` | `{ "weapon": 0.5, "cuirass": 0.5, "other": 1 }` | Share of the durability one set of the item's temper recipe inputs restores: a weapon, bow or cuirass costs one set per 50% missing (a broken sword two), any other piece or a shield one set from any state. Above 0 up to 1 |
+| `fallbackMaterial` | generated | `{ "weapon" \| "bow" \| "crossbow" \| "armor": { "<row>": "<hex id>:<plugin>" } }`: what an item without a temper recipe costs, one per set. With neither, the repair is free and logged once per base |
+| `requireProfessionRank` | `false` | `true` asks for the rank the item's temper recipe is gated by; `false` lets anyone repair to 100% |
+| `fatigue` | `0` | Crafts of fatigue one repaired item costs |
+| `anyBench` | `false` | `false`: the armor workbench repairs armor and shields, the grindstone weapons, bows and crossbows. `true`: either bench repairs everything |
+| `menuOnActivate` | `true` | Activating a bench while carrying damaged gear of its kind opens the repair menu, whose Improve items button gives the vanilla bench. `false` leaves the benches alone; the chat command still opens the menu |
+| `chatCommand` | `"repair"` | Name of the chat command that opens the menu of the nearest bench in reach (gamemode part `87_repair.js`); `""` for no command |
+| `lowNoticeBelow` | `0.25` | A worn item falling below this share tells its owner once, "Your X is badly worn (24%)."; a broken one "Your X has broken.". 0 to 1 |
+
+Boot lines in `gameserver.log`, in order:
+
+- `alduinakDamageFormulaSettings: the item row resolver is on (enabled true, durability.enabled true); rows: 23
+  weapons, 16 bows, 2 crossbows, 31 armor; keywords: ...; 489 overrides; 4 claw races; 36 creature races with natural
+  DT; durability HP rows: ...; 71 repair fallback materials` (`off` with both switches false).
+- `alduinakDamageFormulaSettings: durability is on: worn weapons, armor and shields of players wear on accepted
+  weapon hits ...`, or `... durability.enabled is false, nothing wears and a stored condition changes no hit`.
+- `alduinakDamageFormulaSettings: effect modifiers are on|off (effectModifiers true, enabled true, durability.enabled
+  true)`.
+- `alduinakDamageFormulaSettings: the rebalance formula prices weapon hits (row damage against worn DT, crits rolled
+  by the server, player hits capped at 45, health snap at 0.00011); spells stay TES5 with the same cap` and `...
+  hit rules: ...`, or `... enabled is false, weapon hits are priced by TES5 as without the block`.
+- Server TS: `[needs] block stamina by armor weight: a block costs x (1 + 0.006 x worn armor weight, counted up to
+  115)`, `[durability] repairs on: workbench armor and shields, grindstone weapons, one set of temper materials per
+  50% of a weapon, ...`, and the `[crafted]` line of `craftedExtrasTemperRules`.
+
+```json5
+{
+  // ...
+  "alduinakDamageFormulaSettings": {
+    "source": "misc/combat-settings/generate.py; ...",
+    "enabled": true,
+    "effectModifiers": true,
+    "playerHitCap": 45,
+    "power": { "eventWindowSeconds": 1.6, "minIntervalSeconds": 1.5, "splashWindowSeconds": 0.1, "logOnly": true },
+    // ... weaponTypes, the rows, the keyword lists, overrides and npc as generated
+    "blockStamina": { "perArmorWeight": 0.006, "weightCap": 115 },
+    "durability": {
+      "enabled": true,
+      // ... weaponHP, bowHP, crossbowHP, armorSetHP, wear, effect and flush as generated
+      "nameTag": { "showAtFull": true, "brokenLabel": "Broken" },
+      "repair": {
+        "unitsPerMissing": { "weapon": 0.5, "cuirass": 0.5, "other": 1 },
+        "requireProfessionRank": false,
+        "fatigue": 0,
+        "anyBench": false,
+        "menuOnActivate": true,
+        "chatCommand": "repair",
+        "lowNoticeBelow": 0.25
+        // "fallbackMaterial": { ... } as generated
+      }
+    }
+  }
+  // ...
+}
+```
+
+## combatCritNotice
+
+`true` (default): while `alduinakDamageFormulaSettings.enabled` is true a critical hit sends "Critical hit! <damage>
+damage." to the attacking player and "You took a critical hit: <damage> damage." to the player hit, in the System
+tab. `false` keeps both off. Read by the gamemode part `60_admin_modes.js` when it loads, so "Build gamemode only" or
+a restart applies a change. Without the rebalance formula there is no crit and no notice. See
+`docs/docs_onhit_and_damage.md`, Crit notice.
+
+```json5
+{
+  // ...
+  "combatCritNotice": true
+  // ...
+}
+```
+
+## craftedExtrasTemperRules
+
+A temper done in the vanilla menu reaches the server as a `craftedExtras` report. With the rules on, that report
+follows the temper recipe's rank gates and the rank cap of the recipe's profession and costs one craft of fatigue, as
+a temper through the native recipe path does. With the rules off it is stored for the materials alone, up to
+Legendary and free of fatigue, as in 1.0. Not set (default), the rules are on while
+`alduinakDamageFormulaSettings` has `enabled` or `durability.enabled` true and off otherwise; `true` or `false`
+decides whatever the block says. Read at boot, which logs `[crafted] a reported temper follows its recipe's rank
+gates and rank cap and costs a craft of fatigue: craftedExtrasTemperRules is not set and
+alduinakDamageFormulaSettings is on`, or `[crafted] a reported temper takes materials only: ...`. See
+`docs/docs_roleplay_mastery.md`.
+
+```json5
+{
+  // ...
+  "craftedExtrasTemperRules": true
   // ...
 }
 ```
@@ -1298,7 +1547,7 @@ fatigue maps onto its exhaustion scale, 0 (rested) to 960. Which hunger effect a
 | `needsAlcoholDiscount` | `0.25` | Steadied by drink: the share of the fatigue cost a cook or alchemist (Novice or better in any craft slot) saves, after drinking an alcohol, on the crafts their cook or alchemist rank prices, so a Blacksmith with a Cook tertiary still pays full price for smithing; `0` turns the rule off. Any other character gets the hunger only. The notice reads "The drink steadies your hands: your Cook work costs 25% less fatigue for 10 minutes." (alcohol does not warm, owner decision O16). Read at boot |
 | `needsAlcoholMinutes` | `10` | How long one drink steadies; another drink refreshes the timer and never stacks |
 | `needsAlcoholItems` | `{}` | `{ "<ALCH editor id or hex id>": true \| false }` counting an item as alcohol or not, over the record rule (an ALCH drunk with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate effect: every vanilla ale, mead, wine, brandy, flin, sujamma, shein and matze; not juice, water, milk or skooma). Rotgut and Battle-Brew Special carry no rate effect and need `true` here to count |
-| `blockStaminaCost` | `0.1` | Share of max stamina a blocked weapon hit costs the blocker; applies with needs off too, `0` turns it off |
+| `blockStaminaCost` | `0.1` | Share of max stamina a blocked weapon hit costs the blocker; applies with needs off too, `0` turns it off. While `alduinakDamageFormulaSettings.enabled` is true the cost grows with the worn armor weight (`blockStamina` of that block) |
 | `blockStaminaCostWarrior` | `0.05` | What a warrior pays instead |
 | `blockStaggerWithoutStamina` | `true` | A blocker whose stamina is below the block cost still blocks that hit but is staggered on their own screen and on their copies (at most once a second, never while downed, mounted or seated); logs `[needs] <id> staggered: blocked without stamina`. Needs the matching client |
 | `blockStaggerMagnitude` | `0.5` | The stagger's `staggerMagnitude`, clamped to 0.1 to 1 |
@@ -1345,7 +1594,7 @@ Body rules, raw meat and the cure:
 | `survivalRespawnHealthPoints` | `1` | Health points a respawn after a death wakes with (temple, afterlife arrival, a looted PK body's respawn) and a staff revive out of a realm sets, measured against the race's base health (100, an Orc 150); the client is sent the value right after the native respawn; magicka and stamina keep theirs; `0` uses the share below instead |
 | `survivalRespawnHealth` | `0.01` | Share of base health used when the points are 0 or the race cannot be read, above 0 up to 1; `1` turns the respawn rule off, whatever the points say |
 | `survivalCarryWeightSpell` | `"Survival_abLowerCarryWeightSpell"` | Editor id or desc of the carry weight ability (Survival esl 0x887, carry weight 150); `""` turns it off |
-| `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a); potions, food and Restoration still heal. The server-side refusal of client regeneration is the native `healthRegenerationMultiplier` of plan task NV1 (top level; 0 refuses every health increase a client reports), which needs a native server build from `ea63f69a` or later |
+| `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a); potions, food and Restoration still heal. The server-side refusal of client regeneration is the native `healthRegenerationMultiplier` (top level, its own section above; 0 refuses every health increase a client reports), which needs a native server build from `ea63f69a` or later |
 | `survivalFreezingWater` | `true` | Grants `AldSurvival_FreezingWaterDamage` once (it hurts only while swimming with the client's `AldSurvival_FreezingArea` at 1) and runs the freezing water cold; `false` turns both off |
 | `survivalFoodPoisoningChance` | `0.5` | Chance raw meat (`Survival_FoodRawMeat`, the hunting meats and `survivalRawMeatExtra`) gives food poisoning, times (1 - disease resistance); 0 to 1, `0` turns it off. A race with `rawMeatSafe` never gets it |
 | `survivalFoodPoisoningHours` | `24` | Real hours food poisoning lasts, offline included |
@@ -1358,7 +1607,8 @@ Cold and warmth:
 | Key | Default | Meaning |
 |---|---|---|
 | `survivalColdEnabled` | `true` | `false` stops cold and warmth |
-| `survivalColdHoursToNumb` | `1.3334` | Real hours in which cold level 20 with no warmth fills the bar, 20 times slower than single-player Survival |
+| `survivalColdHoursToNumb` | `1.3334` | Real hours in which cold level 20 with no warmth fills the bar at an area rate of 1, 20 times slower than single-player Survival |
+| `survivalColdAreaRate` | `{ "warm": 1, "cool": 1, "freezing": 0.6667, "chillyInterior": 0.6667 }` | Cold gain multiplier of the area class the character stands in, merged key by key, 0 or more each; not applied in freezing water or to frost spell and venom hits. The default makes the coldest case, a freezing area on a blizzard night (level 20) with no warmth, take one hour from no cold to Freezing and 96 minutes to Numb; milder weather there takes 75 to 120 minutes and a clear or rainy day never reaches Freezing. `0.8333` for both puts the hour on a snowy night instead (a blizzard night 48 minutes); `1` everywhere is the pace before 2026-10-01 (40 minutes). The `[survival] cold:` boot line prints the four rates |
 | `survivalColdLevelMult` | `50` | `Survival_ColdLevelMult`: with no warmth, cold rises this much per cold level in `survivalColdHoursToNumb` hours |
 | `survivalColdStages` | `[50, 120, 300, 500, 800]` | Cold at which Comfortable, Chilly, Very Cold, Freezing and Numb begin (Warm lasts from 0 until the first after warming to 0); five rising numbers below 1000 |
 | `survivalColdStart` | `55` | Cold of a new character, after a respawn and after an admin reset; offline warming stops here |

@@ -7,6 +7,7 @@ import { WorldCleanerService } from "./worldCleanerService";
 import { logToPlatformLog, logTrace } from "../../logging";
 import { notifyNextUpdate } from "./customPacketUtil";
 import { PROPERTY_KEY_BASE_ID, getDiff, getInventory, hasItemExtras, isNamedItemBase } from "../../sync/inventory";
+import { droppedName, getDurabilityConfig } from "../../sync/durabilityNames";
 import { getPcInventory } from "./remoteServer";
 
 const DROP_SCAN_RADIUS = 2000;
@@ -90,6 +91,8 @@ export class DropItemService extends ClientListener {
         }
 
         let numFound = 0;
+        // Read before the local copy of the dropped reference is deleted
+        const worldName = (getDurabilityConfig().enabled && reference && this.sp.ObjectReference.from(this.sp.Game.getFormEx(reference))?.getDisplayName()) || "";
 
         const worldCleanerService = this.controller.lookupListener(WorldCleanerService);
 
@@ -123,10 +126,16 @@ export class DropItemService extends ClientListener {
         const t = MsgType.DropItem;
         this.controller.emitter.emit("sendMessage", {
             message: {
-                ...this.droppedExtras(baseId), t, baseId, count,
+                ...this.droppedExtras(baseId), ...this.droppedCondition(baseId, count, worldName), t, baseId, count,
             },
             reliability: "reliable"
         });
+    }
+
+    // Copies that differ only by condition are told apart by the tag in the name, which the server reads to drop that copy
+    private droppedCondition(baseId: number, count: number, worldName: string): Record<string, unknown> {
+        const name = droppedName(this.sp.Game.getPlayer() as Actor, getPcInventory(), baseId, count, worldName);
+        return name ? { name, condition: undefined } : {};
     }
 
     // The copy the server still holds but the player no longer has is the one on the ground

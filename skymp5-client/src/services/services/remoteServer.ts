@@ -26,6 +26,7 @@ import { refreshMovement, setActorValuePercentage } from '../../sync/actorvalues
 import { Appearance, applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '../../sync/equipment';
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
+import { applyDurabilityNames } from '../../sync/durabilityNames';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
 import { describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
@@ -334,6 +335,8 @@ on('update', () => {
         return !f || !isBoundItem(f);
       });
       applyInventory(player, pcInv, false, true);
+      // Condition tags follow the server without a remove and add of what is worn; a base this apply still changes waits for the next one
+      applyDurabilityNames(player, pcInv, { skipBaseIds: new Set(diff.map((e) => e.baseId)), reAdd: !spawnEquipment && spawnTopUp === "none" });
       requestWornEnchantmentReapply();
       if (spawnTopUp === "apply") {
         spawnTopUp = "queued";

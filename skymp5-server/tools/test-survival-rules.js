@@ -218,18 +218,19 @@ const tick = () => new Promise((r) => setImmediate(r))
 const later = (ms = LOGIN_SYNC_DELAY_MS) => { clock.now += ms }
 
 const RACES = { NordRace: false, RedguardRace: false, KhajiitRace: true }
-const COLD_MULT = { NordRace: 0, KhajiitRace: 1.25 }
+const COLD_MULT = { KhajiitRace: 1.25 }
+const RACE_WARMTH = { NordRace: 25 }
 // Base health as RacialSystem.maxHealth reads it: the RACE starting value plus the Player offset, 0 for an unreadable race
 const BASE_HEALTH = { OrcRace: 150 }
 
 // A configured system with every record resolved, its hooks on a mock server; actors are added with join
-const setup = (settings = { survivalEnabled: true }, cold = false, plugin = true) => {
+const setup = (settings = { survivalEnabled: true }, cold = false, plugin = true, raceTraits = {}) => {
   const logs = []
   const mp = makeMp()
   const racial = {
     traits: (id) => {
       const raceEdid = RECORDS.get(mp.get(id, 'appearance')?.raceId)?.record.editorId || ''
-      return { raceEdid, rawMeatSafe: !!RACES[raceEdid], coldRateMult: COLD_MULT[raceEdid] ?? 1, warmth: 0 }
+      return { raceEdid, rawMeatSafe: !!RACES[raceEdid], coldRateMult: COLD_MULT[raceEdid] ?? 1, warmth: RACE_WARMTH[raceEdid] ?? 0, ...raceTraits[raceEdid] }
     },
     maxHealth: (id) => { const edid = racial.traits(id).raceEdid; return edid ? BASE_HEALTH[edid] ?? 100 : 0 },
   }
@@ -663,7 +664,20 @@ async function main() {
     assert.deepEqual([0, 55, 119, 120, 300, 799, 800, 1000].map((c) => C.coldStageOf(c, false, cfg.stages)), [1, 1, 1, 2, 3, 4, 5, 5])
     assert.equal(C.coldStageOf(20, true, cfg.stages), 0)
     const bare = C.coldRatePerSec(16, 0, 1, cfg)
-    assert.ok(Math.abs(1000 / bare - 6000.3) < 0.1, 'a snowy coast night fills the bar in 100 minutes')
+    assert.ok(Math.abs(1000 / bare - 6000.3) < 0.1, 'level 16 at the full rate fills the bar in 100 minutes')
+    assert.deepEqual(cfg.areaRate, { warm: 1, cool: 1, freezing: 0.6667, chillyInterior: 0.6667 })
+    assert.deepEqual(['warm', 'cool', 'freezing', 'chillyInterior', 'interior', 'none'].map((a) => C.areaRateOf(a, false, cfg.areaRate)), [1, 1, 0.6667, 0.6667, 1, 1])
+    assert.equal(C.areaRateOf('freezing', true, cfg.areaRate), 1, 'freezing water keeps the full rate')
+    // Minutes from no cold to the stage at a level in an area class with no warmth, Infinity when the level's cap stops short of it
+    const minutesTo = (stage, area, level, c = cfg) => C.coldCapOf(level, c) < c.stages[stage - 1] ? Infinity : c.stages[stage - 1] / (C.coldRatePerSec(level, 0, C.areaRateOf(area, false, c.areaRate), c) * 60)
+    const worst = C.coldLevelOf('freezing', true, 'blizzard', false, cfg.levels).level
+    assert.equal(worst, 20)
+    assert.ok(Math.abs(minutesTo(4, 'freezing', worst) - 60) < 0.05, 'the coldest area at its coldest takes an hour from no cold to Freezing')
+    assert.deepEqual([[10, 4], [12, 4], [16, 4], [20, 5], [6, 2]].map(([l, st]) => Math.round(minutesTo(st, 'freezing', l))), [120, 100, 75, 96, 48])
+    assert.equal(minutesTo(4, 'freezing', 6), Infinity, 'a clear day in a freezing area stops at Chilly')
+    const full = { ...cfg, areaRate: { warm: 1, cool: 1, freezing: 1, chillyInterior: 1 } }
+    for (const area of ['warm', 'cool']) for (const l of [1, 3, 4, 5, 8, 9, 11, 13, 15]) for (const st of [2, 3, 4, 5]) assert.equal(minutesTo(st, area, l), minutesTo(st, area, l, full), `${area} level ${l} keeps its pace`)
+    assert.ok(Math.abs(minutesTo(4, 'freezing', worst, full) - 40) < 0.05, 'the same case at the full pace took 40 minutes')
     assert.ok(Math.abs(C.coldRatePerSec(16, 206, 1, cfg) / bare - 0.15) < 1e-9)
     assert.equal(C.coldRatePerSec(16, 0, 0, cfg), 0)
     assert.equal(C.stepCold(500, 60, 299, 0.1, 40 / 60, false), 460)
@@ -702,14 +716,16 @@ async function main() {
     assert.equal(C.nearHeatPoint([[0, 0, 0]], [580, -580, 580], 580), true)
     assert.equal(C.nearHeatPoint([[0, 0, 0]], [581, 0, 0], 580), false)
     const problems = []
-    const odd = C.parseColdSettings({ survivalColdStages: [1, 2], survivalColdHoursToNumb: 0, survivalWarmth: { torch: -1, warm: [60, 30, 25, 25] }, survivalRegionClimate: { coast: 'hot', reach: 'freezing' }, survivalColdLevels: { rain: 5, fog: 2 }, survivalColdOnHit: { falmer: 0, chaurus: 20 }, survivalHighAltitude: { freezingZ: 18000 }, survivalColdKills: 'yes' }, problems)
-    assert.deepEqual([odd.stages, odd.hoursToNumb, odd.warmth.torch, odd.warmth.warm, odd.regionClimate.coast, odd.regionClimate.reach, odd.levels.rain, odd.coldOnHit, odd.freezingZ, odd.highRegions, odd.kills],
-      [[50, 120, 300, 500, 800], 1.3334, 50, [60, 30, 25, 25], 'freezing', 'freezing', 5, { frostbitespider: 30, falmer: 0, chaurus: 20 }, 18000, { fallForest: 15150 }, false])
+    const odd = C.parseColdSettings({ survivalColdStages: [1, 2], survivalColdHoursToNumb: 0, survivalWarmth: { torch: -1, warm: [60, 30, 25, 25] }, survivalRegionClimate: { coast: 'hot', reach: 'freezing' }, survivalColdLevels: { rain: 5, fog: 2 }, survivalColdAreaRate: { freezing: 0.5, cool: -1, tundra: 1 }, survivalColdOnHit: { falmer: 0, chaurus: 20 }, survivalHighAltitude: { freezingZ: 18000 }, survivalColdKills: 'yes' }, problems)
+    assert.deepEqual([odd.stages, odd.hoursToNumb, odd.warmth.torch, odd.warmth.warm, odd.regionClimate.coast, odd.regionClimate.reach, odd.levels.rain, odd.areaRate, odd.coldOnHit, odd.freezingZ, odd.highRegions, odd.kills],
+      [[50, 120, 300, 500, 800], 1.3334, 50, [60, 30, 25, 25], 'freezing', 'freezing', 5, { warm: 1, cool: 1, freezing: 0.5, chillyInterior: 0.6667 }, { frostbitespider: 30, falmer: 0, chaurus: 20 }, 18000, { fallForest: 15150 }, false])
     assert.deepEqual(problems, [
       'survivalColdStages [1,2] is not 5 numbers in order, the default is used',
       'survivalWarmth.torch -1 is not usable, ignored',
       'survivalColdHoursToNumb 0 is out of range, the default is used',
       'survivalColdLevels.fog 2 is not usable, ignored',
+      'survivalColdAreaRate.cool -1 is not usable, ignored',
+      'survivalColdAreaRate.tundra 1 is not usable, ignored',
       'survivalRegionClimate.coast "hot" is not none, warm, cool, freezing, ignored',
       'survivalColdKills "yes" is not true or false, the default is used',
     ])
@@ -717,7 +733,7 @@ async function main() {
 
   const coldRecord = (cold, extra = {}) => ({ v: 1, at: clock.now, body: { spells: [], respawn: 1 }, foodPoisonUntil: 0, foodPoisonSpell: '', cold, coldSpell: '', warmBonus: false, warmUntil: 0, ...extra })
 
-  await test('cold: a snowy night on the coast climbs to Numb in about 100 minutes, swaps the stage abilities, caps the health penalty and never kills by default', async () => {
+  await test('cold: a snowy night on the coast fills the bar in about 150 minutes, swaps the stage abilities, caps the health penalty and never kills by default', async () => {
     const t = setup({ survivalEnabled: true, survivalNightHours: [0, 24] }, true)
     Math.random = () => 0.99
     const a = actor()
@@ -731,7 +747,7 @@ async function main() {
     assert.deepEqual(t.states(a), [{ customPacketType: 'survivalState', cold: 55, coldStage: 1, coldStageName: 'Comfortable', coldPenalty: 0, temperatureLevel: 0, warmth: 0, freezingArea: true, afflictions: [], diseases: [], contagion: { seconds: 60, range: 150 } }])
     t.logs.length = 0
     t.mp.calls.length = 0
-    later(10 * 60000)
+    later(15 * 60000)
     await t.update()
     assert.equal(Math.round(t.rec(a).cold), 155)
     assert.deepEqual(t.mp.calls, [`${h} -86e`, `${h} +891`])
@@ -740,7 +756,7 @@ async function main() {
     const s = t.states(a).pop()
     assert.deepEqual([s.cold, s.coldStage, s.coldPenalty, s.temperatureLevel], [155, 2, 0.04, 4])
     assert.equal(t.rec(a).coldSpell, desc(0x891))
-    later(90 * 60000)
+    later(130 * 60000)
     await t.update()
     assert.equal(t.rec(a).cold, 1000)
     assert.deepEqual(t.mp.calls.slice(-2), [`${h} -891`, `${h} +871`])
@@ -749,7 +765,7 @@ async function main() {
     assert.equal(t.mp.get(a, 'isDead'), false)
   })
 
-  await test('cold: Nords gain none, Khajiit gain a quarter more, warm clothes and a torch slow it, the rise stops at the level cap and falls above it', async () => {
+  await test('cold: Nords gain it less their 25 warmth, Khajiit gain a quarter more, warm clothes and a torch slow it, the rise stops at the level cap and falls above it', async () => {
     const t = setup({ survivalEnabled: true, survivalNightHours: [0, 24] }, true)
     const [n, k, r, w] = [actor(), actor(), actor(), actor()]
     for (const [id, race] of [[n, NORD_RACE], [k, KHAJIIT_RACE], [r, REDGUARD_RACE], [w, REDGUARD_RACE]]) {
@@ -761,8 +777,9 @@ async function main() {
     await t.update()
     later(10 * 60000)
     await t.update()
-    const bare = C.coldRatePerSec(16, 0, 1, t.sys.cold) * 600
-    assert.equal(t.rec(n).cold, 55)
+    const bare = C.coldRatePerSec(16, 0, t.sys.cold.areaRate.freezing, t.sys.cold) * 600
+    assert.ok(Math.abs(t.rec(n).cold - (55 + bare * (1 - 0.85 * 25 / 206))) < 1e-6)
+    assert.equal(t.states(n).pop().warmth, 25)
     assert.ok(Math.abs(t.rec(k).cold - (55 + bare * 1.25)) < 1e-6)
     assert.ok(Math.abs(t.rec(r).cold - (55 + bare)) < 1e-6)
     assert.ok(Math.abs(t.rec(w).cold - (55 + bare * (1 - 0.85 * 129 / 206))) < 1e-6)
@@ -883,7 +900,7 @@ async function main() {
     assert.ok(clock.now - t.sys.online.get(a).fightAt < 1000, 'a hit marks the fight')
   })
 
-  await test('cold: swimming in a freezing area raises cold to Very Cold at once and holds level 30; a flame cloak, a Nord or warm water are spared', async () => {
+  await test('cold: swimming in a freezing area raises cold to Very Cold at once and holds level 30; a Nord is not spared, a flame cloak, a race with cold x0 or warm water are', async () => {
     const t = setup({ survivalEnabled: true, survivalNightHours: [24, 0] }, true)
     t.weather.kind = 'pleasant'
     const [a, n] = [actor(), actor()]
@@ -898,7 +915,17 @@ async function main() {
     t.sys.customPacket(ua, 'survivalReport', { swimming: true, flameCloak: false }, t.ctx)
     t.sys.customPacket(un, 'survivalReport', { swimming: true, flameCloak: false }, t.ctx)
     assert.equal(t.rec(a).cold, 300)
-    assert.equal(t.rec(n).cold, 55)
+    assert.equal(t.rec(n).cold, 300)
+    const immune = setup({ survivalEnabled: true, survivalNightHours: [24, 0] }, true, true, { NordRace: { coldRateMult: 0 } })
+    const i = actor()
+    const ui = immune.join(i, NORD_RACE)
+    immune.put(i, TAMRIEL)
+    later()
+    await immune.update()
+    immune.sys.customPacket(ui, 'survivalReport', { swimming: true, flameCloak: false }, immune.ctx)
+    later(10 * 60000)
+    await immune.update()
+    assert.equal(immune.rec(i).cold, 55)
     assert.ok(t.logs.includes(`[survival] ${h} swimming in freezing water: level 30, cold 55`), t.logs.join('\n'))
     const s = t.states(a).pop()
     assert.deepEqual([s.coldStage, s.freezingArea], [3, true])
@@ -1157,7 +1184,7 @@ async function main() {
   await test('afflictions: Numb rolls Frostbitten every 5 minutes in the cold step', async () => {
     const t = setup({ survivalEnabled: true, survivalNightHours: [0, 24] }, true)
     const a = actor()
-    t.join(a, REDGUARD_RACE, coldRecord(798))
+    t.join(a, REDGUARD_RACE, coldRecord(799))
     t.put(a, TAMRIEL)
     later()
     await t.update()
@@ -1484,7 +1511,7 @@ async function main() {
     await t.update()
     later(10 * 60000)
     await t.update()
-    const bare = C.coldRatePerSec(16, 0, 1, t.sys.cold) * 600
+    const bare = C.coldRatePerSec(16, 0, t.sys.cold.areaRate.freezing, t.sys.cold) * 600
     assert.ok(Math.abs(t.rec(a).cold - (55 + bare * 1.5)) < 1e-6, String(t.rec(a).cold))
     assert.match(t.sys.describe(), /^diseases Brown Rot fatigue refill x0\.75\/0\.5\/0\.25, Gutworm food x0\.75\/0\.5\/0\.25, Chills cold gain x1\.25\/1\.5\/1\.75, Collywobbles hunger drain x1\.25\/1\.5\/1\.75 by stage/)
     assert.equal(setup({}).sys.hungerDrainMult(a), 1, 'nothing while survival is off')

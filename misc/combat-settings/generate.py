@@ -6,8 +6,9 @@ classifier (classify.py, the rules of design.json) and writes into --out:
                                       overrides (regex rules, recipe-rank audit, their template variants), claws as
                                       unarmed.raceOverride objects, creature natural DT, block stamina and durability
                                       (HP per row, generated repair fallback materials)
-  esp-lists.json                      input of plugin run r27b: tooltip values, Orcish and Dwarven weights, slow record
-                                      speeds, claw values, the D6 retier, master and shadow checks
+  esp-lists.json                      input of the patcher's stat pass (misc/proficiency-patcher/patch.py --stats): the
+                                      tooltip values, Orcish and Dwarven weights and slow record speeds the plugin
+                                      does not hold yet, the claw values and the D6 retier with what the plugin has
   report.md                           coverage, the audit, fallbacks, every list's counts and every check
 Form ids: the settings use the server's FormDesc ("13986:Skyrim.esm"), the plugin lists the patcher's FormKey
 ("013986:Skyrim.esm"). Rerun after every plugin change and every Update Modlist.
@@ -15,8 +16,9 @@ Form ids: the settings use the server's FormDesc ("13986:Skyrim.esm"), the plugi
 Run:  python misc/combat-settings/generate.py --settings <Test server-settings.json> --out <dir>
 Options: --plugin <AlduinakAdditions.esp> (read in place of the load order's copy), --data <Data dir>,
          --design <design.json>, --enable formula,durability (writes enabled: true), --assume-retier (applies the
-         design's D6 recipe ranks to the audit before the plugin carries them), --items <dir> (classify a research
-         dump of items/*.json instead of plugins; only report.md is written)
+         design's D6 recipe ranks to the audit before the plugin carries them), --synced (a problem when the plugin
+         lacks a listed value, a D6 rank or a claw value: the block and the plugin ship together), --items <dir>
+         (classify a research dump of items/*.json instead of plugins; only report.md is written)
 """
 import argparse
 import collections
@@ -238,14 +240,14 @@ def settings_block(D, cls, races, lo_ingredients, enable, source=''):
     return block, dict(problems=problems, ocounts=ocounts, ndt_rows=ndt_rows, ndt_unmapped=ndt_unmapped, fmat_rows=fmat_rows)
 
 
-# ------------------------------------------------------------------ plugin lists (PL-r27b)
+# ------------------------------------------------------------------ plugin lists (the patcher's stat pass)
 def esp_lists(D, cls, lo, input_plugin, races):
     tooltips_w, tooltips_a, weights, speeds, skipped_weights = [], [], [], [], []
     touched = collections.defaultdict(collections.Counter)
     shadowed = []
     names = lo.names if lo else []
     after = set(names[names.index(ALDUINAK) + 1:]) if ALDUINAK in names else set()
-    survival_listed = collections.Counter()
+    survival_listed, survival_seen = collections.Counter(), set()
 
     def entry(r, **kw):
         return dict(item=r['form_key'], edid=r['edid'], name=r['name'], winner=r['winning_plugin'], **kw)
@@ -254,9 +256,10 @@ def esp_lists(D, cls, lo, input_plugin, races):
         touched[listname][r['form_key'].split(':', 1)[1]] += 1
         if after & set(r.get('plugins', [])):
             shadowed.append([listname, r['edid'], ', '.join(sorted(after & set(r['plugins'])))])
-        for k in SURVIVAL_KEYWORDS:
-            if k in C.kw_list(r):
-                survival_listed[k] += 1
+        # A record in two lists counts once
+        if r['form_key'] not in survival_seen:
+            survival_seen.add(r['form_key'])
+            survival_listed.update(k for k in SURVIVAL_KEYWORDS if k in C.kw_list(r))
 
     for w in cls.weapons:
         if not cls.playable(w):
@@ -307,9 +310,10 @@ def esp_lists(D, cls, lo, input_plugin, races):
     for rx, rule in [(re.compile(x['created']), x) for x in D.get('recipeRetier', {}).get('rules', [])]:
         for c in cls.cobjs:
             if c['bench'] not in C.TEMPER_BENCHES and rx.search(c['created_edid']):
-                gates = sorted(set(C.PROF_GATE.findall(' '.join(c['conditions']))))
+                gates = [f'{p} {k}' for p, k in sorted(set(C.PROF_GATE.findall(' '.join(c['conditions']))))]
+                to = f"{rule['profession']} {rule['rank']}"
                 retier.append(dict(recipe=c.get('form_key'), edid=c['edid'], created=c['created_edid'], bench=c['bench'],
-                                   gates=[f'{p} {k}' for p, k in gates], to=f"{rule['profession']} {rule['rank']}"))
+                                   gates=gates, to=to, landed=gates == [to]))
     masters = [m.lower() for m in L.masters_of(input_plugin)] if input_plugin else []
     master_rows = []
     for listname, plugins in touched.items():
@@ -318,12 +322,14 @@ def esp_lists(D, cls, lo, input_plugin, races):
     for x in (tooltips_w, tooltips_a, weights, speeds):
         x.sort(key=lambda e: (e['item'].split(':', 1)[1], e['item']))
     out = {
-        'comment': 'Input of plugin run r27b (plan section 3 steps 11 to 14), generated by misc/combat-settings/generate.py. '
-                   'Every entry names the item by FormKey, the winning plugin and the value now (from) and after (to). '
-                   'tooltips.weapons: WEAP DATA damage = the row damage rounded half up; tooltips.armor: ARMO DNAM rating = '
-                   'piece DT x 10 (clothing 0); weights: Orcish and Dwarven heavy pieces at the row weight of their slot; '
-                   'speeds: WEAP DNAM speed raised to the row speed; claws: RACE unarmed damage once unarmedDamageFrom reads '
-                   'the synced dagger; retier: D6. The pass must not touch the keywords in untouchedKeywords.',
+        'comment': 'Input of the patcher\'s stat pass (misc/proficiency-patcher/patch.py --stats), generated by '
+                   'misc/combat-settings/generate.py. The lists hold only what the input plugin lacks, so they are empty once '
+                   'the pass has run. Every entry names the item by FormKey, the winning plugin and the value now (from) and '
+                   'after (to). tooltips.weapons: WEAP DATA damage = the row damage rounded half up; tooltips.armor: ARMO DNAM '
+                   'rating = piece DT x 10 (clothing 0); weights: Orcish and Dwarven heavy pieces at the row weight of their '
+                   'slot; speeds: WEAP DNAM speed raised to the row speed; claws: RACE unarmed damage once unarmedDamageFrom '
+                   'reads the synced dagger; retier: D6 (spec.json tailoring.recipes), landed when the recipe is gated at that '
+                   'rank alone. The pass must not touch the keywords in untouchedKeywords.',
         'tooltips': {'weapons': tooltips_w, 'armor': tooltips_a},
         'weights': weights,
         'speeds': speeds,
@@ -333,6 +339,20 @@ def esp_lists(D, cls, lo, input_plugin, races):
     }
     checks = dict(master_rows=master_rows, shadowed=shadowed, skipped_weights=skipped_weights, survival_listed=survival_listed)
     return out, checks
+
+
+def sync_problems(lists):
+    """What the input plugin lacks of its own lists: the block and the plugin ship together."""
+    t = lists['tooltips']
+    counts = (len(t['weapons']), len(t['armor']), len(lists['weights']), len(lists['speeds']))
+    out = []
+    if any(counts):
+        out.append('the plugin lacks %d listed values (tooltips %d WEAP / %d ARMO, weights %d, speeds %d): run the stat pass, '
+                   'patch.py --stats esp-lists.json' % ((sum(counts),) + counts))
+    out += [f"retier: {r['edid']} is gated {', '.join(r['gates']) or 'for anyone'}, not {r['to']} alone" for r in lists['retier'] if not r['landed']]
+    out += [f"claws: {c['race']} has unarmed damage {c['unarmedNow']}, {c['unarmedDamageFrom']} gives {c['after']}"
+            for c in lists['claws'] if c['unarmedNow'] != c['after']]
+    return out
 
 
 # ------------------------------------------------------------------ report
@@ -388,7 +408,8 @@ def report(D, cls, meta, info=None, lists=None, checks=None):
                   'recipe; per kind and row, the ingredient most temper recipes of that row use.\n')
         L_.append(md(['kind', 'row', 'material', 'desc', 'evidence'], info['fmat_rows']))
     if lists is not None:
-        L_.append('## Plugin lists for r27b (esp-lists.json)\n\n')
+        L_.append('## Plugin lists for the stat pass (esp-lists.json, patch.py --stats)\n\nWhat the input plugin lacks; every list '
+                  'but claws and retier is empty once the pass has run.\n\n')
         L_.append(md(['list', 'records'], [['tooltips.weapons', len(lists['tooltips']['weapons'])], ['tooltips.armor', len(lists['tooltips']['armor'])],
                                            ['weights', len(lists['weights'])], ['speeds', len(lists['speeds'])],
                                            ['speeds (base records)', sum(1 for s in lists['speeds'] if not s['variantOf'])],
@@ -402,9 +423,9 @@ def report(D, cls, meta, info=None, lists=None, checks=None):
         L_.append('Base records slower than their row (template variants follow):\n\n' + md(
             ['edid', 'type', 'row', 'speed', 'row speed'], [[s['edid'], s['type'], s['row'], s['from'], s['to']] for s in lists['speeds'] if not s['variantOf']]))
         L_.append('Claws (RACE unarmed damage once the dagger tooltips are synced; the new formula reads unarmed.raceOverride instead):\n\n'
-                  + md(['race', 'now', 'unarmedDamageFrom', 'after r27b'], [[c['race'], c['unarmedNow'], c['unarmedDamageFrom'], c['after']] for c in lists['claws']]))
-        L_.append('D6 retier (recipes in the input plugin):\n\n' + md(['recipe', 'created', 'bench', 'gates now', 'to'],
-                                                                     [[r['edid'], r['created'], r['bench'], ', '.join(r['gates']), r['to']] for r in lists['retier']]))
+                  + md(['race', 'now', 'unarmedDamageFrom', 'after the pass'], [[c['race'], c['unarmedNow'], c['unarmedDamageFrom'], c['after']] for c in lists['claws']]))
+        L_.append(f"D6 retier (recipes in the input plugin; {sum(r['landed'] for r in lists['retier'])} of {len(lists['retier'])} at their rank):\n\n"
+                  + md(['recipe', 'created', 'bench', 'gates now', 'to'], [[r['edid'], r['created'], r['bench'], ', '.join(r['gates']), r['to']] for r in lists['retier']]))
         L_.append('Plugins whose records each list overrides, and whether the input plugin already has them as masters:\n\n'
                   + md(['list', 'plugin', 'records', 'master'], checks['master_rows']))
         L_.append(f'Listed records also overridden after {ALDUINAK} (the change would be shadowed): {len(checks["shadowed"])}'
@@ -432,7 +453,8 @@ def summary(block, lists, info):
             f"{len(dur['bowHP'])}, crossbows {len(dur['crossbowHP'])}, armor sets {len(dur['armorSetHP'])}, shield share "
             f"{dur['shieldHPShare']}, fallback materials {sum(len(v) for v in dur['repair']['fallbackMaterial'].values())}; plugin lists "
             f"tooltips {len(lists['tooltips']['weapons'])} WEAP / {len(lists['tooltips']['armor'])} ARMO, weights {len(lists['weights'])}, "
-            f"speeds {len(lists['speeds'])}, retier {len(lists['retier'])}; problems {len(info['problems'])}")
+            f"speeds {len(lists['speeds'])}, retier {len(lists['retier'])} ({sum(r['landed'] for r in lists['retier'])} at their rank); "
+            f"problems {len(info['problems'])}")
 
 
 def dumps_rows(obj, pad=''):
@@ -463,6 +485,7 @@ def main(argv=None):
     ap.add_argument('--out', required=True)
     ap.add_argument('--enable', default='', help='comma list of formula, durability')
     ap.add_argument('--assume-retier', action='store_true')
+    ap.add_argument('--synced', action='store_true', help='a problem when the plugin lacks a listed value, a D6 rank or a claw value')
     ap.add_argument('--items', help='a research dump folder (weapons.json, armors.json, cobj.json) instead of plugins')
     a = ap.parse_args(argv)
     D = read_json(a.design)
@@ -470,7 +493,7 @@ def main(argv=None):
     if enable - {'formula', 'durability'}:
         raise GenError(f'--enable takes formula and durability, not {", ".join(enable - {"formula", "durability"})}')
     os.makedirs(a.out, exist_ok=True)
-    opts = f"options: enable {','.join(sorted(enable)) or 'none'}, assume-retier {a.assume_retier}"
+    opts = f"options: enable {','.join(sorted(enable)) or 'none'}, assume-retier {a.assume_retier}{', synced' if a.synced else ''}"
     if a.items:
         load = lambda n: read_json(os.path.join(a.items, n))  # noqa: E731
         cls = C.Classifier(D, load('weapons.json'), load('armors.json'), load('cobj.json'), a.assume_retier).run()
@@ -489,6 +512,8 @@ def main(argv=None):
     source = f"misc/combat-settings/generate.py; {ALDUINAK} {sha}; {len(load_order)} plugins; design {D['version'].split(' ')[0]}; {opts}"
     block, info = settings_block(D, cls, races, ingredients, enable, source)
     lists, checks = esp_lists(D, cls, lo, input_plugin, races)
+    if a.synced:
+        info['problems'] += sync_problems(lists)
     meta = (f"Input: {len(load_order)} plugins from the loadOrder of {a.settings}; {ALDUINAK} read from {input_plugin} "
             f"(sha256 {sha}); design {D['version']}; {opts}.")
     write_json(os.path.join(a.out, 'alduinakDamageFormulaSettings.json'), {'alduinakDamageFormulaSettings': block})

@@ -15,7 +15,7 @@ import { AbilityGroup, LOAD_PACKETS, StageAbilityTracker } from "./stageAbilitie
 import { HEAT_INTERIORS, HEAT_SOURCE_INPUTS, HEAT_WORLDS } from "./heatSources";
 import { ARMOR_WARMTH } from "./armorWarmth";
 import {
-  AreaClass, COLD_MAX, COLD_STAGE_NAMES, ColdConfig, RATED_SLOTS, WeatherAdd, WornArmor, areaOf, coldCapOf, coldLevelOf, coldRatePerSec, coldStageOf, gearWarmth,
+  AreaClass, COLD_MAX, COLD_STAGE_NAMES, ColdConfig, RATED_SLOTS, WeatherAdd, WornArmor, areaOf, areaRateOf, coldCapOf, coldLevelOf, coldRatePerSec, coldStageOf, gearWarmth,
   isFreezingWater, isNight, nearHeatPoint, parseColdSettings, stepCold, temperatureLevelOf, warmthReduction, weatherAddOf,
 } from "./survivalClimate";
 import {
@@ -43,10 +43,10 @@ type Mp = any;
 // for the Cure Disease effect. Shrines (Survival_BlessingAltars) cure nothing and say so, once a minute per player.
 // Cold runs 0 to 1000 on Survival Mode's stages (survivalClimate.ts): every COLD_TICK_MS the character's area (cold lists, world and
 // region tables, height), night, the region's weather and freezing water give a cold level that caps how far cold rises and how fast,
-// slowed by warmth (worn clothing ratings, a torch, the race's warmth, a hot meal) and times the race's coldRateMult; above the cap it
-// falls unless the character fought in the last FIGHT_MS. Standing at a heat source (heatSources.ts) warms, frost spells and venom chill,
-// fire spells and hot food warm. The stage ability Survival_ColdStage0..5 follows the stage and the client takes the maximum health
-// penalty from survivalState. Cold falls while logged out and starts over at a respawn.
+// slowed by warmth (worn clothing ratings, a torch, the race's warmth, a hot meal), times the area's survivalColdAreaRate (not in freezing
+// water) and the race's coldRateMult; above the cap it falls unless the character fought in the last FIGHT_MS. Standing at a heat source
+// (heatSources.ts) warms, frost spells and venom chill, fire spells and hot food warm. The stage ability Survival_ColdStage0..5 follows
+// the stage and the client takes the maximum health penalty from survivalState. Cold falls while logged out and starts over at a respawn.
 // Afflictions, Survival's conditions: at a need's stage 5 (hunger Starving and fatigue Debilitated from NEEDS_STAGE_EVENT, cold Numb) a
 // character not holding its affliction rolls at most once per tickMinutes, like Survival's need update, so leaving stage 5 and coming
 // back inside that time rolls nothing: Weakened (hunger, 20% every 15 min),
@@ -100,6 +100,8 @@ type Mp = any;
 //   survivalColdEnabled           false stops cold and warmth, default true
 //   survivalColdHoursToNumb       real hours in which cold level 20 with no warmth fills the bar, default 1.3334
 //   survivalColdLevelMult         Survival_ColdLevelMult, default 50
+//   survivalColdAreaRate          { warm, cool, freezing, chillyInterior }: cold gain multiplier of the area class, not in freezing water,
+//                                 default { 1, 1, 0.6667, 0.6667 }: a freezing night in a blizzard (level 20) takes an hour from 0 to Freezing
 //   survivalColdStages            cold at which stages 1-5 begin, default [50, 120, 300, 500, 800]
 //   survivalColdStart             cold of a new character and after a respawn, default 55
 //   survivalColdLevels            { warm, cool, freezing, chillyInterior, warmNight, coolNight, freezingNight, rain, snow, blizzard, freezingWater },
@@ -570,7 +572,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const genNote = same(c.heatKeywords, HEAT_SOURCE_INPUTS.keywords) && same(c.heatExtraBases, HEAT_SOURCE_INPUTS.extraBases) ? "" :
       `; heatSources.ts was made from keywords ${HEAT_SOURCE_INPUTS.keywords.join("/") || "none"} and extra bases ${HEAT_SOURCE_INPUTS.extraBases.join("/") || "none"}, not survivalHeatKeywords ${c.heatKeywords.join("/") || "none"} and survivalHeatExtraBases ${c.heatExtraBases.join("/") || "none"}: rerun misc/gen-heat-sources.py`;
     const spells = this.coldSpells.filter((id) => id).length;
-    return `[survival] cold: +${c.levelMult} x level per ${c.hoursToNumb} h (level 20 bare fills the bar), stages ${c.stages.join("/")}, start ${c.start}; levels warm ${l.warm}, cool ${l.cool}, freezing ${l.freezing}, cold interior ${l.chillyInterior}, night +${l.warmNight}/+${l.coolNight}/+${l.freezingNight} (${c.night[0]}-${c.night[1]} h), rain +${l.rain}, snow +${l.snow}, blizzard +${l.blizzard} (${this.blizzard.size} blizzard weathers, ${this.ash.size} ash weathers count as no snow), freezing water ${l.freezingWater}${c.freezingWater ? ` (freezing areas, cold interiors, worlds ${c.freezingWaterWorlds.join("/") || "none"}), up to ${c.stages[2]} at once` : " off"}; caps at levels ${c.caps.join("/")}; falls ${c.warmPerMinute}/min above the cap unless fighting in the last ${FIGHT_MS / 1000} s, ${c.offlineWarmPerHour}/h offline down to ${c.start}; ` +
+    const r = c.areaRate;
+    return `[survival] cold: +${c.levelMult} x level per ${c.hoursToNumb} h (level 20 bare fills the bar) times the area rate warm x${r.warm}, cool x${r.cool}, freezing x${r.freezing}, cold interior x${r.chillyInterior} (x1 in freezing water), stages ${c.stages.join("/")}, start ${c.start}; levels warm ${l.warm}, cool ${l.cool}, freezing ${l.freezing}, cold interior ${l.chillyInterior}, night +${l.warmNight}/+${l.coolNight}/+${l.freezingNight} (${c.night[0]}-${c.night[1]} h), rain +${l.rain}, snow +${l.snow}, blizzard +${l.blizzard} (${this.blizzard.size} blizzard weathers, ${this.ash.size} ash weathers count as no snow), freezing water ${l.freezingWater}${c.freezingWater ? ` (freezing areas, cold interiors, worlds ${c.freezingWaterWorlds.join("/") || "none"}), up to ${c.stages[2]} at once` : " off"}; caps at levels ${c.caps.join("/")}; falls ${c.warmPerMinute}/min above the cap unless fighting in the last ${FIGHT_MS / 1000} s, ${c.offlineWarmPerHour}/h offline down to ${c.start}; ` +
       `areas: ${this.oblivionAreas.size} Oblivion worlds none, ${this.interiorAreas.size} worlds as interiors, ${this.coldCells.size} cold cells and ${this.coldLocations.size} cold locations, worlds ${Object.entries(c.worldClimate).map(([k, v]) => `${k} ${v}`).join(", ")}, above ${c.freezingZ} freezing, regions ${Object.entries(classes).map(([k, n]) => `${n} ${k}`).join(", ")}, heights ${Object.entries(c.highRegions).map(([k, z]) => `${k} ${z}`).join(", ") || "none"}, anything else cool; ` +
       `heat ${heat.points} sources (${heat.interiors} interiors, ${heat.worlds} worlds${heat.unknown ? `, ${heat.unknown} cells or worlds not in the load order` : ""}) within ${c.heatRadius} warm ${c.heatRestore} every ${c.heatCheckSeconds} s to a character standing (moved under ${c.heatStillUnits} units)${genNote}; ` +
       `warmth normal ${w.normal.join("/")}, warm ${w.warm.join("/")}, cold ${w.cold.join("/")}, torch ${w.torch}, cloak ${w.cloak}, ${c.warmthTable ? `armorWarmth.ts rates ${WARMTH_TABLE.size} more pieces` : "armorWarmth.ts off (survivalWarmthTable false)"}, up to ${w.max} for ${pct(w.maxReduction)} less cold, race per racialPassives warmth, hot meal ${c.hotFoodWarmth} for ${c.hotFoodMinutes} min; ` +
@@ -1426,7 +1429,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       let cold = before;
       if (entry.inFreezingWater && cold < this.cold.stages[2]) cold += (this.cold.stages[2] - cold) * clamp(mult, 0, 1);
       if (entry.area !== "none" && !entry.nearHeat) {
-        const rate = coldRatePerSec(entry.level, entry.warmth, mult, this.cold);
+        const rate = coldRatePerSec(entry.level, entry.warmth, mult * areaRateOf(entry.area as AreaClass, entry.inFreezingWater, this.cold.areaRate), this.cold);
         cold = stepCold(cold, seconds, coldCapOf(entry.level, this.cold), rate, this.cold.warmPerMinute / 60, now - entry.fightAt < FIGHT_MS);
       }
       entry.temperature = temperatureLevelOf(before, cold, entry.level, entry.nearHeat, entry.area as AreaClass, this.cold.caps);

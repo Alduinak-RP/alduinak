@@ -24,6 +24,8 @@ export interface Extras {
   poisonId?: number;
   poisonCount?: number;
   enchantmentEffects?: EnchantmentEffect[];
+  // Share of the item's durability left, 0 to 1 (Inventory::ExtraData condition); absent is pristine and 0 is broken
+  condition?: number;
 }
 
 export interface Item extends Extras {
@@ -40,13 +42,13 @@ export interface Inventory {
   entries: InventoryEntry[];
 }
 
-// Extras that tell copies apart; charge drifts with use and names only matter on named item bases
+// Extras that tell copies apart; charge and condition drift with use and names only matter on named item bases
 export const IDENTITY_KEYS = [
   'health', 'enchantmentId', 'maxCharge', 'removeEnchantmentOnUnequip',
   'soul', 'poisonId', 'poisonCount', 'enchantmentEffects',
 ] as const;
 
-export const EXTRA_KEYS: (keyof Extras)[] = [...IDENTITY_KEYS, 'chargePercent', 'name'];
+export const EXTRA_KEYS: (keyof Extras)[] = [...IDENTITY_KEYS, 'chargePercent', 'name', 'condition'];
 
 // Property keys (housing): the name is the credential.
 export const KEY_BASE_ID = 0x000db0e2;
@@ -97,6 +99,36 @@ export const effectsKey = (effects?: EnchantmentEffect[]): string =>
 
 export const isEnchanted = (i: Extras): boolean => isSet(i.enchantmentId) || isSet(i.enchantmentEffects);
 
+// The native writes condition rounded to 1e-4, so two values this close are one value
+const CONDITION_STEP = 5e-5;
+
+// 1 for a copy without the field, which is how a pristine copy is stored
+export const conditionOf = (i: Extras): number =>
+  (typeof i.condition === 'number' && Number.isFinite(i.condition) ? Math.min(1, Math.max(0, i.condition)) : 1);
+
+// Whole percent as the name tag shows it: rounded down, never 0 above broken, 100 without a value (native ConditionPercent)
+export const conditionPercent = (condition?: number | null): number => {
+  if (typeof condition !== 'number' || !(condition < 1)) return 100;
+  if (condition <= 0) return 0;
+  return Math.max(1, Math.floor(condition * 100 + 1e-3));
+};
+
+export const sameCondition = (a: Extras, b: Extras): boolean => Math.abs(conditionOf(a) - conditionOf(b)) < CONDITION_STEP;
+
+// The copy as it is when pristine
+export function withoutCondition<T extends Extras>(i: T): T {
+  const copy = { ...i };
+  delete copy.condition;
+  return copy;
+}
+
+// Entry indexes in the order a line showing that condition draws them: the same percent first, then the nearest
+export const byNearestCondition = (entries: Extras[], condition?: number): number[] => {
+  const want = conditionPercent(condition);
+  const gap = (i: number): number => Math.abs(conditionPercent(entries[i].condition) - want);
+  return entries.map((_, i) => i).sort((a, b) => gap(a) - gap(b) || a - b);
+};
+
 function sameIdentityValue(key: keyof Extras, a: unknown, b: unknown): boolean {
   if (key === 'health') {
     return healthStep(a as number) === healthStep(b as number);
@@ -132,11 +164,11 @@ export function lineKey(i: Item): string {
   return [i.baseId >>> 0, identityName(i), ...IDENTITY_KEYS.map((k) => identityText(k, i[k]))].join('|');
 }
 
-// Identical copies, charge and name included: the ones that may share one entry
+// Identical copies, charge, name and condition included: the ones that may share one entry
 export function sameExtras(a: Item, b: Item): boolean {
   const charge = (v: unknown): number => (typeof v === 'number' ? v : 0);
   return sameBase(a, b) && IDENTITY_KEYS.every((k) => sameIdentityValue(k, a[k], b[k]))
-    && sameFloat(charge(a.chargePercent), charge(b.chargePercent)) && (a.name || '') === (b.name || '');
+    && sameFloat(charge(a.chargePercent), charge(b.chargePercent)) && (a.name || '') === (b.name || '') && sameCondition(a, b);
 }
 
 export function validEffects(raw: unknown): EnchantmentEffect[] | undefined {
@@ -172,6 +204,8 @@ export function copyValidExtras(raw: any, item: Item): void {
     poisonId: id(raw?.poisonId, 0xffffffff),
     poisonCount: id(raw?.poisonCount, 0xffffffff),
     enchantmentEffects: validEffects(raw?.enchantmentEffects),
+    // From a client this only says which copy is meant; a stored condition always comes from a server copy
+    condition: typeof raw?.condition === 'number' && raw.condition >= 0 && raw.condition < 1 ? raw.condition : undefined,
   };
   for (const k of EXTRA_KEYS) {
     if (extras[k] !== undefined) {
@@ -209,12 +243,16 @@ export function addEntries(inv: Inventory, entries: InventoryEntry[]): Inventory
   return { entries: out };
 }
 
-// Log text of an entry's extras, e.g. health=1.2, enchantmentEffects=[0x4605a 12.5 a0 d1]
+// Log text of an entry's extras, e.g. health=1.2, condition=0.43, enchantmentEffects=[0x4605a 12.5 a0 d1]
 export function describeExtras(i: Item): string[] {
   const hex = (v: unknown): string => '0x' + (Number(v) >>> 0).toString(16);
-  return EXTRA_KEYS.filter((k) => k !== 'name' && isSet(i[k])).map((k) => {
+  // A broken copy carries condition 0, which is a value here and not an empty extra
+  return EXTRA_KEYS.filter((k) => k !== 'name' && (k === 'condition' ? conditionOf(i) < 1 : isSet(i[k]))).map((k) => {
     if (k === 'enchantmentId' || k === 'poisonId') {
       return k + '=' + hex(i[k]);
+    }
+    if (k === 'condition') {
+      return k + '=' + Math.round(conditionOf(i) * 1e4) / 1e4;
     }
     if (k === 'enchantmentEffects') {
       return k + '=[' + (i.enchantmentEffects || []).map((e) =>

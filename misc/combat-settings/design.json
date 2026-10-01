@@ -2933,6 +2933,11 @@
     "^DA13Spellbreaker$",
     "Dwarven",
     "Spellbreaker (Dwemer shield), no keyword"
+   ],
+   [
+    "^TH_(?!Riften(Boots|Gauntlets)$)(Whiterun|Solitude|Windhelm|Markarth|Riften|Dawnstar|Falkreath|Morthal|Winterhold)(Cuirass|Helmet|Boots|Gauntlets)$",
+    "Stormcloak",
+    "Sentinel - City Guards light hold uniforms keyed Steel (Novice hold work): the guard light row of the vanilla uniforms; the Rift boots and gauntlets are heavy and stay Steel"
    ]
   ],
   "overridesWeapons": [
@@ -3018,7 +3023,7 @@
   "Blocked NPC hits (ADDENDUM, r28 G10): the formula reads npcBlockedDamageShare from the top level of server-settings.json, the same key the block lane reads for today's formula; this block never carries a second copy."
  ],
  "recipeRetier": {
-  "comment": "D6: the vanilla Studded and Scaled forge recipes move to the documented Tailor ladder in plugin r27b; generate.py --assume-retier applies these ranks to the recipe-rank audit before that plugin exists",
+  "comment": "D6: the vanilla Studded and Scaled forge recipes move to the documented Tailor ladder; plugin r28 carries them (misc/proficiency-patcher/spec.json tailoring.recipes), and generate.py --assume-retier applies these ranks to the recipe-rank audit of an older plugin",
   "rules": [
    {
     "created": "^ArmorStudded",

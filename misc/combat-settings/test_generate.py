@@ -1,8 +1,8 @@
 """Rule tests for the rebalance settings generator: python misc/combat-settings/test_generate.py
 
 The dump test replays the 2026-09-29 research dump (COMBAT_ITEMS, default the combat plan's items folder) and expects
-the coverage sim.py published, less the 32 audit records whose only recipe the patcher parks (sim.py counted them); it
-is skipped when the dump is absent.
+the coverage sim.py published, less the 32 audit records whose only recipe the patcher parks (sim.py counted them) and
+with the 28 light hold uniforms on their override; it is skipped when the dump is absent.
 """
 import itertools
 import json
@@ -111,6 +111,19 @@ class Resolution(unittest.TestCase):
         cls = run(armors=[a], cobjs=[cobj('ModScaledHelmet_CLS', gates=('Blacksmith Novice',))])
         self.assertEqual(cls.final_row('ARMO', a), ('Scaled', 'keyword'))
 
+    def test_light_hold_uniform_takes_the_guard_row(self):
+        kw = 'TH_MaterialGuard ArmorMaterialSteel'
+        light = armo('TH_WhiterunCuirass', atype='Light', keywords=kw)
+        rift_helm = armo('TH_RiftenHelmet', slots='31:Hair', atype='Light', keywords=kw)
+        heavy = armo('TH_WhiterunCuirassHeavy', keywords=kw)
+        rift_boots = armo('TH_RiftenBoots', slots='37:Feet', keywords=kw)
+        shield = armo('TH_WhiterunShield', slots='39:Shield', atype='Light', keywords=kw + ' ArmorShield')
+        recipes = [cobj(e) for e in ('TH_WhiterunCuirass', 'TH_RiftenHelmet', 'TH_WhiterunShield')]
+        cls = run(armors=[light, rift_helm, heavy, rift_boots, shield], cobjs=recipes)
+        rows = [cls.final_row('ARMO', a) for a in (light, rift_helm, heavy, rift_boots, shield)]
+        self.assertEqual(rows, [('Stormcloak', 'override'), ('Stormcloak', 'override'), ('Steel', 'keyword'), ('Steel', 'keyword'), ('Iron', 'audit')])
+        self.assertEqual(round(cls.piece_dt(cls.A[C.rid(light)], 'Stormcloak'), 4), 3.9)
+
 
 class Numbers(unittest.TestCase):
     def test_round_half_up(self):
@@ -192,6 +205,28 @@ class Outputs(unittest.TestCase):
         armor = {t['edid']: t['to'] for t in lists['tooltips']['armor']}
         self.assertEqual(armor['ArmorOrcishCuirass'], 73.5)
 
+    def test_synced_names_what_the_plugin_lacks(self):
+        studded = armo('ArmorStuddedCuirass', keywords='ArmorMaterialStudded', atype='Light', ar=46.5, weight=6.0)
+        races = {r: dict(form_key='1:Test.esm', unarmed_damage=u) for r, u in
+                 (('KhajiitRace', 11.0), ('KhajiitRaceVampire', 11.0), ('ArgonianRace', 10.0), ('ArgonianRaceVampire', 6.0))}
+        lists, _ = G.esp_lists(DESIGN, run(armors=[studded], cobjs=[cobj('ArmorStuddedCuirass', gates=('Tailor Adept',), bench='CraftingTanningRack')]),
+                               None, None, races)
+        self.assertEqual([(r['gates'], r['landed']) for r in lists['retier']], [(['Tailor Adept'], True)])
+        self.assertEqual(G.sync_problems(lists), ['claws: ArgonianRaceVampire has unarmed damage 6.0, IronDagger gives 10'])
+        shared = cobj('ArmorStuddedCuirass', gates=('Blacksmith Novice', 'Tailor Adept'))
+        lists, _ = G.esp_lists(DESIGN, run(armors=[armo('ArmorStuddedCuirass', keywords='ArmorMaterialStudded', atype='Light')], cobjs=[shared]), None, None, None)
+        self.assertEqual(G.sync_problems(lists)[:2],
+                         ['the plugin lacks 1 listed values (tooltips 0 WEAP / 1 ARMO, weights 0, speeds 0): run the stat pass, patch.py --stats esp-lists.json',
+                          'retier: RecipeArmorStuddedCuirass is gated Blacksmith Novice, Tailor Adept, not Tailor Adept alone'])
+
+    def test_survival_keywords_count_a_record_once(self):
+        orc = armo('WarmOrcCuirass', keywords='ArmorMaterialOrcish Survival_ArmorWarm', weight=35.0, ar=40.0)
+
+        class Order:
+            names = ['Test.esp']
+        _, checks = G.esp_lists(DESIGN, run(armors=[orc]), Order, None, None)
+        self.assertEqual(dict(checks['survival_listed']), {'Survival_ArmorWarm': 1})
+
 
 @unittest.skipUnless(os.path.isdir(DUMP), 'research dump not found')
 class ResearchDump(unittest.TestCase):
@@ -200,7 +235,7 @@ class ResearchDump(unittest.TestCase):
         cls = run(load('weapons.json'), load('armors.json'), load('cobj.json'))
         wc, ac, wfb, _ = G.coverage(cls)
         self.assertEqual(dict(wc), {'keyword': 3315, 'staff (0)': 94, 'override': 70, 'crossbow row': 37, 'unarmed row': 5})
-        self.assertEqual(dict(ac), {'keyword': 4662, 'clothing/jewelry (DT 0)': 1413, 'override': 87, 'fallback': 85,
+        self.assertEqual(dict(ac), {'keyword': 4634, 'clothing/jewelry (DT 0)': 1413, 'override': 115, 'fallback': 85,
                                     'fallback(IA multi)': 14, 'AldCatMat': 4})
         self.assertEqual(wfb, [])
         self.assertEqual(len(cls.audit), 218)

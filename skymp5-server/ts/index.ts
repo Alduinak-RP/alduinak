@@ -56,6 +56,8 @@ import { DiscordAlerts } from "./systems/discordAlerts";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
 import { TorchSystem } from "./systems/torchSystem";
+import { CombatReadoutSystem } from "./systems/combatReadoutSystem";
+import { DurabilitySystem } from "./systems/durabilitySystem";
 import { CompanionSystem } from "./systems/companionSystem";
 import { HostingSystem } from "./systems/hostingSystem";
 import { PetSystem } from "./systems/petSystem";
@@ -340,7 +342,8 @@ const main = async () => {
     bodySystem,
     executionSystem,
     new TradeSystem(log),
-    new CraftedExtrasSystem(log),
+    // Its tempers take the rank cap from mastery and their fatigue from needs
+    new CraftedExtrasSystem(log, masterySystem, needsSystem),
     searchSystem,
     new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem, bodySystem, captureSystem),
     new VoiceSystem(log),
@@ -361,10 +364,14 @@ const main = async () => {
     huntingSystem,
     // After hunting, whose raw meat it reads, and after needs, whose eat hook it wraps
     survivalSystem,
+    // After needs, so the repair menu of a bench opens for a player too tired to craft at it
+    new DurabilitySystem(log, masterySystem, needsSystem),
     bountyBoardSystem,
     writingSystem,
     new UntouchableSystem(log),
     new TorchSystem(log),
+    // The lines of the /armor chat command, on only with the rebalance or durability
+    new CombatReadoutSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it
     hostingSystem,
     npcSpawnSystem,
