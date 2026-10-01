@@ -2933,6 +2933,11 @@
     "^DA13Spellbreaker$",
     "Dwarven",
     "Spellbreaker (Dwemer shield), no keyword"
+   ],
+   [
+    "^TH_(?!Riften(Boots|Gauntlets)$)(Whiterun|Solitude|Windhelm|Markarth|Riften|Dawnstar|Falkreath|Morthal|Winterhold)(Cuirass|Helmet|Boots|Gauntlets)$",
+    "Stormcloak",
+    "Sentinel - City Guards light hold uniforms keyed Steel (Novice hold work): the guard light row of the vanilla uniforms; the Rift boots and gauntlets are heavy and stay Steel"
    ]
   ],
   "overridesWeapons": [

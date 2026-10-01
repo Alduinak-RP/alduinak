@@ -52,8 +52,18 @@ weigh what their row says and a record slower than its row swings at the row spe
 these fields; `baseWeaponDamage` and the armour ratings of the TES5 formula above do, and the claw races copy the
 synced daggers (Khajiit 11, Argonian 10). So plugin r28 and an enabled `alduinakDamageFormulaSettings` block belong
 together: with r28 and the block absent or `enabled: false`, the TES5 formula prices hits from the synced numbers,
-which are not the ones it was balanced on. The lists come from `misc/combat-settings/generate.py` and land through
-`misc/proficiency-patcher/patch.py --stats` (see its README).
+which are not the ones it was balanced on. `enabled: false` is therefore no switch back to the old combat while r28
+is loaded: the old numbers need plugin r27 on the server and on every client as well. The lists come from
+`misc/combat-settings/generate.py` and land through `misc/proficiency-patcher/patch.py --stats` (see its README).
+
+**Hold guard uniforms.** The light hold uniforms of `Sentinel - City Guards.esp` (`TH_<Hold>Cuirass`, `Helmet`, `Boots`
+and `Gauntlets`, 28 records) carry `ArmorMaterialSteel` but are light Novice hold work. An `overridesArmor` rule of
+`misc/combat-settings/design.json` puts them on the Stormcloak row, the guard light row the vanilla hold uniforms are
+on: cuirass DT 3.9 (card 39), helmet 0.975, boots and gauntlets 0.8125, a full set 6.5. An override is exempt from the
+recipe-rank audit, which would send a Steel-keyed Novice recipe to the Novice heavy reference (Iron) and, being light
+records on a heavy row, leave them at x `lightItemHeavyRowFactor` 0.7: a set of 5.25, the Fur row. The heavy hold
+pieces (`TH_<Hold>...Heavy`, the Rift boots and gauntlets) stay on the Steel row and the three light hold shields on
+the Iron row.
 
 Armor damage reduction:
 ```
