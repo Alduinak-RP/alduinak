@@ -295,8 +295,7 @@ until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so
 - Crafting is every recipe the server accepts at any station, and every temper at the workbench or grindstone, by the
   rank of a character whose profession works that bench keyword (MasterySystem `craftCost`). Smiths and miners both get
   their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal;
-  smiths and alchemists both get their rank for the sealing wax at every station, and the professions that work a
-  station get theirs for the wax made there.
+  all seven professions that work a crafting station get their rank for the sealing wax at every station.
   Crafts whose inputs the crafter does not hold are left to the native side uncharged.
 - Skinning (hunter rank) costs half a kill. Only a hunter's skinning takes an animal's pelt and meat; a search of the
   body never shows its meat.

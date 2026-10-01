@@ -46,7 +46,7 @@ Recipes: anyone makes the blanks (tier `Anyone`), at the tanning rack or at
 the woodcrafting bench, from Roll of Paper (the vanilla `PaperRoll`), a
 journal or book with leather and one Leather Strips; a Novice woodworker makes
 the paper from firewood; the Sealing Wax is Novice work at every crafting
-station (plugin r25), see the second table:
+station (plugin r26), see the second table:
 
 | Output | Bench | Ingredients |
 |---|---|---|
@@ -59,24 +59,30 @@ station (plugin r25), see the second table:
 | Blank Book | woodcrafting bench | 4 Roll of Paper, 1 Leather, 1 Leather Strips |
 | Sealing Wax | every crafting station | 1 Beehive Husk, 1 Charcoal (Novice, see below) |
 
-The Sealing Wax has one recipe per station, all with the same ingredients. A
-Novice blacksmith or alchemist, the two who made it before r25, sees it at
-every station; a Novice of a profession that works a station sees it there:
+The Sealing Wax has one recipe per station, all with the same ingredients
+and the same makers: a Novice of any of the seven professions that work a
+crafting station (blacksmith, alchemist, miner, tailor, hunter, woodworker,
+cook) sees it at every one of them, whichever station their own craft works:
 
-| Station | Recipe | Also made by |
-|---|---|---|
-| smelter | `AldRecipeWriting_SealingWax` | miner |
-| forge, anvil, Skyforge | `AldRecipeWriting_SealingWaxForge` | |
-| tanning rack | `AldRecipeWriting_SealingWaxTanningRack` | tailor, hunter |
-| loom | `AldRecipeWriting_SealingWaxLoom` | tailor |
-| woodcrafting bench | `AldRecipeWriting_SealingWaxWoodcrafting` | woodworker |
-| cooking pot, spit | `AldRecipeWriting_SealingWaxCookpot` | cook |
-| oven | `AldRecipeWriting_SealingWaxOven` | cook |
-| alchemy lab | `AldRecipeWriting_SealingWaxAlchemy` | |
-| meadery boilers | `AldRecipeWriting_SealingWaxMead` | cook |
-| grain mill | `AldRecipeWriting_SealingWaxGrainMill` | |
+| Station | Recipe |
+|---|---|
+| smelter | `AldRecipeWriting_SealingWax` |
+| forge, anvil, Skyforge | `AldRecipeWriting_SealingWaxForge` |
+| tanning rack | `AldRecipeWriting_SealingWaxTanningRack` |
+| loom | `AldRecipeWriting_SealingWaxLoom` |
+| woodcrafting bench | `AldRecipeWriting_SealingWaxWoodcrafting` |
+| cooking pot, spit | `AldRecipeWriting_SealingWaxCookpot` |
+| oven | `AldRecipeWriting_SealingWaxOven` |
+| alchemy lab | `AldRecipeWriting_SealingWaxAlchemy` |
+| meadery boilers | `AldRecipeWriting_SealingWaxMead` |
+| grain mill | `AldRecipeWriting_SealingWaxGrainMill` |
 
-Farmers, warriors and mages work no station and make none. The armour
+Plugin r25 let only the blacksmith and the alchemist make it everywhere and
+each other profession only at its own stations, so a hunter saw it at the
+tanning rack and at none of the smelter, forge and woodcrafting bench (the
+stations the owner's hunter used in the test of 2026-10-01); r26 names all
+seven on every recipe. Farmers, warriors and mages work no station and make
+none, and neither does a character without a profession. The armour
 workbench and the grindstone list only Improve entries, so no recipe can show
 there. Each maker pays the fatigue of their own rank and the wax counts as
 their work (`SHARED_RECIPES` in `masterySystem.ts`).
