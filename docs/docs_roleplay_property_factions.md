@@ -399,7 +399,8 @@ craft; the Master-Wizard also promotes everything below itself.
 
 Hold uniforms are crafted, not issued: only the ranks of a hold court that
 carry `craft` (the Captain in the seeded ladders, the Courtier of every court
-since the owner's 2026-09-30 edit; the Jarl and an acting regent craft through
+but Winterhold, Eastmarch's since 2026-09-23 and seven more in the owner's
+2026-09-30 edit; the Jarl and an acting regent craft through
 leader authority) see the hold's guard armour, helmet, shield and cloak recipes
 (`HasSpell AldFaction_hold<name>`, the vanilla city guard set of that hold) and
 hand them to their guards. The Eastmarch captain's cuirass is the Stormcloak
@@ -417,7 +418,18 @@ crafts must hold both the `craft` rank and that profession rank; gear whose
 material is Master work (the Winterhold buckler and shield, the Falkreath
 Warhammer) stays Master. From r18 to r23 every piece asked for an Expert, which
 no player had reached, so the craft ranks saw none of it; plugin r24 brought
-it down.
+it down. Two gaps remain from the source plugins: the four Immersive Armors
+Falkreath pieces (IARFalkreathBoots, Cuirass, Gauntlets, Helmet) list an
+ingredient that does not exist (Update.esm 0x01DA0BF1), so the server matches
+no recipe for them, and the nine `MCE_vol_GuardCapeRecipe_*` capes sit on a
+bench that does not exist (the `vol_GuardCapeRecipe_*` copies at the tanning
+rack make the same capes). Thirteen Improve entries carry no hold marker and
+came down with their recipes: twelve `TemperArmorTH_*` pieces (the Whiterun
+ceremonial cloak and Windhelm cloak P, the Whiterun, Solitude, Markarth,
+Riften, Dawnstar, Morthal and Winterhold shields, the heavy Whiterun shield
+and both Windhelm shields) any tailor or woodworker of the tier may improve, and
+`TemperArmorStormcloakCuirass`, which every Stormcloak blacksmith improves
+from Novice; improving only works on a piece already held.
 
 ### Rules
 
