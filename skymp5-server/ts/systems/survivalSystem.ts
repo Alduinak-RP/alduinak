@@ -1349,7 +1349,16 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.sendState(mp, entry, false);
     this.log(`[survival] ${hex(entry.actorId)} cured by ${by} (admin): ${cured.join(", ") || "nothing"}`);
     if (cured.length) this.notice(mp, entry.actorId, "You are cured of your sickness.");
-    return { ok: true, text: cured.length ? `cured ${cured.join(", ")}` : "had no sickness", summary: this.summaryOf(entry) };
+    return { ok: true, text: cured.length ? `cured ${cured.map((c) => this.sicknessLabel(c)).join(", ")}` : "had no sickness", summary: this.summaryOf(entry) };
+  }
+
+  // "Rockjoint (severe)" for AldDisease_Rockjoint3 and an affliction's name for its spell; anything else as it came
+  private sicknessLabel(edid: string): string {
+    for (const d of Object.values(this.dis.diseases)) {
+      const stage = d.spells.indexOf(edid) + 1;
+      if (stage) return stageName(d.name, stage);
+    }
+    return this.afflictions.find((a) => a.spell === edid)?.name || edid;
   }
 
   private catalog(): SurvivalCatalog {

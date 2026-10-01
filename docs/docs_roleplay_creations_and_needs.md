@@ -710,9 +710,30 @@ Rockjoint (advanced)", "Name: cold 55 -> 600 (Freezing)", or the readout "Name: 
 level 16 (freezing, night, snow; region coast), warmth 71 (29.3% less cold), freezing water area yes; Rockjoint
 (advanced) (worse at 10-04 14:00), Weakened until 10-02 14:05". Reset sets cold to 55, clears food poisoning, afflictions
 and diseases and applies the body rules again. An admin is not bound by `survivalMaxDiseases`. Every change goes to
-`admin.log` ("profile N gave a disease to Name (profile P): now has Rockjoint (advanced)"). The `adminMenu` packet carries
+`admin.log` ("profile N gave a disease to Name (profile P): now has Rockjoint (advanced)") and, as the `admin` alert
+kind, to the Discord event log channel, like every other panel action. The `adminMenu` packet carries
 `survival` (the diseases the plugin has, the cold scale) and each online row `sv` (cold, stage, area, level, warmth,
 freezing area, diseases with their next stage time, afflictions, food poisoning).
+
+The Disease row under the Survival row is how staff give and cure diseases (the owner's "add disease add to admin
+menu"; it needs a server and a client built from a tree that has SurvivalSystem, `survivalEnabled` true and a plugin
+with the `AldDisease_*` spells, otherwise the row is hidden or its picker reads "No diseases in the plugin"):
+
+- Select an online player in the Players tab. The picker lists the 27 catalog diseases the plugin has (Skyrim's,
+  Survival Mode's and Oblivion's), the ones the player holds first as "Rockjoint, contagious (has stage 2)".
+- Pick a stage (Stage 1, Stage 2 (advanced), Stage 3 (severe)) and press **Give**; on a held disease the button reads
+  **Set stage** and swaps the stage spell. The player reads "You have caught Collywobbles (advanced): ..." and the
+  server logs `[survival] <id> given collywobbles stage 2 by profile N, stage 3 at MM-DD hh:mm`.
+- **Cure** removes the picked disease, **Cure all** every sickness (diseases, food poisoning, afflictions). The answer
+  and the audit line name what went: "Name: cured Rockjoint (severe)", "profile N cured Name (profile P): cured Ataxia,
+  Chills (advanced)"; the server log keeps the spell ids (`[survival] <id> cured by profile N (admin):
+  AldDisease_Rockjoint3`).
+- A rank without the `players` cap gets "Your rank cannot use players", audited as "profile N (gm) was refused
+  survivalDisease: no players permission", and its menu carries no catalog, so it sees no Disease row. A wrong disease,
+  stage or a disease not held is answered and not audited.
+
+`tools/test-admin-survival.js` drives these packets through AdminSystem and SurvivalSystem (catalog, give, set stage,
+cure, cure all, the cap refusal, survival off).
 
 ### Protocol and storage
 
