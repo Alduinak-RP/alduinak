@@ -7,7 +7,7 @@ import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
 import { toFormId } from "./formIdUtil";
 import { FurnitureSeatSystem } from "./furnitureSeatSystem";
-import { baseIdOf, hex, isAlive, isBehind, isMounted, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, userOf, weaponAnimType } from "./actorUtil";
+import { baseIdOf, hex, isAlive, isBehind, isMounted, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, recordTypeOf, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -15,9 +15,6 @@ type Mp = any;
 
 // Finish off a downed player and behead a prisoner at a headsman's block, both a PK (docs_roleplay_survival_loop.md section 8)
 
-// pa_KillMove1HMDecapBleedOut and pa_KillMove2HMDecapBleedOut (Skyrim.esm IDLE, no conditions), played on a kneeling victim
-const KILLMOVE_ONE_HANDED = 0xf465d;
-const KILLMOVE_TWO_HANDED = 0xf467f;
 // The held weapon by its WEAP DNAM animation type, dual when both hands hold a 1-4; empty hands are unarmed, a bow, staff or crossbow is no melee weapon
 type WeaponType = "sword" | "dagger" | "axe" | "mace" | "greatsword" | "battleaxe" | "unarmed" | "dual";
 const WEAPON_TYPES: Record<number, WeaponType> = { 1: "sword", 2: "dagger", 3: "axe", 4: "mace", 5: "greatsword", 6: "battleaxe" };
@@ -63,20 +60,36 @@ const EXTENDED_FINISHERS: FinisherTable = {
   battleaxe: [0x10d972, 0x01000824, 0x01000825],
   unarmed: [],
 };
-// The victim of a finish off or an execution dies when a participant's client reports the end of the pair, or at this cap. Overridable via "finishOffMaxMs"
+// The victim of a finish off or an assassination dies when a participant's client reports the end of the pair, or at this cap. Overridable via "finishOffMaxMs"
 const DEFAULT_PAIR_MAX_MS = 9000;
 
 // ExecutionerChoppingBlock, placed at Helgen, Solitude and in the city mods, and its unplaced two-seat twin. Overridable via "executionBlockBaseIds"
 const DEFAULT_BLOCK_BASE_IDS = [0x2e8eb, 0xfe549];
 // How close the executioner must stand to the block, in game units
 const BLOCK_REACH = 300;
-// Unmeasured starting point relative to the block. Overridable via "executionBlockOffset"
-const DEFAULT_PRISONER_OFFSET: Offset = { forward: 0, right: 0, up: 0, yaw: 0 };
-// The vanilla headsman idles are furniture-state clips that never play on the ground, so the prisoner kneels in the bleedout pose the killmove is built for
-const PRISONER_KNEEL = "bleedOutStart";
-const PRISONER_STAND = "bleedOutStop";
+// Furniture\HeadChoppingBlock.nif markers: 0, the isExecutioner keyword's, on the block's origin facing its yaw
+const HEADSMAN_MARK: Offset = { forward: 0, right: 0, up: 0, yaw: 0 };
+// Marker 1, the prisoner's, 87.7 ahead and 68.8 right turned 270 degrees, head over the block in front of the headsman. Overridable via "executionBlockOffset"
+const DEFAULT_PRISONER_OFFSET: Offset = { forward: 87.7, right: 68.8, up: 0, yaw: 270 };
+// Global wildcards of the vanilla MT behaviour into Executionee_State and Executioner_State, the block clips Helgen and Solitude play through the furniture
+const PRISONER_KNEEL = "IdleExecutioneeIdle";
+const HEADSMAN_STANCE = "IdleExecutionerIdle";
+// The stance's enter clip played backwards, which puts away the axe the stance drew (AnimObjectExecutionerAxe)
+const HEADSMAN_EXIT = "IdleChairExitStart";
+const IDLE_EXIT = "IdleForceDefaultState";
+// For a prisoner whose graph never took the block kneel
+const BLEEDOUT_KNEEL = "bleedOutStart";
+const BLEEDOUT_STAND = "bleedOutStop";
+// Every client sends IdleExecutionerChop to both actors this long after the chop packet: the headsman's move settles and his 1.5 s stance enter plays out
+const CHOP_LEAD_MS = 3000;
+// AOExecutioneeChop.hkx (20 s) fires Decapitate at 11.84 s and KillActor at 16.61 s; AOExecutionerChop.hkx goes back to the stance at 19.5 s
+const CHOP_KILL_MS = 16610;
+const CHOP_DONE_MS = 21000;
 const STATE_PACKET = "executionState";
-// The pair beheads the prisoner on every client the moment it is sent, so nothing takes them off the block after that
+const CHOP_PACKET = "executionChop";
+const STEP_PACKET = "executionStep";
+const STEP_MAX_CHARS = 300;
+// The chop beheads the prisoner on every client once it is sent, so nothing takes them off the block after that
 const AXE_FALLING = "The axe is already falling.";
 // { blockId, since } while a prisoner kneels at a block
 const ON_BLOCK_PROP = "private.onBlock";
@@ -92,6 +105,8 @@ interface Offset {
 
 interface Prisoner {
   blockId: number;
+  // The block kneel, or the bleedout kneel when their graph refused it
+  pose: string;
   // Set while the axe falls
   executorId?: number;
   timers: ReturnType<typeof setTimeout>[];
@@ -129,6 +144,9 @@ const offsetOf = (raw: unknown, fallback: Offset): Offset => {
   const pick = (key: keyof Offset): number => typeof o[key] === "number" && Number.isFinite(o[key]) ? o[key] as number : fallback[key];
   return { forward: pick("forward"), right: pick("right"), up: pick("up"), yaw: pick("yaw") };
 };
+
+const describeSpot = (spot: { pos: number[]; rot: number[] }): string =>
+  `(${spot.pos.map((v) => Math.round(v)).join(", ")}) yaw ${Math.round(spot.rot[2])}`;
 
 export class ExecutionSystem implements System {
   systemName = "ExecutionSystem";
@@ -214,6 +232,7 @@ export class ExecutionSystem implements System {
     else if (type === "executeRequest") this.onExecuteRequest(userId, targetId);
     else if (type === "assassinateRequest") this.onAssassinateRequest(userId, targetId);
     else if (type === "pairedIdleDone") this.onPairedIdleDone(userId, targetId, Number(content.seq));
+    else if (type === STEP_PACKET) this.onBlockStep(userId, targetId, content);
   }
 
   // Why the killer may not assassinate the victim, "" when they may; the weapon is checked on the request
@@ -324,9 +343,19 @@ export class ExecutionSystem implements System {
     const prisoner = this.prisoners.get(prisonerId);
     if (!prisoner) return "They are not at the block.";
     if (!this.factions.canExecute(executorId)) return "You do not have the right to execute.";
-    if (!this.isAble(executorId) || prisonerId === executorId) return "You cannot do that now.";
+    if (!this.isAble(executorId) || prisonerId === executorId || this.headsmen.has(executorId)) return "You cannot do that now.";
     if (prisoner.executorId) return AXE_FALLING;
     if (this.distanceTo(executorId, prisoner.blockId) > BLOCK_REACH) return "Stand at the block to execute them.";
+    return "";
+  }
+
+  // The MT behaviour that holds the block states runs only on foot, upright and with empty hands, so the headsman's graph refuses the stance otherwise
+  private stanceRefusal(executorId: number): string {
+    const mp = this.mp;
+    if (isMounted(mp, executorId)) return "Dismount first.";
+    if (isWeaponDrawn(mp, executorId)) return "Sheathe your weapon first.";
+    if (isSneaking(mp, executorId)) return "Stand up first.";
+    if (this.wornEntriesOf(executorId).some((e) => recordTypeOf(mp, Number(e.baseId)) === "LIGH")) return "Put away your torch first.";
     return "";
   }
 
@@ -348,34 +377,72 @@ export class ExecutionSystem implements System {
       this.log(`[execution] placing ${hex(prisonerId)} at block ${hex(blockId)} failed: ${e}`);
       return;
     }
-    this.prisoners.set(prisonerId, { blockId, timers: [] });
+    this.prisoners.set(prisonerId, { blockId, pose: PRISONER_KNEEL, timers: [] });
     this.sendPose(prisonerId, PRISONER_KNEEL);
     this.mirrorPose(prisonerId, PRISONER_KNEEL);
     notifyActor(mp, executorId, `You force ${nameShownTo(mp, executorId, prisonerId)} down onto the block.`);
     notifyActor(mp, prisonerId, `${nameShownTo(mp, prisonerId, executorId)} forces you down onto the block.`);
-    this.log(`[execution] ${hex(executorId)} puts ${hex(prisonerId)} on block ${hex(blockId)}`);
+    this.log(`[execution] ${hex(executorId)} puts ${hex(prisonerId)} on block ${hex(blockId)} at the prisoner's mark ${describeSpot(spot)}, ${PRISONER_KNEEL}`);
   }
 
+  // The headsman stands on his mark in the stance, then every client chops both actors at once; the kill lands at the clip's KillActor, the stance is left once the swing is over
   private onExecuteRequest(userId: number, prisonerId: number): void {
     const mp = this.mp;
     const executorId = this.actorOf(userId);
     if (!executorId) return;
-    const idle = this.killMoveOf(executorId);
     const refusal = this.executeRefusal(executorId, prisonerId) ||
       this.factions.borderRefusal(executorId, "execute", "execution") ||
-      (idle ? "" : "You need a melee weapon in hand to execute them.") ||
-      (isWeaponDrawn(mp, executorId) ? "" : "Draw your weapon first.");
+      this.stanceRefusal(executorId);
     const prisoner = this.prisoners.get(prisonerId);
-    if (refusal || !prisoner) {
-      notifyActor(mp, executorId, refusal);
+    const spot = !refusal && prisoner ? this.spotBy(prisoner.blockId, HEADSMAN_MARK) : null;
+    if (refusal || !prisoner || !spot) {
+      notifyActor(mp, executorId, refusal || "There is no execution block here.");
       return;
     }
-    // The pair aligns the two actors itself from wherever the executioner stands in reach; the respawn rebuilds the body
+    try {
+      mp.set(executorId, "locationalData", spot);
+    } catch (e) {
+      this.log(`[execution] moving ${hex(executorId)} to the headsman's mark of block ${hex(prisoner.blockId)} failed: ${e}`);
+      return;
+    }
+    const seq = ++this.pairSeq;
     prisoner.executorId = executorId;
-    this.playPair(executorId, prisonerId, idle, false, () => this.chop(prisonerId, executorId));
-    prisoner.timers.push(setTimeout(() => this.chop(prisonerId, executorId), this.pairMaxMs));
+    this.headsmen.set(executorId, prisonerId);
+    sendJson(mp, userOf(mp, executorId), { customPacketType: STATE_PACKET, pose: HEADSMAN_STANCE, exit: HEADSMAN_EXIT });
+    this.mirrorPose(executorId, HEADSMAN_STANCE);
+    this.broadcast([executorId, prisonerId], {
+      customPacketType: CHOP_PACKET, executor: executorId, prisoner: prisonerId, seq, inMs: CHOP_LEAD_MS, ms: CHOP_LEAD_MS + CHOP_DONE_MS,
+      headsmanSpot: spot, prisonerSpot: this.spotBy(prisoner.blockId, this.prisonerOffset),
+    });
+    prisoner.timers.push(setTimeout(() => this.chop(prisonerId, executorId), CHOP_LEAD_MS + CHOP_KILL_MS));
+    setTimeout(() => this.releaseHeadsman(executorId, prisonerId), CHOP_LEAD_MS + CHOP_DONE_MS);
     notifyActor(mp, prisonerId, `${nameShownTo(mp, prisonerId, executorId)} raises the axe.`);
-    this.log(`[execution] ${hex(executorId)} executes ${hex(prisonerId)}`);
+    this.log(`[execution] ${hex(executorId)} executes ${hex(prisonerId)} at block ${hex(prisoner.blockId)}: headsman moved to his mark ${describeSpot(spot)}, ` +
+      `${HEADSMAN_STANCE}; chop ${seq} on every client in ${CHOP_LEAD_MS} ms (prisoner in ${prisoner.pose}), the kill at +${CHOP_LEAD_MS + CHOP_KILL_MS} ms, ` +
+      `${HEADSMAN_EXIT} at +${CHOP_LEAD_MS + CHOP_DONE_MS} ms`);
+  }
+
+  // The chop clip is back in the stance by now, the one state the headsman's exit plays from
+  private releaseHeadsman(executorId: number, prisonerId: number): void {
+    if (this.headsmen.get(executorId) !== prisonerId) return;
+    this.headsmen.delete(executorId);
+    sendJson(this.mp, userOf(this.mp, executorId), { customPacketType: STATE_PACKET, pose: "" });
+    this.mirrorPose(executorId, HEADSMAN_EXIT);
+    this.log(`[execution] ${hex(executorId)} steps off the block after the chop of ${hex(prisonerId)} (${HEADSMAN_EXIT})`);
+  }
+
+  // A participant's client names each answer of its graph; a prisoner whose graph never took the block kneel kneels in the bleedout pose instead
+  private onBlockStep(userId: number, targetId: number, content: Content): void {
+    const reporterId = this.actorOf(userId);
+    if (!reporterId || (!this.prisoners.has(reporterId) && !this.headsmen.has(reporterId))) return;
+    const seq = Number(content.seq) || 0;
+    this.log(`[execution] block step from ${hex(reporterId)}'s client on ${hex(targetId)}${seq ? ` (chop ${seq})` : ""}: ${String(content.step ?? "").slice(0, STEP_MAX_CHARS)}`);
+    const prisoner = this.prisoners.get(reporterId);
+    if (content.fallback !== "kneel" || !prisoner || prisoner.executorId || prisoner.pose === BLEEDOUT_KNEEL) return;
+    prisoner.pose = BLEEDOUT_KNEEL;
+    this.sendPose(reporterId, BLEEDOUT_KNEEL);
+    this.mirrorPose(reporterId, BLEEDOUT_KNEEL);
+    this.log(`[execution] ${hex(reporterId)} kneels in ${BLEEDOUT_KNEEL} instead: their graph never took ${PRISONER_KNEEL}, so no chop clip will play on them`);
   }
 
   // The axe lands whatever became of the executioner meanwhile; a prisoner already dead by other means is only taken off the block
@@ -400,7 +467,7 @@ export class ExecutionSystem implements System {
       this.mp.set(prisonerId, ON_BLOCK_PROP, null);
     } catch { /* form gone */ }
     this.sendPose(prisonerId, "");
-    this.mirrorPose(prisonerId, PRISONER_STAND);
+    this.mirrorPose(prisonerId, prisoner.pose === BLEEDOUT_KNEEL ? BLEEDOUT_STAND : IDLE_EXIT);
     this.log(`[execution] ${hex(prisonerId)} left block ${hex(prisoner.blockId)}`);
   }
 
@@ -408,12 +475,12 @@ export class ExecutionSystem implements System {
     sendJson(this.mp, userOf(this.mp, prisonerId), { customPacketType: STATE_PACKET, pose });
   }
 
-  // The parked-body pose path: every copy that streams in plays the event, so late viewers see the kneel; needs the native build that accepts lastAnimEvent
-  private mirrorPose(prisonerId: number, anim: string): void {
+  // The parked-body pose path: every copy that streams in plays the event, so late viewers see the pose; needs the native build that accepts lastAnimEvent
+  private mirrorPose(actorId: number, anim: string): void {
     try {
-      this.mp.set(prisonerId, "lastAnimEvent", anim);
+      this.mp.set(actorId, "lastAnimEvent", anim);
     } catch (e) {
-      this.log(`[execution] mirroring ${anim} on ${hex(prisonerId)} failed: ${e}`);
+      this.log(`[execution] mirroring ${anim} on ${hex(actorId)} failed: ${e}`);
     }
   }
 
@@ -467,7 +534,7 @@ export class ExecutionSystem implements System {
           pos[1] + Math.cos(yaw) * offset.forward - Math.sin(yaw) * offset.right,
           pos[2] + offset.up,
         ],
-        rot: [0, 0, yawDeg + offset.yaw],
+        rot: [0, 0, yawDeg + offset.yaw - 360 * Math.floor((yawDeg + offset.yaw) / 360)],
       };
     } catch {
       return null;
@@ -502,21 +569,23 @@ export class ExecutionSystem implements System {
     this.log(`[execution] ${line}`);
   }
 
-  // Both players see the pair, and so does everyone whose client has a copy of the victim; a standing pair stands the victim up first, a kneeling one waits for the kneel
+  // Both players see the pair, and so does everyone whose client has a copy of either; a standing pair stands the victim up first, a kneeling one waits for the kneel
   private playPair(attackerId: number, targetId: number, idle: number, standUp: boolean, done: () => void, kneel = !standUp): void {
-    const mp = this.mp;
     const now = Date.now();
     this.pairs.forEach((pair, id) => { if (now > pair.until) this.pairs.delete(id); });
     const seq = ++this.pairSeq;
     this.pairs.set(targetId, { attackerId, seq, sentAt: now, until: now + this.pairMaxMs, ended: false, done });
-    const payload = { customPacketType: "pairedIdle", attacker: attackerId, target: targetId, idle, ms: this.pairMaxMs, standUp, kneel, seq };
+    this.broadcast([targetId, attackerId], { customPacketType: "pairedIdle", attacker: attackerId, target: targetId, idle, ms: this.pairMaxMs, standUp, kneel, seq });
+  }
+
+  // To the participants and to everyone whose client has a copy of one of them
+  private broadcast(participants: number[], payload: Record<string, unknown>): void {
+    const mp = this.mp;
     let online: unknown[] = [];
     try { online = mp.get(0, "onlinePlayers") ?? []; } catch { /* no players */ }
     for (const raw of online) {
       const viewerId = Number(raw) >>> 0;
-      if (viewerId === attackerId || viewerId === targetId || isStreamedTo(mp, targetId, viewerId)) {
-        sendJson(mp, userOf(mp, viewerId), payload);
-      }
+      if (participants.some((id) => id === viewerId || isStreamedTo(mp, id, viewerId))) sendJson(mp, userOf(mp, viewerId), payload);
     }
   }
 
@@ -552,18 +621,17 @@ export class ExecutionSystem implements System {
     return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 0;
   }
 
-  // The bleedout killmove for the weapon in hand, 0 without a melee weapon; no 2HW decapitation exists, so a battleaxe borrows the greatsword clip
-  private killMoveOf(actorId: number): number {
-    const held = this.weaponTypeOf(actorId);
-    if (!held || held === "unarmed") return 0;
-    if (held === "battleaxe") this.log("[execution] no battleaxe decapitation, using the greatsword clip");
-    return held === "greatsword" || held === "battleaxe" ? KILLMOVE_TWO_HANDED : KILLMOVE_ONE_HANDED;
+  private wornEntriesOf(actorId: number): any[] {
+    try {
+      return (this.mp.get(actorId, "equipment")?.inv?.entries ?? []).filter((e: any) => e.worn || e.wornLeft);
+    } catch {
+      return [];
+    }
   }
 
   // By the weapon in hand, the right hand first: a melee type, unarmed with empty hands, "" with a bow, staff or crossbow
   private weaponTypeOf(actorId: number): WeaponType | "" {
-    let entries: any[] = [];
-    try { entries = this.mp.get(actorId, "equipment")?.inv?.entries ?? []; } catch { return ""; }
+    const entries = this.wornEntriesOf(actorId);
     const animIn = (hand: "worn" | "wornLeft"): number =>
       entries.filter((e) => e[hand]).map((e) => weaponAnimType(this.mp, Number(e.baseId))).find((anim) => anim >= 1) ?? -1;
     const oneHanded = (anim: number): boolean => anim >= 1 && anim <= 4;
@@ -611,6 +679,8 @@ export class ExecutionSystem implements System {
   private nextCheckAt = 0;
   // prisonerId -> the block they kneel at
   private prisoners = new Map<number, Prisoner>();
+  // executorId -> the prisoner whose chop they stand in the stance for
+  private headsmen = new Map<number, number>();
   // victimId -> the assassination under way on them
   private assassinations = new Map<number, Assassination>();
   // victimId -> the killmove playing on them

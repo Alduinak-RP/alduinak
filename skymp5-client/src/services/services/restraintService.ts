@@ -160,8 +160,9 @@ const describeAttempt = (lock: ActionLock): string => {
  *   { "customPacketType": "bleedoutState", "downed": true, "seconds": 15 }
  *   { "customPacketType": "bleedoutState", "downed": false, "died": false }
  *
- *   // A prisoner at an execution block (ExecutionSystem); "" leaves the block:
- *   { "customPacketType": "executionState", "pose": "bleedOutStart" }
+ *   // A prisoner or a headsman at an execution block (ExecutionSystem), with the pose's own exit when it has one; "" leaves the block:
+ *   { "customPacketType": "executionState", "pose": "IdleExecutioneeIdle" }
+ *   { "customPacketType": "executionState", "pose": "IdleExecutionerIdle", "exit": "IdleChairExitStart" }
  *
  *   // Timed work such as harvesting (actorUtil.sendActionLock); a new lock replaces the old one:
  *   { "customPacketType": "actionLock", "anim": "IdleKneelingEnter", "seconds": 5, "exitAnim": "IdleForceDefaultState" }
@@ -186,9 +187,10 @@ const describeAttempt = (lock: ActionLock): string => {
  *     or open menus, and is a ghost locally so no local hit lands; held in
  *     third person for the whole bleedout, the camera can still orbit.
  *     Carried wins over downed, downed over bound.
- *   - executionState: kneels at the block in the given pose, held in place like
- *     a downed player but with menus and a free camera; wins over bound, the
- *     cuffs stay on.
+ *   - executionState: takes the block pose (the prisoner's kneel or the
+ *     headsman's stance) in third person, held in place like a downed player
+ *     but with menus and a free camera, and leaves it through its exit; wins
+ *     over bound, the cuffs stay on.
  *   - standForPair (PairedIdleService, a finish off with standUp): the kneel is
  *     left for the length of the pair while the controls stay locked; a victim
  *     who survives it kneels again shortly after pairEnded, or when it lapses.
@@ -398,7 +400,8 @@ export class RestraintService extends ClientListener {
       this.applyCarryAnim();
     } else if (type === "executionState" && typeof content["pose"] === "string") {
       this.executionPose = content["pose"];
-      logTrace(this, `executionState pose=${this.executionPose}`);
+      this.executionExit = typeof content["exit"] === "string" ? content["exit"] : "";
+      logTrace(this, `executionState pose=${this.executionPose} exit=${this.executionExit}`);
       this.applyState();
     } else if (type === "actionLock" && typeof content["anim"] === "string" && content["anim"]) {
       const anim = content["anim"];
@@ -679,10 +682,11 @@ export class RestraintService extends ClientListener {
       this.sp.Game.enablePlayerControls(true, false, true, false, false, false, false, false, 0);
     }
     if (this.downed || this.executionPose || this.lock) {
-      // Held in place: no walking, fighting, sneaking or activation; downed also loses menus and is kept in third person, the block kneel and action locks keep the camera free
-      if (this.downed) {
+      // Held in place: no walking, fighting, sneaking or activation; downed also loses menus and is kept in third person, a block pose starts in it and keeps the camera free like an action lock
+      if (this.downed || this.executionPose) {
         this.sp.Game.forceThirdPerson();
-      } else if (this.downedControlsApplied) {
+      }
+      if (!this.downed && this.downedControlsApplied) {
         this.sp.Game.enablePlayerControls(false, false, true, false, false, true, false, false, 0);
       }
       this.downedControlsApplied = this.downed;
@@ -714,7 +718,8 @@ export class RestraintService extends ClientListener {
     const lockPose = !!this.lock && desired === this.lockPose;
     if (lockPose) this.logLockWaits(desired);
     this.appliedPose = desired;
-    this.appliedExit = lockPose && this.lock ? this.lock.attempts[this.lock.attempt].exit : exitOf(desired);
+    this.appliedExit = lockPose && this.lock ? this.lock.attempts[this.lock.attempt].exit
+      : desired === this.executionPose && this.executionExit ? this.executionExit : exitOf(desired);
     this.poseSentMs = Date.now();
     const token = ++this.poseToken;
     // A pose with its own exit (an action lock's exitAnim) leaves through it even on the same layer
@@ -983,6 +988,7 @@ export class RestraintService extends ClientListener {
   private carriedControlsApplied = false;
   private downed = false;
   private executionPose = "";
+  private executionExit = "";
   private pairedUntil = 0;
   private lock: ActionLock | null = null;
   // Tells a stale attempt check from the current one

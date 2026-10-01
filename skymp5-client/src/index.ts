@@ -62,6 +62,7 @@ import { WritingService } from "./services/services/writingService";
 import { InteractionPromptService } from "./services/services/interactionPromptService";
 import { RestraintService } from "./services/services/restraintService";
 import { PairedIdleService } from "./services/services/pairedIdleService";
+import { ExecutionChopService } from "./services/services/executionChopService";
 import { JobService } from "./services/services/jobService";
 import { CaptureConsentService } from "./services/services/captureConsentService";
 import { SearchService } from "./services/services/searchService";
@@ -178,6 +179,7 @@ const main = () => {
       new VanillaMenuService(sp, controller),
       new RestraintService(sp, controller),
       new PairedIdleService(sp, controller),
+      new ExecutionChopService(sp, controller),
       new JobService(sp, controller),
       new CaptureConsentService(sp, controller),
       new SearchService(sp, controller),

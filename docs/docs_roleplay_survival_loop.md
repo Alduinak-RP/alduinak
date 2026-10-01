@@ -117,8 +117,11 @@ behaviour-graph events — no ESP required.**
   victim stays kneeling and every weapon plays the one-handed
   `pa_1HMKillMoveBleedOutKill` (F469E, `pa_KillingBlow`, no decapitation,
   no variety; a two-hander stabs one-handed, no non-decapitating two-handed
-  bleedout record exists) 1.2 s after the packet on every client, the
-  execution's kneel rule below (`unarmed` is refused here too). The
+  bleedout record exists) 1.2 s after the packet on every client, once the
+  victim's client sent the kneel again when it had none recorded (`kneel
+  missing at pair start`) and every other client sent `bleedOutStart` to its
+  copy (`kneel re-sent to copy ... at pair start`); `unarmed` is refused here
+  too. The
   victim's timer waits while the pair plays: each
   participant's client polls both actors (`bIsSynced`, `IsInKillMove`) and
   reports the end (`pairedIdleDone`, first report wins), a pair the graph
@@ -147,69 +150,102 @@ behaviour-graph events — no ESP required.**
 - **Execution** (`executionSystem.ts`): the same right works at a headsman's
   block, the `ExecutionerChoppingBlock` furniture (FURN 2E8EB) already placed
   at Helgen, Solitude and in the Falkreath and Dragon Bridge city mods, plus
-  any base listed in `executionBlockBaseIds`. Standing within 300 units of a
-  block, **Prepare Execution** on a cuffed prisoner in reach moves them onto
-  the block (`executionBlockOffset`) where they kneel in the bleedout pose
-  (`bleedOutStart`, `executionState`) and cannot move but can open menus.
-  The move reattaches the prisoner's 3D on their client a few frames after
-  the packet (`moveRefrToPosition` after the ragdoll purge), which can
-  swallow the kneel sent around it, so `RestraintService.onTeleported` sends
-  the held pose again 0.5 s after every server move of a posed player
-  (`pose <pose> re-sent after teleport` in `skyrim-platform.log`); the
-  copies take it from the relayed event, and the server also writes the
-  kneel to the prisoner's `lastAnimEvent` (the parked-body pose path, the
-  native build that accepts it; `[execution] mirroring bleedOutStart on ...
-  failed` on an older one), so a copy that streams in later, or is rebuilt
-  by the move, kneels too; leaving the block writes `bleedOutStop` there.
-  The vanilla headsman idles (`IdleExecutioneeIdleEnterInstant`,
-  `IdleExecutionerChop` and their pair) are furniture-state clips with no
-  own animation file: the engine only enters them by seating both actors in
-  the block furniture, and sent on the ground they play nothing, which is
-  what r13 shipped. **Execute** needs a drawn melee weapon ("Draw your
-  weapon first.") and plays the bleedout beheading pair on the kneeling
-  prisoner through the same `pairedIdle` packet as a finish off, from
-  wherever the executioner stands within reach of the block: nothing moves
-  the executioner (the pair aligns the two actors itself). Every client plays a kneeling pair 1.2 s after the
-  packet: the prisoner's client sends the kneel again first when it has
-  none recorded (`kneel missing at pair start`), and every other client
-  sends `bleedOutStart` to its copy of the prisoner (`kneel re-sent to copy
-  ... at pair start`), since the bleedout pairs need the victim's graph in
-  the bleedout state on the client that plays them and a copy rebuilt by
-  the move onto the block may stand. The prisoner's client waits even with
-  the kneel in place, so both participants' clips end together and the
-  first `pairedIdleDone`, which kills, never lands while the executioner
-  and the viewers are still 1.2 s from the end of theirs. The clips:
-  `pa_KillMove1HMDecapBleedOut` (IDLE F465D) for one-handed and dual
-  weapons, `pa_KillMove2HMDecapBleedOut` (F467F) for two-handed ones, the
-  clips the finish off played in r13 and r14 (a battleaxe or warhammer plays
-  the greatsword clip and the server logs `[execution] no battleaxe
-  decapitation, using the greatsword clip`). A beheading is the point of a block execution, and
-  the respawn rebuilds the body. The prisoner dies when a participant's
-  client reports the end of the pair, or at `finishOffMaxMs`, and goes to
-  Sovngarde, the same PK as a finish off (`pk.log`, `pvp.log`, the
-  `execute` alert); their body is freed from the cuffs. A prisoner who logs
-  out while the axe falls is executed at once. Once the pair is sent nothing
-  stops it: the clip has already beheaded the prisoner on every client, so
-  the executioner leaving, going down or being pulled away changes nothing,
-  and a Release or a carry meanwhile is refused ("The axe is already
-  falling."). Before that, **Release** from anyone who is not bound pulls a
-  prisoner off the block; the cuffs stay on and unbinding stays the
-  captor's. A carry also takes them off the block. The
-  offset is an unmeasured starting point: measure it at a block with
-  `getpos`/`getangle` and set it in `server-settings.json`. Static bloody
-  blocks do not count, the server never loads statics. The vanilla
-  head-on-the-block look is reachable only through the furniture; a later
-  probe at the Helgen block (`0xAA7CC`) decides it: (1) press E on the
-  block: does the engine kneel you with your head on it; (2) standing,
-  `player.sae IdleChairEnterInstant` then
-  `player.sae IdleExecutioneeIdleEnterInstant`: does the kneel appear (what
-  copies would use); (3) seated on the block from behind with a two-handed
-  axe, `player.sae IdleExecutionerIdleEnterInstant` then
-  `player.sae IdleExecutionerChop`. If (1) works the prisoner can be seated
-  through the Papyrus activate `gatheringSystem.activateFor` uses and
-  released with `IdleFurnitureExit`; if (3) works only for the vanilla
-  headsmen, the `isExecutioner` keyword (0x70C0A) on the Player record is
-  the ESP option.
+  any base listed in `executionBlockBaseIds`, and plays the vanilla Helgen
+  and Solitude sequence. In vanilla the prisoner, the headsman and at Helgen
+  the captain sit in the block's furniture markers; the block's
+  `HeadChopBlockHookupSCRIPT` links the prisoner's graph to theirs
+  (`AddDependentAnimatedObjectReference`) and plays `IdleHeadChop` (event
+  `IdleExecutionerChop`) on the prisoner, which every linked graph takes at
+  once. MQ101 stage 50 only walks the Stormcloaks out of the cart, stage 85
+  only listens for the prisoner's `Decapitate` to switch the crowd sound,
+  and SolitudeOpening drives Roggvir with packages onto the same block. The
+  clips sit in `mt_behavior.hkx` and need no furniture: `IdleExecutioneeIdle`
+  and `IdleExecutionerIdle` are global wildcard transitions of
+  `MT_RootBehavior` into `Executionee_State` (the 1.5 s `AOExecutioneeEnter`
+  kneel, then the head-on-the-block loop `AOExecutioneeIdle`) and the
+  furniture state's `Executioner_State` (the 1.5 s `AOExecutionerEnter`,
+  which loads and draws the `AnimObjectExecutionerAxe` prop, then
+  `AOExecutionerIdle`), the same way the chair sync seats copies with
+  `IdleChairEnterInstant`. From those idles `IdleExecutionerChop` plays
+  `AOExecutionerChop` (20 s, back to the stance at 19.5 s) on the headsman
+  and `AOExecutioneeChop` (20 s, `Decapitate` at 11.84 s, `KillActor` at
+  16.61 s) on the prisoner; `IdleChairExitStart` takes the headsman out
+  through his enter clip played backwards, which puts the axe away. Before
+  r34 the block sent the IDLE record names (`IdleExecutioneeIdleEnterInstant`
+  and `IdleExecutioneeChop`, which no transition uses, and
+  `IdleExecutionerIdleEnterInstant`, a local wildcard taken only inside the
+  headsman's state), so nothing played, and then the bleedout beheading
+  killmove from wherever the executioner stood.
+  Standing within 300 units of a block, **Prepare Execution** on a cuffed
+  prisoner in reach moves them onto the block's prisoner mark
+  (`Furniture\HeadChoppingBlock.nif` marker 1: 87.7 units ahead of the
+  block's origin and 68.8 to its right, turned 270 degrees, so the head lies
+  on the block in front of the headsman; `executionBlockOffset` overrides it)
+  and sends `IdleExecutioneeIdle` (`executionState`): they kneel with their
+  head on the block, are put in third person and cannot move but can open
+  menus. The move reattaches the prisoner's 3D on their client a few frames
+  after the packet, which can swallow the kneel sent around it, so
+  `RestraintService.onTeleported` sends the held pose again 0.5 s after
+  every server move of a posed player (`pose <pose> re-sent after teleport`
+  in `skyrim-platform.log`); the copies take it from the relayed event, and
+  the server also writes it to the prisoner's `lastAnimEvent` (the
+  parked-body pose path, the native build that accepts it), so a copy that
+  streams in later kneels too; leaving the block writes
+  `IdleForceDefaultState` there. When the prisoner's graph took none of the
+  sends 1.5 s after the first, their client (`ExecutionChopService`) sheathes,
+  forces third person and the default state and sends it once more; when
+  that fails too it reports it and the server kneels them in the bleedout
+  pose instead (`bleedOutStart`, left with `bleedOutStop`), on which no chop
+  clip plays.
+  **Execute** needs the executioner on foot, upright, sheathed and without a
+  torch in hand ("Dismount first.", "Stand up first.", "Sheathe your weapon
+  first.", "Put away your torch first."), since the MT behaviour that holds
+  these states runs only with empty hands; no weapon is needed, the axe
+  comes with the stance, and a headsman takes one prisoner at a time ("You
+  cannot do that now."). The server moves the executioner onto marker 0
+  (the block's origin, facing the block's yaw), sends him
+  `IdleExecutionerIdle` with the exit `IdleChairExitStart` (`executionState`,
+  held like the prisoner) and writes it to his `lastAnimEvent`, and sends
+  `executionChop` to both players and to everyone whose client has a copy of
+  either. Every client sends the stance and the kneel again 1.3 s after the
+  packet (a graph already in them ignores it, a copy posed late reaches its
+  idle in time), then 3 s after the packet sends `IdleExecutionerChop` to
+  both actors in the same frame, the vanilla script's one event for the two
+  linked graphs, with both copies out of the movement sync until the end. An
+  actor whose graph refuses the chop gets its stance or kneel again and the
+  chop 1.7 s later. The prisoner dies 19.61 s after the request, at the
+  clip's `KillActor` (the head came off at `Decapitate`), and goes to
+  Sovngarde, the same PK as a finish off (`pk.log`, `pvp.log`, the `execute`
+  alert); their body is freed from the cuffs and the respawn rebuilds the
+  head. The headsman is released 24 s after the request, once his swing is
+  back in the stance: `IdleChairExitStart`, written to his `lastAnimEvent`
+  too; his client tries a refused exit again every 0.5 s and after six
+  refusals forces `IdleForceDefaultState`, which can leave the axe prop in
+  hand until the next weapon draw. A prisoner who logs out while the axe
+  falls is executed at once. Once the chop is sent nothing stops it: a
+  Release or a carry is refused ("The axe is already falling."). Before
+  that, **Release** from anyone who is not bound pulls a prisoner off the
+  block; the cuffs stay on and unbinding stays the captor's. A carry also
+  takes them off the block. Static bloody blocks do not count, the server
+  never loads statics.
+  The server logs each step: `[execution] <executor> puts <prisoner> on
+  block <block> at the prisoner's mark (<x>, <y>, <z>) yaw <deg>,
+  IdleExecutioneeIdle`, `[execution] <executor> executes <prisoner> at block
+  <block>: headsman moved to his mark ..., IdleExecutionerIdle; chop <seq> on
+  every client in 3000 ms (prisoner in <pose>), the kill at +19610 ms,
+  IdleChairExitStart at +24000 ms`, one `[execution] block step from
+  <reporter>'s client on <prisoner> (chop <seq>): <event> on the
+  <headsman|prisoner> <local id>: taken|refused|ignored, already chopping`
+  line for each answer of a participant's own graph and for its chop of the
+  other participant's copy, the PK line and `left block`, then `[execution]
+  <executor> steps off the block after the chop of <prisoner>
+  (IdleChairExitStart)`. Each client writes `ExecutionChopService: chop
+  <seq>: chop in 3000 ms; headsman <copy|this player> <id>, animDriven
+  <bool>, <n> units from its mark, facing <deg> degrees off; prisoner ...`,
+  `stance and kneel sent again 1700 ms before the chop; ...`,
+  `IdleExecutionerChop sent to the headsman and the prisoner together`, one
+  line per graph answer, any `fallback: ...` line, and `over, chop taken by
+  <ids>` to `skyrim-platform.log`.
 - **Assassinate** (`executionSystem.ts`): the same right kills a standing
   player from behind. Assassinate shows in the X menu on a living player
   character in reach (`captureInteractMaxDistance`) who is neither downed, bound,

@@ -336,6 +336,9 @@ const sendToGraph = (refr: ObjectReference, anim: Animation): void => {
   }
 };
 
+// For a service that poses a copy itself: an idle that does not come through the sync is blocked on a copy
+export const playOnCopy = (refr: ObjectReference, animEventName: string): void => sendToGraph(refr, { animEventName, numChanges: 0 });
+
 export const isInSitPose = (refrId: number): boolean => sitCollisionDisabled.has(refrId);
 
 export const setRefrCollision = (refrId: number, collision: boolean): void => {
