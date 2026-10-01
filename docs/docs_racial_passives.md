@@ -124,6 +124,9 @@ MasterySystem, which sends it again after the creation. Nothing is sent without 
 
 A fist hit's damage is the aggressor's RACE unarmed damage, which the patcher copies from a weapon record
 (`unarmedDamageFrom`): Khajiit from Steel Dagger (7), Argonian from Iron Dagger (6, new in r27a), everyone else 4.
+From plugin r28 the dagger records hold the rebalance rows (Steel Dagger 11, Iron Dagger 10: the stat pass,
+`misc/proficiency-patcher/README.md`), and the race copy runs after that pass, so the RACE values are 11 and 10. Only
+the TES5 formula reads them; with the rebalance formula on, the claws come from the settings rows as below.
 Claws are never tempered, never wear and carry no poison. Under the rebalance formula (test release B) they take the
 dagger rows through `alduinakDamageFormulaSettings.unarmed.raceOverride`, with the fist's timing and rate limit.
 

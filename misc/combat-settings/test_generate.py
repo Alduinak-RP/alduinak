@@ -192,6 +192,28 @@ class Outputs(unittest.TestCase):
         armor = {t['edid']: t['to'] for t in lists['tooltips']['armor']}
         self.assertEqual(armor['ArmorOrcishCuirass'], 73.5)
 
+    def test_synced_names_what_the_plugin_lacks(self):
+        studded = armo('ArmorStuddedCuirass', keywords='ArmorMaterialStudded', atype='Light', ar=46.5, weight=6.0)
+        races = {r: dict(form_key='1:Test.esm', unarmed_damage=u) for r, u in
+                 (('KhajiitRace', 11.0), ('KhajiitRaceVampire', 11.0), ('ArgonianRace', 10.0), ('ArgonianRaceVampire', 6.0))}
+        lists, _ = G.esp_lists(DESIGN, run(armors=[studded], cobjs=[cobj('ArmorStuddedCuirass', gates=('Tailor Adept',), bench='CraftingTanningRack')]),
+                               None, None, races)
+        self.assertEqual([(r['gates'], r['landed']) for r in lists['retier']], [(['Tailor Adept'], True)])
+        self.assertEqual(G.sync_problems(lists), ['claws: ArgonianRaceVampire has unarmed damage 6.0, IronDagger gives 10'])
+        shared = cobj('ArmorStuddedCuirass', gates=('Blacksmith Novice', 'Tailor Adept'))
+        lists, _ = G.esp_lists(DESIGN, run(armors=[armo('ArmorStuddedCuirass', keywords='ArmorMaterialStudded', atype='Light')], cobjs=[shared]), None, None, None)
+        self.assertEqual(G.sync_problems(lists)[:2],
+                         ['the plugin lacks 1 listed values (tooltips 0 WEAP / 1 ARMO, weights 0, speeds 0): run the stat pass, patch.py --stats esp-lists.json',
+                          'retier: RecipeArmorStuddedCuirass is gated Blacksmith Novice, Tailor Adept, not Tailor Adept alone'])
+
+    def test_survival_keywords_count_a_record_once(self):
+        orc = armo('WarmOrcCuirass', keywords='ArmorMaterialOrcish Survival_ArmorWarm', weight=35.0, ar=40.0)
+
+        class Order:
+            names = ['Test.esp']
+        _, checks = G.esp_lists(DESIGN, run(armors=[orc]), Order, None, None)
+        self.assertEqual(dict(checks['survival_listed']), {'Survival_ArmorWarm': 1})
+
 
 @unittest.skipUnless(os.path.isdir(DUMP), 'research dump not found')
 class ResearchDump(unittest.TestCase):

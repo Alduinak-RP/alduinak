@@ -45,6 +45,16 @@ dagger's damage and hit rules instead, through `alduinakDamageFormulaSettings.un
 row for Khajiit, the Iron one for Argonians, vampire races included), with the fist's timing. See
 `docs_racial_passives.md`.
 
+**Item records from plugin r28.** The plugin's stat pass writes the rebalance rows into the item records, so the item
+cards show them: a weapon's damage is its row damage rounded (Iron Sword 15, Steel Dagger 11, Daedric Sword 22), an
+armour's rating its piece DT x 10 (Iron Armor 45, Daedric Armor 90, clothing 0), the Orcish and Dwarven heavy pieces
+weigh what their row says and a record slower than its row swings at the row speed. The rebalance formula never reads
+these fields; `baseWeaponDamage` and the armour ratings of the TES5 formula above do, and the claw races copy the
+synced daggers (Khajiit 11, Argonian 10). So plugin r28 and an enabled `alduinakDamageFormulaSettings` block belong
+together: with r28 and the block absent or `enabled: false`, the TES5 formula prices hits from the synced numbers,
+which are not the ones it was balanced on. The lists come from `misc/combat-settings/generate.py` and land through
+`misc/proficiency-patcher/patch.py --stats` (see its README).
+
 Armor damage reduction:
 ```
 armorRating = armorRating1 + armorRating2 + armorRating3 + ... + armorRatingN + magicArmorRating;

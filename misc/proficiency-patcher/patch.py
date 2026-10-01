@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Builds the proficiency version of AlduinakAdditions.esp: pre-cleans the plugin, runs the Mutagen patcher, verifies the output record by record.
-#   python patch.py --plugin "C:/MO2/mods/Alduinak/AlduinakAdditions.esp" --out out [--settings ../../build/dist/server/server-settings.json] [--spec spec.json] [--no-creations] [--hotfix] [--stage]
+#   python patch.py --plugin "C:/MO2/mods/Alduinak/AlduinakAdditions.esp" --out out [--settings ../../build/dist/server/server-settings.json] [--spec spec.json] [--no-creations] [--hotfix] [--stage] [--stats esp-lists.json]
 # The output is out/AlduinakAdditions.esp plus proficiency-report.md, proficiency-ids.json and verify.txt (with --stage also verify-r13.txt), and with a creations spec AlduinakCreations.esp, its inputs json and verify-creations.txt.
 import argparse
 import json
@@ -255,6 +255,7 @@ def main():
     ap.add_argument('--no-creations', action='store_true', help='build AlduinakAdditions.esp without AlduinakCreations.esp')
     ap.add_argument('--hotfix', action='store_true', help='apply the recipe gates to the live plugin, sweeping only recipes it does not override yet')
     ap.add_argument('--stage', action='store_true', help='run on <out>/settings.stage.json, the --settings loadOrder cut after the plugin')
+    ap.add_argument('--stats', help='esp-lists.json of misc/combat-settings/generate.py: the rebalance damage, speed, rating and weight of WEAP and ARMO records')
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     log = []
@@ -282,6 +283,8 @@ def main():
         cmd.append('--no-creations')
     if a.hotfix:
         cmd.append('--hotfix')
+    if a.stats:
+        cmd += ['--stats', a.stats]
     print(' '.join(cmd))
     r = subprocess.run(cmd)
     if r.returncode != 0:
@@ -301,7 +304,7 @@ def main():
     print(f'verified: only records of types {sorted(PATCHED_TYPES)}, the meadery bench references and cells, the spec\'s named overrides and newly Initially Disabled records were added or changed; {out_esp}', flush=True)
     if a.stage:
         # A new master turns the check above into a layout comparison; this one resolves every form id against the load order
-        r = subprocess.run([sys.executable, '-B', os.path.join(HERE, 'verify_r13.py'), '--out', a.out, '--spec', a.spec])
+        r = subprocess.run([sys.executable, '-B', os.path.join(HERE, 'verify_r13.py'), '--out', a.out, '--spec', a.spec] + (['--stats', a.stats] if a.stats else []))
         if r.returncode != 0:
             sys.exit(r.returncode)
     if cs and not a.no_creations:

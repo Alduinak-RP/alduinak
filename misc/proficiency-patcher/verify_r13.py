@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Independent check of a hotfix run (patch.py --hotfix --stage), reading every plugin with misc/esplib.py alone, no Mutagen:
-#   python verify_r13.py --out <patch.py out dir> [--spec spec.json]
+#   python verify_r13.py --out <patch.py out dir> [--spec spec.json] [--stats esp-lists.json]
 # The output is compared with its pre-cleaned input and with the winners of settings.stage.json before it; verify-r13.txt
 # lists what was checked and every problem, exit code 3 on any.
 import argparse
@@ -38,6 +38,10 @@ ANY_IDS = {'KWDA', 'EFID', 'EITM', 'ETYP', 'SPLO'}
 EFFECT_SUBS = ('EFID', 'EFIT', 'CTDA', 'CIS1', 'CIS2')
 HAS_SPELL, GET_GLOBAL_VALUE = 264, 74
 HIDE_IN_UI = 0x8000
+# The fields the --stats lists set: (name, subrecord, offset, format); an armour rating is stored x100
+STAT_FIELDS = {'WEAP': (('damage', 'DATA', 8, '<H'), ('speed', 'DNAM', 4, '<f')), 'ARMO': (('rating', 'DNAM', 0, '<I'), ('weight', 'DATA', 4, '<f'))}
+STAT_LISTS = (('WEAP', 'damage', ('tooltips', 'weapons')), ('WEAP', 'speed', ('speeds',)), ('ARMO', 'rating', ('tooltips', 'armor')), ('ARMO', 'weight', ('weights',)))
+RACE_UNARMED = 96
 
 
 class Plugin:
@@ -142,6 +146,63 @@ def keywords_of(pl, data):
 
 def id_list(pl, data, tag):
     return [pl.key(struct.unpack('<I', v)[0]) for t, v in parse_subs(data) if t == tag]
+
+
+def stored(name, value):
+    return round(value * 100) if name == 'rating' else int(value) if name == 'damage' else value
+
+
+def stats_of(t, data):
+    # {field: stored value} of a weapon or an armour
+    subs = dict(parse_subs(data))
+    return {name: struct.unpack_from(fmt, subs[tag], off)[0] for name, tag, off, fmt in STAT_FIELDS[t] if len(subs.get(tag, b'')) >= off + struct.calcsize(fmt)}
+
+
+def load_stats(path):
+    # {(type, key): {field: list value}} of the generator's plugin lists, and the lists themselves
+    lists = json.load(open(path, encoding='utf-8'))
+    targets = collections.defaultdict(dict)
+    for t, name, at in STAT_LISTS:
+        entries = lists
+        for step in at:
+            entries = entries.get(step, {}) if isinstance(entries, dict) else []
+        for e in entries or []:
+            targets[(t, form_key(e['item']))][name] = e['to']
+    return targets, lists
+
+
+def check_stats(ck, t, src, flags, data, out, q, want, tags, animation=None):
+    # None when the item is its reference with only the listed stat fields at their list value; keywords but the crafting category tags stay
+    why = ck.compare(t, src, flags, data, out, q.data(), skip=('DATA', 'DNAM', 'KWDA', 'KSIZ'))
+    if why:
+        return why
+    before, after = keywords_of(src, data), keywords_of(out, q.data())
+    if before - tags != after - tags:
+        return f'keywords changed: {sorted(show(k) for k in (before ^ after) - tags)}'
+    was, now = dict(parse_subs(data)), dict(parse_subs(q.data()))
+    for tag in ('DATA', 'DNAM'):
+        x = bytearray(was.get(tag, b''))
+        for name, ftag, off, fmt in STAT_FIELDS[t]:
+            if ftag == tag and name in want and len(x) >= off + struct.calcsize(fmt):
+                struct.pack_into(fmt, x, off, stored(name, want[name]))
+        if animation is not None and tag == 'DNAM' and x:
+            x[0] = animation
+        if patch.norm_zero(bytes(x)) != patch.norm_zero(now.get(tag, b'')):
+            return f'{tag} {was.get(tag, b"").hex()[:40]} -> {now.get(tag, b"").hex()[:40]}, the lists give {want}'
+    return None
+
+
+def conditions_of(pl, rec):
+    return [(f, pl.key(p) if p else 0, v, o, on) for f, p, v, o, on in (condition(x) for t, x in rec.subs() if t == 'CTDA')]
+
+
+def rank_markers(out, ro):
+    # The plugin's rank marker spells by key
+    return {k: edid(r) for (t, k), r in ro.items() if t == 'SPEL' and k[0] == out.name.lower() and edid(r).startswith('AldProf_')}
+
+
+def gates_of(markers, pl, rec):
+    return sorted(markers[p] for f, p, *_ in conditions_of(pl, rec) if f == HAS_SPELL and p in markers)
 
 
 def check_race(ck, spec, spells, weapons, src, flags, data, out, q):
@@ -282,16 +343,13 @@ def check_alchemy(spec, ri, ro, inp, out, ck, log):
     problems, me = [], out.name.lower()
     before = {edid(r): r for (t, k), r in ri.items() if t == 'COBJ' and k[0] == me}
     after = {edid(r): r for (t, k), r in ro.items() if t == 'COBJ' and k[0] == me}
-    markers = {k: edid(r) for (t, k), r in ro.items() if t == 'SPEL' and k[0] == me and edid(r).startswith('AldProf_')}
-
-    def conds(pl, rec):
-        return [(f, pl.key(p) if p else 0, v, o, on) for f, p, v, o, on in (condition(x) for t, x in rec.subs() if t == 'CTDA')]
+    markers = rank_markers(out, ro)
 
     def gates(pl, rec):
-        return sorted(markers[p] for f, p, *_ in conds(pl, rec) if f == HAS_SPELL and p in markers)
+        return gates_of(markers, pl, rec)
 
     def others(pl, rec):
-        return [c for c in conds(pl, rec) if not (c[0] == HAS_SPELL and c[1] in markers)]
+        return [c for c in conditions_of(pl, rec) if not (c[0] == HAS_SPELL and c[1] in markers)]
     prof = spec['alchemy']['profession']
     for r in spec['alchemy']['recipes']:
         name = r.get('edid') or f"AldRecipeAlchemy_{r['output']}"
@@ -381,8 +439,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', required=True, help='the patch.py --stage output folder')
     ap.add_argument('--spec', default=os.path.join(HERE, 'spec.json'))
+    ap.add_argument('--stats', help='the esp-lists.json the run was given, when it was given one')
     a = ap.parse_args()
     spec = json.load(open(a.spec, encoding='utf-8'))
+    targets, lists = load_stats(a.stats) if a.stats else ({}, {})
     name = spec.get('pluginName', 'AlduinakAdditions.esp')
     me = name.lower()
     stage = json.load(open(os.path.join(a.out, 'settings.stage.json'), encoding='utf-8'))
@@ -445,7 +505,9 @@ def main():
     listed_refs = disable_refs | enable_refs
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
-    winners, actors, parents, spells, races, weapons, lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
+    winners, actors, parents, spells, races, weapons, form_lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
+    # The stat fields of the listed items as the plugins before this one leave them, and the keywords the stat pass must keep
+    listed_now, kept_keywords = {}, {}
     # The winning effects and spell the survival section copies, by editor id
     sv = spec.get('survival', {})
     copied, sources = {e['from'] for e in sv.get('effects', {}).values()} | {sv.get('freezingWater', {}).get('from')}, {}
@@ -465,7 +527,11 @@ def main():
             if r.type == 'WEAP':
                 weapons[edid(r)] = damage_of(r)
             if r.type == 'FLST':
-                lists[edid(r)] = k
+                form_lists[edid(r)] = k
+            if (r.type, k) in targets:
+                listed_now[(r.type, k)] = stats_of(r.type, r.data())
+            if r.type == 'KYWD' and edid(r) in lists.get('untouchedKeywords', []):
+                kept_keywords[k] = edid(r)
             if r.type == 'MGEF':
                 effects[edid(r)] = k
             if r.type == 'RACE':
@@ -556,6 +622,17 @@ def main():
             if why:
                 problems.append(f'{label}: {why}')
             checked['races checked against the races section'] += 1
+        elif (t, k) in targets and ref is not None:
+            src, flags, data, _ = ref
+            clear, set_ = over_flags.get(k, (0, 0)) if r is None else (0, 0)
+            why = check_stats(ck, t, src, flags, data, out, q, targets[(t, k)], tags, WEAPON_ANIMATIONS.get(over_weap.get(k)) if t == 'WEAP' else None)
+            if not why and q.flags & ~COMPRESSED != ((flags & ~clear) | set_) & ~COMPRESSED:
+                why = f'flags {flags:#x} -> {q.flags:#x}'
+            if why:
+                problems.append(f"{label}: not {src.name}'s item with only its listed stats set ({why})")
+            checked[f'{t} set to their listed stats (from {"the input" if r is not None else "the load order"})'] += 1
+            for kw in keywords_of(out, q.data()) & set(kept_keywords):
+                checked[f'stat records still carrying {kept_keywords[kw]}'] += 1
         elif t == 'MISC' and k in over_misc:
             src, flags, data, _ = ref
             why = ck.compare(t, src, flags, data, out, q.data(), skip=('DATA',))
@@ -639,7 +716,7 @@ def main():
             src, flags, data, _ = ref
             why = ck.compare(t, src, flags, data, out, q.data(), skip=('RNAM',))
             rnam = dict(parse_subs(q.data())).get('RNAM')
-            if why or not rnam or out.key(struct.unpack('<I', rnam)[0]) != lists.get(head_parts[edid(q)]):
+            if why or not rnam or out.key(struct.unpack('<I', rnam)[0]) != form_lists.get(head_parts[edid(q)]):
                 problems.append(f'{label}: not {src.name}\'s head part offered to {head_parts[edid(q)]} ({why or "race list"})')
             checked['head parts given their race list'] += 1
         elif t == 'REFR' and k in over_move:
@@ -682,9 +759,32 @@ def main():
                 problems.append(f'{label}: not {src.name}\'s reference with Initially Disabled cleared ({why})')
             checked['enableReferences references'] += 1
         elif t in patch.PATCHED_TYPES or allowed((t, 'self' if k[0] == me else k[0], k[1] if k[0] != me else edid(q) or f'{k[1]:06X}'), q):
+            # Damage, speed, rating and weight change through the --stats lists alone
+            if t in STAT_FIELDS and ref is not None and stats_of(t, ref[2]) != stats_of(t, q.data()):
+                problems.append(f'{label}: stats {stats_of(t, ref[2])} -> {stats_of(t, q.data())}, and no list names the item')
             checked[f'{t} added or changed by the spec'] += 1
         else:
             problems.append(f'{label}: {f"changed ({diff})" if r is not None else "added"}, and no spec section writes it')
+
+    # Every list entry ends at its value, each retier recipe at its rank marker alone and each claw race at its dagger's damage
+    for (t, k), want in targets.items():
+        got = stats_of(t, ro[(t, k)].data()) if (t, k) in ro else listed_now.get((t, k), {})
+        for field, value in want.items():
+            if field not in got or abs(got[field] - stored(field, value)) > 1e-4:
+                problems.append(f'{t} {show(k)}: {field} is {got.get(field)}, the lists give {stored(field, value)}')
+            checked[f'listed {field} values in place'] += 1
+    markers = rank_markers(out, ro)
+    for e in lists.get('retier', []):
+        rec, want = ro.get(('COBJ', form_key(e['recipe']))), 'AldProf_' + '_'.join(e['to'].split())
+        if rec is None or gates_of(markers, out, rec) != [want]:
+            problems.append(f'COBJ {e["edid"]}: gates {gates_of(markers, out, rec) if rec is not None else "not overridden"}, the retier list gives {want}')
+        checked['retier recipes at their listed rank'] += 1
+    for e in lists.get('claws', []):
+        rec = next((r for (t, k), r in ro.items() if t == 'RACE' and edid(r) == e['race']), None)
+        got = struct.unpack_from('<f', dict(rec.subs())['DATA'], RACE_UNARMED)[0] if rec is not None else None
+        if got != e['after']:
+            problems.append(f'RACE {e["race"]}: unarmed damage {got}, {e["unarmedDamageFrom"]} gives {e["after"]}')
+        checked['claw races at their dagger damage'] += 1
 
     # The marker spells keep the ids live characters and server-settings.json name, renamed AldProf_ by the revamp; their shared effect is unchanged
     for (t, k), r in ri.items():
