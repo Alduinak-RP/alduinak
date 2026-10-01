@@ -6,7 +6,7 @@ import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
 import { applyMovement, isCarrierCloneId } from "../sync/movementApply";
-import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
+import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseCloneOnEvent, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
 import { Movement, NiPoint3 } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
@@ -442,6 +442,7 @@ export class FormView {
       Actor.from(refr)?.clearKeepOffsetFromActor();
     }
 
+    if (model.animation && model.animation.numChanges !== this.animState.lastNumChanges) releaseCloneOnEvent(this.refrId, model.animation.animEventName);
     // A rider clone is left to the engine while it rides, and so is a horse clone while the engine is asked to seat one or a clone in a killmove
     const mounted = !model.isMyClone &&
       (applyMount(refr, model, this.mountState) || isMountSuspended(this.refrId) || isCloneMovementSuspended(this.refrId));

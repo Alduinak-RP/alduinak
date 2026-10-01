@@ -238,6 +238,19 @@ let ExecutionSystem
     assert.deepEqual(pairs.map((p) => p.u).sort(), [1, 2, 3], 'the finish off still reaches both players and the viewer')
   }
 
+  for (const [away, pose] of [['downed', 'bleedOutStart'], ['offline', 'IdleSitCrossLeggedEnter']]) {
+    const t = await setup()
+    t.request(HEADSMAN, 'prepareExecutionRequest', PRISONER)
+    t.request(HEADSMAN, 'executeRequest', PRISONER)
+    if (away === 'downed') t.forms.get(HEADSMAN).downed = true
+    else t.users.delete(HEADSMAN)
+    t.forms.get(HEADSMAN).lastAnimEvent = pose
+    runTimer(24000)
+    assert.equal(t.forms.get(HEADSMAN).lastAnimEvent, pose, `a ${away} headsman keeps ${pose} for late viewers`)
+    assert.deepEqual(t.packets.filter((p) => p.u === 1 && p.customPacketType === 'executionState').map((p) => p.pose), away === 'downed' ? ['IdleExecutionerIdle', ''] : ['IdleExecutionerIdle'])
+    assert.match(t.lines.join('\n'), new RegExp(`ff000a01 steps off the block after the chop of ff000b01 \\(${away}, no IdleChairExitStart\\)`))
+  }
+
   for (const fallen of [false, true]) {
     const t = await setup()
     let slay = null

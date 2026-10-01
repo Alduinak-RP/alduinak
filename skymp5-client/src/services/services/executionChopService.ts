@@ -55,6 +55,15 @@ interface Scene {
   // Actors that refused this service's chop, with when their one retry goes out
   retries: Map<number, number>;
   retried: Set<number>;
+  // The relayed event that took the headsman's copy out of the scene, such as his bleedout kneel
+  headsmanLeftFor: string;
+}
+
+// A headsman's exit until his graph takes it, on this player or a copy
+interface ExitWatch {
+  until: number;
+  tries: number;
+  refusedAt: number;
 }
 
 // The player's own block pose as RestraintService sends it; done once taken or reported
@@ -67,6 +76,8 @@ interface PoseWatch {
 }
 
 const hex = (id: number): string => (id >>> 0).toString(16);
+
+const isSceneEvent = (anim: string): boolean => anim.toLowerCase().startsWith("idleexecut") || anim === HEADSMAN_EXIT;
 
 const spotOf = (raw: unknown): Spot | null => {
   const o = raw as Partial<Spot> | null;
@@ -92,10 +103,11 @@ export class ExecutionChopService extends ClientListener {
     this.sp.hooks.sendAnimationEvent.add({
       enter: () => { },
       leave: (ctx) => {
+        const selfId = ctx.selfId >>> 0;
         const ok = ctx.animationSucceeded;
-        this.controller.once("update", () => this.onExitAnswer(ok));
+        if (this.exits.has(selfId)) this.controller.once("update", () => this.onExitAnswer(selfId, ok));
       },
-    }, PLAYER_FORM_ID, PLAYER_FORM_ID, HEADSMAN_EXIT);
+    }, 0, 0xffffffff, HEADSMAN_EXIT);
   }
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
@@ -121,26 +133,28 @@ export class ExecutionChopService extends ClientListener {
       seq, prisonerRemoteId: prisoner, headsmanId, prisonerId, headsmanSpot, prisonerSpot,
       participant: headsmanId === PLAYER_FORM_ID || prisonerId === PLAYER_FORM_ID,
       resendAt: now + Math.max(0, inMs - SETTLE_MS), chopAt: now + inMs, endAt: now + ms,
-      resent: false, chopped: false, chopTaken: new Set(), retries: new Map(), retried: new Set(),
+      resent: false, chopped: false, chopTaken: new Set(), retries: new Map(), retried: new Set(), headsmanLeftFor: "",
     };
     this.scenes.push(scene);
-    if (headsmanId === PLAYER_FORM_ID) {
-      this.exitUntil = scene.endAt + EXIT_WINDOW_MS;
-      this.exitTries = 0;
-    }
+    // RestraintService sends this player's exit when the server releases the stance
+    if (headsmanId === PLAYER_FORM_ID) this.exits.set(PLAYER_FORM_ID, { until: scene.endAt + EXIT_WINDOW_MS, tries: 0, refusedAt: 0 });
     this.log(scene, `chop in ${inMs} ms; headsman ${this.describe(headsmanId, headsmanSpot)}; prisoner ${this.describe(prisonerId, prisonerSpot)}`);
   }
 
   private onUpdate(): void {
     const now = Date.now();
     this.watchPose(now);
-    if (this.exitRefusedAt && now >= this.exitRefusedAt + EXIT_RETRY_MS) this.retryExit();
+    this.exits.forEach((watch, id) => {
+      if (now >= watch.until) this.exits.delete(id);
+      else if (watch.refusedAt && now >= watch.refusedAt + EXIT_RETRY_MS) this.retryExit(id, watch);
+    });
     for (const scene of this.scenes.slice()) {
       if (!scene.resent && now >= scene.resendAt) this.resettle(scene);
       if (!scene.chopped && now >= scene.chopAt) this.chop(scene, now);
       scene.retries.forEach((at, id) => {
         if (now < at) return;
         scene.retries.delete(id);
+        if (id === scene.headsmanId && scene.headsmanLeftFor) return;
         this.log(scene, `${CHOP} sent again to the ${this.roleOf(scene, id)} ${hex(id)}`);
         this.send(id, CHOP);
       });
@@ -158,25 +172,36 @@ export class ExecutionChopService extends ClientListener {
       `prisoner ${this.describe(scene.prisonerId, scene.prisonerSpot)}`);
   }
 
-  // Both in the same frame, as the vanilla block script plays one event for the two linked graphs
+  // Both in the same frame, as the vanilla block script plays one event for the two linked graphs; any other event relayed for the headsman frees his copy to play it
   private chop(scene: Scene, now: number): void {
     scene.chopped = true;
-    for (const id of [scene.headsmanId, scene.prisonerId]) {
-      if (id && id !== PLAYER_FORM_ID) suspendCloneMovement(id, scene.endAt - now);
+    if (scene.headsmanId && scene.headsmanId !== PLAYER_FORM_ID) {
+      suspendCloneMovement(scene.headsmanId, scene.endAt - now, (anim) => {
+        if (isSceneEvent(anim)) return true;
+        scene.headsmanLeftFor = anim;
+        this.log(scene, `the headsman's copy ${hex(scene.headsmanId)} leaves the scene for the relayed ${anim}`);
+        return false;
+      });
     }
+    if (scene.prisonerId && scene.prisonerId !== PLAYER_FORM_ID) suspendCloneMovement(scene.prisonerId, scene.endAt - now);
     const headsman = this.send(scene.headsmanId, CHOP);
     const prisoner = this.send(scene.prisonerId, CHOP);
     this.log(scene, `${CHOP} sent to the headsman${headsman ? "" : " (not loaded here)"} and the prisoner${prisoner ? "" : " (not loaded here)"} together`);
   }
 
-  // The headsman's copy is sent his exit too, in case the relayed one came while its swing still played
+  // The headsman's copy is sent his exit too, in case the relayed one came while its swing still played, unless a relayed event already took it out of the scene
   private end(scene: Scene): void {
     this.scenes.splice(this.scenes.indexOf(scene), 1);
     for (const id of [scene.headsmanId, scene.prisonerId]) {
       if (id && id !== PLAYER_FORM_ID) releaseCloneMovement(id);
     }
-    const exit = scene.headsmanId !== PLAYER_FORM_ID && this.send(scene.headsmanId, HEADSMAN_EXIT);
-    this.log(scene, `over, chop taken by ${Array.from(scene.chopTaken).map(hex).join(", ") || "neither actor"}${exit ? `, ${HEADSMAN_EXIT} sent to the headsman's copy` : ""}`);
+    const copy = scene.headsmanId !== PLAYER_FORM_ID && !scene.headsmanLeftFor ? scene.headsmanId : 0;
+    // Watched before the send, since the graph answers inside it
+    if (copy) this.exits.set(copy, { until: Date.now() + EXIT_WINDOW_MS, tries: 0, refusedAt: 0 });
+    const exit = !!copy && this.send(copy, HEADSMAN_EXIT);
+    if (copy && !exit) this.exits.delete(copy);
+    const exitText = exit ? `, ${HEADSMAN_EXIT} sent to the headsman's copy` : scene.headsmanLeftFor ? `, no ${HEADSMAN_EXIT} for the headsman's copy (left for ${scene.headsmanLeftFor})` : "";
+    this.log(scene, `over, chop taken by ${Array.from(scene.chopTaken).map(hex).join(", ") || "neither actor"}${exitText}`);
   }
 
   private onGraphAnswer(selfId: number, anim: string, ok: boolean): void {
@@ -239,25 +264,33 @@ export class ExecutionChopService extends ClientListener {
     logToPlatformLog(this, `${watch.anim} not taken ${POSE_CHECK_MS} ms after it was sent (${state}), sent again from ${IDLE_EXIT}`);
   }
 
-  private onExitAnswer(ok: boolean): void {
-    if (Date.now() >= this.exitUntil) return;
-    logToPlatformLog(this, `${HEADSMAN_EXIT} on this player: ${ok ? "taken, the axe is put away" : `refused (try ${this.exitTries + 1} of ${EXIT_TRIES})`}`);
-    if (ok) this.exitUntil = 0;
-    this.exitRefusedAt = ok ? 0 : Date.now();
+  private onExitAnswer(id: number, ok: boolean): void {
+    const watch = this.exits.get(id);
+    if (!watch || Date.now() >= watch.until) return;
+    logToPlatformLog(this, `${HEADSMAN_EXIT} on ${this.exitWho(id)}: ${ok ? "taken, the axe is put away" : `refused (try ${watch.tries + 1} of ${EXIT_TRIES})`}`);
+    if (ok) this.exits.delete(id);
+    else watch.refusedAt = Date.now();
   }
 
-  // Refused while the chop clip still plays, so tried again until it is back in the stance, then the default state is forced
-  private retryExit(): void {
-    this.exitRefusedAt = 0;
-    const player = this.sp.Game.getPlayer();
-    if (!player || player.isDead()) return;
-    if (++this.exitTries < EXIT_TRIES) {
-      this.sp.Debug.sendAnimationEvent(player, HEADSMAN_EXIT);
+  // Refused while the chop clip still plays, so tried again until it is back in the stance, then the default state is forced; a downed player's kneel is left alone
+  private retryExit(id: number, watch: ExitWatch): void {
+    watch.refusedAt = 0;
+    if (id === PLAYER_FORM_ID && this.controller.lookupListener(RestraintService).isDowned) {
+      this.exits.delete(id);
+      logToPlatformLog(this, `${HEADSMAN_EXIT} on this player: no retry, downed`);
       return;
     }
-    this.exitUntil = 0;
-    this.sp.Debug.sendAnimationEvent(player, IDLE_EXIT);
-    logToPlatformLog(this, `fallback: ${HEADSMAN_EXIT} refused ${EXIT_TRIES} times, ${IDLE_EXIT} sent; the axe prop may stay in hand until the next weapon draw`);
+    if (++watch.tries < EXIT_TRIES) {
+      if (!this.send(id, HEADSMAN_EXIT)) this.exits.delete(id);
+      return;
+    }
+    this.exits.delete(id);
+    if (!this.send(id, IDLE_EXIT)) return;
+    logToPlatformLog(this, `fallback: ${HEADSMAN_EXIT} refused ${EXIT_TRIES} times on ${this.exitWho(id)}, ${IDLE_EXIT} sent; the axe prop may stay in hand until the next weapon draw`);
+  }
+
+  private exitWho(id: number): string {
+    return id === PLAYER_FORM_ID ? "this player" : `the headsman's copy ${hex(id)}`;
   }
 
   private report(target: number, seq: number, step: string, fallback = ""): void {
@@ -306,8 +339,6 @@ export class ExecutionChopService extends ClientListener {
 
   private scenes: Scene[] = [];
   private pose: PoseWatch | null = null;
-  // The headsman's exit is watched until then
-  private exitUntil = 0;
-  private exitRefusedAt = 0;
-  private exitTries = 0;
+  // By local id, this player's or a headsman copy's
+  private exits = new Map<number, ExitWatch>();
 }

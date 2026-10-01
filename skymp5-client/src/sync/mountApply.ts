@@ -66,8 +66,8 @@ const ridingClones = new Map<number, number>();
 // Horse clones left to the engine while it is asked to seat a rider, by local id, with the moment the wait lapses
 const seatingHorses = new Map<number, number>();
 
-// Clones playing a paired idle (a killmove), by local id, with the moment the suspension lapses
-const pairedClones = new Map<number, number>();
+// Clones playing a paired idle (a killmove), by local id, with the moment the suspension lapses and the relayed events it holds back, all when keeps is unset
+const pairedClones = new Map<number, { until: number; keeps?: (anim: string) => boolean }>();
 
 const syntheticActivations: { caster: number; target: number; at: number }[] = [];
 
@@ -77,8 +77,14 @@ export const isRiderClone = (localId: number): boolean => ridingClones.has(local
 export const isMountSuspended = (localId: number): boolean => (seatingHorses.get(localId) || 0) > Date.now();
 
 // A clone in a paired idle is left to the engine like a seated rider, or its own sync would pull it out of the pair
-export const suspendCloneMovement = (localId: number, ms: number): void => {
-  pairedClones.set(localId, Date.now() + ms);
+export const suspendCloneMovement = (localId: number, ms: number, keeps?: (anim: string) => boolean): void => {
+  pairedClones.set(localId, { until: Date.now() + ms, keeps });
+};
+
+// A relayed event the suspension does not hold back ends it, so the copy follows its player out of the scene
+export const releaseCloneOnEvent = (localId: number, anim: string): void => {
+  const keeps = pairedClones.get(localId)?.keeps;
+  if (keeps && !keeps(anim)) pairedClones.delete(localId);
 };
 
 // The pair ended before its suspension lapsed
@@ -87,7 +93,7 @@ export const releaseCloneMovement = (localId: number): void => {
 };
 
 export const isCloneMovementSuspended = (localId: number): boolean => {
-  const until = pairedClones.get(localId);
+  const until = pairedClones.get(localId)?.until;
   if (until === undefined) return false;
   if (until > Date.now()) return true;
   pairedClones.delete(localId);

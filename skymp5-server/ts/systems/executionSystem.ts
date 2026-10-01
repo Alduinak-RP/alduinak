@@ -422,13 +422,17 @@ export class ExecutionSystem implements System {
       `${HEADSMAN_EXIT} at +${CHOP_LEAD_MS + CHOP_DONE_MS} ms`);
   }
 
-  // The chop clip is back in the stance by now, the one state the headsman's exit plays from
+  // The chop clip is back in the stance by now, the one state the headsman's exit plays from; a headsman who went down, was bound, died or left keeps the pose that took over
   private releaseHeadsman(executorId: number, prisonerId: number): void {
     if (this.headsmen.get(executorId) !== prisonerId) return;
     this.headsmen.delete(executorId);
-    sendJson(this.mp, userOf(this.mp, executorId), { customPacketType: STATE_PACKET, pose: "" });
-    this.mirrorPose(executorId, HEADSMAN_EXIT);
-    this.log(`[execution] ${hex(executorId)} steps off the block after the chop of ${hex(prisonerId)} (${HEADSMAN_EXIT})`);
+    const mp = this.mp;
+    const userId = userOf(mp, executorId);
+    sendJson(mp, userId, { customPacketType: STATE_PACKET, pose: "" });
+    const away = userId < 0 ? "offline" : !isAlive(mp, executorId) ? "dead" : this.bleedout.isDowned(executorId) ? "downed"
+      : isRestrained(mp, executorId) ? "restrained" : "";
+    if (!away) this.mirrorPose(executorId, HEADSMAN_EXIT);
+    this.log(`[execution] ${hex(executorId)} steps off the block after the chop of ${hex(prisonerId)} (${away ? `${away}, no ${HEADSMAN_EXIT}` : HEADSMAN_EXIT})`);
   }
 
   // A participant's client names each answer of its graph; a prisoner whose graph never took the block kneel kneels in the bleedout pose instead

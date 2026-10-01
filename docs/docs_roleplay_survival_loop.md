@@ -211,7 +211,10 @@ behaviour-graph events — no ESP required.**
   packet (a graph already in them ignores it, a copy posed late reaches its
   idle in time), then 3 s after the packet sends `IdleExecutionerChop` to
   both actors in the same frame, the vanilla script's one event for the two
-  linked graphs, with both copies out of the movement sync until the end. An
+  linked graphs, with both copies out of the movement sync until the end;
+  an event relayed for the headsman that is not a block event (his
+  bleedout kneel when he is downed meanwhile, his logout pose) frees his
+  copy to play it at once, and that copy gets no exit at the end. An
   actor whose graph refuses the chop gets its stance or kneel again and the
   chop 1.7 s later. The prisoner dies 19.61 s after the request, at the
   clip's `KillActor` (the head came off at `Decapitate`), and goes to
@@ -219,9 +222,14 @@ behaviour-graph events — no ESP required.**
   alert); their body is freed from the cuffs and the respawn rebuilds the
   head. The headsman is released 24 s after the request, once his swing is
   back in the stance: `IdleChairExitStart`, written to his `lastAnimEvent`
-  too; his client tries a refused exit again every 0.5 s and after six
-  refusals forces `IdleForceDefaultState`, which can leave the axe prop in
-  hand until the next weapon draw. A prisoner who logs out while the axe
+  too, and sent to every copy still in the scene; his client and each such
+  copy try a refused exit again every 0.5 s (a copy whose chop needed the
+  retry is still mid-swing at 24 s) and after six refusals force
+  `IdleForceDefaultState`, which can leave the axe prop in hand until the
+  next weapon draw. A headsman who is downed, bound, dead or offline by
+  then only has his client's stance cleared: no exit is written, so late
+  viewers keep seeing his bleedout kneel or logout pose, and his own client
+  stops retrying the exit while he is downed. A prisoner who logs out while the axe
   falls is executed at once. Once the chop is sent nothing stops it: a
   Release or a carry is refused ("The axe is already falling."). Before
   that, **Release** from anyone who is not bound pulls a prisoner off the
@@ -239,13 +247,19 @@ behaviour-graph events — no ESP required.**
   line for each answer of a participant's own graph and for its chop of the
   other participant's copy, the PK line and `left block`, then `[execution]
   <executor> steps off the block after the chop of <prisoner>
-  (IdleChairExitStart)`. Each client writes `ExecutionChopService: chop
+  (IdleChairExitStart|downed|restrained|dead|offline, no
+  IdleChairExitStart)`. Each client writes `ExecutionChopService: chop
   <seq>: chop in 3000 ms; headsman <copy|this player> <id>, animDriven
   <bool>, <n> units from its mark, facing <deg> degrees off; prisoner ...`,
   `stance and kneel sent again 1700 ms before the chop; ...`,
   `IdleExecutionerChop sent to the headsman and the prisoner together`, one
-  line per graph answer, any `fallback: ...` line, and `over, chop taken by
-  <ids>` to `skyrim-platform.log`.
+  line per graph answer, any `fallback: ...` line, `the headsman's copy
+  <id> leaves the scene for the relayed <event>`, `over, chop taken by
+  <ids>[, IdleChairExitStart sent to the headsman's copy| no
+  IdleChairExitStart for the headsman's copy (left for <event>)]` and
+  `IdleChairExitStart on this player|the headsman's copy <id>: taken, the
+  axe is put away|refused (try N of 6)` (`no retry, downed` for a downed
+  headsman) to `skyrim-platform.log`.
 - **Assassinate** (`executionSystem.ts`): the same right kills a standing
   player from behind. Assassinate shows in the X menu on a living player
   character in reach (`captureInteractMaxDistance`) who is neither downed, bound,
