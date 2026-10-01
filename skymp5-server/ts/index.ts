@@ -53,6 +53,7 @@ import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { DiscordAlerts } from "./systems/discordAlerts";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { UntouchableSystem } from "./systems/untouchableSystem";
+import { TorchSystem } from "./systems/torchSystem";
 import { CompanionSystem } from "./systems/companionSystem";
 import { HostingSystem } from "./systems/hostingSystem";
 import { PetSystem } from "./systems/petSystem";
@@ -339,6 +340,7 @@ const main = async () => {
     bountyBoardSystem,
     writingSystem,
     new UntouchableSystem(log),
+    new TorchSystem(log),
     // Observes hits for the hosting audit; before the spawner and the companions that feed it
     hostingSystem,
     npcSpawnSystem,
