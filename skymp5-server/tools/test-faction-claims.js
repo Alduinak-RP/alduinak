@@ -237,6 +237,22 @@ test('a court claims only inside its own hold, and its ranks act only standing i
   assert.equal(t.rec().name, null)
 })
 
+test('a territory without land claims in any hold, and a claim under a converted id follows to the new one', () => {
+  const t = setup()
+  const INDORIL = 'hold:indoril'
+  t.rights.set(MANAGER, [{ id: INDORIL, name: 'House Indoril', use: true, manage: true }])
+  t.setHold({ key: 'eastmarch', name: 'Eastmarch' })
+  assert.deepEqual(t.menu(MANAGER).claimFactions, [{ id: INDORIL, name: 'House Indoril' }])
+  t.act(MANAGER, 'claimfaction', DOOR, { faction: INDORIL })
+  assert.equal(t.rec().faction, INDORIL)
+  t.act(MANAGER, 'claimfaction', HOUSE, { faction: INDORIL })
+  t.props.get(HOUSE)['private.housing'].faction = 'faction:house-indoril'
+  assert.deepEqual([t.menu(MANAGER, HOUSE).faction.id, t.menu(MANAGER, HOUSE).faction.role], ['faction:house-indoril', ''], 'without a successor the old id matches no rank')
+  t.sys.factionSuccessor = (id) => (id === 'faction:house-indoril' ? INDORIL : id)
+  assert.equal(t.menu(MANAGER, HOUSE).faction.id, INDORIL)
+  assert.equal(t.menu(MANAGER, HOUSE).faction.role, 'manager')
+})
+
 test('an owner hands a personal claim to the faction without a lock, and old keys stop fitting', () => {
   const t = setup()
   t.act(OWNER, 'claim', HOUSE)

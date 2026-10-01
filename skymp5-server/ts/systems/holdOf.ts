@@ -47,6 +47,8 @@ const worldIds = new Set<number>();
 const holdsByKey = new Map<string, Hold>();
 // Interior cell id whose location is in no hold -> the hold its load doors lead to
 const doorHolds = new Map<number, Hold | null>();
+// The keys the territory courts are bound to, used until the scan has found the holds
+const SKYRIM_HOLDS = ["haafingar", "reach", "falkreath", "hjaalmarch", "eastmarch", "winterhold", "rift", "pale", "whiterun"];
 
 const fieldOf = (rec: EspmRecord, type: string): Buffer | undefined => rec.fields.find((f) => f.type === type)?.data;
 
@@ -270,6 +272,11 @@ export function holdOfActor(mp: Mp, actorId: number): Hold | null {
   const at = whereIs(mp, actorId);
   if (!at) return null;
   return worldIds.has(at.cell) ? nearbyHold(mp, actorId, ACTOR_NEAREST_CELLS) : holdByDoors(mp, actorId, at.cell);
+}
+
+// Whether the load order has land for a hold key; a territory whose key has none answers to no border
+export function isHoldLand(key: string): boolean {
+  return holdsByKey.size ? holdsByKey.has(key) : SKYRIM_HOLDS.includes(key);
 }
 
 // "The Rift"; the key capitalized for a hold the scan never saw

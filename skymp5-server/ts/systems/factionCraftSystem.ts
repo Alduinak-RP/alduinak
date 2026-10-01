@@ -49,9 +49,11 @@ const DEFAULT_FACTIONS = [
   "faction:blades", "faction:camonna-tong", "faction:silver-hand", "faction:greybeards",
   "faction:psijic", "faction:mythic-dawn",
   "faction:house-redoran", "faction:house-indoril", "faction:house-telvanni",
+  // The Great Houses as territories, after deploy/mongodb/migrate-morrowind-houses.js
+  "hold:redoran", "hold:indoril", "hold:telvanni",
 ];
 
-// The backend makes hold courts only of the nine holds, so the Great Houses are guilds there and keep the plugin's hold markers
+// The Great Houses' guild ids from before the migration to territories take the plugin's hold markers
 const MARKER_ALIASES: Record<string, string> = {
   "faction:house-redoran": "hold:redoran",
   "faction:house-indoril": "hold:indoril",

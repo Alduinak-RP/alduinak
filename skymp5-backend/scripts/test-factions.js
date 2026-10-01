@@ -102,8 +102,13 @@ async function run() {
   await test('faction validation', () => {
     resetSeed()
     assert.equal(status(() => store.createFaction({ type: 'army', group: 'Vigilants' }, ACTOR)).status, 400)
-    assert.equal(status(() => store.createFaction({ type: 'hold', group: 'Solstheim' }, ACTOR)).status, 400)
-    assert.equal(status(() => store.createFaction({ type: 'hold', group: 'Rift' }, ACTOR)).status, 409)
+    // A territory outside the nine holds exists without Skyrim land
+    const landless = store.createFaction({ type: 'hold', group: 'Solstheim' }, ACTOR).faction
+    assert.equal(landless.id, 'hold:solstheim')
+    assert.equal(landless.land, '')
+    assert.equal(store.definitions().factions.find(f => f.id === 'hold:the-rift').land, 'rift')
+    assert.equal(status(() => store.createFaction({ type: 'hold', group: 'The Solstheim' }, ACTOR)).status, 409)
+    assert.match(status(() => store.createFaction({ type: 'hold', group: 'Rift' }, ACTOR)).message, /already the territory of that hold/)
     assert.equal(status(() => store.createFaction({ type: 'guild', group: '!!!' }, ACTOR)).status, 400)
     assert.equal(status(() => store.createFaction({ type: 'guild', group: 'Vigilants', color: 'red' }, ACTOR)).status, 400)
     assert.equal(status(() => store.createFaction({ type: 'military', group: 'Legion Two', name: 'imperial legion' }, ACTOR)).status, 409)
@@ -306,6 +311,93 @@ async function run() {
     assert.deepEqual(store.definitions().factions.find(f => f.id === 'hold:whiterun').regents, [])
   })
 
+  // A Morrowind house guild as add-craft-factions.js made it, with members, a regent and one member also in Eastmarch
+  function seedHouse() {
+    resetSeed()
+    let { faction } = store.createFaction({ type: 'guild', group: 'House Indoril', province: 'Morrowind', color: '445566' }, ACTOR)
+    ;({ faction } = store.createRank(faction.id, { rev: faction.rev, rank: 'Leader', leader: true, craft: true, title: 'Grandmaster' }, ACTOR))
+    ;({ faction } = store.createRank(faction.id, { rev: faction.rev, rank: 'Steward', craft: true, housing: false }, ACTOR))
+    ;({ faction } = store.createRank(faction.id, { rev: faction.rev, rank: 'Member', capacity: 20 }, ACTOR))
+    ;({ faction } = store.updateRank(`${faction.id}:steward`, { rev: faction.rev, recruit: ['member'] }, ACTOR))
+    store.createAssignment({ requirementId: 'faction:house-indoril:leader', discordId: '901', slot: 0, playerName: 'Helseth' }, ACTOR)
+    store.createAssignment({ requirementId: 'faction:house-indoril:steward', discordId: '902', slot: null, playerName: 'Brara' }, ACTOR)
+    store.createAssignment({ requirementId: 'faction:house-indoril:member', discordId: '903', slot: 1, playerName: 'Athyn' }, ACTOR)
+    store.createAssignment({ requirementId: 'hold:eastmarch:citizen', discordId: '903', slot: 1, playerName: 'Athyn' }, ACTOR)
+    store.createAssignment({ requirementId: 'hold:eastmarch:citizen', discordId: '903', slot: 2, playerName: 'Athyn Two' }, ACTOR)
+    store.setRegency('faction:house-indoril', { enabled: true, regents: [{ discordId: '902', slot: null }] }, ACTOR)
+    return store.definitions().factions.find(f => f.id === 'faction:house-indoril')
+  }
+  const convertInput = (house, extra = {}) => ({ rev: house.rev, type: 'hold', group: 'Indoril', expectedMembers: house.members, ...extra })
+
+  await test('a dry run reports the conversion and its clashes and changes nothing', () => {
+    const house = seedHouse()
+    const before = JSON.stringify(readFile())
+    const plan = store.convertFaction(house.id, convertInput(house, { dryRun: true }), ACTOR)
+    assert.equal(JSON.stringify(readFile()), before)
+    assert.equal(plan.dryRun, true)
+    assert.equal(plan.to, 'hold:indoril')
+    assert.deepEqual(plan.ranks.map(r => [r.from, r.to, r.members]), [
+      ['faction:house-indoril:leader', 'hold:indoril:leader', 1], ['faction:house-indoril:steward', 'hold:indoril:steward', 1], ['faction:house-indoril:member', 'hold:indoril:member', 1],
+    ])
+    assert.deepEqual(plan.clashes.map(c => [c.factionId, c.playerName, c.slot, c.released]), [['hold:eastmarch', 'Athyn', 1, false]], 'slot 2 does not overlap slot 1')
+    assert.equal(plan.faction.name, 'House Indoril')
+    assert.equal(plan.faction.land, '')
+    assert.equal(status(() => store.convertFaction(house.id, convertInput(house), ACTOR)).status, 409, 'an unreleased clash refuses')
+    assert.equal(status(() => store.convertFaction(house.id, convertInput(house, { expectedMembers: 2 }), ACTOR)).status, 409)
+    assert.equal(status(() => store.convertFaction(house.id, convertInput(house, { group: 'House Indoril', type: 'guild' }), ACTOR)).status, 400, 'the same id')
+    const stray = store.getPlayerAssignments('901')[0].id
+    assert.equal(status(() => store.convertFaction(house.id, convertInput(house, { release: [stray] }), ACTOR)).status, 400, 'only clashing rows are released')
+    assert.equal(status(() => store.convertFaction(house.id, convertInput(house, { group: 'Rift' }), ACTOR)).status, 409, 'a Skyrim hold keeps its one territory')
+    assert.equal(JSON.stringify(readFile()), before)
+  })
+
+  await test('a conversion moves every member and permission, releases the clash and retires the guild', () => {
+    const house = seedHouse()
+    const before = readFile()
+    const plan = store.convertFaction(house.id, convertInput(house, { dryRun: true }), ACTOR)
+    const done = store.convertFaction(house.id, convertInput(house, { release: plan.clashes.map(c => c.assignmentId) }), ACTOR)
+    assert.equal(done.dryRun, false)
+    const { factions } = store.definitions()
+    assert.ok(!factions.some(f => f.id === house.id))
+    const territory = factions.find(f => f.id === 'hold:indoril')
+    assert.equal(territory.type, 'hold')
+    assert.equal(territory.name, 'House Indoril')
+    assert.equal(territory.province, 'Morrowind')
+    assert.equal(territory.color, '445566')
+    assert.equal(territory.members, 3)
+    assert.equal(territory.regencyEnabled, true)
+    assert.deepEqual(territory.regents, [{ discordId: '902', slot: null }])
+    const oldRanks = house.ranks
+    for (const rank of territory.ranks) {
+      const old = oldRanks.find(r => r.id === `${house.id}:${rank.id.split(':')[2]}`)
+      for (const key of ['rank', 'order', 'capacity', 'leader', 'remove', 'craft', 'housing', 'arrest', 'execute', 'factionAccess', 'title', 'titleFemale']) assert.deepEqual(rank[key], old[key], `${rank.id} ${key}`)
+      assert.deepEqual(rank.recruit, old.recruit)
+      assert.equal(rank.permission, rank.id.split(':').join('.'))
+    }
+    // The steward slug would default to housing in a territory; the copy keeps the guild's own flag
+    assert.equal(territory.ranks.find(r => r.id === 'hold:indoril:steward').housing, false)
+    const data = readFile()
+    const moved = data.assignments.filter(a => a.requirementId.startsWith('hold:indoril:'))
+    assert.deepEqual(moved.map(a => [a.discordId, a.slot, a.requirementId]).sort(), [['901', 0, 'hold:indoril:leader'], ['902', null, 'hold:indoril:steward'], ['903', 1, 'hold:indoril:member']])
+    for (const a of moved) {
+      const was = before.assignments.find(b => b.id === a.id)
+      assert.equal(was.createdAt, a.createdAt, 'tenure is kept')
+    }
+    assert.deepEqual(data.assignments.filter(a => a.requirementId.startsWith('hold:eastmarch:')).map(a => a.slot), [2], 'only the clashing Eastmarch row left')
+    assert.ok(data.retired.factions.includes(house.id))
+    assert.ok(data.retired.ranks.includes('faction:house-indoril:leader'))
+    assert.deepEqual(data.successors, { 'faction:house-indoril': 'hold:indoril' })
+    assert.deepEqual(store.listDefinitions().successors, { 'faction:house-indoril': 'hold:indoril' })
+    assert.ok(doc.has('whitelist.bak'))
+    const lines = auditLines()
+    assert.ok(lines.some(l => l.includes('action=faction.convert') && l.includes('to=hold:indoril') && l.includes('moved=3') && l.includes('released=1')))
+    assert.equal(lines.filter(l => l.includes('action=member.move')).length, 3)
+    assert.ok(lines.some(l => l.includes('action=member.remove') && l.includes('requirement=hold:eastmarch:citizen')))
+    // The old id is never reused, and a second hold-type membership is refused as usual
+    assert.equal(status(() => store.createFaction({ type: 'guild', group: 'House Indoril' }, ACTOR)).status, 409)
+    assert.match(status(() => store.createAssignment({ requirementId: 'hold:eastmarch:citizen', discordId: '903', slot: 1 }, ACTOR)).message, /one territory faction at a time/)
+  })
+
   await test('roster rows carry the join date so the menu can show tenure', () => {
     resetSeed()
     store.createAssignment({ requirementId: 'hold:whiterun:guard', discordId: '111', slot: 0, playerName: 'Lydia' }, ACTOR)
@@ -407,6 +499,23 @@ async function run() {
     const stale = await call('PATCH', '/api/factions/hold/whiterun', { body: { rev: 99, name: 'x' }, headers: manager })
     assert.equal(stale.status, 409)
     assert.equal(stale.data.stale, true)
+  })
+
+  await test('convert over HTTP with the manager token', async () => {
+    const house = seedHouse()
+    const body = convertInput(house, { dryRun: true })
+    assert.equal((await call('POST', '/api/factions/faction/house-indoril/convert', { body, headers: { Authorization: 'Bearer view' } })).status, 403)
+    const plan = await call('POST', '/api/factions/faction/house-indoril/convert', { body, headers: manager })
+    assert.equal(plan.status, 200)
+    assert.equal(plan.data.clashes.length, 1)
+    const refused = await call('POST', '/api/factions/faction/house-indoril/convert', { body: { ...body, dryRun: false }, headers: manager })
+    assert.equal(refused.status, 409)
+    assert.equal(refused.data.clashes[0].factionId, 'hold:eastmarch')
+    const done = await call('POST', '/api/factions/faction/house-indoril/convert', { body: { ...body, dryRun: false, release: [plan.data.clashes[0].assignmentId] }, headers: manager })
+    assert.equal(done.status, 200)
+    assert.equal(done.data.to, 'hold:indoril')
+    assert.ok(auditLines().some(l => l.includes('actor=server-manager') && l.includes('action=faction.convert')))
+    resetSeed()
   })
 
   await test('the game server ETag ignores memberships and follows definitions', async () => {

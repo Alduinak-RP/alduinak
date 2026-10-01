@@ -69,7 +69,7 @@ const DEFAULT_MAX_TEXT_LEN = 500;
 const DEFAULT_MAX_DISTANCE = 512;
 // TreasStrongBox, the vanilla strongbox
 const DEFAULT_STASH_BASE = "10aad2:Skyrim.esm";
-const NOT_MANAGER_NOTICE = "Only the hold's steward or jarl may open the board's strongbox.";
+const NOT_MANAGER_NOTICE = "Only the territory's steward or jarl may open the board's strongbox.";
 
 const POST_COOLDOWN_MS = 5000;
 const OPEN_COOLDOWN_MS = 1000;
@@ -438,7 +438,7 @@ export class BountyBoardSystem implements System {
     const at = rec.notes.findIndex((note) => note.id === id);
     if (at < 0) return this.notice(ctx, userId, "That notice is no longer on this board.");
     const own = isPosterOf(rec.notes[at], actorId, profileIdOf(ctx.svr, actorId));
-    if (!own && !this.canRemove(actorId, session.name)) return this.notice(ctx, userId, "Only its poster or a non-citizen member of this hold may remove a notice.");
+    if (!own && !this.canRemove(actorId, session.name)) return this.notice(ctx, userId, "Only its poster or a non-citizen member of this territory may remove a notice.");
     const [note] = rec.notes.splice(at, 1);
     if (!this.write(ctx, session.primary, rec)) return this.notice(ctx, userId, "The board would not remove that notice.");
     const as = own ? "as its poster" : "as a hold officer or staff";

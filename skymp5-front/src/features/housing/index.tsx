@@ -208,7 +208,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           <p className="housing__owner">Owner: {data.ownerName}</p>
         ) : null}
 
-        {data.hold ? <p className="housing__owner">Hold: {data.hold}</p> : null}
+        {data.hold ? <p className="housing__owner">Territory: {data.hold}</p> : null}
 
         {note ? (
           <button className="housing__note" onClick={() => setReading(true)}>

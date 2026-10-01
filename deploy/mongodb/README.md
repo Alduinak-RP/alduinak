@@ -22,6 +22,14 @@ one-shot migration.
   `node deploy/mongodb/strip-inventories.js` (plan), `backup --out <dir>`, and
   `apply --backup <dir> --apply` with the game server stopped; `restore --backup <dir> --apply` undoes it.
   `strip-common.js` holds the parts it shares with the restore below.
+- `add-craft-factions.js` - creates the craft factions the plugin gates gear on
+  through the backend API (dry run unless `--apply`).
+- `migrate-morrowind-houses.js` - rebuilds each Morrowind house guild as a territory
+  (`hold:<house>`) with its ranks, permissions and members through the backend's
+  convert route, removing the one Windhelm member who belongs in House Indoril:
+  plan (default), `backup [--out <file>]`, `apply --backup <file> [--apply]`.
+  Runbook: `docs/docs_roleplay_property_factions.md`, "Territories without land".
+  Test: `node deploy/mongodb/test/test-migrate-morrowind-houses.js`.
 - `restore-stripped-items.js` + `strip-intent.py` / `strip-intent.json` - gives back
   what the 2026-09-28 strip took beyond what was meant (runbook below). Test:
   `node deploy/mongodb/test/test-restore-stripped-items.js`.

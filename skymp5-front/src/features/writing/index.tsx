@@ -101,6 +101,8 @@ const SEALS: Record<string, { file: string; label: string; sign?: string }> = {
   'faction:house-sadras': { file: 'house-sadras', label: 'House Sadras' },
   'faction:morag-tong': { file: 'morag-tong', label: 'Morag Tong' },
 };
+// The Great Houses keep their marks as territories (deploy/mongodb/migrate-morrowind-houses.js), old letters keep the guild ids
+for (const house of ['telvanni', 'redoran', 'dres', 'indoril', 'sadras']) SEALS['hold:' + house] = SEALS['faction:house-' + house];
 
 const sealArt = (id: string, sign?: boolean): { url: string; label: string } | null => {
   const seal = SEALS[id];

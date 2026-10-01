@@ -292,8 +292,12 @@ re-evaluated on activation, not cached on the client.
 
 ## 6. Factions
 
-**Model.** A faction is a hold court, an army or a guild, and its `type` says
-which (`hold`, `military`, `guild`). A character belongs to **at most one
+**Model.** A faction is a territory (a hold court or a Morrowind house), an army
+or a guild, and its `type` says which (`hold`, `military`, `guild`). Every menu,
+notice and editor calls the `hold` type **Territory** (the Personal Menu tab, the
+staff faction picker, the dashboard and Server Manager editor, the housing panel's
+"Territory: The Rift" line, the bounty board and lock notices); the stored value,
+the `hold:` id prefix and the API fields stay `hold`, and log lines are unchanged. A character belongs to **at most one
 faction of each type**, leads **at most one faction anywhere**, and shows **at
 most one title**. Membership and ranks are stored per character in the backend
 (`skymp5-backend/data/faction-whitelist.json`, gitignored); the game server keeps
@@ -458,9 +462,11 @@ the Falkreath Warhammer) stays Master.
 - **Faction crafting**: only ranks with `craft` carry the `AldFaction_<id>`
   marker spell the recipes test, so gear follows the rank rather than plain
   membership.
-- **Territory**: a hold court's powers reach only inside its own hold (the
+- **Territory**: a territory's powers reach only inside its own hold (the
   court of `hold:the-rift` inside the Rift, the same court-to-hold mapping as
-  hold property below). Outside it, moving a member to another rank, every
+  hold property below). A territory whose hold has no land in the load order
+  (the Morrowind houses, see below) has no border at all until it is given land,
+  so its ranks act and claim anywhere, like a guild's. Outside it, moving a member to another rank, every
   regency change, the court's faction doors and chests, its faction claims, managing hold property
   (Break lock included) and the `execute` right (finish off, prepare
   execution, execute, assassinate, the soul trap PK) are refused with "Your
@@ -500,7 +506,7 @@ the Falkreath Warhammer) stays Master.
   without a location takes its worldspace's (the walled cities), then the hold
   most located cells share on the nearest ring of cells around it, up to 3
   cells out; either half of a teleport door counts, exact answers first. The
-  housing panel shows the hold ("Hold: The Rift"). What resolves to no hold
+  housing panel shows the hold ("Territory: The Rift"). What resolves to no hold
   (Soul Cairn, Falmer Valley, Castle Volkihar, and interior-to-interior doors
   in mod interiors whose cells carry no location, such as some Warbirds and
   City of Dawnstar rooms) is managed by admins only. The hand-written
@@ -627,6 +633,58 @@ character selected, its Faction box narrows Province, then Type, then Faction
 the lowest preselected, next to **Add** and **Remove**
 (`skymp5-front/src/features/adminPanel/factionAssign.tsx`).
 
+### Territories without land: the Morrowind houses
+
+A territory needs no Skyrim hold. The editor's **Land** list offers the free Skyrim
+holds and **No land in Skyrim**, which takes a group name instead (Indoril gives
+`hold:indoril`). Such a territory follows every territory rule (one territory per
+character, the Lord Regent title, a steward rank's `housing` flag) except the
+border: `factionLand` (`factionRules.ts`) reads its land as the hold key of its id
+only when the load order has that hold (`isHoldLand` in `holdOf.ts`: a location
+with `LocTypeHold`, the nine Skyrim holds until the boot scan has run), so
+`territoryRefusal` and the faction claim check pass it everywhere. It is given land
+when a plugin location with `LocTypeHold` keys to its id (`IndorilHoldLocation`
+for `hold:indoril`); the editor and the backend's `land` field know only the nine
+Skyrim holds and show "no land in Skyrim" until then.
+
+The Great Houses were guilds (`faction:house-redoran`, `faction:house-indoril`,
+`faction:house-telvanni`, made by `deploy/mongodb/add-craft-factions.js`) because the
+backend once refused a territory outside the nine holds. A faction's type cannot
+switch between territory and army or guild in place, so the backend rebuilds it:
+`POST /api/factions/:scope/:group/convert` (`convertFaction`) creates the faction
+under the new type and id with the same name, province, colour, regency and ladder
+(every rank with the permissions it acts with now, its title, capacity and order),
+moves every membership to the same rank keeping its id and join date, retires the
+old faction and rank ids, and records the old id under `successors` in one write
+(the whole document is copied to `whitelist.bak` first). A member who already
+belongs to another territory clashes; the call is refused (409 with the clashes)
+unless `release` names exactly those assignment ids, which are then removed.
+`dryRun` answers the same report without saving. The game server reads
+`successors` with the definitions, so a faction claim, a Show Title choice or a
+`faction-access.json` entry still naming the old id follows the new one.
+
+`deploy/mongodb/migrate-morrowind-houses.js` drives it for every Morrowind house
+guild (`faction:house-<x>` or a guild named House X in Morrowind) into
+`hold:<x>`, so the plugin's existing `AldFaction_holdredoran`,
+`AldFaction_holdindoril` and `AldFaction_holdtelvanni` markers apply without an
+alias (FactionCraftSystem lists both ids):
+
+1. `node deploy/mongodb/migrate-morrowind-houses.js` (plan, read-only): each house,
+   its target, ranks with permissions, members, the regency and every clash. A
+   member of House Indoril who is also in Windhelm (`hold:eastmarch`) is listed
+   as `REMOVE from Court of Eastmarch` (the owner's one known case); any other
+   clash, a second Windhelm member or a backend refusal (the target id already
+   exists or is retired) is `UNSAFE` or `REFUSED`, and apply will refuse.
+2. `... backup [--out <file>]`: every faction, rank and roster as JSON (default
+   `Desktoplduinak-r13ollback-houses`).
+3. `... apply --backup <file>`: a dry run that re-plans and checks the backup still
+   matches (every faction's revision, and the rosters of the houses and the
+   territories they clash with); `--apply` converts each house in turn.
+
+It needs AlduinakBackend running with this code; players may stay online (their
+ranks reload within about 20 seconds). Test:
+`node deploy/mongodb/test/test-migrate-morrowind-houses.js`.
+
 ### Editing factions (dashboard and Server Manager)
 
 One editor, `skymp5-backend/public/dashboard/faction-editor.js`, runs in the
@@ -647,8 +705,8 @@ which reports every account's slots whenever the character select list is sent.
   and no `X-Forwarded-For`, `X-Real-IP`, `Forwarded` or `X-Forwarded-Host`
   header, which nginx always adds). The dashboard always uses its Bearer session.
 - **Ids**: a faction id is `<scope>:<slug of the group>` with scope `hold` for a
-  court and `faction` for everything else; a hold court's group must name one of
-  the nine holds and each hold has one court. Rank ids are the slug of the first
+  territory and `faction` for everything else; each Skyrim hold has one territory,
+  and a territory outside the nine holds has no land (see above). Rank ids are the slug of the first
   rank name. Ids never change, and deleted ids are kept in `retired` and never
   reused, so a door entry, log line or permission string naming
   an old id can never grant a new faction. A deleted court retires its hold under
@@ -681,11 +739,12 @@ which reports every account's slots whenever the character select list is sent.
 
 | Method and path | Body | Answer |
 |---|---|---|
-| `GET /api/factions` | | `{ factions: [{ id, scope, type, group, name, zone, color, regencyEnabled, regents, rev, members, ranks }], retired, scopes, zones, holds, canDefine }` |
+| `GET /api/factions` | | `{ factions: [{ id, scope, type, group, name, zone, color, regencyEnabled, regents, land, rev, members, ranks }], retired, scopes, zones, holds, canDefine }`; `land` is the Skyrim hold key of a territory, `''` without one |
 | `GET /api/factions/:scope/:group/members` | | `{ members: [{ discordId, profileId, playerName, rank, rankSlug, slot, since }] }` |
 | `POST /api/factions` | `{ type, group, name?, zone?, color? }` | 201 `{ faction }` |
 | `PATCH /api/factions/:scope/:group` | `{ rev, name?, type?, zone?, color? }` | `{ faction }` |
 | `DELETE /api/factions/:scope/:group` | `{ rev, removeMembers?, expectedMembers? }` | `{ deleted, removedMembers }` |
+| `POST /api/factions/:scope/:group/convert` | `{ rev, type, group, expectedMembers, name?, province?, color?, release?: [assignmentId], dryRun? }` | `{ dryRun, from, to, ranks, clashes, faction, moved }`; 409 with `clashes` while one is not released |
 | `POST /api/factions/:scope/:group/ranks` | `{ rev, rank, capacity?, title?, titleFemale?, recruit?, promote?, leader?, remove?, craft?, housing?, arrest?, execute?, factionAccess? }` | 201 `{ faction }` |
 | `PUT /api/factions/:scope/:group/ranks` | `{ rev, ranks: [rankId, ...] }` (top first) | `{ faction }` |
 | `PATCH /api/factions/:scope/:group/ranks/:rank` | `{ rev, ...rank fields }` | `{ faction }` |
@@ -694,9 +753,10 @@ which reports every account's slots whenever the character select list is sent.
 Refusals answer `{ error }`, plus `stale` and `faction` on a revision mismatch
 or `hasMembers`, `members` and `sample` on a delete that would remove
 memberships. A `permission` field other than the rank's own string is refused.
-Tests: `node skymp5-backend/scripts/test-factions.js` (store, routes and the
-loopback-only token), `node skymp5-server/tools/test-faction-rules.js` (rules)
-and `node server-manager/tools/test-factions-proxy.js` (the manager proxy).
+Tests: `node skymp5-backend/scripts/test-factions.js` (store, routes, the
+conversion and the loopback-only token), `node skymp5-server/tools/test-faction-rules.js`
+(rules, land and successors), `node skymp5-server/tools/test-faction-claims.js`
+(claims) and `node server-manager/tools/test-factions-proxy.js` (the manager proxy).
 
 ### Protocol
 

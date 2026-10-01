@@ -10,13 +10,14 @@
     ['leader', 'Leader (every permission)', false],
     ['remove', 'Removes members', false],
     ['craft', 'Crafts faction gear', false],
-    ['housing', 'Manages property (faction claims, a court rank also the hold\'s)', false],
+    ['housing', 'Manages property (faction claims, a territory rank also its hold\'s)', false],
     ['arrest', 'Arrests (cuffs and cells)', false],
     ['execute', 'Executes players', false],
     ['factionAccess', 'Opens faction doors and chests', false],
   ]
-  const TYPE_NAMES = { hold: 'Hold', military: 'Military', guild: 'Guild' }
-  const SCOPE_NAMES = { hold: 'Hold court', faction: 'Army or guild' }
+  // The stored type hold reads Territory in every label
+  const TYPE_NAMES = { hold: 'Territory', military: 'Military', guild: 'Guild' }
+  const SCOPE_NAMES = { hold: 'Territory', faction: 'Army or guild' }
   const PROVINCES = ['Skyrim', 'Cyrodiil', 'Morrowind', 'High Rock', 'Valenwood', 'Elsweyr', 'Black Marsh', 'Summerset']
   const HOLD_NAMES = { reach: 'The Reach', rift: 'The Rift', pale: 'The Pale' }
   const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/
@@ -28,6 +29,7 @@
   const slugOf = rank => String(rank.id).split(':')[2]
   const holdName = key => HOLD_NAMES[key] || key.charAt(0).toUpperCase() + key.slice(1)
   const holdKey = groupSlug => String(groupSlug || '').replace(/^the-/, '')
+  const landText = faction => (faction.land ? `land ${holdName(faction.land)}` : 'no land in Skyrim, so no border limits its ranks until it is given land')
   const slotText = slot => (slot === null || slot === undefined ? 'every character' : `character ${Number(slot) + 1}`)
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
   const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x))
@@ -214,7 +216,7 @@
             <label>Province <select name="province" data-write>${provinceOptions(faction.province || 'Skyrim')}</select></label>
             ${colorFields(faction.color)}
           </div>
-          <p class="fe-muted">Type ${esc(TYPE_NAMES[faction.type] || faction.type)}, group ${esc(faction.group || faction.id)}.</p>
+          <p class="fe-muted">Type ${esc(TYPE_NAMES[faction.type] || faction.type)}, group ${esc(faction.group || faction.id)}${faction.type === 'hold' ? `, ${esc(landText(faction))}` : ''}.</p>
           <div class="fe-row"><button class="fe-btn fe-primary" type="submit" data-write>Save faction</button></div>
         </form>
         ${ranksCard(faction)}
@@ -222,7 +224,7 @@
         <section class="fe-card"><h4>Members</h4><div class="fe-members"></div></section>
         <section class="fe-card fe-danger-zone">
           <h4>Delete faction</h4>
-          <p class="fe-muted">A deleted faction's id and rank ids are never reused${faction.scope === 'hold' ? ', so this hold can never get a new court' : ''}.</p>
+          <p class="fe-muted">A deleted faction's id and rank ids are never reused${faction.land ? ', so this hold can never get a new territory' : ''}.</p>
           ${confirmBlock(`faction:${faction.id}`, 'delete-faction', 'Delete faction')}
         </section>`
       renderMembers()
@@ -346,13 +348,13 @@
           ${state.canDefine ? '' : readOnlyNote()}
           <div class="fe-grid">
             <label>Type <select name="scope" data-write>${Object.entries(TYPE_NAMES).map(([k, v]) => `<option value="${k}"${k === scope ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
-            <label data-scope="hold"${scope === 'hold' ? '' : ' hidden'}>Hold <select name="hold" data-write>${free.map(h => `<option value="${esc(h)}">${esc(holdName(h))}</option>`).join('')}</select></label>
-            <label data-scope="faction"${scope === 'faction' ? '' : ' hidden'}>Group <input name="group" maxlength="48" placeholder="Vigilants of Stendarr" data-write></label>
+            <label data-scope="hold"${scope === 'hold' ? '' : ' hidden'}>Land <select name="hold" data-write>${free.map(h => `<option value="${esc(h)}">${esc(holdName(h))}</option>`).join('')}<option value="">No land in Skyrim</option></select></label>
+            <label data-scope="group"${scope === 'hold' ? ' hidden' : ''}>Group <input name="group" maxlength="48" placeholder="Vigilants of Stendarr, or Indoril for a territory" data-write></label>
             <label>Display name <input name="name" maxlength="48" placeholder="Same as the group" data-write></label>
             <label>Province <select name="province" data-write>${provinceOptions('Skyrim')}</select></label>
             ${colorFields('')}
           </div>
-          <p class="fe-muted">The id comes from the kind and group, cannot change once created, and is never reused after a delete. ${free.length ? '' : 'Every hold has a court, and a hold whose court was deleted cannot get a new one.'}</p>
+          <p class="fe-muted">The id comes from the kind and group, cannot change once created, and is never reused after a delete. A territory with no land in Skyrim (a Morrowind house) answers to no border until it is given land. ${free.length ? '' : 'Every hold has a territory, and a hold whose territory was deleted cannot get a new one.'}</p>
           <div class="fe-row">
             <button class="fe-btn fe-primary" type="submit" data-write>Create faction</button>
             <button class="fe-btn" type="button" data-act="cancel-create">Cancel</button>
@@ -360,9 +362,11 @@
         </form>`
     }
 
+    // A territory names its hold, or takes a group when it has no land; armies and guilds always take a group
     function syncCreateScope(form) {
-      const scope = form.elements.scope.value
-      form.querySelectorAll('[data-scope]').forEach(node => { node.hidden = (node.dataset.scope === 'hold') !== (scope === 'hold') })
+      const territory = form.elements.scope.value === 'hold'
+      form.querySelector('[data-scope="hold"]').hidden = !territory
+      form.querySelector('[data-scope="group"]').hidden = territory && form.elements.hold.value !== ''
     }
 
     // ── Actions ───────────────────────────────────────────────────────────────
@@ -371,7 +375,7 @@
 
     function createFaction(form) {
       const type = form.elements.scope.value
-      const group = type === 'hold' ? holdName(form.elements.hold.value || '') : form.elements.group.value
+      const group = type === 'hold' && form.elements.hold.value ? holdName(form.elements.hold.value) : form.elements.group.value
       return run('Creating…', async () => {
         const data = await call('POST', '', { type, group, name: form.elements.name.value, province: form.elements.province.value, color: colorValue(form) })
         replaceFaction(data.faction)
@@ -544,7 +548,7 @@
         renderList()
         return
       }
-      if (event.target.name === 'scope' && event.target.form && event.target.form.dataset.form === 'create') syncCreateScope(event.target.form)
+      if (['scope', 'hold'].includes(event.target.name) && event.target.form && event.target.form.dataset.form === 'create') syncCreateScope(event.target.form)
     })
 
     render()

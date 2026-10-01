@@ -159,7 +159,7 @@ const BountyBoard = ({ data }: { data: BountyBoardData }) => {
             heading="Pin a notice"
             value={draft}
             maxLength={data.maxTextLen}
-            placeholder="What should the hold read here?"
+            placeholder="What should the territory read here?"
             hint={draft.length + ' / ' + data.maxTextLen + ' · ' + data.costGold + ' gold'}
             onChange={setDraft}
           >

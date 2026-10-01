@@ -23,11 +23,11 @@ const config = require('../src/config')
 const { factionsPathAllowed, factionsRequest } = require('../src/backendApi')
 const express = require(require.resolve('express', { paths: [backendDir] }))
 
-const ALLOWED = ['', '/hold/whiterun', '/hold/the-rift/members', '/faction/thieves-guild/ranks', '/hold/whiterun/ranks/captain-of-the-guard']
+const ALLOWED = ['', '/hold/whiterun', '/hold/the-rift/members', '/faction/house-indoril/convert', '/faction/thieves-guild/ranks', '/hold/whiterun/ranks/captain-of-the-guard']
 const REFUSED = [
   '/', '/hold', '/hold/', '/hold/whiterun/', '//hold/whiterun', '/../servers/key/players', '/hold/..', '/hold/whiterun/ranks/..',
   '/hold/%2e%2e', '/hold/whiterun?rev=1', '/hold/whiterun#x', '/HOLD/whiterun', '/hold/whiterun/ranks/jarl/extra', 'hold/whiterun',
-  '/hold/whiterun/assignments', '/hold/white run', '/hold/whiterun\n', null, 7,
+  '/hold/whiterun/assignments', '/faction/house-indoril/convert/x','/hold/white run', '/hold/whiterun\n', null, 7,
 ]
 
 async function run() {

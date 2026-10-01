@@ -5,8 +5,8 @@ import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
 import { addItemTo, holdsItem, takeItemFrom, userSlotCount } from "./actorUtil";
-import { FactionDef, factionHold, holdRanksOf, managesHold } from "./factionRules";
-import { Hold, holdName, holdOfRefs, isOutdoors, loadHolds } from "./holdOf";
+import { FactionDef, factionLand, holdRanksOf, managesHold } from "./factionRules";
+import { Hold, holdName, holdOfRefs, isHoldLand, isOutdoors, loadHolds } from "./holdOf";
 import { describeActor, profileIdOf, realNameOf } from "./playerText";
 import { adminAudit } from "./discordAlerts";
 import { WRITING_ID } from "./writingStore";
@@ -473,7 +473,7 @@ export class HousingSystem implements System {
   // The owner and every key holder lose it, the keys are voided and the door is unlocked and claimable again
   private doBreakLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isManager: boolean): void {
     if (!isManager) {
-      this.refuse(ctx, userId, actorId, "breaklock", primary, "Only an admin or this hold's Jarl or Steward may break this lock.");
+      this.refuse(ctx, userId, actorId, "breaklock", primary, "Only an admin or this territory's Jarl or Steward may break this lock.");
       return;
     }
     if (rec.owner === 0) {
@@ -930,6 +930,9 @@ export class HousingSystem implements System {
   // Set by FactionSystem: the border notice of a court rank used outside its hold, "" inside it; with an action it is logged
   territoryRefusal: ((actorId: number, factionId: string, action?: string) => string) | null = null;
 
+  // Set by FactionSystem: the id a claim's faction has now, when the backend rebuilt it under another type
+  factionSuccessor: ((factionId: string) => string) | null = null;
+
   // Set by FactionSystem: the actor's own factions and what each rank allows on faction claims, staff powers left out
   factionRights: ((actorId: number) => FactionRight[]) | null = null;
 
@@ -1005,10 +1008,10 @@ export class HousingSystem implements System {
     return this.factionRightsOf(actorId).filter((f) => f.manage && !this.factionClaimRefusal(ctx, actorId, primary, f));
   }
 
-  // "" when the rank may claim for its faction here: it manages property, and a court claims only inside its own hold while standing in it
+  // "" when the rank may claim for its faction here: it manages property, and a territory with land claims only inside its hold while standing in it
   private factionClaimRefusal(ctx: SystemContext, actorId: number, primary: number, right: FactionRight, action = ""): string {
     if (!right.manage) return `Your rank in ${right.name} does not manage its property.`;
-    const court = factionHold(right.id);
+    const court = factionLand(right.id, isHoldLand);
     if (court && this.holdOf(ctx, primary)?.key !== court) return `${right.name} may only claim property inside ${holdName(court)}.`;
     return this.territoryRefusal ? this.territoryRefusal(actorId, right.id, action) : "";
   }
@@ -1362,7 +1365,7 @@ export class HousingSystem implements System {
       return {
         owner,
         // A record from before faction claims is personal
-        faction: owner === FACTION_OWNER && typeof r.faction === "string" && r.faction.includes(":") ? r.faction : "",
+        faction: owner === FACTION_OWNER && typeof r.faction === "string" && r.faction.includes(":") ? this.factionSuccessor?.(r.faction) ?? r.faction : "",
         ownerName: String(r.ownerName || ""),
         name: typeof r.name === "string" && r.name ? r.name : null,
         lockedEntrance: typeof r.lockedEntrance === "boolean" ? r.lockedEntrance : legacy,

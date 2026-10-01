@@ -69,6 +69,8 @@ const SEAL_FACTIONS = [
   "hold:winterhold", "hold:the-rift", "hold:the-pale", "hold:whiterun",
   "faction:house-telvanni", "faction:house-redoran", "faction:house-dres", "faction:house-indoril",
   "faction:house-sadras", "faction:morag-tong",
+  // The Great Houses as territories after deploy/mongodb/migrate-morrowind-houses.js
+  "hold:telvanni", "hold:redoran", "hold:dres", "hold:indoril", "hold:sadras",
 ];
 
 // The front's markup tags (skymp5-front/src/features/writing/markup.tsx TAG); they do not count toward a page's length

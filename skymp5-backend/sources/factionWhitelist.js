@@ -16,6 +16,8 @@ const MAX_SLOT = 9
 const SCOPES = ['hold', 'faction']
 // What the game groups factions by; a character joins at most one faction of each type. scope stays the id prefix
 const TYPES = ['hold', 'military', 'guild']
+// Menus call the hold type a territory; the stored value stays hold
+const TYPE_LABELS = { hold: 'territory', military: 'military', guild: 'guild' }
 // Hold keys as housing names them; a court's group may carry the article, as in the-rift
 const PROVINCES = ['Skyrim', 'Cyrodiil', 'Morrowind', 'High Rock', 'Valenwood', 'Elsweyr', 'Black Marsh', 'Summerset']
 // Province given to a faction stored without one, matched on its id and name
@@ -80,6 +82,14 @@ const normalizeFaction = f => {
   return PROVINCES.includes(rest.province) ? rest : { ...rest, province: defaultProvince(rest) }
 }
 
+// Old faction id -> the id a conversion rebuilt it under, so claims and title choices made under the old id follow it
+function normalizeSuccessors(raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  for (const [from, to] of Object.entries(raw)) if (typeof to === 'string' && to && to !== from) out[from] = to
+  return out
+}
+
 // Unknown top-level keys survive a write
 function normalize(data) {
   const retired = data.retired && typeof data.retired === 'object' ? data.retired : {}
@@ -89,6 +99,7 @@ function normalize(data) {
     requirements: arr(data.requirements).map(req => (req && typeof req.id === 'string' ? { ...req, permission: permissionOf(req.id) } : req)),
     assignments: arr(data.assignments),
     retired: { factions: arr(retired.factions).map(String), ranks: arr(retired.ranks).map(String) },
+    successors: normalizeSuccessors(data.successors),
   }
 }
 
@@ -156,6 +167,12 @@ function rankSlugOf(requirementId) {
 
 const holdKey = groupSlug => String(groupSlug || '').replace(/^the-/, '')
 
+// The Skyrim hold a territory id is bound to, '' for a territory without land in Skyrim (the Morrowind houses)
+const landOf = factionId => {
+  const [scope, group] = String(factionId || '').split(':')
+  return scope === 'hold' && HOLDS.includes(holdKey(group)) ? holdKey(group) : ''
+}
+
 // Factions written before types existed: a court is a hold, anything else a guild until it is set
 const defaultType = scope => (String(scope) === 'hold' ? 'hold' : 'guild')
 
@@ -208,6 +225,7 @@ function effectiveFactions(data) {
       color: COLOR_RE.test(String(f.color || '')) ? f.color : '',
       regencyEnabled: f.regencyEnabled === true,
       regents: normalizeRegents(f.regents),
+      land: landOf(f.id),
       rev: Number.isInteger(f.rev) ? f.rev : 0,
     })
   }
@@ -215,7 +233,7 @@ function effectiveFactions(data) {
     const id = factionIdOf(req.id)
     if (!id || byId.has(id)) continue
     const scope = String(req.scope || id.split(':')[0])
-    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), province: defaultProvince({ id, group: req.group }), color: '', regencyEnabled: false, regents: [], rev: 0 })
+    byId.set(id, { id, scope, type: defaultType(scope), group: String(req.group || ''), name: String(req.group || id), province: defaultProvince({ id, group: req.group }), color: '', regencyEnabled: false, regents: [], land: landOf(id), rev: 0 })
   }
   return [...byId.values()]
 }
@@ -244,6 +262,7 @@ function listDefinitions() {
   return {
     factions: effectiveFactions(data),
     requirements: decorateRequirements(data).map(({ assigned, remaining, ...req }) => req),
+    successors: data.successors,
   }
 }
 
@@ -382,35 +401,39 @@ function confirmCascade(data, members, input) {
   if (Number(input.expectedMembers) !== members.length) throw fail(409, 'the member count changed since the list was shown, check it again', extra)
 }
 
-function createFaction(input, actor) {
-  const data = load(true)
-  const type = String(input.type || '').trim().toLowerCase()
-  if (!TYPES.includes(type)) throw fail(400, `type must be ${TYPES.join(', ')}`)
-  // Hold courts keep the hold: prefix the housing tables read; armies and guilds share the faction: one
+const TYPE_REFUSAL = 'type must be hold (a territory), military or guild'
+
+function parseType(value) {
+  const type = String(value || '').trim().toLowerCase()
+  if (!TYPES.includes(type)) throw fail(400, TYPE_REFUSAL)
+  return type
+}
+
+// A validated faction record, not yet stored; replacing names a faction the same write removes, so its name may be reused
+function newFactionRecord(data, input, actor, now, replacing = '') {
+  const type = parseType(input.type)
+  // Territories keep the hold: prefix the housing tables read; armies and guilds share the faction: one
   const scope = type === 'hold' ? 'hold' : 'faction'
   const group = requireName(input.group, 'group name')
   const groupSlug = slug(group)
   if (!groupSlug) throw fail(400, 'group name needs letters or digits')
   const id = `${scope}:${groupSlug}`
-  const live = effectiveFactions(data)
+  if (id === replacing) throw fail(400, `${id} would keep its id; pick another group name`)
+  const live = effectiveFactions(data).filter(f => f.id !== replacing)
   if (live.some(f => f.id === id)) throw fail(409, `faction ${id} already exists`)
-  // the-rift and rift name one hold, so a deleted court blocks both spellings
+  // the-rift and rift name one hold, so a deleted territory blocks both spellings
   const sameCourt = retiredId => scope === 'hold' && retiredId.startsWith('hold:') && holdKey(retiredId.split(':')[1]) === holdKey(groupSlug)
   const retiredId = data.retired.factions.find(r => r === id || sameCourt(r))
   if (retiredId) {
-    throw fail(409, `${retiredId} belonged to a deleted faction and ids are never reused${scope === 'hold' ? ', so that hold cannot get a new court' : '; pick another group name'}`)
+    throw fail(409, `${retiredId} belonged to a deleted faction and ids are never reused${landOf(id) ? ', so that hold cannot get a new territory' : '; pick another group name'}`)
   }
-  if (scope === 'hold') {
-    if (!HOLDS.includes(holdKey(groupSlug))) throw fail(400, `a hold court's group must name one of the nine holds: ${HOLDS.join(', ')}`)
-    const court = live.find(f => f.scope === 'hold' && holdKey(f.id.split(':')[1]) === holdKey(groupSlug))
-    if (court) throw fail(409, `${court.name} is already the court of that hold`)
-  }
+  // A territory outside the nine holds has no land in Skyrim and answers to no border until it is given land
+  const court = scope === 'hold' && live.find(f => f.scope === 'hold' && holdKey(f.id.split(':')[1]) === holdKey(groupSlug))
+  if (court) throw fail(409, `${court.name} is already the territory ${landOf(id) ? 'of that hold' : 'under that name'}`)
   if (live.length >= MAX_FACTIONS) throw fail(400, `at most ${MAX_FACTIONS} factions`)
   const name = cleanText(input.name) || group
   if (live.some(f => f.name.toLowerCase() === name.toLowerCase())) throw fail(409, `another faction is already named ${name}`)
-
-  const now = new Date().toISOString()
-  data.factions.push({
+  return {
     id, scope, type, group, name,
     province: input.province === undefined || input.province === '' ? defaultProvince({ id, name, group }) : normalizeProvince(input.province),
     regencyEnabled: false,
@@ -418,10 +441,16 @@ function createFaction(input, actor) {
     color: normalizeColor(input.color),
     rev: 1,
     createdAt: now, createdBy: actor || null, updatedAt: now, updatedBy: actor || null,
-  })
+  }
+}
+
+function createFaction(input, actor) {
+  const data = load(true)
+  const record = newFactionRecord(data, input, actor, new Date().toISOString())
+  data.factions.push(record)
   save(data)
-  audit(actor, 'faction.create', { faction: id, name })
-  return { faction: factionView(data, findFaction(data, id)) }
+  audit(actor, 'faction.create', { faction: record.id, name: record.name })
+  return { faction: factionView(data, findFaction(data, record.id)) }
 }
 
 function updateFaction(id, input, actor) {
@@ -432,9 +461,8 @@ function updateFaction(id, input, actor) {
   const record = recordFor(data, faction, actor, now)
   const before = { name: faction.name, type: faction.type, province: faction.province, color: faction.color }
   if (input.type !== undefined) {
-    const type = String(input.type || '').trim().toLowerCase()
-    if (!TYPES.includes(type)) throw fail(400, `type must be ${TYPES.join(', ')}`)
-    if ((type === 'hold') !== (faction.scope === 'hold')) throw fail(400, 'a hold court cannot become an army or guild, nor the other way round')
+    const type = parseType(input.type)
+    if ((type === 'hold') !== (faction.scope === 'hold')) throw fail(400, 'a territory cannot become an army or guild, nor the other way round; it is rebuilt under a new id instead (convert)')
     record.type = type
   }
   if (input.name !== undefined) {
@@ -470,6 +498,89 @@ function deleteFaction(id, input, actor) {
   auditRemovals(actor, members, `faction ${id} deleted`)
   audit(actor, 'faction.delete', { faction: id, name: faction.name, ranks: rankIds.length, removedMembers: members.length })
   return { deleted: id, removedMembers: members.length }
+}
+
+// One rank of a decorated ladder under another faction, with the permissions it acts with now
+function copyRank(rank, record) {
+  const id = `${record.id}:${rankSlugOf(rank.id)}`
+  return {
+    id, scope: record.scope, group: record.group, rank: rank.rank, capacity: rank.capacity, permission: permissionOf(id), order: rank.order,
+    ...Object.fromEntries(RANK_LISTS.map(key => [key, [...rank[key]]])),
+    ...Object.fromEntries(RANK_FLAGS.map(key => [key, rank[key]])),
+    ...(rank.title ? { title: rank.title } : {}),
+    ...(rank.titleFemale ? { titleFemale: rank.titleFemale } : {}),
+  }
+}
+
+// Rebuilds a faction as another type under a new id in one write (ladder, members, regency, name), retiring the old id; release removes clashing rows, dryRun only reports
+function convertFaction(fromId, input, actor) {
+  const data = load(true)
+  const from = findFaction(data, fromId)
+  checkRev(data, from, input.rev)
+  const prefix = `${from.id}:`
+  const members = data.assignments.filter(a => String(a.requirementId || '').startsWith(prefix))
+  if (Number(input.expectedMembers) !== members.length) {
+    throw fail(409, `${from.name} has ${members.length} membership(s), not ${input.expectedMembers}; plan again`, { members: members.length })
+  }
+  const now = new Date().toISOString()
+  const record = newFactionRecord(data, {
+    type: input.type,
+    group: input.group,
+    name: input.name === undefined || input.name === '' ? from.name : input.name,
+    province: input.province === undefined || input.province === '' ? from.province : input.province,
+    color: input.color === undefined ? from.color : input.color,
+  }, actor, now, from.id)
+  Object.assign(record, { regencyEnabled: from.regencyEnabled, regents: from.regents, convertedFrom: from.id })
+
+  const ladder = ladderOf(data, from.id)
+  const ranks = ladder.map(rank => copyRank(rank, record))
+  const taken = ranks.filter(r => data.retired.ranks.includes(r.id) || getRequirement(data, r.id)).map(r => r.id)
+  if (taken.length) throw fail(409, `rank ids ${taken.join(', ')} are taken or retired`)
+  const orphans = members.filter(m => !ladder.some(r => r.id === m.requirementId))
+  if (orphans.length) throw fail(409, `${orphans.length} membership(s) of ${from.name} point at ranks that no longer exist; remove them first`)
+
+  const byId = new Map(effectiveFactions(data).map(f => [f.id, f]))
+  const clashes = data.assignments.filter(row => !members.includes(row)
+    && (byId.get(factionIdOf(row.requirementId)) || {}).type === record.type
+    && members.some(m => m.discordId === row.discordId && overlapsSlot(m.slot ?? null, row.slot ?? null)))
+  const release = Array.isArray(input.release) ? input.release.map(String) : []
+  const stray = release.filter(id => !clashes.some(row => row.id === id))
+  if (stray.length) throw fail(400, `release names rows that do not clash with ${record.id}: ${stray.join(', ')}`)
+  const released = clashes.filter(row => release.includes(row.id))
+  const report = {
+    from: { id: from.id, name: from.name, type: from.type, members: members.length },
+    to: record.id,
+    ranks: ladder.map((r, i) => ({ from: r.id, to: ranks[i].id, rank: r.rank, members: r.assigned })),
+    clashes: namedRoster(rosterRows(data, clashes), true).map((m, i) => ({
+      assignmentId: clashes[i].id,
+      factionId: factionIdOf(clashes[i].requirementId),
+      faction: (byId.get(factionIdOf(clashes[i].requirementId)) || {}).name || '',
+      released: released.includes(clashes[i]),
+      ...m,
+    })),
+  }
+  if (!input.dryRun && released.length < clashes.length) {
+    throw fail(409, `${clashes.length - released.length} member(s) already belong to another ${TYPE_LABELS[record.type]}; release those rows or remove them first`, { clashes: report.clashes })
+  }
+
+  data.assignments = data.assignments.filter(a => !released.includes(a))
+  for (const m of members) Object.assign(m, { requirementId: `${record.id}:${rankSlugOf(m.requirementId)}`, updatedAt: now, updatedBy: actor || null })
+  data.requirements = data.requirements.filter(req => !ladder.some(r => r.id === req.id)).concat(ranks)
+  data.factions = data.factions.filter(f => !f || f.id !== from.id).concat([record])
+  retire(data, 'factions', [from.id])
+  retire(data, 'ranks', ladder.map(r => r.id))
+  for (const [old, next] of Object.entries(data.successors)) if (next === from.id) data.successors[old] = record.id
+  data.successors[from.id] = record.id
+  pruneRegents(data)
+  const result = { dryRun: !!input.dryRun, ...report, faction: factionView(data, findFaction(data, record.id)), moved: namedRoster(rosterRows(data, members), true) }
+  if (input.dryRun) return result
+
+  backup()
+  save(data)
+  auditRemovals(actor, released, `clashed with ${record.id} (converted from ${from.id})`)
+  for (const m of members) audit(actor, 'member.move', { from: `${from.id}:${rankSlugOf(m.requirementId)}`, requirement: m.requirementId, discordId: m.discordId, slot: m.slot ?? 'all', player: m.playerName })
+  audit(actor, 'faction.convert', { faction: from.id, to: record.id, type: record.type, name: record.name, ranks: ranks.length, moved: members.length, released: released.length })
+  return result
 }
 
 // Validates and applies the rank fields present in input; ranks are the faction's decorated ladder including this rank
@@ -638,7 +749,7 @@ function createAssignment(input, actorId) {
       return other && other.id !== factionId && other.type === faction.type
     })
     if (clash) {
-      throw fail(409, `already in ${byFactionId.get(factionIdOf(clash.requirementId)).name}; a character belongs to one ${faction.type} faction at a time`)
+      throw fail(409, `already in ${byFactionId.get(factionIdOf(clash.requirementId)).name}; a character belongs to one ${TYPE_LABELS[faction.type]} faction at a time`)
     }
   }
 
@@ -855,6 +966,7 @@ module.exports = {
   createFaction,
   updateFaction,
   deleteFaction,
+  convertFaction,
   createRank,
   updateRank,
   reorderRanks,

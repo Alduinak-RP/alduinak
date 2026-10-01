@@ -5,6 +5,9 @@ export type FactionType = "hold" | "military" | "guild";
 
 export const FACTION_TYPES: FactionType[] = ["hold", "military", "guild"];
 
+// Menus and notices call the hold type a territory; the backend value stays hold
+export const TYPE_LABELS: Record<FactionType, string> = { hold: "territory", military: "military", guild: "guild" };
+
 export interface RankDef {
   id: string;
   slug: string;
@@ -102,6 +105,27 @@ export const holdKey = (slug: string): string => slug.replace(/^the-/, "");
 
 // The hold a court's powers are bound to ("hold:the-rift" -> "rift"), "" for armies and guilds
 export const factionHold = (factionId: string): string => (factionId.startsWith("hold:") ? holdKey(factionId.slice(5)) : "");
+
+// The land a territory's powers stop at, "" for a territory whose hold has no land in the load order (the Morrowind houses)
+export function factionLand(factionId: string, isLand: (key: string) => boolean): string {
+  const key = factionHold(factionId);
+  return key && isLand(key) ? key : "";
+}
+
+// The backend's old id -> rebuilt id entries, written when a faction is converted to another type
+export function buildSuccessors(raw: unknown): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [from, to] of Object.entries(raw as Record<string, unknown>)) if (typeof to === "string" && to && to !== from) out.set(from, to);
+  return out;
+}
+
+// The faction an id names now, following conversions; claims and title choices may carry an old id
+export function currentFactionId(factionId: string, successors: Map<string, string>): string {
+  let at = factionId;
+  for (let hops = 0; hops < 8 && successors.has(at); hops++) at = successors.get(at)!;
+  return at;
+}
 
 // "The Rift" reads "the Rift border"
 export const borderNotice = (rankName: string, factionName: string, holdName: string): string =>
