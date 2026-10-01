@@ -190,6 +190,30 @@ line to `skyrim-platform.log`.
   again should the movie show it (a new HUD movie after a load). Showing the
   interface restores both clips; nothing is written while the interface was
   never hidden.
+- **Magicka bar while crafting**: the Crafting Menu pushes the HUD's
+  `InventoryMode` (the engine's `CraftingMenu` destructor, id 51303, pops it
+  again), and `HUDMenu.ShowElements` hides `Health`, `Magica` and `Stamina` in
+  it, as none of them carries an `InventoryMode` flag. While a Crafting Menu is
+  open the service keeps `_root.HUDMovieBaseInstance.Magica`, which carries the
+  red fatigue end, visible at the stamina bar's place: its `_x` becomes
+  `Stamina._x - 385` (the right edge of the meter art lies 338.8 px right of
+  the magicka origin and 46.2 px left of the stamina origin, the same in
+  SkyUI's and the vanilla `hudmenu.swf`) and its `_y` the stamina bar's. A
+  full, idle bar fades out, so the clip is held on frame 40 (`Pause`,
+  `METER_PAUSE_FRAME`, the first fully faded in frame of its 200-frame fade)
+  through queued `PlayForward(40)` and `gotoAndStop(40)` invokes whenever it
+  stands elsewhere. The Crafting Menu does not pause the game and
+  `HUDMenu::AdvanceMovie` polls the Survival globals every frame, so the fill
+  and the red end are expected to follow each craft at once (from fatigue
+  stage 2); the close line below shows whether they did. On close the bar
+  goes back to its own place and plays on from frame 40, fading a few seconds
+  later as after any other change. Log lines: `Crafting Menu: magicka bar
+  moved from x=<a> to the stamina bar's place x=<b>` once a session, and on
+  every close `Crafting Menu closed: HUD magicka <p>% penalty <q>%, player
+  magicka <r>% at open, ... at close`: the HUD's own last values beside the
+  player's magicka, where a close penalty equal to the `exhaustion=` of the
+  last `NeedsService: survival hud` line means the bar followed the crafts;
+  `magicka bar left hidden, ... not found` when the paths are missing.
 
 ---
 

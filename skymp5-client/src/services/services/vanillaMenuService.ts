@@ -22,6 +22,14 @@ const HIDDEN_SYSTEM_ENTRIES = ["$QUICKSAVE", "$SAVE", "$LOAD", "$INSTALLED CONTE
 // hudmenu.swf's movie; SkyUI's widget manager puts its widgets in WidgetContainer beside it
 const HUD_ROOT = "_root.HUDMovieBaseInstance";
 const HUD_CLIPS = [HUD_ROOT, "_root.WidgetContainer"];
+// The meters Lock("BL") and Lock("BR") pin by their origins to the safe area's bottom corners
+const HUD_MAGICKA = `${HUD_ROOT}.Magica`;
+const HUD_STAMINA = `${HUD_ROOT}.Stamina`;
+// Right edge of each meter's art from its origin, from sprites 758 and 766 of hudmenu.swf (SkyUI and vanilla alike)
+const MAGICKA_ART_RIGHT = 338.8;
+const STAMINA_ART_RIGHT = -46.2;
+// The meter sprites' Pause label (HUDMenu.METER_PAUSE_FRAME), the first fully faded in frame
+const METER_SHOWN_FRAME = 40;
 const HUD_RECHECK_MS = 1000;
 // Updates a menu may take to expose its movie before its paths count as missing
 const MAX_PATH_MISSES = 10;
@@ -47,11 +55,18 @@ interface JournalState {
   failed: boolean;
 }
 
+interface CraftingMeter {
+  x: number;
+  y: number;
+  settle: number;
+  opened: string;
+}
+
 interface NativeMenuList {
   hideMenuListEntries?: (menuName: string, entriesPath: string, texts: string[]) => string[] | null;
 }
 
-// Trims the vanilla menus the browser menus replace, through the menus' own ActionScript
+// Trims the vanilla menus the browser menus replace and keeps the magicka bar up while crafting, through the menus' own ActionScript
 export class VanillaMenuService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -63,9 +78,11 @@ export class VanillaMenuService extends ClientListener {
       }
       if (e.name === Menu.HUD) this.hudDirty = true;
       if (e.name === Menu.Stats) this.logOnce("stats", "Skills menu (StatsMenu) opened");
+      if (e.name === Menu.Crafting) this.crafting = true;
     });
     this.controller.on("menuClose", (e) => {
       if (e.name === Menu.Journal) this.journal = undefined;
+      if (e.name === Menu.Crafting) this.releaseCraftingMagicka();
       if (e.name === Menu.Loading) this.hudDirty = true;
     });
     this.controller.emitter.on("uiHiddenChanged", (e) => {
@@ -77,7 +94,58 @@ export class VanillaMenuService extends ClientListener {
 
   private onUpdate(): void {
     if (this.journal && !this.journal.failed) this.trimJournal(this.journal);
+    if (this.crafting) this.holdCraftingMagicka();
     this.syncHud();
+  }
+
+  // The Crafting Menu pushes the HUD's InventoryMode, which hides all three bars; the magicka bar, which carries fatigue, stays up at the stamina bar's place
+  private holdCraftingMagicka(): void {
+    const ui = this.sp.Ui;
+    if (!ui.isMenuOpen(Menu.HUD)) return;
+    let meter = this.craftingMeter;
+    if (!meter) {
+      if (ui.getString(Menu.HUD, `${HUD_MAGICKA}._name`) !== "Magica" || ui.getString(Menu.HUD, `${HUD_STAMINA}._name`) !== "Stamina") {
+        this.crafting = false;
+        return this.logOnce("crafting:missing", `Crafting Menu: magicka bar left hidden, ${HUD_MAGICKA} or ${HUD_STAMINA} not found`);
+      }
+      meter = this.craftingMeter = { x: ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`), y: ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._y`), settle: 0, opened: this.describeMagicka() };
+      ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._x`, ui.getFloat(Menu.HUD, `${HUD_STAMINA}._x`) + STAMINA_ART_RIGHT - MAGICKA_ART_RIGHT);
+      ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._y`, ui.getFloat(Menu.HUD, `${HUD_STAMINA}._y`));
+      this.logOnce("crafting:shown", `Crafting Menu: magicka bar moved from x=${Math.round(meter.x)} to the stamina bar's place x=${Math.round(ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`))}`);
+    }
+    if (!ui.getBool(Menu.HUD, `${HUD_MAGICKA}._visible`)) ui.setBool(Menu.HUD, `${HUD_MAGICKA}._visible`, true);
+    if (meter.settle > 0) {
+      meter.settle--;
+      return;
+    }
+    // A full, idle bar fades out (frame 1 is transparent), so the meter is held on its first fully shown frame
+    if (ui.getInt(Menu.HUD, `${HUD_MAGICKA}._currentframe`) === METER_SHOWN_FRAME) return;
+    // PlayForward drops a running PlayReverse fade
+    ui.invokeInt(Menu.HUD, `${HUD_MAGICKA}.PlayForward`, METER_SHOWN_FRAME);
+    ui.invokeInt(Menu.HUD, `${HUD_MAGICKA}.gotoAndStop`, METER_SHOWN_FRAME);
+    meter.settle = INVOKE_SETTLE_UPDATES;
+  }
+
+  private releaseCraftingMagicka(): void {
+    this.crafting = false;
+    const meter = this.craftingMeter;
+    this.craftingMeter = undefined;
+    const ui = this.sp.Ui;
+    if (!meter || !ui.isMenuOpen(Menu.HUD)) return;
+    ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._x`, meter.x);
+    ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._y`, meter.y);
+    // As RunMeterAnim does: the bar holds a few seconds and fades unless magicka moves
+    ui.invokeInt(Menu.HUD, `${HUD_MAGICKA}.PlayForward`, METER_SHOWN_FRAME);
+    logToPlatformLog(this, `Crafting Menu closed: ${meter.opened} at open, ${this.describeMagicka()} at close`);
+  }
+
+  // The HUD's last magicka and penalty values beside the player's own magicka
+  private describeMagicka(): string {
+    const ui = this.sp.Ui;
+    const hud = (member: string) => Math.round(ui.getFloat(Menu.HUD, `${HUD_ROOT}.${member}`));
+    const player = this.sp.Game.getPlayer();
+    const own = player ? `${Math.round(player.getActorValuePercentage("Magicka") * 100)}%` : "none";
+    return `HUD magicka ${hud("lastMagickaMeterPercent")}% penalty ${hud("MagickaPenaltyPercent")}%, player magicka ${own}`;
   }
 
   // The hide UI key also hides the vanilla HUD (compass, bars, crosshair, messages and SkyUI widgets); a new HUD movie or a script that shows it again is hidden once more
@@ -283,6 +351,8 @@ export class VanillaMenuService extends ClientListener {
   }
 
   private journal?: JournalState;
+  private crafting = false;
+  private craftingMeter?: CraftingMeter;
   private hudHidden = false;
   // True while the HUD clips were last written hidden
   private hudWritten = false;

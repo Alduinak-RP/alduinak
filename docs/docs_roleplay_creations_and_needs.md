@@ -521,6 +521,11 @@ None of these has been run yet.
 - Crafting at a forge as a Free (non-blacksmith) character costs 33.2%; from a full bar the third craft closes the menu
   with the "too tired" notice and all three items stay. A Novice blacksmith makes six. A click that slips in before the
   close is refused: the refused item must be absent and its inputs present. Ten minutes online refill 16.7%.
+- Magicka bar while crafting: open a forge with a rested Free character; the magicka bar shows full at the bottom right,
+  where the stamina bar sits, and does not fade. The first craft (33.2%, stage 2) puts a red end of about 20% on it at
+  once, the second about 60%. Close the menu: the bar is back at the bottom left and fades a few seconds later.
+  `skyrim-platform.log` has `Crafting Menu closed: HUD magicka .. penalty 0% ... at open, HUD magicka .. penalty 60% ...
+  at close` matching the last `exhaustion=60`.
 - Eat any food with fatigue past stage 2: the magicka bar's red end must not move.
 - Chopping: sit at a block and wait; the axe keeps swinging, 2 firewood land every 10 seconds, and the player stands up
   only with the "too tired" notice. Stand up (move key) about 5 seconds into a swing: no firewood for it and no fatigue
