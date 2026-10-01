@@ -313,6 +313,35 @@ the torch out of the hand after 3 or 4 minutes, the next inventory apply gives
 it back unequipped, the server logs it as `unequipped` and the player has to
 light it again to use up the rest.
 
+Other players see the torch through the holder's equipment record: the worn
+`LIGH` entry reaches every client with the rest of the outfit, also a client
+that streams the holder in later, and the copy is dressed with it. The engine
+then treats that copy as an NPC that carries a torch. Its torch check
+(SkyrimSE.exe 1.6.1179, Address Library 39948, run every frame for every actor
+but the player) asks every `fTorchEvaluationTimer` seconds (5) whether the
+place is dark (37567: an interior light level under `fTorchLightLevelInterior`
+40, outdoors the sky's ambient light under `fTorchLightLevelMorning` 0.6
+between 6 and 20 h and under `fTorchLightLevelNight` 1.2 otherwise) and
+unequips the held torch when it is not, so anywhere but in the dark the torch
+left the other screens within 5 s of every equip. That is the one cause found
+for the reports of 2026-10-01 (gone after the holder drew, never seen by a
+player who arrived later); the draw itself sends the same `WeapEquip` to a
+torch holder as to anyone, and the fix is not yet tested in game. Every client
+now sets `fTorchEvaluationTimer` to 3600
+at startup (`npcTorchCheckService.ts`, one line in `skyrim-platform.log`:
+`NpcTorchCheckService: NPC torch check slowed: fTorchEvaluationTimer 5 -> 3600`),
+and `FormView.keepTorch` looks every 2 s at each player copy whose record
+holds a worn light and equips the torch again when it is off the copy: not
+while the copy sits or sleeps, where the engine puts a torch away every frame,
+and at most 3 times until the torch has stayed 30 s, the copy draws or
+sheathes, or a new record arrives, so a copy is never re-dressed in a loop.
+Lines: `FormView: <actor> torch <base> is in the copy's hand: weapon drawn
+<bool>, light level <n>, left hand graph type <n>` once per record and per
+draw or sheathe (11 is the graph's torch), and `FormView: <actor> torch <base>
+was off the copy and is equipped again, try <n> of 3: ...` for each repair.
+The price: NPCs decide only once an hour, not every 5 s, whether to take out
+or put away a torch of their own.
+
 ```json5
 {
   // ...

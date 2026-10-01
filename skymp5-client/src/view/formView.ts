@@ -1,7 +1,8 @@
 import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving, isInSitPose } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
-import { isBadMenuShown, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, resyncHandGraph, wearsExactly } from "../sync/equipment";
+import { isBadMenuShown, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, getWornLight, resyncHandGraph, wearsExactly } from "../sync/equipment";
+import { Entry } from "../sync/inventory";
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
@@ -259,6 +260,7 @@ export class FormView {
 
         // TODO: reset all states?
         this.eqState = this.getDefaultEquipState();
+        this.torchState.numChanges = -1;
         this.animState = this.getDefaultAnimState();
 
         this.ready = false;
@@ -670,6 +672,11 @@ export class FormView {
       }
     }
 
+    if (model.equipment && model.appearance && !model.isMyClone && !mounted && !this.eqState.resyncAt
+      && this.eqState.lastNumChanges === model.equipment.numChanges) {
+      this.keepTorch(refr, model.equipment);
+    }
+
     const identifies = !!FormView.adminTagOf(model);
     const showTag = FormView.isDisplayingNicknames || FormView.isSpeaking(this.getRemoteRefrId()) || identifies;
     if (showTag && this.refrId && model.appearance?.name) {
@@ -761,6 +768,49 @@ export class FormView {
     equipEntries(ac, missing);
     if (isPlayerCopy) this.redrawTints();
     else ac.queueNiNodeUpdate();
+  }
+
+  // The engine's torch check for NPCs unequips a copy's torch where it is not dark, so a player copy's held torch is equipped again
+  private keepTorch(refr: ObjectReference, eq: Equipment): void {
+    const t = this.torchState;
+    if (t.numChanges !== eq.numChanges) {
+      t.numChanges = eq.numChanges;
+      t.entry = getWornLight(eq);
+      t.tries = 0;
+      t.heldSince = 0;
+      t.logged = false;
+    }
+    const now = Date.now();
+    if (!t.entry || now < t.checkAt) return;
+    t.checkAt = now + FormView.torchCheckMs;
+    const ac = Actor.from(refr);
+    const form = Game.getFormEx(t.entry.baseId);
+    // On a seat or a bed the engine puts a torch away every frame
+    if (!ac || !form || !refr.is3DLoaded() || ac.isDead() || ac.getSitState() !== 0 || ac.getSleepState() !== 0 || isBadMenuShown()) return;
+    const drawn = ac.isWeaponDrawn();
+    if (drawn !== t.drawn) {
+      t.drawn = drawn;
+      t.tries = 0;
+      t.logged = false;
+    }
+    const state = () => `weapon drawn ${drawn}, light level ${Math.round(ac.getLightLevel())}, left hand graph type ${ac.getAnimationVariableInt("iLeftHandType")}`;
+    const id = `${this.getRemoteRefrId().toString(16)} torch ${t.entry.baseId.toString(16)}`;
+    if (ac.isEquipped(form)) {
+      if (!t.heldSince) t.heldSince = now;
+      else if (now - t.heldSince >= FormView.torchSteadyMs) t.tries = 0;
+      if (!t.logged) {
+        t.logged = true;
+        logToPlatformLog("FormView", `${id} is in the copy's hand: ${state()}`);
+      }
+      return;
+    }
+    t.heldSince = 0;
+    if (t.tries >= FormView.torchMaxTries) return;
+    t.tries++;
+    if (ac.getItemCount(form) <= 0) ac.addItem(form, 1, true);
+    equipEntries(ac, [t.entry]);
+    const last = t.tries === FormView.torchMaxTries ? `, the last until it stays ${FormView.torchSteadyMs / 1000} s, the weapon is drawn or sheathed or new equipment arrives` : "";
+    logToPlatformLog("FormView", `${id} was off the copy and is equipped again, try ${t.tries} of ${FormView.torchMaxTries}${last}: ${state()}`);
   }
 
   // The shared arrays double as identity keys for the recreate check
@@ -1062,6 +1112,10 @@ export class FormView {
   private loaded3DMoment = 0;
   private static readonly copySettleMs = 1000;
   private static readonly handGraphCheckDelayMs = 1500;
+  private torchState = { numChanges: -1, entry: undefined as Entry | undefined, drawn: false, checkAt: 0, tries: 0, heldSince: 0, logged: false };
+  private static readonly torchCheckMs = 2000;
+  private static readonly torchMaxTries = 3;
+  private static readonly torchSteadyMs = 30000;
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
   private mountState = makeMountState();

@@ -2,6 +2,7 @@ import {
   Actor,
   Ammo,
   Armor,
+  FormType,
   Game,
   ObjectReference,
   Spell,
@@ -66,6 +67,10 @@ const filterWorn = (inv: Inventory): Inventory => {
 };
 
 export const countWorn = (inv: Inventory): number => filterWorn(inv).entries.length;
+
+// The carryable light an equipment record holds in hand, such as a torch
+export const getWornLight = (eq: Equipment): Entry | undefined =>
+  filterWorn(eq.inv).entries.find((e) => Game.getFormEx(e.baseId)?.getType() === FormType.Light);
 
 const wornKeys = (inv: Inventory): string[] =>
   filterWorn(inv).entries.map((e) => `${e.baseId}:${e.wornLeft ? "L" : "R"}`).sort();
