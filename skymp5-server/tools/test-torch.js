@@ -46,6 +46,7 @@ function stubMp (user = 4) {
       props.get(id)[key] = JSON.parse(JSON.stringify(value))
     },
     getUserByActor: (id) => (state.user >= 0 && id === state.actorOfUser ? state.user : -1),
+    getUserActor: (u) => (u === state.user ? state.actorOfUser : 0),
     isConnected: (u) => u === state.user,
     getActorName: () => 'Eerik',
     getDescFromId: (id) => id.toString(16),
@@ -154,15 +155,18 @@ const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).
   assert.equal(t.p['private.torchBurnMs'], 60000)
   s.state.actorOfUser = ACTOR
 
-  // Character select puts it out and saves at once, the body still owned by the user
+  // Character select puts it out and saves at the request itself, the body still owned by the user, even when spawn's guard (a request within 10 s of the assign or 15 s of the last one) sends no park event
+  const menuRequest = () => t.sys.customPacket(5, 'characterSelectMenuRequest', {}, t.ctx)
   t.send(holding())
   assert.equal(t.lines[7], '[torch] ff000d66 lights 1d4ec, 1 of 15 min burned')
   minutes(1)
-  t.ctx.gm.emit('userMenuQuit', 5, ACTOR)
+  t.sys.customPacket(5, 'chatMessage', {}, t.ctx)
+  menuRequest()
   assert.equal(t.lines[8], '[torch] ff000d66 torch 1d4ec offline at 2 of 15 min')
   assert.equal(t.p['private.torchBurnMs'], 120000)
   minutes(30)
   await t.poll()
+  menuRequest()
   t.ctx.gm.emit('userMenuQuit', 5, ACTOR)
   assert.equal(t.lines.length, 9, 'nothing burning, nothing logged')
   assert.equal(t.p['private.torchBurnMs'], 120000)

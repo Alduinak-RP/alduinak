@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, USER_MENU_QUIT_EVENT } from "./system";
+import { System, Log, SystemContext, Content } from "./system";
 import { chainMpHook, countItem, hex, notifyActor, recordTypeOf, takeItemFrom, unequipItemOf, userOf } from "./actorUtil";
 import { describeActor } from "./playerText";
 
@@ -44,11 +44,18 @@ export class TorchSystem implements System {
     chainMpHook(mp, "onUpdateEquipmentAttempt", (actorId: number, equipment: unknown, isAllowed: boolean) => {
       this.onEquipment(mp, Number(actorId) >>> 0, equipment, isAllowed);
     });
-    ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(mp, Number(actorId) >>> 0));
     this.log(`[torch] a held torch burns out after ${minutes} min of use`);
   }
 
-  // Character select stops the clock while the body waits
+  // Character select stops the clock at the request itself, since spawn's guard skips the park event within its grace windows
+  customPacket(userId: number, type: string, _content: Content, ctx: SystemContext): void {
+    if (type !== "characterSelectMenuRequest") return;
+    const mp = ctx.svr as Mp;
+    let actorId = 0;
+    try { actorId = Number(mp.getUserActor(userId)) >>> 0; } catch { return; }
+    if (actorId) this.goOffline(mp, actorId);
+  }
+
   private goOffline(mp: Mp, actorId: number): void {
     const lit = this.lit.get(actorId);
     if (!lit) return;
