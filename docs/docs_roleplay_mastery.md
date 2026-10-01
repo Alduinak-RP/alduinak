@@ -204,6 +204,20 @@ multiclassing off: the primary then works exactly as before. The Test value:
   still takes the best marker of any profession until a native server build with plan task NV1 runs (in the
   native source since `ea63f69a`: the cap follows the recipe's own profession), which is why the Test Server adds
   `masterySlots` only once NV1 is built.
+- **Tempers the client reports.** A temper the native craft did not record reaches the server as a `craftedExtras`
+  report (`craftedExtrasSystem.ts`), and since R2 it follows the same rules as the native one: the station must offer
+  the recipe and its materials must be among the reported losses; a recipe that asks for a rank marker needs a slot
+  that holds it; the result is capped by that slot's rank (`MasterySystem.temperCap`, the TS twin of the native
+  `TemperCap`: for an ungated recipe the best slot that works the bench; Free tempers to Fine, every rank one step
+  more, Legendary to Legendary); and it costs one craft of fatigue at the `craftCost` price. A claim above the cap
+  is stored at the cap and the client puts its copy back (`craftedExtrasRefused`, "Your rank improves that item to
+  Superior at most."); one the rank or the fatigue bar does not allow is refused with nothing taken ("Your rank in
+  that craft cannot improve the item any further.", "You are too tired to improve that item. Rest a while."). Such a
+  temper earns no hours. Log: `[crafted] <actor> <item>: tempered to 1.2 (recipe <id>, cap Novice blacksmith, asked
+  1.6)` and `... refused {...} from {...} (rank)` or `(tired)`. The recipe index both this and the repair menu read
+  is `systems/temperRecipes.ts`. `craftedExtrasTemperRules: false` in `server-settings.json` puts such a temper back
+  to materials alone (no gate, no cap, no fatigue), as it was before R2; the boot line `[crafted] a reported temper
+  ...` says which is in force.
 - **Kits.** A sub-slot pick hands over that craft's kit items (`masteryKits`), never gold, once per craft per
   character, and none when the primary's kit was that craft's (`masterySlotKits`, default on; the crafts that got
   one are listed in `private.masterySlots.kits`).

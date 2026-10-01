@@ -314,6 +314,9 @@ crafts -25% until <hh:mm>` (the server's local time); `drinkUntil` rides `privat
   their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal;
   all seven professions that work a crafting station get their rank for the sealing wax at every station.
   Crafts whose inputs the crafter does not hold are left to the native side uncharged.
+  A temper the server records from a `craftedExtras` report instead of the native craft pays the same price through
+  `NeedsSystem.pay` (`[needs] <id> temper <item> by <recipe> r<rank> (crafted extras): -N%, fatigue F%`) and is refused
+  when the bar cannot pay it, so a craft refused for fatigue no longer comes back through that report.
 - Skinning (hunter rank) costs half a kill. Only a hunter's skinning takes an animal's pelt and meat; a search of the
   body never shows its meat.
 - A kill of an NPC or creature costs the kill price by hunter rank (animals) or warrior rank (everything else),

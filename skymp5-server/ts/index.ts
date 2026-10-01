@@ -340,7 +340,8 @@ const main = async () => {
     bodySystem,
     executionSystem,
     new TradeSystem(log),
-    new CraftedExtrasSystem(log),
+    // Its tempers take the rank cap from mastery and their fatigue from needs
+    new CraftedExtrasSystem(log, masterySystem, needsSystem),
     searchSystem,
     new SoulTrapSystem(log, companionSystem, afterlifeSystem, factionSystem, bodySystem, captureSystem),
     new VoiceSystem(log),

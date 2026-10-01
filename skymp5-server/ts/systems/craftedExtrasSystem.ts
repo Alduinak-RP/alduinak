@@ -1,5 +1,9 @@
+import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { espmFieldFormIds, readFormIdField, toFormId } from "./formIdUtil";
+import { MasterySystem, RANK_NAMES } from "./masterySystem";
+import { NeedsSystem } from "./needsSystem";
+import { LEGENDARY_STEP, TemperRecipe, espmRecordIds, qualityName, recipesAt, temperCapStep } from "./temperRecipes";
 import {
   EnchantmentEffect, Inventory, InventoryEntry, Item, addEntries, copyValidExtras, describeExtras, healthStep,
   isEnchanted, isSet, readInventory, sameBase, sameEffects, sameFloat, sameItem, withCount,
@@ -9,12 +13,15 @@ import {
 type Mp = any;
 
 // Records extras players make in vanilla, paid for from the server's own copies and clamped to vanilla limits; souls are soul trap's
+// A temper follows the native CraftService: the recipe's rank gates, the rank cap of the recipe's profession and one craft of fatigue
 //
 // Client -> Server: { customPacketType: "craftedExtras", workbench, gained: Entry[], lost: Entry[] }
 //   gained: local copies the server lacks; lost: server copies the player no longer has (the sources and inputs)
 //   workbench: remote id of the crafting furniture the player used last, 0 if none
 // Server -> Client: { customPacketType: "notification", text } when a crafted change is refused
 // Server -> Client: { customPacketType: "craftedExtrasRefused", baseIds } so the client reverts those items to the server copy
+//
+// server-settings.json: craftedExtrasTemperRules, default true; false tempers by materials alone, up to Legendary and free of fatigue
 
 const PACKET = "craftedExtras";
 const NOTICE_PACKET = "notification";
@@ -30,8 +37,6 @@ const NOTICE_GAP_MS = 60 * 1000;
 const SOUL_CHARGE = [0, 250, 500, 1000, 2000, 3000];
 // Soul Squeezer adds magicka when recharging
 const RECHARGE_MARGIN = 2;
-// Legendary; vanilla has no bound beyond it only through potion loops
-const MAX_HEALTH_STEP = 16;
 // Twice the strongest plugin enchantment of an effect covers skill, perks and Fortify Enchanting potions
 const ENCHANT_MARGIN = 2;
 // Extra Effect perk
@@ -65,11 +70,6 @@ interface Cap {
   magnitude: number;
   area: number;
   duration: number;
-}
-
-interface TemperRecipe {
-  bench: number;
-  inputs: { id: number; count: number }[];
 }
 
 interface ItemInfo {
@@ -114,13 +114,37 @@ interface PoisonCredit {
   raiseUntil?: number;
 }
 
+// A temper the crafter's rank and fatigue bar allow: the health step it reaches and what it costs
+interface Temper {
+  recipe: TemperRecipe;
+  step: number;
+  // The rank cap cut the claimed step
+  capped: boolean;
+  // The craft of fatigue it costs, null with the temper rules off
+  price: { rank: number; half: boolean } | null;
+  note: string;
+}
+
+type TemperRefusal = "rank" | "tired";
+
+// Who reports, and why the temper of the line being planned was refused
+interface Crafter {
+  actorId: number;
+  refusals: Set<TemperRefusal>;
+}
+
 interface Plan {
   entry: InventoryEntry;
   reserve: Reservation[];
   soul: SoulSource | null;
   credit: PoisonCredit | null;
+  temper: Temper | null;
   notes: string[];
 }
+
+const REFUSED_NOTICE = "The server did not accept that change to your item, so it keeps its previous state.";
+const RANK_NOTICE = "Your rank in that craft cannot improve the item any further.";
+const TIRED_NOTICE = "You are too tired to improve that item. Rest a while.";
 
 const NO_STATION: Station = { enchanting: false, temperBenches: [] };
 const hex = (id: number): string => (id >>> 0).toString(16);
@@ -140,11 +164,14 @@ const cleanName = (name: unknown): string | undefined => {
 export class CraftedExtrasSystem implements System {
   systemName = "CraftedExtrasSystem";
 
-  constructor(private log: Log) { }
+  constructor(private log: Log, private mastery: MasterySystem, private needs: NeedsSystem) { }
 
   // Applying a poison sends OnEquip, which eats and removes the poison before the craft report arrives
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
+    const all = ((await Settings.get()).allSettings || {}) as Record<string, unknown>;
+    this.temperRules = all["craftedExtrasTemperRules"] !== false;
+    this.log(`[crafted] a reported temper ${this.temperRules ? "follows its recipe's rank gates and rank cap and costs a craft of fatigue" : "takes materials only, craftedExtrasTemperRules is false"}`);
     const previous = typeof mp.onEatItem === "function" ? mp.onEatItem : null;
     mp.onEatItem = (...args: unknown[]) => {
       const verdict = previous ? previous.apply(mp, args) : undefined;
@@ -199,22 +226,32 @@ export class CraftedExtrasSystem implements System {
     const souls = this.soulSources(ctx, pool);
     const emptiedGems = this.pairEmptiedGems(ctx, gained, souls);
     const credits = this.creditsOf(actorId);
+    const crafter: Crafter = { actorId, refusals: new Set() };
+    const reasons = new Set<TemperRefusal>();
 
     const added: InventoryEntry[] = [];
     const refused = new Set<number>();
+    const capped = new Map<number, number>();
     for (const g of gained) {
       if (emptiedGems.has(g)) continue;
       for (let unit = 0; unit < Math.min(g.count, MAX_UNITS); unit++) {
-        const plan = this.findPlan(ctx, g, pool, souls, station, credits);
+        crafter.refusals.clear();
+        const plan = this.findPlan(ctx, crafter, g, pool, souls, station, credits);
         if (!plan) {
           if (this.isCraftClaim(g, pool)) {
             refused.add(g.baseId >>> 0);
+            crafter.refusals.forEach((r) => reasons.add(r));
             const sources = pool.filter((p) => sameBase(p.entry, g)).map((p) => `{${describeExtras(p.entry).join(", ")}}`);
-            this.log(`[crafted] ${hex(actorId)} ${hex(g.baseId)}: refused {${describeExtras(g).join(", ")}} from ${sources.join(" ") || "nothing"}`);
+            const why = crafter.refusals.size ? ` (${Array.from(crafter.refusals).join(", ")})` : "";
+            this.log(`[crafted] ${hex(actorId)} ${hex(g.baseId)}: refused {${describeExtras(g).join(", ")}} from ${sources.join(" ") || "nothing"}${why}`);
           }
           break;
         }
         this.commit(plan, added);
+        const t = plan.temper;
+        // Paid at once, so the next unit of the report is checked against the bar that is left
+        if (t?.price) this.needs.pay(ctx, actorId, "craft", t.price.rank, `temper ${hex(plan.entry.baseId)} by ${hex(t.recipe.id)} r${t.price.rank}${t.price.half ? " half" : ""} (crafted extras)`, t.price.half);
+        if (t?.capped) capped.set(plan.entry.baseId >>> 0, t.step);
         this.log(`[crafted] ${hex(actorId)} ${hex(plan.entry.baseId)}: ${plan.notes.join(", ")} {${describeExtras(plan.entry).join(", ")}}`);
       }
     }
@@ -226,10 +263,12 @@ export class CraftedExtrasSystem implements System {
       const rest: Inventory = { entries: inv.entries.map((e, j) => ({ ...e, count: counts[j] })).filter((e) => e.count > 0) };
       mp.set(actorId, "inventory", addEntries(rest, added));
     }
-    if (refused.size) {
-      this.send(ctx, userId, { customPacketType: REFUSED_PACKET, baseIds: Array.from(refused) });
-      this.notify(ctx, userId, "The server did not accept that change to your item, so it keeps its previous state.");
-    }
+    // A capped temper reverts too: the local copy shows the quality the client made, the server's the one the rank allows
+    const revert = new Set([...refused, ...capped.keys()]);
+    if (!revert.size) return;
+    this.send(ctx, userId, { customPacketType: REFUSED_PACKET, baseIds: Array.from(revert) });
+    if (!refused.size) this.notify(ctx, userId, `Your rank improves that item to ${qualityName(Math.max(...capped.values()))} at most.`);
+    else this.notify(ctx, userId, reasons.has("tired") ? TIRED_NOTICE : reasons.has("rank") ? RANK_NOTICE : REFUSED_NOTICE);
   }
 
   private normalize(raw: unknown, max: number): InventoryEntry[] {
@@ -295,10 +334,10 @@ export class CraftedExtrasSystem implements System {
     return paired;
   }
 
-  private findPlan(ctx: SystemContext, g: InventoryEntry, pool: PoolEntry[], souls: SoulSource[], station: Station, credits: PoisonCredit[]): Plan | null {
+  private findPlan(ctx: SystemContext, crafter: Crafter, g: InventoryEntry, pool: PoolEntry[], souls: SoulSource[], station: Station, credits: PoisonCredit[]): Plan | null {
     for (const p of pool) {
       if (p.left <= 0 || !sameBase(p.entry, g)) continue;
-      const plan = this.plan(ctx, p, g, pool, souls, station, credits);
+      const plan = this.plan(ctx, crafter, p, g, pool, souls, station, credits);
       if (plan) return plan;
     }
     return null;
@@ -319,7 +358,7 @@ export class CraftedExtrasSystem implements System {
   }
 
   // The server copy source becoming g, paid for from the pool; null when vanilla could not have made it
-  private plan(ctx: SystemContext, source: PoolEntry, g: InventoryEntry, pool: PoolEntry[], souls: SoulSource[], station: Station, credits: PoisonCredit[]): Plan | null {
+  private plan(ctx: SystemContext, crafter: Crafter, source: PoolEntry, g: InventoryEntry, pool: PoolEntry[], souls: SoulSource[], station: Station, credits: PoisonCredit[]): Plan | null {
     const s = source.entry;
     const info = this.itemInfo(ctx, s.baseId);
     const out = withCount(s, 1);
@@ -327,6 +366,7 @@ export class CraftedExtrasSystem implements System {
     const notes: string[] = [];
     let soul: SoulSource | null = null;
     let credit: PoisonCredit | null = null;
+    let temper: Temper | null = null;
 
     // Souls only arrive through the soul trap system, and plugin enchantments never change
     if ((g.soul || 0) !== (s.soul || 0) || (g.enchantmentId || 0) !== (s.enchantmentId || 0)) return null;
@@ -359,9 +399,10 @@ export class CraftedExtrasSystem implements System {
     const fromStep = healthStep(s.health);
     const toStep = healthStep(g.health);
     if (toStep !== fromStep) {
-      if (toStep < fromStep || !this.reserveTemper(ctx, s.baseId, station, pool, reserve)) return null;
-      out.health = Math.min(toStep, MAX_HEALTH_STEP) / 10;
-      notes.push(`tempered to ${out.health}`);
+      temper = toStep > fromStep ? this.planTemper(ctx, crafter, s.baseId, fromStep, toStep, station, pool, reserve) : null;
+      if (!temper) return null;
+      out.health = temper.step / 10;
+      notes.push(`tempered to ${out.health} (${temper.note})`);
     }
 
     const fromPoison = s.poisonId || 0;
@@ -411,7 +452,7 @@ export class CraftedExtrasSystem implements System {
       }
     }
 
-    return notes.length ? { entry: out, reserve, soul, credit, notes } : null;
+    return notes.length ? { entry: out, reserve, soul, credit, temper, notes } : null;
   }
 
   // The engine poisons the right hand weapon, else the left, so the server's copy of it takes the poison OnEquip consumed
@@ -477,19 +518,35 @@ export class CraftedExtrasSystem implements System {
     return true;
   }
 
-  // Materials of a temper recipe this station offers for the item
-  private reserveTemper(ctx: SystemContext, baseId: number, station: Station, pool: PoolEntry[], reserve: Reservation[]): boolean {
-    for (const recipe of this.temperRecipes(ctx).get(baseId >>> 0) || []) {
-      if (!station.temperBenches.includes(recipe.bench)) continue;
+  // The first recipe this station offers for the item that the pool, the crafter's rank and their fatigue bar can pay
+  private planTemper(ctx: SystemContext, crafter: Crafter, baseId: number, fromStep: number, toStep: number, station: Station, pool: PoolEntry[], reserve: Reservation[]): Temper | null {
+    const refusals = new Set<TemperRefusal>();
+    for (const recipe of recipesAt(ctx.svr, baseId, station.temperBenches, this.log)) {
       const trial = [...reserve];
-      const ok = recipe.inputs.every((input) =>
-        this.reserveUnit(pool, trial, (e) => (e.baseId >>> 0) === input.id && !isSet(e.enchantmentEffects), input.count));
-      if (ok) {
+      if (!recipe.inputs.every((input) =>
+        this.reserveUnit(pool, trial, (e) => (e.baseId >>> 0) === input.id && !isSet(e.enchantmentEffects), input.count))) continue;
+      if (!this.temperRules) {
         reserve.splice(0, reserve.length, ...trial);
-        return true;
+        return { recipe, step: Math.min(toStep, LEGENDARY_STEP), capped: false, price: null, note: `recipe ${hex(recipe.id)}` };
       }
+      // Null when the recipe asks for a rank marker the crafter does not hold
+      const cap = this.mastery.temperCap(ctx, crafter.actorId, recipe.id);
+      const step = cap ? Math.min(toStep, temperCapStep(cap.rank)) : 0;
+      if (!cap || step <= fromStep) {
+        refusals.add("rank");
+        continue;
+      }
+      const price = this.mastery.craftCost(ctx, crafter.actorId, recipe.id);
+      if (!this.needs.canPay(crafter.actorId, "craft", price.rank, price.half)) {
+        refusals.add("tired");
+        continue;
+      }
+      reserve.splice(0, reserve.length, ...trial);
+      const note = `recipe ${hex(recipe.id)}, cap ${RANK_NAMES[cap.rank]}${cap.profession ? ` ${cap.profession}` : ""}${step < toStep ? `, asked ${toStep / 10}` : ""}`;
+      return { recipe, step, capped: step < toStep, price: { rank: price.rank, half: price.half }, note };
     }
-    return false;
+    refusals.forEach((r) => crafter.refusals.add(r));
+    return null;
   }
 
   // Effects of a player enchantment, clamped to twice the strongest plugin enchantment of the same kind
@@ -587,25 +644,11 @@ export class CraftedExtrasSystem implements System {
     return keywords;
   }
 
-  private recordIds(ctx: SystemContext, type: string): number[] {
-    const mp = ctx.svr as Mp;
-    if (typeof mp.getEspmRecordIdsByType !== "function") {
-      this.log(`[crafted] the server native has no getEspmRecordIdsByType, so ${type} records cannot be read`);
-      return [];
-    }
-    try {
-      return Array.from(mp.getEspmRecordIdsByType(type) as ArrayLike<number>, (id) => Number(id) >>> 0);
-    } catch (e) {
-      this.log(`[crafted] reading ${type} records failed: ${e}`);
-      return [];
-    }
-  }
-
   // Strongest effect of each kind in any plugin enchantment, keyed "w" or "a" plus the MGEF id
   private enchantmentCaps(ctx: SystemContext): Map<string, Cap> {
     if (this.caps) return this.caps;
     const caps = new Map<string, Cap>();
-    for (const id of this.recordIds(ctx, "ENCH")) {
+    for (const id of espmRecordIds(ctx.svr, "ENCH", this.log)) {
       const res = this.lookup(ctx, id);
       const enit = this.fieldData(res, "ENIT");
       if (!enit || enit.byteLength < 24) continue;
@@ -635,34 +678,6 @@ export class CraftedExtrasSystem implements System {
     this.caps = caps;
     this.log(`[crafted] ${caps.size} enchantment effects known`);
     return caps;
-  }
-
-  // Constructible objects by created item: bench keyword and ingredients
-  private temperRecipes(ctx: SystemContext): Map<number, TemperRecipe[]> {
-    if (this.recipes) return this.recipes;
-    const recipes = new Map<number, TemperRecipe[]>();
-    for (const id of this.recordIds(ctx, "COBJ")) {
-      const res = this.lookup(ctx, id);
-      const toGlobal = (local: number): number => {
-        try { return res.toGlobalRecordId(local) >>> 0; } catch { return 0; }
-      };
-      const created = toGlobal(readFormIdField(res, "CNAM"));
-      const bench = toGlobal(readFormIdField(res, "BNAM"));
-      if (!created || !bench) continue;
-      const inputs: { id: number; count: number }[] = [];
-      for (const f of res.record.fields || []) {
-        if (f.type !== "CNTO" || !(f.data instanceof Uint8Array) || f.data.byteLength < 8) continue;
-        const v = viewOf(f.data);
-        const input = toGlobal(v.getUint32(0, true));
-        const count = v.getInt32(4, true);
-        if (input && count > 0) inputs.push({ id: input, count });
-      }
-      const list = recipes.get(created) || [];
-      list.push({ bench, inputs });
-      recipes.set(created, list);
-    }
-    this.recipes = recipes;
-    return recipes;
   }
 
   // Unused or still raisable, unexpired credits; the live list, so a committed plan marks its credit used
@@ -711,11 +726,11 @@ export class CraftedExtrasSystem implements System {
     }
   }
 
+  private temperRules = true;
   private lastReportAt = new Map<number, number>();
   private lastNoticeAt = new Map<number, number>();
   private poisonCredits = new Map<number, PoisonCredit[]>();
   private itemCache = new Map<number, ItemInfo>();
   private keywordCache = new Map<number, number[]>();
   private caps: Map<string, Cap> | null = null;
-  private recipes: Map<number, TemperRecipe[]> | null = null;
 }
