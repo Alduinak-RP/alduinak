@@ -60,16 +60,21 @@ RE::BSTArray<RE::TintMask*> Clone(const RE::BSTArray<RE::TintMask*>& original)
 
 using UpdateClock = std::chrono::steady_clock;
 constexpr auto kUpdateStall = std::chrono::seconds(5);
+constexpr auto kUpdateCallGap = std::chrono::seconds(1);
 UpdateClock::time_point updateWaitFrom;
+UpdateClock::time_point lastUpdateCall;
 UpdateClock::time_point loadEventAt;
 std::atomic<bool> firstUpdateAfterLoad = false;
 std::atomic<uint32_t> stallRedispatches = 0;
 
-// An Add the VM dropped or never ran holds the gate shut, so it is dispatched again after kUpdateStall of unpaused game time
+// An Add the VM dropped or never ran holds the gate shut, so it is dispatched again after kUpdateStall of continuous unpaused frames
 bool UpdateStalled(UpdateClock::time_point now)
 {
+  const bool callGap = now - lastUpdateCall > kUpdateCallGap;
+  lastUpdateCall = now;
+  const auto main = RE::Main::GetSingleton();
   const auto ui = RE::UI::GetSingleton();
-  if (!ui || ui->GameIsPaused() ||
+  if (callGap || !main || !main->gameActive || !ui || ui->GameIsPaused() ||
       ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME) ||
       ui->IsMenuOpen(RE::MainMenu::MENU_NAME)) {
     updateWaitFrom = now;
@@ -982,6 +987,7 @@ void TESModPlatform::Update()
   vmCallAllowed = false;
   papyrusUpdateAllowed = true;
   updateWaitFrom = now;
+  lastUpdateCall = now;
 
   FunctionArguments args;
   RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> functor(
@@ -1001,8 +1007,8 @@ void TESModPlatform::Update()
       static std::once_flag refused;
       std::call_once(refused, [] {
         spdlog::warn("TESModPlatform: the VM refused the TESModPlatform.Add "
-                     "dispatch (type not loaded or no stack), retrying next "
-                     "frame");
+                     "dispatch (stack creation failure or queue full), "
+                     "retrying next frame");
       });
     }
   } catch (std::exception& e) {

@@ -309,18 +309,27 @@ handling), runs inside one `TESModPlatform.Add` call dispatched into the
 Papyrus VM per frame, and the next one is dispatched only after the last has
 run or a load event arrives. A dispatch the VM refuses, or a queued call it
 drops, used to stop `update` for the rest of the game session while the game
-and `tick` kept running: a new character on 2026-09-30 loaded into the world
-with no race menu and no sync until the game was restarted. A refused
-dispatch is now retried the next frame, and a call that has not run after 5 s
-of unpaused game time (no loading screen, no main menu) is dispatched again; a
-duplicate runs as a no-op. `skyrim-platform.log` shows
+kept running: a new character on 2026-09-30 loaded into the world with no
+race menu and no sync until the game was restarted (only native input lines
+were logged after its postLoadGame, so whether `tick` still ran is not known).
+A refused dispatch is now retried the next frame, and a call that has not run
+after 5 s of continuous unpaused frames is dispatched again; a duplicate runs
+as a no-op. The wait starts over while a loading screen or the main menu is
+open, while the game is paused or not the active window, and after any gap of
+more than 1 s between frames (a hitch or an alt-tab), so those never count as
+a stall. `skyrim-platform.log` shows
 `TESModPlatform: first Papyrus update N ms after the load event` once per
 load, `TESModPlatform: no Papyrus update for N s of game time after M updates,
 dispatching TESModPlatform.Add again (re-dispatch K)` (K = 1, 2, 4, ...) and
 `TESModPlatform: Papyrus update resumed after K re-dispatch(es)` when it
-recovers, and `TESModPlatform: the VM refused the TESModPlatform.Add dispatch`
-once a session. A postLoadGame line with no `first Papyrus update` line after
-it means the VM never ran the call at all.
+recovers, and `TESModPlatform: the VM refused the TESModPlatform.Add dispatch
+(stack creation failure or queue full)` once a session (the engine's own
+wording; a full queue right after a load is the likeliest cause). Reading a
+recurrence: a postLoadGame line with no `first Papyrus update` line and no
+stall warning after it means `TESModPlatform::Update` itself stopped running
+(the SKSE task chain that calls it each frame), which this watchdog does not
+cover; a stall warning with no `resumed` line after it means the VM never ran
+the re-dispatched call either.
 
 ---
 
