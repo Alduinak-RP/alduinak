@@ -55,6 +55,9 @@ where the race has a survival rule (cold weakness, raw diet, resist hunger, resi
 blood resists 75% of frost damage, and you never feel the cold."). The ability replaces the vanilla racial spell it
 supersedes (`RaceNord`, `RaceDarkElf`, `RaceRedguard`, `RaceWoodElf`, `RaceBreton`, `RaceImperial`,
 `AbHighElfMagicka`, `RaceArgonianResistDisease`, `RaceKhajiitClaws`), and the vampire race of each gets the same.
+`skymp5-server/tools/test-racial-owner-list.js` holds the owner's list line by line against the patcher spec and
+RacialSystem with the Test block. The one line this build does not deliver is the Wood Elf's Command Animal: the power
+record, its 20 hour gate and the client pre-gate exist, the command itself is plan task RC6 (see Powers).
 The race menu texts follow the list; the Imperial's old promise of a fatigue discount is gone (owner decision O26).
 
 Owner decisions taken at their default (plan section 7): Nord frost resistance 75, not 50 (O1); freezing water still

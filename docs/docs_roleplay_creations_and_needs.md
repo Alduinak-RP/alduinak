@@ -600,6 +600,24 @@ regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
   diseases, not six rolls. Never from a player, a pet, a blocked hit or a spell; werewolves and werebears carry nothing
   (`survivalDiseaseCarrierExclude`). Disease resistance is the race's (Argonian 75, Redguard 50, Wood Elf 75 with plugin
   r27a) plus any learned ability, capped at 85 like the native resistances.
+  - Every roll writes one server line, also a bite that gives nothing: `[survival] <id> hit by SkeeverRace <npc>: skeever
+    10% x (1 - disease resist 0%) = 10%, roll 0.412, spared`. Nine skeever bites in ten end that way, so a short fight
+    with no disease and a `spared` line per bite is the system working. No line at all means the hit never reached the
+    roll: survival or diseases off, the hit blocked or a spell, the target in creation, dead or in god, ghost or invis
+    mode, or the attacker's race no carrier.
+  - On a catch the player reads "You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming
+    days. A Cure Disease potion or a healing potion cures it.", the fatigue readout gains a Sick line and Active Effects
+    lists the disease.
+  - A zone creature is an NPC_ base with no appearance. Its race is the RNAM of the first record of its base and
+    evaluated template chain that keeps its own traits, so `EncSkeever` is `SkeeverRace` and a leveled base such as
+    `dunFolgunthurThralls_LvlDraugrAmbushMissile` takes the race of the NPC the server picked from its list, not the
+    Creation Kit's `FoxRace` placeholder on the record.
+  - Checked against the Test load order of 2026-10-01 (90 plugins, 175 races, the 877 zones of `NPC-Spawns.json`): each
+    of the 20 default fragments matches only the creature races it names (57 races), every carrier base the zones spawn
+    resolves to its race (the two leveled draugr bases through the template chain the server evaluates), and the one
+    carrier race a mod adds is `RiftenExtSkeletonArmorRace` (a skeleton). A creature a mod adds on a vanilla race is a
+    carrier through that race. Dragon priests and wispmothers fight with spells, which never roll, so Astral Vapors is
+    rare outside the admin panel.
 - **Contagion** (the diseases an Oblivion beggar carried) is a client check, so the server does no proximity work
   (the owner's call, to keep the calculations off the server):
   - The server writes each player's actor property `ff_contagious`, the ids of the contagious diseases they carry at
@@ -710,7 +728,9 @@ freezing area, diseases with their next stage time, afflictions, food poisoning)
 ### Checks on the Test Server
 
 Quick-test values (remove them before any Migrate settings): `survivalColdHoursToNumb` 0.02, `survivalAfflictionHours`
-0.1, `survivalDiseaseStageHours` [0.05, 0.05], `survivalContagionChance` 1.
+0.1, `survivalDiseaseStageHours` [0.05, 0.05], `survivalContagionChance` 1, and `survivalDiseaseCarriers` `{ "skeever":
+{ "chance": 1, "diseases": ["ataxia", "bloodLung", "feebleLimb", "redRage", "shakes", "witlessPox"] } }` so every
+unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
 1. Cold: naked on the Winterhold coast on a snowy night, the stage lines, the red end of the health bar and the
    thermometer; fur lowers the rate and the warmth matches the inventory total.
 2. Warming: an inn takes 40 a minute, a campfire 75 every 6 s, a hot soup 200.
@@ -719,7 +739,10 @@ Quick-test values (remove them before any Migrate settings): `survivalColdHoursT
 5. Body: carry weight 150, no regeneration, a death wakes at 1% health.
 6. Raw meat as a Nord about half the time, never as a Khajiit; a Cure Disease or healing potion cures.
 7. Creature diseases: fight skeevers and wolves; the hit lines, Active Effects shows the disease, it survives a relog,
-   and with the quick-test stage hours it worsens offline.
+   and with the quick-test stage hours it worsens offline. At the default 10% each bite logs `spared` or `caught`; with
+   the quick-test skeever chance the first unblocked bite logs `skeever 100% x (1 - disease resist 0%) = 100%, roll
+   ..., caught ataxia (AldDisease_Ataxia1)` (25% for an Argonian or a Wood Elf, 50% for a Redguard), a blocked bite logs
+   nothing, and four diseases later `refused: already sick with 4`.
 8. Afflictions: starve with low `needsHungerStages`; Weakened within a few rolls, cured by a potion, expiring.
 9. Contagion (needs `ff_contagious` registered, `live/r27-SV4b`): one tester sick with Collywobbles, another within 2 m
    (whispering distance) for two minutes at chance 1 catches it; the healthy tester's platform log shows `contagion

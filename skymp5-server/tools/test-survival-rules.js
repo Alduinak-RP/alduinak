@@ -1161,6 +1161,79 @@ async function main() {
     assert.deepEqual(u.logs, [`[survival] ${x(w)} hit by WolfRace ff00c001: wolf 10% x (1 - disease resist 0%) = 10%, roll 0.000, helljoint refused: already sick with 1 (survivalMaxDiseases 1)`])
   })
 
+  await test('diseases: a zone skeever (an NPC_ base with no appearance) infects with its Unarmed bite; a leveled draugr takes its race from the template chain; a mod race matches by fragment; race resistance cuts the roll', async () => {
+    const [UNARMED, ENC_SKEEVER, LVL_DRAUGR, DRAUGR_LIST, ENC_DRAUGR, MOD_SKELETON] = [0x1f4, 0x23ab7, 0xabaa1, 0xabaa0, 0x1ff22, 0x5e000d62]
+    const [FOX_RACE, DRAUGR_RACE, MOD_RACE, ARGONIAN_RACE, ARGONIAN_BLOOD] = [0x109c7c, 0xd53, 0x5e000d61, 0x13740, 0x41331]
+    const acbs = (templateFlags) => { const b = new Uint8Array(24); new DataView(b.buffer).setUint16(18, templateFlags, true); return b }
+    const npc = (editorId, raceId, templateFlags = 0, template = 0) => record('NPC_', editorId, [field('ACBS', acbs(templateFlags)), field('RNAM', u32(raceId)), ...(template ? [field('TPLT', u32(template))] : [])])
+    const records = [
+      [UNARMED, record('WEAP', 'Unarmed')],
+      [ENC_SKEEVER, npc('EncSkeever', SKEEVER_RACE)],
+      // Use Traits with a leveled list as template: the record's own race is the CK placeholder
+      [LVL_DRAUGR, npc('dunFolgunthurThralls_LvlDraugrAmbushMissile', FOX_RACE, 0x1, DRAUGR_LIST)],
+      [DRAUGR_LIST, record('LVLN', 'LCharDraugrAmbushMissile')],
+      [ENC_DRAUGR, npc('EncDraugr02Missile', DRAUGR_RACE)],
+      [MOD_SKELETON, npc('RiftenExtSkeletonGuard', MOD_RACE)],
+      [FOX_RACE, record('RACE', 'FoxRace')],
+      [DRAUGR_RACE, record('RACE', 'DraugrRace')],
+      [MOD_RACE, record('RACE', 'RiftenExtSkeletonArmorRace')],
+      [ARGONIAN_RACE, record('RACE', 'ArgonianRace', [field('SPLO', u32(ARGONIAN_BLOOD))])],
+      [ARGONIAN_BLOOD, spell('AldRacial_Argonian', 4, [[RESIST_EFFECT, 75]])],
+    ]
+    for (const [id, rec] of records) RECORDS.set(id, rec)
+    try {
+      const t = setup()
+      // As the native bindings answer for an NPC: appearance null, profile -1, the evaluated template chain
+      const spawn = (id, base, chain = [base]) => { for (const [k, v] of [['baseDesc', desc(base)], ['appearance', null], ['profileId', -1], ['templateChain', chain]]) t.mp.set(id, k, v) }
+      const [k, a] = [actor(), actor()]
+      const [skeever, draugr, skeleton] = [0xff000041, 0xff000042, 0xff000043]
+      t.join(k, KHAJIIT_RACE)
+      t.join(a, ARGONIAN_RACE)
+      spawn(skeever, ENC_SKEEVER)
+      spawn(draugr, LVL_DRAUGR, [LVL_DRAUGR, ENC_DRAUGR])
+      spawn(skeleton, MOD_SKELETON)
+      later()
+      await t.update()
+      t.logs.length = 0
+      t.mp.calls.length = 0
+      Math.random = () => 0.5
+      t.hitBy(k, skeever, UNARMED)
+      await tick()
+      assert.deepEqual(t.logs, [`[survival] ${x(k)} hit by SkeeverRace ff000041: skeever 10% x (1 - disease resist 0%) = 10%, roll 0.500, spared`])
+      assert.deepEqual([t.mp.calls, t.rec(k).diseases], [[], []], 'nine bites in ten give nothing but the spared line')
+      t.logs.length = 0
+      Math.random = () => 0.05
+      t.hitBy(k, skeever, UNARMED, true)
+      await tick()
+      assert.deepEqual([t.logs, t.rec(k).diseases], [[], []], 'a blocked bite rolls nothing')
+      t.hitBy(k, skeever, UNARMED)
+      await tick()
+      const a1 = sick('AldDisease_Ataxia1')
+      assert.deepEqual(t.logs, [`[survival] ${x(k)} hit by SkeeverRace ff000041: skeever 10% x (1 - disease resist 0%) = 10%, roll 0.050, caught ataxia (AldDisease_Ataxia1), stage 2 at ${mmdd(clock.now + 84 * HOUR)}`])
+      assert.deepEqual(t.mp.calls, [`${x(k)} +${x(a1)}`])
+      assert.deepEqual(t.rec(k).diseases.map((d) => [d.id, d.stage, d.from]), [['ataxia', 1, 'skeever SkeeverRace']])
+      assert.equal(t.notices(k).pop(), 'You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming days. A Cure Disease potion or a healing potion cures it.')
+      assert.deepEqual(t.states(k).pop().diseases, [{ name: 'Ataxia', stage: 1 }])
+      t.logs.length = 0
+      t.hitBy(a, skeever, UNARMED)
+      await tick()
+      assert.deepEqual(t.logs, [`[survival] ${x(a)} hit by SkeeverRace ff000041: skeever 10% x (1 - disease resist 75%) = 2.5%, roll 0.050, spared`], 'AldRacial_Argonian on the race record')
+      t.logs.length = 0
+      Math.random = () => 0.01
+      t.hitBy(k, draugr, IRON_SWORD)
+      await tick()
+      assert.deepEqual(t.logs.map((l) => l.split(', roll')[0]), [`[survival] ${x(k)} hit by DraugrRace ff000042: draugr 3% x (1 - disease resist 0%) = 3%`], 'not the placeholder FoxRace of the Use Traits record')
+      assert.deepEqual(t.rec(k).diseases.map((d) => d.id), ['ataxia', 'brownRot'])
+      t.logs.length = 0
+      t.hitBy(k, skeleton, IRON_SWORD)
+      await tick()
+      assert.deepEqual(t.logs.map((l) => l.split(', roll')[0]), [`[survival] ${x(k)} hit by RiftenExtSkeletonArmorRace ff000043: skeleton 5% x (1 - disease resist 0%) = 5%`])
+      assert.deepEqual(t.rec(k).diseases.map((d) => d.id), ['ataxia', 'brownRot', 'blackHeartBlight'])
+    } finally {
+      for (const [id] of records) RECORDS.delete(id)
+    }
+  })
+
   await test('diseases: stages worsen by wall clock at the minute tick and for the time offline; stage 3 stays until cured', async () => {
     const t = setup()
     const [a, b] = [actor(), actor()]
