@@ -117,11 +117,16 @@ rule as "A stranger"):
 
 A seal and a signature carry the mark of the sealer's or author's faction,
 recorded when the wax is pressed or the writing is made (`factionId` on the
-person record). The faction is the one whose title the character shows in the
-Faction tab (**Show Title** doubles as the "seal as" choice); with no title
-shown, or a title of a faction without artwork, the first of the character's
-factions with artwork is used, guilds and the Legion before the hold court,
-since nearly every character is a hold citizen. Artwork exists for the nine
+person record). The faction is the one whose title the character shows with
+their name at that moment (**Show Title** in the Faction tab is the "seal as"
+choice): a Winterhold citizen who is also in the Dark Brotherhood presses the
+Brotherhood's mark while showing their Speaker title and the Court of
+Winterhold's while showing their court title. With no title shown, or a title
+of a faction without artwork, the seal is plain: the sealed face shows no mark
+and only "Closed with the seal of <name>." or "Closed with an unfamiliar
+seal.", a signature gets no mark under it, and the sealer reads "You press a
+plain seal into the wax. Show a faction title to press its mark." (untitled)
+instead of "You press your seal into the wax.". Artwork exists for the nine
 hold courts, the Imperial Legion, the College of Winterhold and the Dark
 Brotherhood (`SEAL_FACTIONS` in `writingSystem.ts`, the `SEALS` table in the
 front); the Stormcloaks and the other factions press no mark. The ids are the
