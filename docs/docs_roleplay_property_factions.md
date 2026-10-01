@@ -238,7 +238,12 @@ step with the last known inventory, which means the engine never reported that
 move to JS. The server logs every put that arrives
 as `[put] <actor> puts <base> x<n> into <target>` and every take it lets through
 as `[take] <actor> takes <base> x<n> from <source>` (2026-09, B14: container
-withdrawals were the one item movement the log did not show).
+withdrawals were the one item movement the log did not show). A key or writing
+taken in a PK body's window is logged only once the native take moved it; one
+that moved nothing (a client older than the named PK body loot sends no name)
+logs `[take] <actor> take of <base> x<n> from <source> refused natively: ...`
+instead, a put the same way after its `[put]` line, and the mover's pack is
+resynced from the server.
 
 Before sending, each put and drop passes the `SweetCantDrop` keyword check.
 No plugin of this load order defines that keyword, and the engine's

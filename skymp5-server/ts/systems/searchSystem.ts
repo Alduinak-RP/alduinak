@@ -161,9 +161,27 @@ export class SearchSystem implements System {
       if (allowed && taken) {
         this.recordTake(ctx, sourceId >>> 0, actorId >>> 0, taken, baseId >>> 0, count);
       }
-      if (allowed) this.log(`[take] ${(actorId >>> 0).toString(16)} takes ${(baseId >>> 0).toString(16)} x${count} from ${(sourceId >>> 0).toString(16)}`);
+      if (allowed && !this.watchNamedMove(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0, count, true)) {
+        this.log(`[take] ${(actorId >>> 0).toString(16)} takes ${(baseId >>> 0).toString(16)} x${count} from ${(sourceId >>> 0).toString(16)}`);
+      }
       return allowed;
     };
+  }
+
+  // The native side finds a PK body's key or writing by its name alone, so a move whose client sent none fails there; the mover's pack is resynced either way
+  private watchNamedMove(ctx: SystemContext, bodyId: number, actorId: number, baseId: number, count: number, take: boolean): boolean {
+    if (!isNamedItemBase(baseId) || !this.isSearching(bodyId, actorId) || !this.namesListed(bodyId)) return false;
+    const held = this.heldCount(ctx, bodyId, baseId);
+    this.resyncInventory(ctx, actorId);
+    const [who, base, body] = [actorId, baseId, bodyId].map((id) => id.toString(16));
+    setImmediate(() => {
+      if (this.heldCount(ctx, bodyId, baseId) === held) {
+        this.log(`[${take ? "take" : "put"}] ${who} ${take ? "take" : "put"} of ${base} x${count} ${take ? "from" : "into"} ${body} refused natively: no copy under the name the client sent, the pack is resynced`);
+      } else if (take) {
+        this.log(`[take] ${who} takes ${base} x${count} from ${body}`);
+      }
+    });
+    return true;
   }
 
   // The same gate on the way in, so what a searcher may not take back never reaches the target
@@ -176,14 +194,12 @@ export class SearchSystem implements System {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
-      if (!previous) {
-        return true;
+      let allowed = true;
+      if (previous) {
+        try { allowed = previous.call(mp, targetId, actorId, baseId, count) !== false; } catch { /* keep allowed */ }
       }
-      try {
-        return previous.call(mp, targetId, actorId, baseId, count) !== false;
-      } catch {
-        return true;
-      }
+      if (allowed) this.watchNamedMove(ctx, targetId >>> 0, actorId >>> 0, baseId >>> 0, count, false);
+      return allowed;
     };
   }
 

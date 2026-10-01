@@ -358,7 +358,16 @@ behaviour-graph events — no ESP required.**
   and the client puts each copy into its copy of the body under that name,
   `searchService.ts` `restock`, so a take or a put sends the name the native
   `FindEntriesFor` matches). A client older than this change lists them
-  without names, and its take of one fails on the server and snaps back. The
+  without names, and its take of one fails on the server: the native take
+  finds no copy without a name and moves nothing, the body keeps the key,
+  and the looter's pack is set back from the server 0.2 s later, so the
+  copy their screen moved leaves it again (the body's window shows the key
+  again only when it is opened again). Every key or writing moved in a PK
+  body's window resyncs the mover's pack that way, and its `[take]` line
+  waits for the native move: one that moved nothing logs `[take] <looter>
+  take of <base> x<n> from <body> refused natively: no copy under the name
+  the client sent, the pack is resynced` (a put, `[put] <looter> put of
+  <base> x<n> into <body> refused natively: ...`) instead. The
   victim wakes in the afterlife with nothing: gold, worn gear, keys and
   letters included. Their server-side equipment is emptied as well
   (spells kept), so no copy of them goes on wearing what the body holds; the
