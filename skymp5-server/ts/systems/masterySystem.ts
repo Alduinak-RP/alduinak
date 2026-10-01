@@ -200,11 +200,11 @@ const PROFESSIONS: Profession[] = [
     id: "warrior", label: "Warrior", title: "The Steadfast Guardian", type: "Fighter", skills: ["HeavyArmor", "Block"],
     blurbs: [
       "Anyone may take up a blade.",
-      "A surer footing in a fight.",
-      "A faster off hand, a shield carried at speed, and deeper wind.",
-      "The charge: with a shield, a blade or a greatsword.",
-      "The full stance, the sweeping blow, and a warmaster's reach.",
-      "A legend of the battlefield.",
+      "Lighter power attacks with one hand or two, and deeper wind.",
+      "A faster off hand, the power bash, a shield carried at speed, and light armour that weighs nothing.",
+      "The charge, and heavy armour that weighs nothing.",
+      "The sweeping blow, a warmaster's reach, and a heavier pack.",
+      "A legend of the battlefield, tireless and heavily laden.",
     ],
   },
   {

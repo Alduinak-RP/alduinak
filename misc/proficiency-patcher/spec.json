@@ -181,8 +181,10 @@
   "warrior": {
    "Novice": {
     "perks": [
-     "FightingStance"
-    ]
+     "FightingStance",
+     "ChampionsStance"
+    ],
+    "stamina": 25
    },
    "Adept": {
     "perks": [
@@ -190,7 +192,9 @@
       "edid": "DualFlurry30",
       "untilRank": "Master"
      },
-     "BlockRunner"
+     "BlockRunner",
+     "PowerBashPerk",
+     "Unhindered"
     ],
     "stamina": 25
    },
@@ -198,17 +202,23 @@
     "perks": [
      "ShieldCharge",
      "CriticalCharge",
-     "GreatCriticalCharge"
+     "GreatCriticalCharge",
+     "Conditioning"
     ],
     "stamina": 25
    },
    "Master": {
     "perks": [
-     "ChampionsStance",
      "Sweep",
      "DualFlurry50",
      "Warmaster"
-    ]
+    ],
+    "stamina": 25,
+    "carryWeight": 50
+   },
+   "Legendary": {
+    "stamina": 100,
+    "carryWeight": 50
    }
   },
   "woodworker": {
@@ -410,6 +420,10 @@
   "AldMasteryPerk_AldPerk_ExpertFarmer": "0x0412AE",
   "AldMasteryPerk_AldPerk_MasterFarmer": "0x0412AF",
   "AldMasteryPerk_AldPerk_LegendaryFarmer": "0x0412B0",
+  "AldMasteryPerk_PowerBashPerk": "0x0413E2",
+  "AldMasteryPerk_Unhindered": "0x0413E3",
+  "AldMasteryPerk_Conditioning": "0x0413E4",
+  "AldMasteryFortifyCarryWeight": "0x0413E5",
   "AldKeyword_FineClothing": "0x0412B1",
   "AldKeyword_NobleClothing": "0x0412B2",
   "AldLootDwarvenScrapPiece": "0x0412B9",

@@ -163,7 +163,7 @@ Recipe tiers are the owner's lists, applied by the patcher; the exact set is in
 | Mage | - | magicka only (server) | | | | |
 | Miner | iron veins, the sea salt deposits | corundum veins; iron, corundum and steel ingots at the smelter (every smelter ore recipe is open to a blacksmith of the same rank) | gold and silver veins; gold and silver ingots | orichalcum, moonstone and quicksilver veins; orichalcum and moonstone ingots | malachite and ebony veins; malachite, quicksilver and ebony ingots | - |
 | Tailor | leather strips, the fur armour (the Bandit fur set) and the Stormcloak boots and gauntlets, thread and the roughspun tunic at the loom, the blank parchment, journal and book | hide (`ArmorMaterialHide`), Fur Plate from a pelt or hide at the tanning rack, cloaks and capes (the Leather Cape by rule), everyday clothing, the Common Robes and Common Clothes of CommonClothes.esp (4 Thread at the loom) and its leather doublets, boiled leather cuirass and robed iron armour at the rack (by rule) | studded (`ArmorMaterialStudded`), the College of Winterhold robes, hoods and boots but the Master Robes (the College marker stays where it is, the school skill the robes asked for is gone), the Tied Linen Pouches (the hip pouches) and Patchwork Satchels, and other clothing tagged `AldKeyword_FineClothing` | leather (`ArmorMaterialLeather`), Fine Clothes, Fine Raiment and the Embroidered Garment, the College Master Robes, Reinforced Satchels and Reinforced Backpacks (by rule) | scaled (`ArmorMaterialScaled`), the Trader's Resource (carry weight 80), Toothlock Satchels, Sturdy Pouches (by rule) and noble clothing (`AldKeyword_NobleClothing`) | daedric clothing and light armour |
-| Warrior | - | Fighting Stance | Dual Flurry 1, Block Runner, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, +25 stamina | Champion's Stance, Sweep, Dual Flurry 2, Warmaster | - |
+| Warrior | - | Fighting Stance, Champion's Stance, +25 stamina | Dual Flurry 1, Block Runner, Power Bash, Unhindered, +25 stamina | Shield Charge, Critical Charge, Great Critical Charge, Conditioning, +25 stamina | Sweep, Dual Flurry 2, Warmaster, +25 stamina, +50 carry weight | +100 stamina, +50 carry weight |
 | Woodworker | charcoal, the broom, the torch, the blank parchment, journal and book | Roll of Paper (4 from 1 Firewood), the Long Bow, the crossbow, the hide, iron and banded iron shields, iron arrows and bolts, the tools (pickaxe, woodcutter's axe, hoe, hunting knife), Forsworn arrows | the Hunting Bow, steel shields, arrows and bolts, silver bolts, the Ancient Nord bow and arrows (Nords), Corkbulb arrows and bolts | dwarven, elven, chitin, bonemold, nordic and orcish shields, bows, arrows and bolts (race locks kept), the Skyforge bows and shields | glass, ebony and stalhrim bows, arrows and shields (stalhrim: the Skaal), the Nord Hero arrow and the Supple Ancient Bow at the Skyforge | daedric and dragon bows, arrows and shields |
 
 The tanning rack lists every Leather and Fur Plate recipe to a Novice tailor (Leather
@@ -516,6 +516,37 @@ and once a second. A sneak block with movement logs
 bPerkShieldCharge false (...)` when it ends, and a change of the perk
 `SneakBlockSpeedService: bPerkShieldCharge true|false: Block Runner held|not
 held, sneaking <bool>`.
+
+**The warrior's perks** (plugin r24, the owner's "give warriors more perks to
+even things out with the weapon and armor balancing") keep to effects the
+player's own client runs, because the server prices every hit itself
+(`TES5DamageFormula`: the weapon's base damage, the target's armour rating read
+from the records, x2 for a power attack, x1.3 for a sneak attack, nothing when
+blocked) and holds no perk data. What a warrior gets therefore works today:
+both stances (power attacks with one-handed or two-handed weapons cost 25% less
+stamina, and the server charges no attack stamina of its own without
+SweetPie.esp), Dual Flurry's attack speed, the moves a perk unlocks (Power
+Bash, the sprinting power attacks of Critical Charge and Great Critical Charge,
+Sweep, whose sideways sweep the attacker's client turns into one hit per
+target), Block Runner, Unhindered and Conditioning (worn light or heavy armour
+weighs nothing, for the inventory weight and the slowdown the engine gives
+armour; the server checks neither), the stamina pool (+25 a rank to Master,
++100 at Legendary, +200 in all; the server exchanges percentages) and the
+carry weight (+50 at Master and at Legendary; encumbrance is the client's own,
+and with the Survival carry limit of 150 a warrior's armour and pack matter
+most). Left out: the damage, armour rating, block and critical perks (Armsman,
+Barbarian, Savage Strike, Devastating Blow, Dual Savagery, Juggernaut, Agile
+Defender, Well Fitted, Custom Fit, Matching Set, Shield Wall, Deadly Bash,
+Fists of Steel, Reflect Blows, Deft Movement and the bleed and crit trees),
+which change nothing the server computes and only matter once the combat
+rebalance gives warrior ranks a rule of its own, like the hunter's Over Draw;
+stamina regeneration (Wind Walker), since the server crops a regeneration
+faster than the race's base rate and sends the bar back; and Tower of Strength,
+since a player is staggered on their own client only by a native hit from an
+NPC that client runs or by the server's `stagger` packet, which sets its own
+magnitude. Shield Charge's knock-down and Warmaster's paralysis likewise land
+only on actors the warrior's own client runs. A mage of the same rank holds
+125 to 500 magicka; a warrior holds 25 to 200 stamina more than the race gives.
 
 Over Draw is server-side: a `damageMultConditionalFormulaSettings` rule keyed
 on the Hunter Master marker, bows or crossbows, and a non-player target

@@ -347,15 +347,23 @@ static class Steps
                     }
                     spell.Effects.Add(effect);
                 }
-                var stamina = rankSpec["stamina"]?.GetValue<float>() ?? 0;
-                if (stamina > 0)
+                foreach (var (key, mgefEdid, name, description, av) in RankValues)
                 {
-                    var mgef = ValueModifier(c, "AldMasteryFortifyStamina", "Fortify Stamina", "Stamina is increased by <mag> points.", ActorValue.Stamina);
-                    spell.Effects.Add(new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = stamina, Area = 0, Duration = 0 } });
+                    var amount = rankSpec[key]?.GetValue<float>() ?? 0;
+                    if (amount <= 0) continue;
+                    var mgef = ValueModifier(c, mgefEdid, name, description, av);
+                    spell.Effects.Add(new Effect { BaseEffect = mgef.ToNullableLink(), Data = new EffectData { Magnitude = amount, Area = 0, Duration = 0 } });
                 }
             }
         }
     }
+
+    // A rank's flat bonuses ("stamina": 25, "carryWeight": 50), each a hidden value modifier on the marker
+    static readonly (string Key, string Edid, string Name, string Description, ActorValue Av)[] RankValues =
+    [
+        ("stamina", "AldMasteryFortifyStamina", "Fortify Stamina", "Stamina is increased by <mag> points.", ActorValue.Stamina),
+        ("carryWeight", "AldMasteryFortifyCarryWeight", "Fortify Carry Weight", "Carry weight is increased by <mag>.", ActorValue.CarryWeight),
+    ];
 
     // New perks a rank's marker applies; one without entry points exists for conditions only
     static void Perks(PatchContext c)
