@@ -8,6 +8,7 @@ export interface FatigueReadoutData {
   stageName: string;
   coldStage?: number;
   coldStageName?: string;
+  warmth?: number;
   diseases?: Array<{ name: string; stage: number }>;
   afflictions?: string[];
 }
@@ -25,6 +26,8 @@ const FatigueReadout = ({ data }: { data: FatigueReadoutData }) => {
   const fatigue = typeof data.fatigue === 'number' && data.fatigue < 100 ? data.fatigue : null;
   const coldStage = typeof data.coldStage === 'number' ? data.coldStage : -1;
   const cold = coldStage >= COLD_LINE_STAGE && data.coldStageName ? data.coldStageName : '';
+  // The server's total: the inventory's Warmth leaves out cloaks, scarves and the pieces armorWarmth.ts rates
+  const warmth = typeof data.warmth === 'number' && data.warmth >= 0 ? Math.round(data.warmth) : null;
   const sick = (data.diseases || []).map((d) => diseaseStageName(d.name, d.stage)).concat(data.afflictions || []);
   if (fatigue === null && !cold && !sick.length) return null;
   return (
@@ -39,6 +42,7 @@ const FatigueReadout = ({ data }: { data: FatigueReadoutData }) => {
         <div className="fatigueReadout__line">
           <span className="fatigueReadout__label">Cold</span>
           <span className={'fatigueReadout__cold' + (coldStage >= FREEZING_STAGE ? ' fatigueReadout__cold--severe' : '')}>{cold}</span>
+          {warmth !== null && <span className="fatigueReadout__stage">warmth {warmth}</span>}
         </div>
       ) : null}
       {fatigue !== null ? (

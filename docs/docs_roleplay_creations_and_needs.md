@@ -388,7 +388,8 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
 **HUD:** as in vanilla Survival, the penalty shows as a red segment at the end of the stamina bar (hunger) and the
 magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. Fatigue itself has a
 small front widget (`features/fatigueReadout`, widget id 39): one line above the magicka bar, bottom left, reading
-`FATIGUE <fatigue>%` and the `fatigueStageName` ("Refreshed", "Tired", ...), shown while `fatigue` is below 100 and
+`FATIGUE <fatigue>%` and the `fatigueStageName` ("Refreshed", "Tired", ...; the Cold line above it adds the server's
+`warmth <n>` to the stage from Chilly on), shown while `fatigue` is below 100 and
 `survivalMode` is on (`needsSurvivalModeFlag`), and gone at 100 or with the flag off. It follows every `needsState`
 and hides with the rest of the browser (menus, hidden interface). `needsService.ts` writes the share into the
 Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
@@ -528,16 +529,25 @@ they weigh nothing again.
 - **Warmth table** (`armorWarmth.ts`, `survivalWarmthTable`): Bethesda put the two keywords on the base game's own
   pieces only, so the engine counts every mod piece and every enchanted copy as normal and a cloak as nothing. The
   server rates those itself from a table `misc/gen-armor-warmth.py` makes from the load order. Of 6,343 playable
-  armours 1,107 carry a keyword and keep it. On the rated slots 674 more count as warm (461 enchanted copies of a warm
-  piece through their template, 213 mod pieces by name: fur, pelt, bear, snow, wool, quilted, padded, gambeson, hoods,
-  cowls, robes, coats, mantles, Nordic, Stalhrim, Skaal) and 26 as cold (barbarian sets, bandanas, a plate harness:
-  bare skin and thin cloth, like the base game's rags and sandals); 3,055 stay normal like iron, steel plate, leather
-  and plain clothes, a mod piece named like a base game piece taking that piece's class. 119 pieces on the back or at
+  armours 1,107 carry a keyword and keep it. On the rated slots 475 more count as warm (415 enchanted copies of a warm
+  base game piece through their template, 60 mod pieces by name: fur, pelt, bear, snow, wool, quilted, padded,
+  gambeson, coats, mantles, Stalhrim, Skaal, a hooded robe and a mage's hood) and 26 as cold (barbarian sets,
+  bandanas, a plate harness: bare skin and thin cloth, like the base game's rags and sandals); 3,254 stay normal like
+  iron, steel plate, leather and plain clothes. A plain robe, hood or cowl is normal, as the base game rates its Monk,
+  Black and Thalmor Robes and its Thieves Guild and Shrouded hoods; real Nordic Carved pieces are warm by their
+  material keyword, not by the word Nordic. A mod piece named like a base game piece that covers the same parts
+  (body, head, hands, feet) takes that piece's class, and a mod whose author rated it for Survival (any of its own
+  records carries a keyword: Sentinel, Closed Helmets, AVExpansion, the WACCF extension and 11 more, 380 pieces) keeps
+  its unkeyworded pieces normal. 119 pieces on the back or at
   the neck and face get points of their own: a fur cloak or pelt 20, a cloak or cape 12, a short or shoulder cape 6, a
   fur collar or mantle 8, a scarf or neck gaiter 5 (8 when its mod marked it warm), a mask 3; the warmest on the back
   and the warmest at the neck count once each, on top of `survivalWarmth.cloak`. Shields, jewellery, bags and
   eyepatches (1,362) warm nothing. The item card and the inventory total are the engine's and still show the keyword
-  rating for a table piece (a mod fur hood reads 18 and counts 29); the mismatch line holds the engine's total against
+  rating for a table piece (a mod fur hood reads 18 and counts 29, a Barbarian Armor reads 27 and counts 17, a cloak
+  has no Warmth line at all): the engine rates by the record's keyword and by the four slots only, so the cards
+  change only with a plugin that writes the keywords (the design's open Q3, not done; no plugin can give a cloak a
+  line). The player reads the server's total on the readout's Cold line, `COLD Chilly warmth 74`, from Chilly on;
+  staff read it in the admin panel's survival details at any time. The mismatch line holds the engine's total against
   the keyword rating and adds `; gear 74 with armorWarmth.ts` when the table changes the sum. Rerun the script and
   Build server after the modlist gains armour (`python misc/gen-armor-warmth.py --dump` lists every piece with its
   rating and why); `survivalWarmthTable` false goes back to keywords only.
@@ -798,9 +808,10 @@ Quick-test values (remove them before any Migrate settings): `survivalColdHoursT
 { "chance": 1, "diseases": ["ataxia", "bloodLung", "feebleLimb", "redRage", "shakes", "witlessPox"] } }` so every
 unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
 1. Cold: naked on the Winterhold coast on a snowy night, the stage lines, the red end of the health bar and the
-   thermometer; fur lowers the rate and the warmth matches the inventory total. A mod robe, a fur cloak and a scarf
-   (Tribunal Light Robe, Fur Cloak, Short Woven Scarf) lower it further than the inventory total says: the admin
-   panel's survival readout shows the server's warmth (54 + 20 + 8).
+   thermometer; fur lowers the rate and the warmth matches the inventory total. A mod fur armour, a fur cloak and a
+   scarf (Snow Bear Armor, Fur Cloak, Short Woven Scarf) lower it further than the inventory total says: the Cold
+   line of the readout (from Chilly on) and the admin panel's survival details show the server's warmth
+   (54 + 20 + 8), while the item cards keep the engine's numbers. A plain mod robe (Tribunal Light Robe) counts 27.
 2. Warming: an inn takes 40 a minute, a campfire 75 every 6 s, a hot soup 200.
 3. Races: a Nord gains no cold, a Khajiit or an Argonian 25% more; an Orc's needs lines show `race x0.85`.
 4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.

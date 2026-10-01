@@ -6,11 +6,13 @@ copies of a keyworded piece and everything worn on another slot (cloaks, capes, 
 script reads the winning ARMO records of a server loadOrder and gives every playable one without a keyword a rating
 in the same three classes, so SurvivalSystem counts it like the comparable vanilla piece:
 
-  rated slots  an unenchanted record of Skyrim.esm, Update.esm or a DLC keeps Bethesda's rating (normal); a record
-               with a template armour takes its template's class; any other record takes the class of the base
-               game pieces of its exact name and slots when they all agree, else it is classed by the words of
-               its name (COLD_WORDS, then WARM_WORDS with the editor id's words), by its material keyword, or
-               stays normal
+  rated slots  a record with a template armour takes its template's class; an unenchanted record of Skyrim.esm,
+               Update.esm or a DLC keeps Bethesda's rating (normal), and so does a record of a mod whose author
+               rated it for Survival (some record of the plugin carries a keyword); any other record takes the
+               class of the base game pieces of its exact name and covered parts (body, head, hands, feet) when
+               they all agree, else it is classed by the words of its name (COLD_WORDS, then WARM_WORDS with the
+               editor id's words; a robe, hood or cowl alone is normal like the base game's, a hooded robe and a
+               mage's hood are warm), by its material keyword, or stays normal
   other slots  a piece on the back (40, 46) or at the neck and face (44, 45) gets warmth points of its own (EXTRA);
                shields, jewellery, bags and the rest warm nothing
 
@@ -35,16 +37,16 @@ WARM, COLD = 'Survival_ArmorWarm', 'Survival_ArmorCold'
 RATED_PLUGINS = {'skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm'}
 BODY, HEAD, HANDS, FEET = {32}, {30, 31, 42}, {33}, {37}
 RATED_SLOTS = BODY | HEAD | HANDS | FEET
+PARTS = (('body', BODY), ('head', HEAD), ('hands', HANDS), ('feet', FEET))
 BACK, NECK = {40, 46}, {44, 45}
 MATERIAL_WARM = {'DLC2ArmorMaterialNordicHeavy', 'DLC2ArmorMaterialStalhrimHeavy', 'DLC2ArmorMaterialStalhrimLight',
                  'ArmorMaterialBearStormcloak'}
 # Bare skin, rags and thin head cloths, as Bethesda's cold pieces (prisoner rags, beggar and miner clothes, sandals)
 COLD_WORDS = {'rags', 'ragged', 'prisoner', 'beggar', 'loincloth', 'sandals', 'tavern', 'wench', 'barbarian',
               'harness', 'bandana', 'shackles', 'cuffs', 'footwraps', 'wraps', 'roughspun', 'shirtless', 'kilt'}
-# Fur, padding, hoods and robes, as Bethesda's warm pieces (fur armour, mage robes and hoods, Nordic, Stalhrim, Skaal)
+# Fur and padding, as Bethesda's warm pieces (fur armour, Stalhrim, Skaal); Nordic Carved comes by MATERIAL_WARM
 WARM_WORDS = {'fur', 'furs', 'pelt', 'bear', 'bearskin', 'wool', 'woolen', 'quilted', 'padded', 'gambeson', 'aketon',
-              'mantle', 'hood', 'hooded', 'cowl', 'robe', 'robes', 'coat', 'cloak', 'cloaked', 'nordic', 'stalhrim',
-              'skaal', 'winter', 'snow', 'lined', 'scarf', 'mittens'}
+              'mantle', 'coat', 'cloak', 'cloaked', 'stalhrim', 'skaal', 'winter', 'snow', 'lined', 'scarf', 'mittens'}
 # Warmth points of a piece the engine does not rate; a normal head piece is 18 and normal hands are 13
 EXTRA = {'furCloak': 20, 'cloak': 12, 'shortCape': 6, 'furCollar': 8, 'scarf': 5, 'mask': 3}
 NO_WARMTH_WORDS = {'backpack', 'satchel', 'pouch', 'banner', 'lantern', 'resource', 'quiver', 'bag', 'eyepatch'}
@@ -60,13 +62,17 @@ def name_words(a):
 
 
 def words_of(a):
-    """Lower-case words of the name and of the editor id split at capitals, digits and underscores (NoHood dropped)."""
-    edid = re.sub(r'(?i)no_?hood', '', a.get('edid', ''))
+    """Lower-case words of the name and of the editor id split at capitals, digits and underscores (NoHood, NoCloak dropped)."""
+    edid = re.sub(r'(?i)no_?(hood|cloak)', '', a.get('edid', ''))
     return name_words(a) | set(re.findall(r'[a-z]+', re.sub(r'([a-z])([A-Z])', r'\1 \2', edid).lower()))
 
 
 def slots_of(a):
     return {int(s.split(':')[0]) for s in a.get('biped_slots', '').split()}
+
+
+def parts_of(slots):
+    return frozenset(part for part, group in PARTS if slots & group)
 
 
 def keyword_class(a):
@@ -79,6 +85,10 @@ def text_class(a):
     if (name_words(a) or words) & COLD_WORDS:
         return 'cold'
     if words & WARM_WORDS or set(a.get('keywords', '').split()) & MATERIAL_WARM:
+        return 'warm'
+    # The base game rates a hooded robe and a mage's hood warm, a plain robe, hood or cowl normal
+    parts = parts_of(slots_of(a))
+    if 'hooded' in words and 'body' in parts or 'mage' in name_words(a) and parts == {'head'}:
         return 'warm'
     return 'normal'
 
@@ -112,11 +122,15 @@ def classify(armors):
     """[(armor, slot kind, class or points, why)] of every playable record; armors are loadorder.armors() rows."""
     by_key = {a['key']: a for a in armors}
     memo = {}
-    # (name, rated slots) -> classes of the base game's unenchanted pieces
+    # (name, covered parts) -> classes of the base game's unenchanted pieces
     vanilla = collections.defaultdict(set)
+    # Plugins rated for Survival: Bethesda's, and every mod with a keyword on a record of its own
+    rated_plugins = set(RATED_PLUGINS)
     for a in armors:
         if a['key'][0] in RATED_PLUGINS and a.get('name') and not by_key.get(a.get('template_key')):
-            vanilla[(a['name'].lower(), frozenset(slots_of(a) & RATED_SLOTS))].add(keyword_class(a) or 'normal')
+            vanilla[(a['name'].lower(), parts_of(slots_of(a)))].add(keyword_class(a) or 'normal')
+        if keyword_class(a):
+            rated_plugins.add(a['key'][0])
 
     def rate(a, depth=0):
         key = a['key']
@@ -133,10 +147,10 @@ def classify(armors):
             out = ('rated', keyword_class(a), 'keyword')
         elif tmpl and slots_of(tmpl) & RATED_SLOTS:
             out = ('rated', rate(tmpl, depth + 1)[1], 'template')
-        elif key[0] in RATED_PLUGINS:
-            out = ('rated', 'normal', 'vanilla')
+        elif key[0] in rated_plugins:
+            out = ('rated', 'normal', 'vanilla' if key[0] in RATED_PLUGINS else 'rated mod')
         else:
-            same = vanilla.get((a.get('name', '').lower(), frozenset(slots & RATED_SLOTS)), ())
+            same = vanilla.get((a.get('name', '').lower(), parts_of(slots)), ())
             out = ('rated', next(iter(same)), 'vanilla name') if len(same) == 1 else ('rated', text_class(a), 'words')
         memo[key] = out
         return out

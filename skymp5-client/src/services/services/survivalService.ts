@@ -168,7 +168,8 @@ export class SurvivalService extends ClientListener {
       if (state.coldStage >= 0) this.warmthDueAt = Date.now() + WARMTH_REPORT_MS;
     }
     this.controller.lookupListener(NeedsService).setSurvivalReadout({
-      coldStage: state.coldStage, coldStageName: state.coldStageName, diseases: state.diseases, afflictions: state.afflictions,
+      coldStage: state.coldStage, coldStageName: state.coldStageName, warmth: state.coldStage >= 0 ? state.warmth : -1,
+      diseases: state.diseases, afflictions: state.afflictions,
     });
     this.controller.once("update", () => this.apply());
   }

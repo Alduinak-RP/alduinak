@@ -30,11 +30,13 @@ export const readGlobal = (sp: Sp, id: number, plugin: string): number | "none" 
 export interface SurvivalReadout {
   coldStage: number;
   coldStageName: string;
+  // The server's warmth total, cloaks and table pieces included; -1 with cold off
+  warmth: number;
   diseases: Array<{ name: string; stage: number }>;
   afflictions: string[];
 }
 
-const NO_SURVIVAL_READOUT: SurvivalReadout = { coldStage: -1, coldStageName: "", diseases: [], afflictions: [] };
+const NO_SURVIVAL_READOUT: SurvivalReadout = { coldStage: -1, coldStageName: "", warmth: -1, diseases: [], afflictions: [] };
 // Chilly and colder show on the readout
 const READOUT_COLD_STAGE = 2;
 
@@ -150,7 +152,7 @@ export class NeedsService extends ClientListener {
     const r = fatigueReadout;
     const widget = {
       type: "fatigueReadout", id: FATIGUE_WIDGET_ID, fatigue: r.fatigue, stageName: r.stageName,
-      coldStage: r.coldStage, coldStageName: r.coldStageName, diseases: r.diseases, afflictions: r.afflictions,
+      coldStage: r.coldStage, coldStageName: r.coldStageName, warmth: r.warmth, diseases: r.diseases, afflictions: r.afflictions,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== FATIGUE_WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));

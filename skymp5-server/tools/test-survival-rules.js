@@ -99,7 +99,7 @@ const FUR = 0x6100
 const HOOD = 0x6101
 const BOOTS = 0x6102
 const TORCH = 0x1d4ec
-const MOD_ROBE = 0x6110
+const MOD_FUR = 0x6110
 const MOD_HARNESS = 0x6111
 const FUR_CLOAK = 0x6112
 const LINEN_CAPE = 0x6113
@@ -107,7 +107,7 @@ const SCARF = 0x6114
 const MOD_SHIELD = 0x6115
 // The real descs of the mod pieces, as armorWarmth.ts keys them
 const MOD_DESCS = new Map([
-  [MOD_ROBE, '2316e:Hothtrooper44_ArmorCompilation.esp'], [MOD_HARNESS, '2327d:Hothtrooper44_ArmorCompilation.esp'],
+  [MOD_FUR, '232f5:Hothtrooper44_ArmorCompilation.esp'], [MOD_HARNESS, '2327d:Hothtrooper44_ArmorCompilation.esp'],
   [FUR_CLOAK, '2883:Cloaks&Capes.esp'], [LINEN_CAPE, '12c7:Cloaks&Capes.esp'], [SCARF, '876:evgnnsmpaccessories.esp'],
 ])
 const FROST_EFFECT = 0x6200
@@ -131,7 +131,7 @@ const COLD_RECORDS = [
   [FUR, armor('ArmorFurCuirass', 1 << 2, [KW_WARM])],
   [HOOD, armor('ClothesHood', 1 << 1)],
   [BOOTS, armor('ArmorIronBoots', 1 << 7, [KW_COLD])],
-  [MOD_ROBE, armor('IATribunalLightRobeBlackNoCloak', 1 << 2)],
+  [MOD_FUR, armor('IASnowBearCuirass', 1 << 2)],
   [MOD_HARNESS, armor('IABrigandIronHide', 1 << 2)],
   [FUR_CLOAK, armor('vol_FurCloak_Black', (1 << 10) | (1 << 16))],
   [LINEN_CAPE, armor('vol_Cape_RED', (1 << 10) | (1 << 16))],
@@ -948,7 +948,7 @@ async function main() {
     assert.deepEqual(t.logs, [`[survival] ${h} warmth mismatch: engine 60, server 54 (gear 54, race 0), worn ArmorFurCuirass`])
   })
 
-  await test('cold: armorWarmth.ts rates a mod robe warm and a bare harness cold and adds a cloak and a scarf once each; keyword pieces and survivalWarmthTable false keep the engine rating', async () => {
+  await test('cold: armorWarmth.ts rates a mod fur armour warm and a bare harness cold and adds a cloak and a scarf once each; keyword pieces and survivalWarmthTable false keep the engine rating', async () => {
     const run = async (settings, ...worn) => {
       const t = setup({ survivalEnabled: true, survivalNightHours: [0, 24], ...settings }, true)
       const inner = t.mp.getDescFromId
@@ -961,13 +961,13 @@ async function main() {
       await t.update()
       return { t, a, ua, warmth: t.states(a).pop().warmth }
     }
-    assert.equal((await run({}, MOD_ROBE)).warmth, 54)
+    assert.equal((await run({}, MOD_FUR)).warmth, 54)
     assert.equal((await run({}, MOD_HARNESS)).warmth, 17)
-    assert.equal((await run({}, MOD_ROBE, FUR_CLOAK, LINEN_CAPE, SCARF, MOD_SHIELD)).warmth, 54 + 20 + 8)
+    assert.equal((await run({}, MOD_FUR, FUR_CLOAK, LINEN_CAPE, SCARF, MOD_SHIELD)).warmth, 54 + 20 + 8)
     assert.equal((await run({}, LINEN_CAPE)).warmth, 12)
     assert.equal((await run({}, FUR, HOOD, BOOTS)).warmth, 54 + 18 + 7)
-    assert.equal((await run({ survivalWarmthTable: false }, MOD_ROBE, FUR_CLOAK, SCARF)).warmth, 27)
-    const { t, a, ua } = await run({}, MOD_ROBE, FUR_CLOAK)
+    assert.equal((await run({ survivalWarmthTable: false }, MOD_FUR, FUR_CLOAK, SCARF)).warmth, 27)
+    const { t, a, ua } = await run({}, MOD_FUR, FUR_CLOAK)
     const entries = Object.values(ARMOR_WARMTH).reduce((n, e) => n + (e.warm || []).length + (e.cold || []).length + (e.extra || []).length, 0)
     const heat = { interiors: 0, worlds: 0, points: 0, unknown: 0 }
     assert.ok(t.sys.coldLine(heat).includes(`cloak 0, armorWarmth.ts rates ${entries} more pieces, up to 206`), t.sys.coldLine(heat))
@@ -977,7 +977,7 @@ async function main() {
     assert.deepEqual(t.logs, [], 'the engine total is held against the keyword rating, so a table piece is no mismatch')
     later(300)
     t.sys.customPacket(ua, 'survivalReport', { swimming: false, flameCloak: false, engineWarmth: 40 }, t.ctx)
-    assert.deepEqual(t.logs, [`[survival] ${a.toString(16)} warmth mismatch: engine 40, server 27 (gear 27, race 0; gear 74 with armorWarmth.ts), worn IATribunalLightRobeBlackNoCloak, vol_FurCloak_Black`])
+    assert.deepEqual(t.logs, [`[survival] ${a.toString(16)} warmth mismatch: engine 40, server 27 (gear 27, race 0; gear 74 with armorWarmth.ts), worn IASnowBearCuirass, vol_FurCloak_Black`])
   })
 
   await test('cold: the generated armorWarmth.ts lists each piece once with a class or 1 to 20 points and matches its own counts', async () => {
@@ -996,10 +996,13 @@ async function main() {
     assert.equal(warm, sum('warm ('))
     assert.equal(cold, sum('cold ('))
     assert.equal(extra, counts.extra)
-    assert.ok(warm > 500 && cold > 10 && extra > 100, `${warm} warm, ${cold} cold, ${extra} extra`)
+    assert.ok(warm > 400 && cold > 10 && extra > 100, `${warm} warm, ${cold} cold, ${extra} extra`)
     const has = (plugin, key, id) => (ARMOR_WARMTH[plugin]?.[key] || []).some((e) => (Array.isArray(e) ? e[0] : e) === id)
     assert.ok(has('Hothtrooper44_ArmorCompilation.esp', 'warm', 0x232f5), 'Snow Bear Armor is warm')
     assert.ok(has('Hothtrooper44_ArmorCompilation.esp', 'cold', 0x5a5c), 'Barbarian Armor is cold')
+    assert.ok(!has('Hothtrooper44_ArmorCompilation.esp', 'warm', 0x2316e), 'a plain robe (Tribunal Light Robe) stays normal like the base game robes')
+    assert.ok(has('CommonClothes.esp', 'warm', 0x1866), 'a hooded robe or quilted piece is warm')
+    assert.ok(!ARMOR_WARMTH['AVExpansion.esp']?.warm && !ARMOR_WARMTH['Closed Helmets StandAlone.esp']?.warm, 'a mod rated by its author keeps its rating')
     assert.ok(!has('Hothtrooper44_ArmorCompilation.esp', 'warm', 0xd84) && !has('Hothtrooper44_ArmorCompilation.esp', 'cold', 0xd84), 'Vanguard Plate Armor stays normal')
     assert.deepEqual(ARMOR_WARMTH['Cloaks&Capes.esp'].extra.find((e) => e[0] === 0x2883), [0x2883, 20], 'Fur Cloak (Black)')
     assert.ok(!Object.keys(ARMOR_WARMTH).some((p) => /\.(esp|esm|esl)$/i.test(p) === false))
