@@ -256,16 +256,24 @@ behaviour-graph events — no ESP required.**
 - **The body** (`bodySystem.ts`): every PK (a finish off, an execution, a
   soul trap by an execute holder) leaves a body where the victim fell: a
   clone made with `createActor` at the victim's spot wearing their look
-  and their gear (`mp.set(body, "equipment", ...)`, the native
+  and the pieces they wore, without the spells in their hands
+  (`mp.set(body, "equipment", ...)` with the worn entries alone, the native
   `EquipmentBinding::Set` in `skymp5-server/cpp/addon/property_bindings`,
   which reaches the server with a CI flatrim build applied while the game
   service is stopped; on an older native build the set throws, is swallowed
   and the body lies naked) and holding their pack with the worn flags
   dropped, so every stack is
-  takeable through the search window. The fallen character keeps only the
+  takeable through the search window. A worn piece taken from the body stops
+  showing on it at the next 2 s check (the body's equipment keeps a worn
+  entry while the pack still holds one of its base; `[body] <id> no longer
+  shows N worn piece(s) taken from it, M still shown`). The fallen character keeps only the
   named items (property keys and writings, `isNamedItemBase`), which the
-  window never moves anyway, and wakes in the afterlife with nothing else:
-  gold and worn gear included. The victim's own dead actor
+  window never moves anyway, so on a body they could never be taken and would
+  go with it, and wakes in the afterlife with nothing else:
+  gold and worn gear included. Their server-side equipment is emptied as well
+  (spells kept), so no copy of them goes on wearing what the body holds; the
+  realm's own outfit is then handed out and put on 5 s after the respawn
+  (`AfterlifeSystem.dress`, `afterlifeLooks`). The victim's own dead actor
   is respawned 4 s later (the afterlife routing takes that respawn to the
   realm), so two bodies never lie side by side. The clone has no profile id,
   so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
@@ -276,29 +284,42 @@ behaviour-graph events — no ESP required.**
   the body of your own fallen character."), so an alt cannot walk over and
   undo the loss; a take needs the search's occupancy, so no take gets past
   it. `createActor` only adds the form and never streams it, so
-  once the clone is dressed, filled and dead it is put on the grid with
+  once the clone is dressed and dead it is put on the grid with
   `mp.set(body, "locationalData", ...)` (`MpActor::Teleport`, whose first
   `SetPos` runs `ForceSubscriptionsUpdate`) and every client nearby creates
-  it with its full state. The victim is stripped only after that: if any
-  step before fails (`[body] leaving a body for <victim> failed <step>,
-  pack kept`) the clone is destroyed and the victim keeps their pack. It
+  it with its full state. Only then does the pack move, and it moves rather
+  than being copied: the victim is stripped first and the body filled after,
+  so no stack ever has two owners. If any step up to the strip fails
+  (`[body] leaving a body for <victim> failed <step>, pack kept`) the clone is
+  destroyed and nothing moved; if the body cannot take the pack the victim
+  gets it back (`... failed filling the body, pack given back`), and if
+  even that fails the line reads `pack NOT given back (<error>), staff must
+  restore <victim>: <base> x<count>, ...`. It
   is registered in `bodies.json` next to `companions.json`
   and re-adopted, and put on the grid again, after a restart while its
-  actor still exists; every 2 s a
-  body whose loose stacks are gone, one older than `bodyMaxSeconds`
+  actor still exists (the clone is an ordinary `ff` actor saved in the world
+  database with `spawnDelay` 1e9, so it stays dead); every 2 s a
+  body whose loose stacks are gone (after a minute's grace), one older than `bodyMaxSeconds`
   (default 0 = never), or one that has been taken from or put into but then
   left alone for `bodyIdleSeconds` (default 7200; the last touch is kept in
   `bodies.json` as `touchedAt`, and a body nobody has touched is not
   affected) is removed (`[body] <id> of <victim> removed: emptied
-  | lay too long | left alone | gone`). The body carries the neighbor-visible `ff_body`
-  property, which the gamemode must register in
-  `build/dist/server/gamemode_extensions/50_properties.js` (live file) with
-  the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`) and a
-  Build gamemode only before the server build; without it no client could
+  | lay too long | left alone | gone`, followed by `, went with it: <base>
+  x<count>, ...` when stacks were still in it, which are then gone for good). The body carries the neighbor-visible `ff_body`
+  property, registered in the test gamemode's
+  `build/dist/testserver/gamemode_extensions/50_properties.js` (gitignored;
+  manager Build gamemode only, and Migrate server carries it to live) with
+  the same `makeProperty` line as `ff_pet` (`docs_roleplay_pets.md`); without
+  it no client could
   ever create the body (`formView.ts` never creates a dead copy that
   carries an appearance otherwise), so no body is left and the victim keeps
-  their pack (`failed setting ff_body`). Logged as `[body] <victim> <how> by <killer>: body
-  <id> holds N stack(s)`.
+  their pack (`failed setting ff_body`). From 2026-09-24 to the r34 test
+  gamemode every PK ended that way. Logged as `[body] <victim> <how> by
+  <killer>: body <id> holds N item(s) in M stack(s) moved from the victim (W
+  shown worn), the victim keeps K named stack(s); moved: <base> x<count>, ...`,
+  the record staff restore from. `skymp5-server/tools/test-bodies.js` runs
+  the move, the failures, the worn pieces, the removals and a restart against
+  a stub `mp`.
 - **No kill cams** (`disableKillCamService.ts`): the engine's kill camera
   (the slow motion arrow or spell follow cam, and the cinematic cut on a
   melee killmove) glitched players who got one with a bow, so every client
