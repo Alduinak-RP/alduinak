@@ -383,6 +383,29 @@ blocker `blockStaminaCost` (10%) of max stamina, a warrior `blockStaminaCostWarr
 after the hit, because the native hit rewrites all three percentages from an earlier copy. Stamina stops at 0 and
 blocking still works there, as in vanilla. It applies to every actor and also with `needsEnabled` false.
 
+**Heavy armor tires a guard (rebalance, D19).** While `alduinakDamageFormulaSettings.enabled` is true the cost is
+multiplied by `1 + perArmorWeight x min(worn armor weight, weightCap)`, from `alduinakDamageFormulaSettings.blockStamina`
+(`perArmorWeight` 0.006, `weightCap` 115; `perArmorWeight` 0 turns the rule off). The weight is read per blocked hit
+from the native `getCombatStats(actorId)` through `systems/combatStats.ts`. It is still a share of max stamina, so a
+bigger stamina pool buys no extra blocks.
+
+| Set | Worn weight | Cost x | Blocks from full | Warrior blocks |
+|---|---|---|---|---|
+| Unarmored | 0 | 1.00 | 10.0 | 20.0 |
+| Elven | 7 | 1.04 | 9.6 | 19.2 |
+| Glass | 13 | 1.08 | 9.3 | 18.6 |
+| Steel | 52 | 1.31 | 7.6 | 15.2 |
+| Daedric | 81 | 1.49 | 6.7 | 13.5 |
+| Orcish | 85 | 1.51 | 6.6 | 13.2 |
+
+Without the block, with `enabled` false (durability alone does not count), or on a `scam_native.node` without
+`getCombatStats`, a block costs the base share as before. The server logs at boot `[needs] block stamina by armor
+weight: a block costs x (1 + 0.006 x worn armor weight, counted up to 115)`, or `[needs] block stamina by armor weight
+is off: this scam_native.node has no getCombatStats, a block costs its base share`, and for each weighted block
+`[needs] <blocker> blocked in <weight> armor weight: stamina -<cost>% (<base>% x<multiplier>)`. Stats that carry no
+weight are reported once (`[needs] getCombatStats of <actor> carries no armor weight (fields ...)`) and cost the base
+share. Test: `node tools/test-block-stamina.js` in `skymp5-server`.
+
 **Protocol**
 - Client -> Server: `{ customPacketType: "needsRequest" }`
 - Server -> Client: `{ customPacketType: "needsState", hunger, stage, stageName, fatigue, fatigueStage, fatigueStageName,

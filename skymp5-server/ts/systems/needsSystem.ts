@@ -6,6 +6,7 @@ import { CastType, SpellType, fieldData, keywordConditionsPass, spellEffects, sp
 import { formatWait, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
 import { FREE, LEGENDARY, MasterySystem } from "./masterySystem";
 import { LOAD_PACKETS, StageAbilityTracker } from "./stageAbilities";
+import { armorWeightOf, combatStats, hasCombatStats } from "./combatStats";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -65,6 +66,8 @@ type Mp = any;
 //   blockStaminaCostWarrior       what a warrior pays instead, default 0.05
 //   blockStaggerWithoutStamina    a blocker whose stamina is below the cost is staggered, default true
 //   blockStaggerMagnitude         staggerMagnitude of that stagger (0.1 to 1), default 0.5
+//   alduinakDamageFormulaSettings.blockStamina   { perArmorWeight, weightCap }, defaults 0.006 and 115: while the block's enabled is true a blocked
+//                                 hit costs x (1 + perArmorWeight x min(worn armor weight, weightCap)); perArmorWeight 0 turns the rule off
 
 const NEEDS_PROP = "private.needs";
 const STATE_PACKET = "needsState";
@@ -120,6 +123,8 @@ const REGEN_PER_MS = 1 / 3600000;
 const FIGHT_FORGET_MS = 10 * 60000;
 const ANIMAL_KEYWORD = "ActorTypeAnimal";
 const STAGGER_COOLDOWN_MS = 1000;
+const DEFAULT_BLOCK_PER_ARMOR_WEIGHT = 0.006;
+const DEFAULT_BLOCK_WEIGHT_CAP = 115;
 // Warmed by drink: the professions whose own-rank crafts a drink discounts
 const ALCOHOL_PROFESSIONS = ["cook", "alchemist"];
 const DEFAULT_ALCOHOL_DISCOUNT = 0.25;
@@ -217,6 +222,23 @@ const lookup = (mp: Mp, id: number): any => {
   try { return id ? mp.lookupEspmRecordById(id) : null; } catch { return null; }
 };
 
+export interface BlockWeightRule {
+  perWeight: number;
+  cap: number;
+}
+
+// The rebalance's block stamina rule from alduinakDamageFormulaSettings; null without the block, with enabled not true or perArmorWeight 0
+export const blockWeightRule = (block: unknown): BlockWeightRule | null => {
+  const b = block && typeof block === "object" ? block as Record<string, unknown> : null;
+  if (!b || b["enabled"] !== true) return null;
+  const rule = (b["blockStamina"] && typeof b["blockStamina"] === "object" ? b["blockStamina"] : {}) as Record<string, unknown>;
+  const numOr = (v: unknown, fallback: number): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback);
+  const perWeight = numOr(rule["perArmorWeight"], DEFAULT_BLOCK_PER_ARMOR_WEIGHT);
+  return perWeight > 0 ? { perWeight, cap: numOr(rule["weightCap"], DEFAULT_BLOCK_WEIGHT_CAP) } : null;
+};
+
+export const blockWeightMult = (rule: BlockWeightRule, armorWeight: number): number => 1 + rule.perWeight * clamp(armorWeight, 0, rule.cap);
+
 // half: flora, refining, cooking, alchemy and skinning cost half
 export const fatigueCost = (effort: Effort, rank: number, half = false): number => FATIGUE_COST[effort][clamp(rank, 0, LEGENDARY)] * (half ? 0.5 : 1);
 
@@ -262,7 +284,8 @@ export class NeedsSystem implements System {
     this.alcoholDiscount = clamp(num("needsAlcoholDiscount", DEFAULT_ALCOHOL_DISCOUNT), 0, 1);
     this.alcoholMs = num("needsAlcoholMinutes", DEFAULT_ALCOHOL_MINUTES) * 60000;
     this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05),
-      all["blockStaggerWithoutStamina"] !== false ? clamp(num("blockStaggerMagnitude", 0.5), 0.1, 1) : 0);
+      all["blockStaggerWithoutStamina"] !== false ? clamp(num("blockStaggerMagnitude", 0.5), 0.1, 1) : 0,
+      blockWeightRule(all["alduinakDamageFormulaSettings"]));
 
     if (!this.enabled) {
       this.log("[needs] disabled by needsEnabled");
@@ -384,10 +407,15 @@ export class NeedsSystem implements System {
   }
 
   // OnHit fires before the native hit writes the percentages it copied earlier, so the drain waits a tick.
-  // A blocker who cannot pay the cost still blocks that hit but is staggered (staggerMagnitude 0 = off), at most once a second
-  private installBlockStamina(ctx: SystemContext, cost: number, warriorCost: number, staggerMagnitude: number): void {
+  // A blocker who cannot pay the cost still blocks that hit but is staggered (staggerMagnitude 0 = off), at most once a second.
+  // With a weight rule the cost grows with the blocker's worn armor weight, read from the native combat stats
+  private installBlockStamina(ctx: SystemContext, cost: number, warriorCost: number, staggerMagnitude: number, weightRule: BlockWeightRule | null): void {
     const mp = ctx.svr as Mp;
     if (cost <= 0 && warriorCost <= 0) return;
+    const byWeight = weightRule && hasCombatStats(mp) ? weightRule : null;
+    if (byWeight) this.log(`[needs] block stamina by armor weight: a block costs x (1 + ${byWeight.perWeight} x worn armor weight, counted up to ${byWeight.cap})`);
+    else if (weightRule) this.log("[needs] block stamina by armor weight is off: this scam_native.node has no getCombatStats, a block costs its base share");
+    let weightMissingLogged = false;
     const lastStagger = new Map<number, number>();
     chainMpHook(mp, "onPapyrusEvent:OnHit", (...args: unknown[]) => {
       if (args[7] !== true) return;
@@ -400,9 +428,19 @@ export class NeedsSystem implements System {
       setImmediate(() => {
         try {
           if (!isAlive(mp, targetId)) return;
-          const drain = this.mastery.rankOf(ctx, targetId, "warrior") > 0 ? warriorCost : cost;
+          const base = this.mastery.rankOf(ctx, targetId, "warrior") > 0 ? warriorCost : cost;
           const p = mp.get(targetId, "percentages");
-          if (!p || drain <= 0) return;
+          if (!p || base <= 0) return;
+          let drain = base;
+          const stats = byWeight ? combatStats(mp, targetId) : null;
+          const weight = stats ? armorWeightOf(stats) : null;
+          if (byWeight && weight !== null && weight > 0) {
+            drain = base * blockWeightMult(byWeight, weight);
+            this.log(`[needs] ${hex(targetId)} blocked in ${share(weight)} armor weight: stamina -${tenth(drain)}% (${tenth(base)}% x${share(drain / base)})`);
+          } else if (stats && weight === null && !weightMissingLogged) {
+            weightMissingLogged = true;
+            this.log(`[needs] getCombatStats of ${hex(targetId)} carries no armor weight (fields ${Object.keys(stats).join(", ") || "none"}), blocks cost their base share`);
+          }
           const short = Number(p.stamina) < drain;
           mp.set(targetId, "percentages", { ...p, stamina: Math.max(0, Number(p.stamina) - drain) });
           const now = Date.now();
