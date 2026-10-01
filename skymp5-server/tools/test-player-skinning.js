@@ -155,6 +155,7 @@ async function setup (settings = {}, missing = []) {
     assert.match(t.lines.join('\n'), /ff000a01 skinned the body of player ff000b01 \(profile 4\): 1016b3 x1, heart b18cd \(10% chance\), nothing of the pack taken/)
     assert.equal(t.sys.searchRefusal(VICTIM), 'This body has been skinned. Nothing can be taken from it.')
     assert.equal(t.skin(OTHER_HUNTER), false, 'once per death')
+    assert.deepEqual(t.notices(OTHER_HUNTER), [], 'the search refusal says it was skinned')
     t.forms.get(VICTIM).isDead = false
     t.mp.onRespawn(VICTIM)
     assert.equal(t.sys.searchRefusal(VICTIM), '', 'the respawn clears the mark')
@@ -300,6 +301,8 @@ async function setup (settings = {}, missing = []) {
     assert.deepEqual(t.paid, [[HUNTER, 'fight', 'skin', true]])
     assert.match(t.lines.join('\n'), /ff000a01 skinned the PK body ff000c01 of player ff000b01 \(profile 4\): 1016b3 x1, no heart \(10% chance\), Khajiit pelt 4013e0 \(20% chance\), the body keeps its pack/)
     assert.equal(t.skin(OTHER_HUNTER, CLONE), false, 'a PK body is skinned once')
+    assert.equal(t.notices(OTHER_HUNTER).at(-1), 'This body has already been skinned.', 'and the search goes on into the loot window')
+    assert.equal(t.lines.filter((l) => /ff000a02 skins the PK body/.test(l)).length, 0)
     assert.equal(t.skin(OTHER_HUNTER), false, 'and the own body of that death is passed over')
     t.forms.get(VICTIM).isDead = false
     t.mp.onRespawn(VICTIM)

@@ -762,9 +762,15 @@ PK body is left, the victim's own stripped actor is passed over while that
 body is recent (`BodySystem.hasBodyFor`, 30 s, longer than the own body ever
 lies: 4 s after the PK, `respawnSeconds` at most), and an own-body skinning
 already under way when a PK body is left for the same death (a soul trap PK is
-noticed up to 100 ms after the death) gives nothing (`... a PK body took their
-pack`), as the PK body now holds that death. A second hunter
-is refused through the same search refusal, and a body someone is searching
+noticed up to 100 ms after the death) gives nothing, as the PK body now holds
+that death: the victim's stripped actor respawns 4 s after the PK body is
+left, before the 5 s skinning ends, so the skinning stops with `... they
+respawned` and "The body is gone before you could finish."; `... a PK body
+took their pack` shows only when that respawn failed. On a player's own body
+a second hunter is refused through the same search refusal. On a PK body
+already skinned a crouched hunter with the knife reads "This body has already
+been skinned." and the interact goes on into the search window under the PK
+body rules, with no flesh and no `skins the PK body` line. A body someone is searching
 cannot be skinned ("... is already being searched."). Only that search
 request skins a player's body: the native activation the same key press also
 sends (`mp.onActivate`, the path of plugin-placed animals) passes it over
@@ -793,7 +799,9 @@ every line below), `[hunting] <skinner> skinned the body of player <victim>
 its pack` (the pelt part only on a Khajiit body while the pelt resolves),
 `[hunting] <skinner> stopped skinning the body of player <victim>:
 offline|dead|downed|restrained|out of reach|they respawned|the body is
-gone|a PK body took their pack`, and the boot line ends `players skinned on
+gone|a PK body took their pack` (the last only when a PK victim's 4 s
+respawn failed; a PK during an own-body skinning normally ends it with `they
+respawned`), and the boot line ends `players skinned on
 crouch for 1016b3 and the heart b18cd at 10%, the Khajiit pelt <id> at 20% for
 race 13745, 88845` (`, no Khajiit pelt` without the record; `players not
 skinned` when off or when the flesh is not in the load order). The test: `node

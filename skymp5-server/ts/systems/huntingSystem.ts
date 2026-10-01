@@ -233,14 +233,17 @@ export class HuntingSystem implements System {
     const body = this.playerBodyOf(mp, bodyId);
     if (this.playerSkinMode === "off" || !this.humanFleshId || !body) return false;
     const rank = this.mastery.rankOf(ctx, actorId, "hunter");
-    if (!rank || this.playerSkins.has(bodyId) || this.wasSkinned(mp, body) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
+    if (!rank || this.playerSkins.has(bodyId) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
     const knife = holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE_ID);
     const crouched = this.playerSkinMode !== "crouch" || isSneaking(mp, actorId);
-    const refusal = !crouched ? (knife ? "Crouch and interact to skin the body instead." : "")
+    // An own body's search refusal already says it was skinned; a PK body opens for the search
+    const skinned = this.wasSkinned(mp, body);
+    const refusal = skinned ? (body.pk && crouched && knife ? "This body has already been skinned." : "")
+      : !crouched ? (knife ? "Crouch and interact to skin the body instead." : "")
       : !knife ? "A hunting knife would skin the body."
       : !this.needs.canPay(actorId, "fight", rank, true) ? "You are too tired to skin it. Rest a while." : "";
     if (refusal) setImmediate(() => notifyActor(mp, actorId, refusal));
-    if (refusal || !crouched) return false;
+    if (refusal || skinned || !crouched) return false;
     const job: PlayerSkin = { ...body, skinnerId: actorId };
     this.playerSkins.set(bodyId, job);
     setImmediate(() => sendActionLock(mp, actorId, SKIN_ANIM, SKIN_SECONDS));
