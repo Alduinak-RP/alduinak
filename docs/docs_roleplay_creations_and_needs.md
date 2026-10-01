@@ -278,8 +278,8 @@ ingredient (flowers, mushrooms, herbs, berries, eggs, nirnroot).
 
 **Warmed by drink.** A cook or alchemist of Novice or better who drinks an alcohol pays `needsAlcoholDiscount` (25%)
 less fatigue for the crafts priced by their own rank (the cooking pot and oven for a cook, the alchemy lab for an
-alchemist, shared recipes) for `needsAlcoholMinutes` (10); another drink refreshes the timer and never stacks, and the
-discount multiplies the half cost of those benches. Anyone else gets the drink's hunger only. An alcohol is an ALCH drunk
+alchemist, every drink at a meadery boiler for both, shared recipes) for `needsAlcoholMinutes` (10); another drink
+refreshes the timer and never stacks, and the discount multiplies the half cost of those benches. Anyone else gets the drink's hunger only. An alcohol is an ALCH drunk
 with the `ITMPotionUse` sound that carries a detrimental stamina or magicka rate effect: every vanilla ale, mead, wine,
 brandy, flin, sujamma, shein and matze, the Windhelm and Dawnstar meads and wines; not juice, water, milk or skooma, and
 not Rotgut or Battle-Brew Special unless `needsAlcoholItems` names them. The drinker sees "The drink warms you: your Cook

@@ -419,11 +419,14 @@ helps here too.
 | Black-Briar `000A6310`, `000A6311` | Black-Briar Mead | 2 Snowberries, 1 Honey, 1 Salt Pile, 2 Red Mountain Flower |
 
 Each boiler offers only its own mead (keywords `AldCraftingMeadHonningbrew`
-and `AldCraftingMeadBlackBriar`). Brewing is free: the recipes carry no rank
-condition, so any character brews, at a craft's fatigue like any other bench.
-Only an Alchemist earns hours
-there, under the usual one-per-hour rule: `AldCraftingMead` is an alchemist
-`craftStations` keyword. Nord Mead stays at the alchemy lab.
+and `AldCraftingMeadBlackBriar`); Ale, Nord Mead and wine are brewed at every
+boiler on the shared `AldCraftingMead`. Brewing is free: the recipes carry no
+rank condition, so any character brews. An Alchemist or a Cook pays the craft
+fatigue of their own rank for every drink there, the two branded meads
+included, and a warming drink takes its share off that; anyone else pays the
+Free cost, a third of the bar. All three keywords are alchemist and cook
+`craftStations` (`MEAD_STATIONS` in `masterySystem.ts`), so both earn hours
+there under the usual one-per-hour rule.
 
 Where the ingredients come from on this server, where placed loose items and
 container loot are off:

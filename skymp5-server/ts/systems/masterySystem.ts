@@ -239,14 +239,17 @@ const ACTOR_TYPES = ["ActorTypeNPC", "ActorTypeCreature", "ActorTypeUndead", "Ac
 // Player actors have no base record; their race is always a playable one.
 const PLAYER_KEYWORD = "ActorTypeNPC";
 
+// Every drink at a meadery boiler: the shared keyword and each boiler's own mead keyword
+const MEAD_STATIONS = ["AldCraftingMead", "AldCraftingMeadHonningbrew", "AldCraftingMeadBlackBriar"];
+
 const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
-  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: ["AldCraftingMead"], activateTypes: ["FLOR", "TREE"] },
+  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: MEAD_STATIONS, activateTypes: ["FLOR", "TREE"] },
   // Anything made at a forge, anvil or smelter counts, and a temper at the workbench or grindstone
   blacksmith: {
     craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge", "DLC1CraftingDawnguard", "DLC1LD_CraftingForgeAetherium", "CraftingSmithingArmorTable", "CraftingSmithingSharpeningWheel"],
     craftStations: ["isBlacksmithForge", "isBlacksmithAnvil", "isSmelter"],
   },
-  cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"], craftStations: ["AldCraftingMead"] },
+  cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"], craftStations: MEAD_STATIONS },
   farmer: { activateTypes: ["FLOR", "TREE"] },
   // Hunters and tailors both tan leather
   hunter: { killKeywords: ["ActorTypeAnimal"], craftKeywords: ["CraftingTanningRack"] },
