@@ -199,9 +199,12 @@ Three readouts show players and staff what the rebalance formula and durability 
 `alduinakDamageFormulaSettings`, or with its `enabled` false and `durability.enabled` false, none of them exists:
 hits, chat and `pvp.log` are as before, and `/armor` is an unknown command.
 
-**Hit arguments.** A `scam_native.node` with the rebalance hit arguments calls `onHitDamageAttempt` and
-`onHitDamage` with `aggressor, target, source, damage, blocked, power, bash, critical, preDT`; an older one stops
-after `damage`. The gamemode part `62_mastery.js` passes every argument on to `60_admin_modes.js`, which reads the
+**Hit arguments.** A `scam_native.node` with the rebalance calls `onHitDamageAttempt` and `onHitDamage` with
+`aggressor, target, source, damage, blocked, power, bash, critical, preDT` while its formula prices hits (`enabled`
+true and the block accepted at boot); an older one, and this one with the formula off, stops after `damage`. The
+flags are the ones the hit was priced with. A spell hit carries `blocked` for a ward, `power`, `bash` and `critical`
+false, and its damage before the ward as `preDT`.
+The gamemode part `62_mastery.js` passes every argument on to `60_admin_modes.js`, which reads the
 five new ones in one place (`hitExtras`) and only while `enabled` is true. A hit without them is logged once per
 gamemode load (`[combat] a hit arrived without the arguments blocked, power, bash, critical, preDT ...`) and
 treated as before.
@@ -236,7 +239,12 @@ Steel Sword: damage 16.75, Fine, 88% (308/350)
 
 - The DT, the temper and the weapon lines come from the native `getCombatStats(actorId)` and exist while `enabled`
   is true. A piece below full condition reads `DT 6.4 of 8`. The temper is the quality name of its step (Fine to
-  Legendary).
+  Legendary). The total is the native's `wornDT` (pieces and shield), the weight its `armorWeight`: the worn light
+  and heavy pieces without the shield, which is the weight the block stamina rule charges.
+- A hit meets only the best piece of each slot group, so a second piece on the same slots adds nothing to the
+  total. The native sends what each piece adds as `countedDT`, and a piece that adds less than its DT says so:
+  `Iron Helmet: DT 1.5, not counted (a better piece covers its slots)`, or `1.2 counted (a better piece covers
+  some of its slots)` for a piece that spans two groups. The lines then add up to the `Armor: DT` total.
 - The native lists what is held as `weapons`, one entry per hand (`{ baseId, hand: "left" | "right", kind, damage,
   temperStep, ... }`), and each entry gets a line, the right hand first: a dual wielder reads two damage lines. The
   damage is the row damage with the temper in it (Steel sword 16.5, Fine x1.015). A staff or another weapon the
@@ -247,7 +255,7 @@ Steel Sword: damage 16.75, Fine, 88% (308/350)
   durable copies with their condition only.
 - A weapon line takes the condition of the copy in its own hand (`wornLeft` of `getDurability`), so two swords of
   one base keep their own percent. Worn copies the stats do not name follow as condition lines. An unarmored
-  player reads `You wear no armor: DT 0, every weapon hit lands in full.`
+  player reads `No armor worn: DT 0, every weapon hit lands in full.`
 - Staff may name an online player: `/armor <name>`.
 
 `CombatReadoutSystem` registers `globalThis.__alduinakArmorReport(actorId)` at boot only when at least one of the

@@ -4,7 +4,7 @@ type Mp = any;
 // Adapter for the native getCombatStats(actorId) of scam_native.node, which exists only in a build with the rebalance formula.
 // Server TS reads the native through these functions only, so a renamed function or field is changed here.
 const NATIVE_FUNCTION = "getCombatStats";
-// Names the worn armor weight may carry, the first one present wins
+// Names the worn armor weight may carry, the first one present wins; the native's armorWeight leaves the shield out
 const WEIGHT_FIELDS = ["armorWeight", "wornArmorWeight", "wornWeight"];
 
 export const hasCombatStats = (mp: Mp): boolean => typeof mp?.[NATIVE_FUNCTION] === "function";
@@ -29,8 +29,8 @@ export const armorWeightOf = (stats: Record<string, unknown>): number | null => 
   return null;
 };
 
-// Names the other fields may carry, the first one present wins
-const TOTAL_DT_FIELDS = ["dt", "totalDT", "wornDT"];
+// Names the other fields may carry, the native's own first; the first one present wins
+const TOTAL_DT_FIELDS = ["wornDT", "dt", "totalDT"];
 const PIECE_LIST_FIELDS = ["pieces", "armor", "worn"];
 // The native lists one entry per hand; a single object is read as well
 const WEAPON_LIST_FIELDS = ["weapons"];
@@ -42,6 +42,7 @@ const LEFT_HAND = "left";
 export const NO_ATTACK_KIND = "none";
 const PIECE_DT_NOW_FIELDS = ["effectiveDT", "dt"];
 const PIECE_DT_FULL_FIELDS = ["dt"];
+const PIECE_DT_COUNTED_FIELDS = ["countedDT"];
 const TEMPER_FIELDS = ["temperStep", "temper"];
 const DAMAGE_FIELDS = ["damage"];
 const CONDITION_FIELDS = ["condition"];
@@ -57,6 +58,8 @@ export interface GearStats {
   dt: number | null;
   // DT at full condition, null when the stats carry no separate value
   fullDt: number | null;
+  // Part of the DT in the total: less when a better piece covers the same slots, null when the stats carry none
+  countedDt: number | null;
   // Damage of the weapon's row, null for armor
   damage: number | null;
   // Temper steps above the plain item, 0 to 6
@@ -85,6 +88,7 @@ const gearOf = (entry: unknown): GearStats | null => {
     left: e[HAND_FIELD] === LEFT_HAND,
     dt: numberIn(e, PIECE_DT_NOW_FIELDS),
     fullDt: numberIn(e, PIECE_DT_FULL_FIELDS),
+    countedDt: numberIn(e, PIECE_DT_COUNTED_FIELDS),
     damage: numberIn(e, DAMAGE_FIELDS),
     temperStep: Math.max(0, Math.floor(numberIn(e, TEMPER_FIELDS) ?? 0)),
     condition: condition === null ? null : Math.min(1, Math.max(0, condition)),

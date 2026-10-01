@@ -124,6 +124,11 @@ export const armorReport = (mp: Mp, actorId: number, o: ReadoutSources): string[
       o.wear && condition !== null ? conditionText(condition, copy?.maxHp ?? null, o.brokenLabel) : "",
     ];
   };
+  // A hit meets the best piece of a slot group, so a second piece on the same slots adds less than its DT or nothing
+  const uncounted = (p: GearStats): string =>
+    p.dt === null || p.countedDt === null || p.countedDt > p.dt - 0.005 ? ""
+      : p.countedDt < 0.005 ? "not counted (a better piece covers its slots)"
+        : `${num(p.countedDt)} counted (a better piece covers some of its slots)`;
   const line = (baseId: number, parts: string[], fallback: string): string => `${o.nameOf(baseId)}: ${parts.filter(Boolean).join(", ") || fallback}`;
 
   const lines: string[] = [];
@@ -131,11 +136,11 @@ export const armorReport = (mp: Mp, actorId: number, o: ReadoutSources): string[
     const pieces = wornPiecesOf(stats);
     const total = totalDtOf(stats);
     const weight = armorWeightOf(stats);
-    if (!pieces.length) lines.push("You wear no armor: DT 0, every weapon hit lands in full.");
+    if (!pieces.length) lines.push("No armor worn: DT 0, every weapon hit lands in full.");
     else lines.push(`Armor: DT ${num(total ?? 0)} (taken off each weapon hit)${weight !== null ? `, weight ${num(weight)}` : ""}`);
     for (const p of pieces) {
       const dt = p.dt === null ? "" : `DT ${num(p.dt)}${p.fullDt !== null && p.fullDt > p.dt + 0.005 ? ` of ${num(p.fullDt)}` : ""}`;
-      lines.push(line(p.baseId, [dt, ...tail(p)], "no DT"));
+      lines.push(line(p.baseId, [dt, uncounted(p), ...tail(p)], "no DT"));
     }
     for (const w of weaponsOf(stats)) {
       const damage = w.kind === NO_ATTACK_KIND ? "no weapon damage" : w.damage === null ? "" : `damage ${num(w.damage)}`;
@@ -144,7 +149,7 @@ export const armorReport = (mp: Mp, actorId: number, o: ReadoutSources): string[
   }
   // What the stats did not name: everything worn when only durability is on
   for (const c of free.splice(0)) lines.push(`${o.nameOf(c.baseId)}: ${conditionText(c.condition, c.maxHp, o.brokenLabel)}`);
-  if (!lines.length) lines.push("Nothing you wear or hold wears down.");
+  if (!lines.length) lines.push("Nothing worn or held wears down.");
   return lines;
 };
 
