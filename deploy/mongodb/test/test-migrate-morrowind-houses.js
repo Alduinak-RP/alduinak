@@ -138,6 +138,25 @@ async function start() {
     assert.ok(store.definitions().factions.some(f => f.id === 'faction:house-telvanni'), 'nothing converted')
   })
 
+  await test('an account-wide Windhelm row against a one-character house row is unsafe', async () => {
+    seed()
+    store.deleteAssignment(store.getPlayerAssignments('903').find(a => a.requirementId === 'hold:eastmarch:citizen').id, ACTOR)
+    join('hold:eastmarch:citizen', '903', null, 'Athyn')
+    const { text } = await run([])
+    assert.match(text, /REMOVE from Court of Eastmarch: Athyn \(discord 903, every character\), Citizen/)
+    assert.match(text, /UNSAFE: Athyn \(discord 903, every character\) is Citizen of Court of Eastmarch, but in House Indoril only as character 2; removing the row takes the account's other characters out/)
+    assert.match(text, /plan is NOT safe/)
+  })
+
+  await test('two houses that would become the same territory are unsafe', async () => {
+    seed()
+    guild('Great House Telvanni', 'Morrowind', [{ rank: 'Leader', leader: true }])
+    const { text } = await run([])
+    assert.match(text, /UNSAFE: faction:great-house-telvanni \(Great House Telvanni\) would become hold:telvanni too, and only one can/)
+    assert.match(text, /UNSAFE: faction:house-telvanni \(House Telvanni\) would become hold:telvanni too/)
+    assert.match(text, /plan is NOT safe/)
+  })
+
   await test('an existing territory under the new id is refused by the backend', async () => {
     seed()
     store.createFaction({ type: 'hold', group: 'Indoril', name: 'Indoril Lands' }, ACTOR)

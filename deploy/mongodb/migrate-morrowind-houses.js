@@ -83,6 +83,15 @@ async function makePlan(api) {
     if (rule && house.release.length > rule.max) {
       house.unsafe.push(`${plural(house.release.length, 'member')} of ${house.faction.name} also belong to ${rule.label}, the owner named ${rule.max}; remove the extra by hand first`)
     }
+    for (const c of house.release) {
+      const slots = house.members.filter(m => m.discordId === c.discordId).map(m => m.slot ?? null)
+      if ((c.slot ?? null) !== null || slots.includes(null)) continue
+      house.unsafe.push(`${who(c)} is ${c.rank} of ${c.faction}, but in ${house.faction.name} only as ${slots.map(slotText).join(', ')}; removing the row takes the account's other characters out of ${c.faction} too, so give them rows of their own in the Factions tab first`)
+    }
+  }
+  for (const house of houses) {
+    const twins = houses.filter(h => h !== house && h.to === house.to)
+    if (twins.length && house.unsafe) house.unsafe.push(`${twins.map(h => `${h.faction.id} (${h.faction.name})`).join(', ')} would become ${house.to} too, and only one can; merge or rename them first`)
   }
   return { factions, houses, skipped }
 }

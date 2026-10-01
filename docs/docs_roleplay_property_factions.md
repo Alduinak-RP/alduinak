@@ -694,10 +694,13 @@ alias (FactionCraftSystem lists both ids):
    its target, ranks with permissions, members, the regency and every clash. A
    member of House Indoril who is also in Windhelm (`hold:eastmarch`) is listed
    as `REMOVE from Court of Eastmarch` (the owner's one known case); any other
-   clash, a second Windhelm member or a backend refusal (the target id already
-   exists or is retired) is `UNSAFE` or `REFUSED`, and apply will refuse.
+   clash, a second Windhelm member, a Windhelm row for every character of an
+   account whose house row is for one character (removing it would take the
+   other characters out of Windhelm too), two houses that would become the same
+   territory, or a backend refusal (the target id already exists or is retired)
+   is `UNSAFE` or `REFUSED`, and apply will refuse.
 2. `... backup [--out <file>]`: every faction, rank and roster as JSON (default
-   `Desktoplduinak-r13ollback-houses`).
+   `Desktop\alduinak-r13\rollback-houses`).
 3. `... apply --backup <file>`: a dry run that re-plans and checks the backup still
    matches (every faction's revision, and the rosters of the houses and the
    territories they clash with); `--apply` converts each house in turn.
