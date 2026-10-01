@@ -23,7 +23,9 @@ const stubs = {
 }
 const source = path.join(__dirname, '..', 'ts', 'systems', 'goldWatchSystem.ts')
 
-global.setImmediate = (fn) => fn()
+const queued = []
+global.setImmediate = (fn) => { queued.push(fn) }
+const flush = () => { while (queued.length) queued.shift()() }
 
 ;(async () => {
   const { outputFiles } = await esbuild.build({ entryPoints: [source], bundle: true, platform: 'node', format: 'cjs', write: false, plugins: [stubs] })
@@ -48,24 +50,39 @@ global.setImmediate = (fn) => fn()
   {
     const lines = []
     const edids = { [ORE]: 'OreIron', [POTION]: 'RestoreHealth01' }
+    const held = new Map([[ORE, 18], [POTION, 1], [PELT, 2]])
     const mp = {
-      get: (id, key) => key === 'profileId' ? 149 : key === 'appearance' ? { name: 'Morm' } : null,
+      get: (id, key) => key === 'profileId' ? 149 : key === 'appearance' ? { name: 'Morm' } : key === 'inventory' ? { entries: Array.from(held, ([baseId, count]) => ({ baseId, count })) } : null,
       lookupEspmRecordById: (id) => edids[id] ? { record: { editorId: edids[id] } } : null,
+    }
+    // The native side removes after the hook and throws without removing when the server holds too few
+    const drop = (baseId, count) => {
+      const verdict = mp.onDropItem(MORM, baseId, count)
+      if (verdict !== false && (held.get(baseId) || 0) >= count) held.set(baseId, held.get(baseId) - count)
+      flush()
+      return verdict
     }
     const gm = new EventEmitter()
     const sys = new GoldWatchSystem((...a) => lines.push(a.join(' ')))
     await sys.initAsync({ svr: mp, gm })
     gm.emit('worldLoaded')
 
-    assert.equal(mp.onDropItem(MORM, ORE, 18), undefined)
+    assert.equal(drop(ORE, 18), undefined)
     assert.equal(lines.at(-1), '[inv] Morm (ff000e9f, profile 149) dropped OreIron 71cf3 x18')
 
     mp.onEatItem(MORM, POTION)
-    mp.onDropItem(MORM, POTION, 1)
+    drop(POTION, 1)
     assert.match(lines.at(-1), /^\[inv\] Morm \(ff000e9f, profile 149\) drop of RestoreHealth01 3eadd x1 \d+ ms after eating one: the client sent the eat as a drop too$/)
 
-    mp.onDropItem(MORM, PELT, 2)
+    drop(PELT, 2)
     assert.equal(lines.at(-1), '[inv] Morm (ff000e9f, profile 149) dropped item 3ad74 x2', 'an id without a record still logs')
+
+    drop(ORE, 20)
+    assert.equal(lines.at(-1), '[inv] Morm (ff000e9f, profile 149) drop of OreIron 71cf3 x20 refused natively: the server held 0', 'a drop of items the server never held is not logged as dropped')
+
+    mp.onEatItem(MORM, POTION)
+    drop(POTION, 1)
+    assert.match(lines.at(-1), /^\[inv\] Morm \(ff000e9f, profile 149\) drop of RestoreHealth01 3eadd x1 refused natively: the server held 0, \d+ ms after eating one$/)
 
     // A drop another system refused never happened
     const refusing = { svr: { ...mp, onDropItem: () => false }, gm: new EventEmitter() }
@@ -73,6 +90,7 @@ global.setImmediate = (fn) => fn()
     refusing.gm.emit('worldLoaded')
     const count = lines.length
     assert.equal(refusing.svr.onDropItem(MORM, ORE, 1), false)
+    flush()
     assert.equal(lines.length, count, 'a refused drop logs nothing')
   }
 

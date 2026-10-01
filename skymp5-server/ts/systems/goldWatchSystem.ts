@@ -172,10 +172,18 @@ export class GoldWatchSystem implements System {
     let edid = "";
     try { edid = String(this.mp.lookupEspmRecordById(baseId)?.record?.editorId || ""); } catch { }
     const item = `${edid || "item"} ${hex(baseId)} x${count}`;
-    // Outside the native drop call
-    setImmediate(() => this.log(ms <= EAT_DROP_WINDOW_MS
-      ? `[inv] ${this.who(this.mp, actorId)} drop of ${item} ${ms} ms after eating one: the client sent the eat as a drop too`
-      : `[inv] ${this.who(this.mp, actorId)} dropped ${item}`));
+    // The hook runs before the native removal, which still throws when the server holds none
+    const held = this.countOf(actorId, baseId);
+    setImmediate(() => {
+      const who = this.who(this.mp, actorId);
+      if (this.countOf(actorId, baseId) >= held) {
+        this.log(`[inv] ${who} drop of ${item} refused natively: the server held ${held}${ms <= EAT_DROP_WINDOW_MS ? `, ${ms} ms after eating one` : ""}`);
+      } else {
+        this.log(ms <= EAT_DROP_WINDOW_MS
+          ? `[inv] ${who} drop of ${item} ${ms} ms after eating one: the client sent the eat as a drop too`
+          : `[inv] ${who} dropped ${item}`);
+      }
+    });
   }
 
   private watched(baseId: number): boolean {
@@ -208,6 +216,14 @@ export class GoldWatchSystem implements System {
     } catch { /* not a recipe */ }
     this.inputCache.set(recipeId, out);
     return out;
+  }
+
+  private countOf(actorId: number, baseId: number): number {
+    let n = 0;
+    try {
+      for (const e of this.mp.get(actorId, "inventory")?.entries || []) if ((Number(e.baseId) >>> 0) === baseId) n += Number(e.count) || 0;
+    } catch { /* actor gone */ }
+    return n;
   }
 
   private countsOf(mp: Mp, actorId: number): Map<number, number> {
