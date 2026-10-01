@@ -239,13 +239,26 @@ swapped for the server's copy, taking the piece off the player again. The
 second pass (0.3 s after a load, 1.3 s after an in-game move) does not strip:
 it applies the inventory again, and one frame after an apply has landed (its
 adds run at the end of the frame) a top-up equips the saved pieces still
-unworn, tempered ones included. The settle check 2.5 s after the last pass
-re-dresses once, as before. The second pass used to strip everything again
-and skip its own inventory apply (the first pass had bumped the counter it
-compared), so the pack held only the worn pieces until the periodic apply up
-to 5 s later and the outfit came on only at the settle re-dress (owner's log
-2026-09-22: both passes 78 ms apart, `3 of 3 saved not worn, worn 0,
-re-dressing` 2.5 s later, 26 entries back only after that). An own
+unworn, tempered ones included. The strip's apply waits one update so the
+dress (queued, it lands at the end of the strip's frame) is in the pack before
+the apply compares against it, whichever update callback runs first; applied
+in the strip's own frame it would add every dressed piece a second time. The
+spawn's applies also run past the 2 s hold that `CraftedExtrasService` arms on
+every change between the player and nowhere: the strip and the dress are such
+changes, so the hold used to keep the pack down to the worn pieces for about
+2 s (and while an inventory menu opened in that window stayed up), and right
+after a strip there is no local craft or consume left to protect. Equipment
+reports wait for the spawn's apply and top-up (at most 10 s after the strip),
+so a tempered or poisoned piece that arrives with the apply is worn before
+the first report saves the outfit. The settle check 2.5 s after the last pass
+re-dresses once, as before; its line adds `worn as another copy <base ids>`
+when a saved piece is worn only as a different copy (the top-up equips by
+base form, so with a plain and a tempered sword in the pack the engine may
+pick the plain one). The second pass used to strip everything again and skip
+its own inventory apply (the first pass had bumped the counter it compared),
+and the outfit came on only at the settle re-dress (owner's log 2026-09-22:
+both passes 78 ms apart, `3 of 3 saved not worn, worn 0, re-dressing` 2.5 s
+later, 26 entries back only after that). An own
 `createActor` drops the stored inventory of the previous character, so the
 periodic apply cannot add that pack to the new character before its own
 arrives, and a pass of an older spawn does nothing. `applyInventory` no
@@ -259,7 +272,8 @@ inventory applied +E ms, settled +F ms[, race menu open G ms of it]; S
 strip(s), T top-up(s) equipping U, I inventory apply(ies) adding X and
 removing Y stack(s), Q equip and R unequip event(s); after the outfit apply
 F frames, longest L ms, K over 250 ms; inventory N entries, worn W`. One
-strip, two inventory applies and nothing removed is the expected shape;
+strip, two inventory applies, `inventory applied` a few frames after `outfit
+applied` and nothing removed is the expected shape;
 removals mean the local pack held items the server does not have, and many
 more unequip events than worn pieces mean something took the outfit off
 again. `load requested none` is a spawn by an in-game move. The race menu

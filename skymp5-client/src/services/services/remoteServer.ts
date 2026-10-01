@@ -71,7 +71,7 @@ import {
 import { TimeService } from './timeService';
 import { TimersService } from './timersService';
 import { clientScriptStartedAt, logTrace, logError, logToPlatformLog } from '../../logging';
-import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved, resyncHandGraph } from '../../sync/equipment';
+import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved, getWornOtherCopy, resyncHandGraph } from '../../sync/equipment';
 import { isRiderClone } from '../../sync/mountApply';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
@@ -161,14 +161,17 @@ interface RaceCheck {
 }
 
 const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
+// How long after a strip the settle waits for the spawn's inventory apply and top-up
+const SPAWN_TOP_UP_MAX_WAIT_MS = 10000;
 // A frame at least this long counts as a hitch in the spawn and race menu timing lines
 const SLOW_FRAME_MS = 250;
 let spawnEquipment: Equipment | undefined;
 let spawnEquipmentSettleUntil = 0;
 let spawnEquipmentRedressed = false;
 let spawnEquipmentMenuUsed = false;
-// A top-up equips what the dress left unworn once the inventory apply it waits for has landed
-let spawnTopUp: "none" | "apply" | "queued" | "landed" = "none";
+// The strip's dress lands first, then the inventory apply, then a top-up equips what the dress left unworn
+let spawnTopUp: "none" | "dressing" | "apply" | "queued" | "landed" = "none";
+let spawnTopUpUntil = 0;
 
 interface FrameStats {
   frames: number;
@@ -229,7 +232,8 @@ const applySpawnEquipment = (player: Actor, eq: Equipment): void => {
   spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
   spawnEquipmentRedressed = false;
   spawnEquipmentMenuUsed = false;
-  spawnTopUp = "apply";
+  spawnTopUp = "dressing";
+  spawnTopUpUntil = Date.now() + SPAWN_TOP_UP_MAX_WAIT_MS;
   if (spawnTiming) spawnTiming.strips++;
   applyEquipment(player, eq);
 };
@@ -237,7 +241,7 @@ const applySpawnEquipment = (player: Actor, eq: Equipment): void => {
 // A spawn's later passes re-sync the inventory and top up the outfit without a strip, which would empty the pack until the next periodic apply
 const resyncSpawnEquipment = (): void => {
   if (!spawnEquipment) return;
-  spawnTopUp = "apply";
+  if (spawnTopUp !== "dressing") spawnTopUp = "apply";
   spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
   requestPcInventoryApply();
 };
@@ -267,12 +271,18 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
       spawnTiming.topUpEquips += unworn.length;
     }
   }
+  // The tempered and poisoned pieces come only with the spawn's inventory apply and its top-up
+  if (spawnTopUp !== "none" && getPcInventory() && Date.now() < spawnTopUpUntil) {
+    return true;
+  }
   if (Date.now() < spawnEquipmentSettleUntil) {
     return true;
   }
   const unworn = getUnwornSaved(player, spawnEquipment);
   const redress = !spawnEquipmentRedressed && !spawnEquipmentMenuUsed && unworn.length > 0;
-  logToPlatformLog("RemoteServer", `spawn outfit settled: ${unworn.length} of ${getPlayerWorn(spawnEquipment).length} saved not worn, worn ${countWorn(getInventory(player))}, menu used ${spawnEquipmentMenuUsed},`, redress ? "re-dressing" : "done");
+  const otherCopy = getWornOtherCopy(player, spawnEquipment).map((e) => e.baseId.toString(16));
+  const otherCopyText = otherCopy.length ? ` worn as another copy ${otherCopy.join(" ")},` : "";
+  logToPlatformLog("RemoteServer", `spawn outfit settled: ${unworn.length} of ${getPlayerWorn(spawnEquipment).length} saved not worn,${otherCopyText} worn ${countWorn(getInventory(player))}, menu used ${spawnEquipmentMenuUsed},`, redress ? "re-dressing" : "done");
   if (!redress) {
     spawnEquipment = undefined;
     spawnTopUp = "none";
@@ -297,13 +307,18 @@ on('update', () => {
   if (spawnTopUp === "queued") {
     spawnTopUp = "landed";
   }
+  // So does a strip's dress, so the spawn's apply skips this update whichever callback ran first
+  const dressing = spawnTopUp === "dressing";
+  if (dressing) {
+    spawnTopUp = "apply";
+  }
   const player = Game.getPlayer()!;
   if (encumbranceRefreshPending) {
     encumbranceRefreshPending = false;
     refreshMovement(player);
   }
-  // Snapshots sent before the server saw a quick run of consumes would re-add them
-  if (Date.now() < pcInvHoldUntil) {
+  // Snapshots sent before the server saw a quick run of consumes would re-add them; the strip left no local change to protect
+  if (dressing || (Date.now() < pcInvHoldUntil && spawnTopUp !== "apply")) {
     return;
   }
   if (Date.now() - pcInvLastApply > 5000) {
