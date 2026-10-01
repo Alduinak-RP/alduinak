@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import './styles.scss';
 
@@ -44,6 +44,12 @@ const LOW_PERCENT = 25;
 // A repair is answered with a refresh; "too far from the bench" is not, so the buttons come back on their own
 const BUSY_MS = 1500;
 
+// The server drops a repair that comes within 300 ms of the last one without an answer (durabilitySystem.ts)
+export const REPAIR_GAP_MS = 400;
+
+// How long the repair buttons still stay off when a refresh arrives
+export const busyLeft = (clickedAt: number, now: number): number => Math.max(0, REPAIR_GAP_MS - (now - clickedAt));
+
 const send = (key: string, ...args: unknown[]): void => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,9 +73,11 @@ const RepairMenu = ({ data }: { data: RepairMenuData }) => {
   const ev = data.events || ({} as RepairEvents);
   const rows = data.rows || [];
   const [busy, setBusy] = useState(false);
+  const clickedAt = useRef(0);
 
   useEffect(() => {
-    setBusy(false);
+    const timer = setTimeout(() => setBusy(false), busyLeft(clickedAt.current, Date.now()));
+    return () => clearTimeout(timer);
   }, [data.rows]);
 
   useEffect(() => {
@@ -85,6 +93,7 @@ const RepairMenu = ({ data }: { data: RepairMenuData }) => {
   }, [ev.close]);
 
   const repair = (event: string, ...args: unknown[]): void => {
+    clickedAt.current = Date.now();
     setBusy(true);
     send(event, ...args);
   };

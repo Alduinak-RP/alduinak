@@ -147,6 +147,18 @@ const boots = { key: 7, baseId: 0x13910, name: 'Hide Boots x2', percent: 80, hp:
     assert.equal(sent.length, 0)
   }
 
+  // After a click the repair buttons stay off for longer than the server's repair cooldown, however fast its refresh comes
+  {
+    const system = fs.readFileSync(path.join(repo, 'skymp5-server', 'ts', 'systems', 'durabilitySystem.ts'), 'utf8')
+    const cooldown = Number((/const REPAIR_COOLDOWN_MS = (\d+);/.exec(system) || [])[1])
+    assert.ok(cooldown > 0, 'the server cooldown is read')
+    assert.ok(menu.REPAIR_GAP_MS >= cooldown + 50, 'the next click is sent after the cooldown, with room for jitter')
+    assert.equal(menu.busyLeft(1000, 1100), menu.REPAIR_GAP_MS - 100, 'a refresh after 100 ms waits out the rest')
+    assert.equal(menu.busyLeft(1000, 1000 + menu.REPAIR_GAP_MS), 0)
+    assert.equal(menu.busyLeft(1000, 5000), 0, 'a late refresh frees the buttons at once')
+    assert.equal(menu.busyLeft(0, 5000), 0, 'and so does one that follows no click')
+  }
+
   // The widget type, the event keys and the wiring match what the client pushes
   {
     const service = fs.readFileSync(serviceSource, 'utf8')

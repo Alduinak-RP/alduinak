@@ -153,8 +153,10 @@ open menu and its scroll position.
 - The footer: Repair all (`repairMenu:repairAll`, off when no row can be paid), Improve items
   (`repairMenu:improve`) and Close (`repairMenu:close`). With no rows left it reads "Nothing left to repair"
   and keeps the footer.
-- After a Repair or Repair all the repair buttons stay off until the server's refresh arrives, at most 1.5 s
-  (a refusal for distance sends no refresh), so a double click never asks for the same copy twice.
+- After a Repair or Repair all the repair buttons stay off until the server's refresh arrives, at least
+  0.4 s (the server drops a repair that comes within 0.3 s of the last one without an answer) and at most 1.5 s
+  (a refusal for distance sends no refresh), so a double click never asks for the same copy twice and a quick
+  click down the list is never swallowed.
 - Escape and losing the browser focus close the menu, as in the other menus.
 
 ## Tests
