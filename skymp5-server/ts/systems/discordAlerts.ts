@@ -11,14 +11,15 @@ type Mp = any;
 // Staff alerts to every discordAuth.guilds[].eventLogChannelId, batched per FLUSH_MS; discord.js REST queues around rate limits
 // Only the kinds in discordAlertKinds (default DEFAULT_ALERT_KINDS) are posted, every other kind is dropped in discordAlert
 // ADMIN_TAB_KINDS also reach online staff's in-game Admin tab, whatever discordAlertKinds lists
+// Deaths are no alert kind: deathAlert writes them to the server log and the Admin tab only
 
-export type AlertKind = "death" | "execute" | "admin" | "ticket" | "keyword" | "login";
+export type AlertKind = "execute" | "admin" | "ticket" | "keyword" | "login";
 export interface AlertOptions { here?: boolean; discordIds?: string[] }
 
-const LABELS: Record<AlertKind, string> = { death: "Death", execute: "Execution", admin: "Admin", ticket: "Staff call", keyword: "Keyword", login: "Login" };
-const DEFAULT_ALERT_KINDS: AlertKind[] = ["death", "execute", "ticket"];
+const LABELS: Record<AlertKind, string> = { execute: "Execution", admin: "Admin", ticket: "Staff call", keyword: "Keyword", login: "Login" };
+const DEFAULT_ALERT_KINDS: AlertKind[] = ["admin", "execute", "ticket"];
 let allowedKinds = new Set<string>(DEFAULT_ALERT_KINDS);
-const ADMIN_TAB_KINDS = new Set<string>(["death", "execute"]);
+const ADMIN_TAB_KINDS = new Set<string>(["execute"]);
 const FLUSH_MS = 2000;
 const MAX_MESSAGE = 2000;
 const MAX_LINE = 1800;
@@ -36,7 +37,7 @@ interface Target { rest: REST; channelIds: string[] }
 
 let target: Promise<Target | null> | null = null;
 let logDir = "";
-const pending: { line: string; here: boolean }[] = [];
+const pending: { line: string; here: boolean; count: number }[] = [];
 let skipped = 0;
 let flushTimer: NodeJS.Timeout | null = null;
 
@@ -73,13 +74,13 @@ async function flush(): Promise<void> {
   flushTimer = null;
   const batch = pending.splice(0);
   if (skipped) {
-    batch.push({ line: `(${skipped} more alert(s) skipped in the burst, see the server logs)`, here: false });
+    batch.push({ line: `(${skipped} more alert(s) skipped in the burst, see the server logs)`, here: false, count: 1 });
     skipped = 0;
   }
   const t = await targetOf();
   if (!t || !batch.length) return;
   const prefix = batch.some((b) => b.here) ? "@here\n" : "";
-  chunk(batch.map((b) => b.line), MAX_MESSAGE - prefix.length).forEach((text, i) => {
+  chunk(batch.map((b) => (b.count > 1 ? `${b.line} (x${b.count})` : b.line)), MAX_MESSAGE - prefix.length).forEach((text, i) => {
     const content = i === 0 ? prefix + text : text;
     const allowed_mentions = { parse: prefix && i === 0 ? ["everyone"] : [] };
     for (const id of t.channelIds) {
@@ -89,10 +90,12 @@ async function flush(): Promise<void> {
   });
 }
 
-// Raw event-log line, sent as is and unfiltered: callers go through discordAlert
+// Raw event-log line, sent as is and unfiltered: callers go through discordAlert; a repeat inside one batch is counted, not resent
 function postEventLog(line: string, here = false): void {
-  if (pending.length >= MAX_PENDING && !here) skipped++;
-  else pending.push({ line, here });
+  const same = pending.find((p) => p.line === line);
+  if (same) same.count++;
+  else if (pending.length >= MAX_PENDING && !here) skipped++;
+  else pending.push({ line, here, count: 1 });
   flushTimer ??= setTimeout(() => void flush(), FLUSH_MS);
 }
 
@@ -136,7 +139,9 @@ export function deathAlert(mp: Mp, actorId: number, killerId: number, how = "die
   if (markedAt !== undefined && Date.now() - markedAt < DEATH_ALERTED_MS) return;
   if (!isPlayerActor(mp, actorId)) return;
   const killer = killerId && killerId !== actorId ? `, killed by ${actorLabel(mp, killerId)}` : "";
-  discordAlert("death", `${describeActor(mp, actorId)} ${how}${killer}, ${whereOf(mp, actorId)}`);
+  const text = `${describeActor(mp, actorId)} ${how}${killer}, ${whereOf(mp, actorId)}`;
+  console.log(`[death] ${text}`);
+  adminTabLine("Death", text);
 }
 
 interface KeywordState { checkedAt: number; mtimeMs: number; words: { word: string; re: RegExp }[]; cooldownMs: number }
@@ -207,8 +212,8 @@ export class DiscordAlerts implements System {
     const all = (await Settings.get()).allSettings;
     logDir = logDirOf(all);
     const kinds = all?.["discordAlertKinds"];
-    if (Array.isArray(kinds) && kinds.length && kinds.every((k) => typeof k === "string")) allowedKinds = new Set(kinds);
     const unknown = Array.isArray(kinds) ? kinds.filter((k) => !(typeof k === "string" && k in LABELS)) : [];
+    if (Array.isArray(kinds) && kinds.length && kinds.every((k) => typeof k === "string")) allowedKinds = new Set(kinds.filter((k) => !unknown.includes(k)));
     if (unknown.length) console.log(`[discordAlerts] discordAlertKinds names no such kind: ${unknown.join(", ")}`);
     if (!(await targetOf())) console.log("[discordAlerts] no Discord event log channel, game alerts are off");
     else console.log(`[discordAlerts] posting ${[...allowedKinds].join(", ")}`);

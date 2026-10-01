@@ -108,7 +108,7 @@ const serverSettings = [
   { key: 'damageMultFormulaSettings', label: 'Damage formula', type: 'json', group: 'Advanced' },
   { key: 'additionalServerSettings',  label: 'Additional settings (GitHub)', type: 'json', group: 'Advanced' },
   { key: 'discordAuth',   label: 'Discord auth',   type: 'json', group: 'Advanced', help: 'Discord bot integration: { botToken, guilds:[{ guildId, banRoleId, eventLogChannelId }] }. Holds a bot token - keep it secret.' },
-  { key: 'discordAlertKinds', label: 'Discord alert kinds', type: 'json', group: 'Advanced', help: 'Alert kinds posted to the event log channel. Default ["death","execute","ticket"]; add "admin", "keyword" or "login" to restore them. Read at boot.' },
+  { key: 'discordAlertKinds', label: 'Discord alert kinds', type: 'json', group: 'Advanced', help: 'Alert kinds posted to the event log channel. Default ["admin","execute","ticket"]; add "keyword" or "login" to post them. Deaths are never posted. Read at boot.' },
 ]
 
 // backend .env - the Express backend configuration. `secret: true` masks the value.
