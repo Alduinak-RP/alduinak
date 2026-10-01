@@ -236,14 +236,17 @@ export class DurabilitySystem implements System {
 
   private watchWear(ctx: SystemContext, actorId: number, now: number): void {
     const mp = ctx.svr as Mp;
-    const worn = (durableCopies(mp, actorId) || []).filter((c) => c.worn || c.wornLeft);
+    const copies = durableCopies(mp, actorId) || [];
     const before = this.wornSeen.get(actorId);
     const seen = new Map<string, number>();
-    for (const c of worn) {
+    for (const c of copies) {
+      if (!c.worn && !c.wornLeft) continue;
       const slot = `${c.baseId}:${c.wornLeft ? "left" : "right"}`;
       seen.set(slot, c.condition);
       const was = before?.get(slot);
       if (was === undefined || c.condition >= was) continue;
+      // The copy seen last time still lies in the pack as it was, so another copy took the slot and nothing wore
+      if (copies.some((o) => o !== c && o.baseId === c.baseId && sameCondition({ condition: o.condition }, { condition: was }))) continue;
       if (c.condition <= 0) this.noticeBroken(ctx, actorId, c.baseId, now);
       else if (was >= this.config.lowNoticeBelow && c.condition < this.config.lowNoticeBelow) {
         this.notice(mp, userOf(mp, actorId), `Your ${this.baseName(c.baseId)} is badly worn (${conditionPercent(c.condition)}%).`);

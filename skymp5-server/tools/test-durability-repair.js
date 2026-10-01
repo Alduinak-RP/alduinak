@@ -543,6 +543,31 @@ test('wear notices: a worn item falling below the threshold and a break, each on
   assert.deepEqual(w.notices(), ['Your Steel Sword has broken.'], 'a native without the event is covered by the poll')
 })
 
+test('wear notices: drawing a more worn or broken copy of the same item says nothing, wear on that copy does', async () => {
+  const w = withClock(await world(durability(), { inventory: [item(SWORD, 0.8), item(SWORD, 0.2), item(SWORD, 0)], equipment: [item(SWORD, 0.8, { worn: true })] }).boot())
+  const draw = (condition) => { w.props.get(PLAYER).equipment.inv.entries = [item(SWORD, condition, { worn: true })] }
+  const poll = async () => { w.now += 11000; await w.system.updateAsync(w.ctx) }
+  await poll()
+  draw(0.2)
+  await poll()
+  assert.deepEqual(w.packets, [], 'the 80% sword is still in the pack, so the 20% one did not just wear')
+  draw(0)
+  await poll()
+  assert.deepEqual(w.packets, [], 'nor did the broken one just break')
+  draw(0.8)
+  await poll()
+  // The native takes the worn copy out and puts it back with its new condition, at the end of the pack
+  w.props.get(PLAYER).inventory.entries = [item(SWORD, 0.2), item(SWORD, 0), item(SWORD, 0.24)]
+  draw(0.24)
+  await poll()
+  assert.deepEqual(w.take(), [{ userId: USER, customPacketType: 'repairNotice', text: 'Your Steel Sword is badly worn (24%).' }])
+  w.now += 60000
+  w.props.get(PLAYER).inventory.entries = [item(SWORD, 0.2), item(SWORD, 0, { count: 2 })]
+  draw(0)
+  await poll()
+  assert.deepEqual(w.notices(), ['Your Steel Sword has broken.'], 'a break is told with another broken copy in the pack')
+})
+
 ;(async () => {
   ({ DurabilitySystem, repairUnits, applyRepairs, materialsHeld, rowKey, native } = await load())
   Date.now = () => (clock ? clock.now : realNow())
