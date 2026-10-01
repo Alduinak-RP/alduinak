@@ -77,6 +77,16 @@ export class FormView {
 
 
 
+    // A PK body stands in for this dead player, whose own copy goes once no pair or chop scene plays on it here
+    if (Date.now() < (model.bodyLeftUntil ?? 0) && !isCloneMovementSuspended(this.refrId)) {
+      if (this.refrId !== 0) {
+        logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} hidden: a PK body stands in for the dead copy ${this.refrId.toString(16)}`);
+        this.destroy();
+        this.refrId = 0;
+      }
+      return;
+    }
+
     // Dead players stay hidden until they respawn; NPC corpses and the bodies a PK leaves (ff_body) spawn and are killed on the first apply
     if (model.isDead && this.refrId === 0 && model.appearance && (model as Record<string, unknown>)["ff_body"] !== true) {
       return;

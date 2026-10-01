@@ -3,7 +3,8 @@ import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { NEVER_RESPAWN } from "./npcPlacement";
 import { looseEntries } from "./companionSystem";
 import { InventoryEntry, addEntries, isNamedItemBase, readInventory } from "./inventoryExtras";
-import { destroyRef, hex, isAlive } from "./actorUtil";
+import { destroyRef, hex, isAlive, userOf } from "./actorUtil";
+import { sendJson } from "./playerText";
 import { markDeathAlerted } from "./discordAlerts";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -19,8 +20,10 @@ const RECORD_PROP = "private.pkBody";
 const INDEX_PROP = "private.indexed.pkBody";
 const INDEX_ON = "on";
 const CHECK_MS = 2000;
-// The victim's own dead actor is respawned this long after the body is left, so two bodies never lie side by side
+// The victim's own dead actor is respawned this long after the body is left, time for its client to end the killmove and fall
 const VICTIM_RESPAWN_MS = 4000;
+// Clients holding a copy of that actor keep it out of sight this long, past the respawn that takes it from them, so two bodies never lie side by side
+const VICTIM_HIDDEN_MS = VICTIM_RESPAWN_MS + 2000;
 // A body lies until it is emptied, and an emptied one is left this long, so a victim with nothing to loot still leaves one to see
 const EMPTY_GRACE_MS = 60000;
 // A second death of the same victim within this window (a finish off then a soul trap) leaves no second body
@@ -149,8 +152,19 @@ export class BodySystem implements System {
         this.log(`[body] respawning ${hex(victimId)} failed: ${e}`);
       }
     }, VICTIM_RESPAWN_MS);
-    this.log(`[body] ${hex(victimId)} ${why}: body ${hex(cloneId)} holds ${sizeOf(loot)} moved from the victim (${worn.length} shown worn, ${loot.filter(isNamed).length} named); moved: ${itemList(loot)}`);
+    const hiddenOn = this.hideVictim(victimId);
+    this.log(`[body] ${hex(victimId)} ${why}: body ${hex(cloneId)} holds ${sizeOf(loot)} moved from the victim (${worn.length} shown worn, ${loot.filter(isNamed).length} named), their own dead actor hidden on ${hiddenOn} client(s); moved: ${itemList(loot)}`);
     return cloneId;
+  }
+
+  // Tells every other client that has a copy of the victim to drop it (FormView, bodyLeftUntil); the number of clients told
+  private hideVictim(victimId: number): number {
+    const mp = this.mp;
+    let neighbors: unknown[] = [];
+    try { neighbors = mp.get(victimId, "actorNeighbors") ?? []; } catch { /* form vanished */ }
+    const users = neighbors.map((id) => Number(id) >>> 0).filter((id) => id !== victimId).map((id) => userOf(mp, id)).filter((user) => user >= 0);
+    for (const user of users) sendJson(mp, user, { customPacketType: "bodyLeft", victim: victimId, ms: VICTIM_HIDDEN_MS });
+    return users.length;
   }
 
   // A body left for the victim within REPEAT_MS; their own stripped actor respawns VICTIM_RESPAWN_MS after it

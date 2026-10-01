@@ -374,7 +374,21 @@ behaviour-graph events — no ESP required.**
   realm's own outfit is then handed out and put on 5 s after the respawn
   (`AfterlifeSystem.dress`, `afterlifeLooks`). The victim's own dead actor
   is respawned 4 s later (the afterlife routing takes that respawn to the
-  realm), so two bodies never lie side by side. The clone has no profile id,
+  realm): its client is still inside its half of the killmove when the
+  server's kill lands (the victim's own pair end was reported 0.7 s after
+  the kill in the test of 2026-10-01) and then falls, so the respawn waits
+  for that. Nobody else sees that wait: `leaveBody` sends every other client
+  that has a copy of the victim (`actorNeighbors`) the custom packet
+  `bodyLeft` (`victim`, `ms` 6000, the wait plus 2 s), `RemoteServer` marks
+  that copy's model (`bodyLeftUntil`) and `FormView` drops the copy and
+  creates none until the mark runs out, by when the respawn has taken the
+  victim from that client, so two bodies never lie side by side. A copy this
+  client still plays a killmove pair or a chop scene on
+  (`isCloneMovementSuspended`) is dropped when that ends. A client that
+  streams the victim in during the wait creates no dead copy anyway, and a
+  client older than this change keeps showing the stripped corpse for the
+  4 s. The client logs `FormView: <victim> hidden: a PK body stands in for
+  the dead copy <local id>`. The clone has no profile id,
   so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
   never applies `searchPlayerBodyTakeLimit` to it: a body gives up
   everything, except to the victim's own account. The body entry keeps the
@@ -431,7 +445,7 @@ behaviour-graph events — no ESP required.**
   their pack (`failed setting ff_body`). From 2026-09-24 to the r34 test
   gamemode every PK ended that way. Logged as `[body] <victim> <how> by
   <killer>: body <id> holds N item(s) in M stack(s) moved from the victim (W
-  shown worn, K named); moved: <base> x<count>, <base> "<name>" x<count>,
+  shown worn, K named), their own dead actor hidden on C client(s); moved: <base> x<count>, <base> "<name>" x<count>,
   ...`, the record staff restore from (a key or writing carries its name). `skymp5-server/tools/test-bodies.js` runs
   the move, the failures, the worn pieces, the removals and the restarts
   against a stub `mp`, `skymp5-server/tools/test-search-named.js` the PK

@@ -1,6 +1,6 @@
 'use strict'
 
-// bodySystem.ts against a stub mp and a fake clock: the move of the whole pack from victim to body, failures that give the pack back, worn pieces, removal only once emptied, restarts and a skinner taking the pack: node tools/test-bodies.js
+// bodySystem.ts against a stub mp and a fake clock: the move of the whole pack from victim to body, the victim's own dead actor hidden on the clients that have a copy, failures that give the pack back, worn pieces, removal only once emptied, restarts and a skinner taking the pack: node tools/test-bodies.js
 
 const assert  = require('node:assert/strict')
 const fs      = require('fs')
@@ -23,6 +23,11 @@ const source = path.join(__dirname, '..', 'ts', 'systems', 'bodySystem.ts')
 let BodySystem
 
 const VICTIM = 0xff000d66
+// A killer and a bystander with a copy of the victim, and an NPC beside them
+const KILLER = 0xff000011
+const WATCHER = 0xff000012
+const WOLF = 0x23abe
+const USERS = { [VICTIM]: 0, [KILLER]: 1, [WATCHER]: 2 }
 const GOLD = 0xf
 const SWORD = 0x12eb7
 const CUIRASS = 0x12e49
@@ -58,6 +63,7 @@ function stubMp (refuse = {}) {
   const order = []
   const respawned = []
   const destroyed = []
+  const sent = []
   // Every item has one owner at every moment: the victim and the bodies never hold more than the victim had
   const checkOwners = () => {
     const held = {}
@@ -89,8 +95,11 @@ function stubMp (refuse = {}) {
     respawnActor: (id) => { respawned.push(id); props.get(id).isDead = false },
     lookupEspmRecordById: (id) => ({ record: id === STALE ? null : { type: 'MISC' } }),
     findFormsByPropertyValue: (key, value) => [...props.keys()].filter((id) => props.get(id)[key] === value),
+    getUserByActor: (id) => USERS[id] ?? -1,
+    isConnected: () => true,
+    sendCustomPacket: (user, json) => sent.push({ user, ...JSON.parse(json) }),
   }
-  return { mp, props, order, respawned, destroyed, v: props.get(VICTIM) }
+  return { mp, props, order, respawned, destroyed, sent, v: props.get(VICTIM) }
 }
 
 const countOf = (inv, base) => (inv?.entries ?? []).filter((e) => e.baseId === base).reduce((n, e) => n + e.count, 0)
@@ -117,8 +126,11 @@ async function setup (settings = {}, s = stubMp()) {
 
   // The move: the body stands empty, the victim is stripped, then the body takes the whole pack, the named key with its name
   let t = await setup()
+  t.v.actorNeighbors = [VICTIM, KILLER, WOLF, WATCHER]
   const bodyId = t.sys.leaveBody(VICTIM, 'finished off by ff000011')
   assert.ok(bodyId)
+  // Every other client with a copy of the victim drops it until past the respawn, the victim's own client and the NPC hear nothing
+  assert.deepEqual(t.sent, [KILLER, WATCHER].map((id) => ({ user: USERS[id], customPacketType: 'bodyLeft', victim: VICTIM, ms: 6000 })))
   const b = t.props.get(bodyId)
   assert.deepEqual(t.order.filter((o) => /inventory|isDead|locationalData|ff_body/.test(o)),
     ['body.ff_body', 'body.isDead', 'body.locationalData', 'victim.inventory', 'body.inventory'])
@@ -132,7 +144,7 @@ async function setup (settings = {}, s = stubMp()) {
   assert.deepEqual(t.v.equipment.inv.entries, [], 'the victim wears nothing')
   assert.equal(t.v.equipment.leftSpell, SPELL, 'spells stay')
   for (const base of Object.keys(TOTAL)) assert.equal(owned(t, Number(base)), TOTAL[base], `nothing lost of ${Number(base).toString(16)}`)
-  assert.equal(t.lines.at(-1), '[body] ff000d66 finished off by ff000011: body ff100000 holds 123 item(s) in 4 stack(s) moved from the victim (2 shown worn, 1 named); moved: f x120, 12eb7 x1, 12e49 x1, db0e2 "Breezehome key" x1')
+  assert.equal(t.lines.at(-1), '[body] ff000d66 finished off by ff000011: body ff100000 holds 123 item(s) in 4 stack(s) moved from the victim (2 shown worn, 1 named), their own dead actor hidden on 2 client(s); moved: f x120, 12eb7 x1, 12e49 x1, db0e2 "Breezehome key" x1')
   runTimers()
   assert.deepEqual(t.respawned, [VICTIM], 'the stripped victim respawns, the afterlife routes it')
   // Another character of the victim's account is still refused
@@ -141,9 +153,10 @@ async function setup (settings = {}, s = stubMp()) {
   assert.equal(t.sys.refusalFor(ALT, bodyId), 'You cannot loot the body of your own fallen character.')
   t.props.delete(ALT)
 
-  // A second death within 30 s leaves no second body and moves nothing
+  // A second death within 30 s leaves no second body, moves nothing and hides nobody
   assert.equal(t.sys.leaveBody(VICTIM, 'soul trapped by ff000011'), bodyId)
   assert.equal(t.props.size, 2)
+  assert.equal(t.sent.length, 2)
 
   // A take of a worn piece: the body stops showing it
   b.inventory.entries = b.inventory.entries.filter((e) => e.baseId !== CUIRASS)
@@ -210,9 +223,11 @@ async function setup (settings = {}, s = stubMp()) {
   // ff_body unregistered: no body, the victim keeps everything
   fs.rmSync(path.join(dir, 'bodies.json'))
   t = await setup({}, stubMp({ ff_body: true }))
+  t.v.actorNeighbors = [VICTIM, KILLER]
   assert.equal(t.sys.leaveBody(VICTIM, 'executed by ff000011'), 0)
   assert.deepEqual(t.v.inventory, victimPack())
   assert.equal(t.destroyed.length, 1)
+  assert.deepEqual(t.sent, [], 'a death that leaves no body hides nobody')
   assert.match(t.lines.at(-1), /^\[body\] leaving a body for ff000d66 failed setting ff_body \(registered in gamemode\.js\?\), pack kept: Error: Property 'ff_body' doesn't exist$/)
 
   // The body cannot take the pack: the victim gets it back

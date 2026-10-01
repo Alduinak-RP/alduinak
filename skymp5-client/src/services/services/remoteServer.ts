@@ -441,6 +441,7 @@ export class RemoteServer extends ClientListener {
     });
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onBodyLeft(e));
     // The engine loses worn enchantment abilities on scripted equips, inventory changes and stray dispels
     this.controller.on("equip", (e) => this.onPlayerWornChange(e.actor));
     this.controller.on("containerChanged", (e) => this.onPlayerWornChange(e.oldContainer, e.newContainer));
@@ -540,6 +541,20 @@ export class RemoteServer extends ClientListener {
     const pcInv = getPcInventory();
     if (pcInv) {
       setPcInventory(removeSimpleItemsAsManyAsPossible(pcInv, e.baseObj.getFormID(), 1));
+    }
+  }
+
+  // A PK left a body copy of this player: FormView drops their own dead copy for the ms, by when the respawn has taken them away
+  private onBodyLeft(event: ConnectionMessage<CustomPacketMessage>): void {
+    const content = parseCustomPacket(event);
+    if (content?.["customPacketType"] !== "bodyLeft") {
+      return;
+    }
+    const victim = Number(content["victim"]) >>> 0;
+    const ms = Number(content["ms"]);
+    const form = this.worldModel.forms.find((f) => f?.refrId === victim);
+    if (form && ms > 0) {
+      form.bodyLeftUntil = Date.now() + ms;
     }
   }
 

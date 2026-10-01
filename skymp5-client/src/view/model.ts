@@ -12,6 +12,8 @@ export interface FormModel extends CreateActorMessageAdditionalProps, CreateActo
   numMovementChanges?: number;
   numAppearanceChanges?: number;
   isMyClone?: boolean;
+  // Local time until which a PK body stands in for this player's own dead copy
+  bodyLeftUntil?: number;
 }
 
 export interface WorldModel {
