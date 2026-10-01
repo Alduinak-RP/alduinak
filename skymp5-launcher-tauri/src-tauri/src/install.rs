@@ -324,9 +324,13 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
         Err(e) if e.status == Some(404) => return Err(e.server_error.unwrap_or_else(|| "The server has not published a mod manifest yet - ask the server admin to run `npm run compile-manifest` on the backend.".into())),
         Err(e) => return Err(format!("Could not fetch the install manifest: {e}")),
     };
-    let (Some(mods), Some(archives)) = (manifest["mods"].as_array().cloned(), manifest["archives"].as_array().cloned()) else {
+    let (Some(mut mods), Some(archives)) = (manifest["mods"].as_array().cloned(), manifest["archives"].as_array().cloned()) else {
         return Err("Install manifest is missing or malformed - run \"npm run compile-manifest\" on the backend.".into());
     };
+    if direct {
+        let shadowed = mo2::drop_shadowed_files(&mut mods);
+        if shadowed > 0 { log(format!("[install] Mod Manager None: {shadowed} file(s) left to a higher-priority mod with the same path")); }
+    }
     if force {
         // Every Creation file is hashed again and nothing stray in overwrite survives
         let _ = fs::remove_file(game.join(CREATIONS_STAMP));

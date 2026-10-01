@@ -614,6 +614,20 @@ pub fn prune_direct_mods(game_dir: &Path, keep: &HashSet<String>) {
     write_direct_record(game_dir, &record);
 }
 
+// Data holds one copy of a path, so each mod keeps only the files no higher-priority mod (earlier in the manifest) has; returns how many were left out
+pub fn drop_shadowed_files(mods: &mut [Value]) -> usize {
+    let mut owned: HashSet<String> = HashSet::new();
+    let mut dropped = 0;
+    for m in mods.iter_mut() {
+        let Some(files) = m["files"].as_array_mut() else { continue };
+        let before = files.len();
+        files.retain(|f| !owned.contains(&f["to"].as_str().unwrap_or("").to_lowercase()));
+        dropped += before - files.len();
+        owned.extend(files.iter().filter_map(|f| f["to"].as_str()).map(str::to_lowercase));
+    }
+    dropped
+}
+
 // Files a cheat would swap: code, plugins and compiled scripts; hashed on every Play, the rest only sized
 pub fn is_risky(name: &str) -> bool {
     let l = name.to_lowercase();
@@ -1000,5 +1014,29 @@ mod tests {
         rmrf(&old);
         assert_eq!(fs::read(build.join("meshes/lod.nif")).unwrap(), b"lod");
         rmrf(&base);
+    }
+
+    fn directive(to: &str, from: &str, body: &[u8]) -> Value {
+        json!({ "to": to, "archive": "a", "from": from, "sha256": hex::encode(<sha2::Sha256 as sha2::Digest>::digest(body)), "size": body.len() })
+    }
+
+    // Under Mod Manager None a path two mods share is written and checked for the higher-priority one only
+    #[tokio::test]
+    async fn shared_path_stays_with_the_higher_mod() {
+        let game = std::env::temp_dir().join(format!("alduinak-shadow-{}", std::process::id()));
+        let src = game.join("src");
+        fs::create_dir_all(&src).unwrap();
+        for (name, body) in [("high.dds", "high"), ("low.dds", "low lod"), ("only.dds", "only")] { fs::write(src.join(name), body).unwrap(); }
+        let mut mods = vec![
+            json!({ "name": "High", "hash": "h", "files": [directive("textures/LOD.dds", "high.dds", b"high")] }),
+            json!({ "name": "Low", "hash": "l", "files": [directive("textures/lod.dds", "low.dds", b"low lod"), directive("textures/only.dds", "only.dds", b"only")] }),
+        ];
+        assert_eq!(drop_shadowed_files(&mut mods), 1);
+        assert_eq!(mods[1]["files"].as_array().unwrap().len(), 1);
+        let extracted = HashMap::from([("a".to_string(), src.clone())]);
+        for m in &mods { apply_mod_direct(&game, m, &extracted).await.unwrap(); }
+        assert_eq!(fs::read(game.join("Data/textures/lod.dds")).unwrap(), b"high");
+        for m in &mods { assert!(direct_mod_problem(&game, m).await.is_none(), "{}", m["name"]); }
+        rmrf(&game);
     }
 }

@@ -275,7 +275,14 @@ fails it prints a direct download URL - save that zip as
     the changed files come from, so a new client archive no longer pulls the
     DynDOLOD archive again; `install.log` reads `[install] <mod>: keeping N
     of M file(s) ...` and `[install] skipping archive <name> ...`, and Repair
-    Modlist still rebuilds everything from the archives. The settings sync keeps
+    Modlist still rebuilds everything from the archives. With Mod Manager None
+    every mod goes into the one Data folder, so a path two mods share (1333 in
+    the test manifest, 1072 of them Alduinak Client Files over DynDOLOD
+    Resources SE) is written and checked for the higher-priority mod only, as
+    MO2 would show it; before, the lower mod overwrote it and the two mods
+    flagged each other on alternate Plays, re-downloading the DynDOLOD archive
+    each time (`[install] Mod Manager None: N file(s) left to a higher-priority
+    mod with the same path`). The settings sync keeps
     `server-settings.json.prev`; the data sync deletes only unmodified files a
     previous manifest or sync put there, sha256-verifies copies and never
     touches vanilla masters; the purge refuses on an unreadable light flag or
