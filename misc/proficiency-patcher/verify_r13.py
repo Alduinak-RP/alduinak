@@ -428,6 +428,14 @@ def main():
     if out.next_id <= reserved_end:
         problems.append(f'HEDR next object id {out.next_id:#x} is inside or before the reserved blocks ending {reserved_end:#x}')
     log.append(f'reserved blocks {", ".join(f"{a:#x}..{b:#x}" for a, b in reserved) or "none"}; header next object id {inp.next_id:#x} -> {out.next_id:#x}')
+    # A record spec formIds names sits at its pin, and a reserved block holds only records pinned there
+    pins = {e: int(v, 16) for e, v in spec.get('formIds', {}).items()}
+    own = [(edid(r), k[1]) for (t, k), r in ro.items() if k[0] == me]
+    problems.extend(f'own {show((me, i))} {e} is not at its pin {pins[e]:#x}' for e, i in own if pins.get(e, i) != i)
+    in_block = [(e, i) for e, i in own if any(a <= i <= b for a, b in reserved)]
+    problems.extend(f'own {show((me, i))} {e} sits in a reserved block, spec formIds does not pin it there' for e, i in in_block if e not in pins)
+    checked['pinned records at their pins'] = sum(e in pins for e, _ in own)
+    checked['records in the reserved blocks, each pinned there'] = len(in_block)
 
     # Winners before the plugin: the records the output overrides and every actor's state; every record key feeds the form id check
     known = {here << 24 | k[1] for _, k in list(ri) + list(ro) if k[0] == me}

@@ -59,7 +59,10 @@ python misc/proficiency-patcher/patch.py --plugin <copy of the live AlduinakAddi
   `0x041331..0x0413DF`, the r27 racial, survival and rebalance blocks). An unpinned new record steps over them, the
   written header's next object id points past the last one (a Creation Kit save of the plugin then starts past it,
   at `0x0413EF` today, not inside a block), and `verify_r13.py` accepts a new record pinned inside a block below the input's
-  next object id. Raise the block, and the "next free" id above, when a release reserves more.
+  next object id. It also fails a record that sits at another id than its `formIds` pin, and a record inside a block
+  that `formIds` does not pin ("pinned records at their pins: 193", "records in the reserved blocks, each pinned
+  there: 106" on plugin r27, the r27a records rebuilt on r26), so a record meant for a block is pinned in `formIds`,
+  not by an entry's own `formId`. Raise the block, and the "next free" id above, when a release reserves more.
 - `disableActors` copies about 2,650 cell and 27 worldspace records from their winners at run time and masters
   the city mods whose actors it disables. Rerun it whenever a plugin before `AlduinakAdditions.esp` changes
   (a city mod update, a new `DynDOLOD.esm`), or the plugin reverts those cells to the old copy.
