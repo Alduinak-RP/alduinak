@@ -36,7 +36,7 @@ export class ContainersService extends ClientListener {
     private splitByCondition<T extends PutItemMessage | TakeItemMessage>(msg: T, entry: Entry): T[] {
         let names: string[] | undefined;
         try {
-            names = movedNames(this.sp.Game.getPlayer() as Actor, entry, entry.count > 0);
+            names = movedNames(this.sp.Game.getPlayer() as Actor, entry, entry.count > 0, getPcInventory());
         } catch (err) {
             logError(this, "moved copies not read", err);
         }

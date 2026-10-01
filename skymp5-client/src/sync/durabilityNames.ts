@@ -1,6 +1,6 @@
 import * as sp from "skyrimPlatform";
 import { Armor, Form, Game, ObjectReference, Weapon } from "skyrimPlatform";
-import { Entry, Inventory, addItemExOf, extrasEqual, getRawEntries, isBoundItem, localNameOf, sameItem } from "./inventory";
+import { Entry, Inventory, addItemExOf, extrasEqual, getRawEntries, isBoundItem, isLooseEntry, localNameOf, sameItem } from "./inventory";
 import { logToPlatformLog, logTrace } from "../logging";
 
 // A worn weapon or armor piece shows its condition in its name: "Steel Sword (97%)", "(Broken)" at 0
@@ -224,6 +224,10 @@ interface RenameOptions {
   reAdd?: boolean;
 }
 
+// The other extra lists the in-place rename could pick for the same name and worn state
+const twinsOf = (raws: Entry[], raw: Entry): Entry[] =>
+  raws.filter((x) => x !== raw && !isLooseEntry(x) && (x.name || "") === (raw.name || "") && !!x.worn === !!raw.worn && !!x.wornLeft === !!raw.wornLeft);
+
 interface RenameCounts {
   renamed: number;
   reAdded: number;
@@ -241,9 +245,9 @@ const renameCopies = (refr: ObjectReference, form: Form, raws: Entry[], copies: 
     const stack: number[] = [];
     copies.forEach((copy, j) => { if (copy.raw === raw) stack.push(j); });
     const wholeList = stack.every((j) => paired.get(j) === tag);
-    const twins = raws.filter((x) => (x.name || "") === from && !!x.worn === !!raw.worn && !!x.wornLeft === !!raw.wornLeft);
-    // The copies of one extra list take one name together, and a twin list of the same name could take it instead
-    if (rename && wholeList && twins.length === 1) {
+    const loose = isLooseEntry(raw);
+    // The copies of one extra list take one name together, and a twin list may take it instead only when nothing tells the two apart
+    if (rename && !loose && wholeList && twinsOf(raws, raw).every((x) => x.count === raw.count && extrasEqual(x, raw))) {
       let ok = false;
       try {
         ok = rename(refr.getFormID(), raw.baseId, from, toName, !!raw.worn, !!raw.wornLeft) === true;
@@ -257,7 +261,8 @@ const renameCopies = (refr: ObjectReference, form: Form, raws: Entry[], copies: 
         return;
       }
     }
-    if (raw.worn || raw.wornLeft || options.reAdd === false) {
+    // An extra list may hold a favorite mark or a hotkey, which a copy put in again would lose
+    if (!loose || options.reAdd === false) {
       counts.kept++;
       return;
     }
@@ -268,7 +273,7 @@ const renameCopies = (refr: ObjectReference, form: Form, raws: Entry[], copies: 
   });
 };
 
-// Brings the tags of the local copies in line with the server's conditions without touching what is worn
+// Brings the tags of the local copies in line with the server's conditions without touching what is worn or favorited
 export const applyDurabilityNames = (refr: ObjectReference, serverInv: Inventory, options: RenameOptions = {}): void => {
   if (!config.enabled && !tagsWritten) return;
   const byBase = new Map<number, Entry[]>();
@@ -310,11 +315,23 @@ export const applyDurabilityNames = (refr: ObjectReference, serverInv: Inventory
   }
   if (counts.kept && Date.now() - keptLoggedAt > KEPT_LOG_GAP_MS) {
     keptLoggedAt = Date.now();
-    logToPlatformLog("DurabilityNames", `${counts.kept} worn or settling item(s) keep an old condition tag, in-place rename ${nativeRename() ? "refused" : "missing (setInventoryItemName)"}`);
+    logToPlatformLog("DurabilityNames", `${counts.kept} item(s) keep an old condition tag, in-place rename ${nativeRename() ? "refused" : "missing (setInventoryItemName)"}`);
   }
 };
 
 const taggedName = (name: string, tag: string): string => (tag ? `${plainName(name)} ${tag}` : plainName(name));
+
+const takeTag = (tags: string[], tag: string): void => {
+  const at = tags.indexOf(tag);
+  if (at >= 0) tags.splice(at, 1);
+};
+
+// The server's tags of a base that no copy still in the pack shows: those of the copies that just left it
+const lostTags = (refr: ObjectReference, serverInv: Inventory, baseId: number): string[] => {
+  const left = tagsOf(serverInv.entries, baseId);
+  copiesOf(getRawEntries(refr).filter((raw) => raw.baseId === baseId && raw.count > 0)).forEach((copy) => takeTag(left, copy.tag));
+  return left;
+};
 
 // The name a dropped copy goes to the server under, so the server drops the copy of that condition: read off the world reference, else the tag the pack lost
 export const droppedName = (refr: ObjectReference, serverInv: Inventory | undefined, baseId: number, count: number, worldName: string): string | undefined => {
@@ -323,11 +340,7 @@ export const droppedName = (refr: ObjectReference, serverInv: Inventory | undefi
   const seen = splitTag(worldName);
   if (seen.tag) return `${seen.base} ${seen.tag}`;
   if (!serverInv) return undefined;
-  const left = tagsOf(serverInv.entries, baseId);
-  copiesOf(getRawEntries(refr).filter((raw) => raw.baseId === baseId && raw.count > 0)).forEach((copy) => {
-    const at = left.indexOf(copy.tag);
-    if (at >= 0) left.splice(at, 1);
-  });
+  const left = lostTags(refr, serverInv, baseId);
   return left.length === count && left.every((tag) => tag === left[0]) ? taggedName(form.getName(), left[0]) : undefined;
 };
 
@@ -339,16 +352,19 @@ export const noteCopies = (refr: ObjectReference): void => {
 };
 
 // The tagged names of the copies a container move took out of the pack (put) or brought in, one per copy; undefined when they do not add up
-export const movedNames = (refr: ObjectReference, moved: Entry, put: boolean): string[] | undefined => {
+// A put copy without a tag takes the tag the pack lost, as a drop does
+export const movedNames = (refr: ObjectReference, moved: Entry, put: boolean, serverInv?: Inventory): string[] | undefined => {
   const form = Game.getFormEx(moved.baseId);
   if (!config.enabled || !seenCopies || !form || !isDurable(form)) return undefined;
   const same = (copy: Copy) => sameItem(copy.raw, moved);
   const now = copiesOf(getRawEntries(refr).filter((raw) => raw.baseId === moved.baseId && raw.count > 0)).filter(same);
   const before = seenCopies.filter(same);
   const names = (put ? before : now).map((copy) => taggedName(copy.raw.name || form.getName(), copy.tag));
-  (put ? now : before).forEach((copy) => {
-    const at = names.indexOf(taggedName(copy.raw.name || form.getName(), copy.tag));
-    if (at >= 0) names.splice(at, 1);
-  });
-  return names.length === Math.abs(moved.count) ? names : undefined;
+  (put ? now : before).forEach((copy) => takeTag(names, taggedName(copy.raw.name || form.getName(), copy.tag)));
+  if (names.length !== Math.abs(moved.count)) return undefined;
+  const bare = names.filter((name) => !splitTag(name).tag).length;
+  if (!put || !serverInv || !bare) return names;
+  const left = lostTags(refr, serverInv, moved.baseId);
+  names.forEach((name) => takeTag(left, splitTag(name).tag));
+  return left.length === bare && left.every((tag) => tag === left[0]) ? names.map((name) => (splitTag(name).tag ? name : taggedName(name, left[0]))) : names;
 };

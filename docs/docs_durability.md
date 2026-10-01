@@ -109,7 +109,7 @@ packet no name is tagged, cut or renamed and every message is as before.
 | `sync/inventory.ts` | `Extra.condition`. `extrasEqual` does not compare it, so a condition change is no inventory difference and never removes and re-adds a copy. A server copy is added through `addItemEx` under `durabilityName` ("Steel Sword (97%)"); a local copy is removed under the name it carries, the copies whose tag the server no longer holds first |
 | `sync/durabilityNames.ts` | `isDurable` (weapons except staffs and bound ones, light and heavy armor, shields), `tagFor`, `stripTag`, `conditionPercent`, and `applyDurabilityNames`, the rename pass |
 | `services/services/remoteServer.ts` | Runs the rename pass right after the player's `applyInventory`, so never with an inventory, container, favourites, magic or crafting menu open. A base the same apply still adds to or removes from waits for the next one |
-| `services/services/containersService.ts`, `dropItemService.ts` | A put, take or drop of a durable item sends the tagged name of each moved copy, one message per tag, and no `condition`; the native picks the copy by that tag |
+| `services/services/containersService.ts`, `dropItemService.ts` | A put, take or drop of a durable item sends the tagged name of each moved copy, one message per tag, and no `condition`; the native picks the copy by that tag. A dropped or put copy without a tag takes the tag the pack lost: the server's tags of that base minus the tags still in the pack, when exactly the moved count is left and they agree |
 | `services/services/tradeService.ts` | One row per item and shown percent, the percent as a tag beside the temper tag, `condition` in the offer lines as the hint |
 | `services/services/craftedExtrasService.ts` | A reported name has no tag, and the lost line names the copy at the changed copy's tag |
 | `services/services/repairService.ts` | Stores `durabilityConfig`, mirrors `repairMenu` into the `repairMenu` widget and sends `durabilityRepair`, `durabilityImprove` and `durabilityClose` |
@@ -120,13 +120,19 @@ copies that differ only by name). A tag the server still holds stays where it is
 changed one lands on the worn copy; the others take the nearest percent.
 
 - With `setInventoryItemName` in SkyrimPlatform (looked up on every pass, so a dll without the export only
-  loses this path) a copy is renamed in place, worn or not: no unequip, no flicker.
-- Without it an unworn copy is removed and added again under the new name, and a worn copy keeps its old tag
-  until it is unequipped. The pass never takes a worn item off. While a spawn's outfit settles nothing is
-  re-added either.
+  loses this path) a copy is renamed in place, worn or not: no unequip, no flicker. Two extra lists of the
+  same name and worn state are renamed only when nothing else tells them apart (same extras, same count), and
+  a stack of which only some copies changed stays whole and keeps its tag.
+- A copy in an extra list is never removed and added again for its tag: the favorite mark and the 1 to 8
+  hotkey live in that list, the client cannot read them, and a copy put in again would lose both. So without
+  the export such a copy keeps the tag it was added under, worn or not (a piece worn at login has none), until
+  the next login; `/armor` and the repair menu show the true condition.
+- A copy without an extra list (picked up, crafted) holds no favorite mark, so it is removed and added again
+  under its tag, with or without the export. While a spawn's outfit settles nothing is re-added either. The
+  pass never takes a worn item off.
 - `skyrim-platform.log` gets one line when the server switches the tags on ("condition tags on: ..." with
-  whether the in-place rename is there), and at most one a minute while worn copies keep an old tag.
-- After durability went off in a session that wrote tags, the pass takes them out again.
+  whether the in-place rename is there), and at most one a minute while copies keep an old tag.
+- After durability went off in a session that wrote tags, the pass takes them out again, by the same rules.
 
 The quality the engine appends ("(Fine)") comes after the tag and is never part of a name the client writes.
 In the trade window a name on something that never wears is left alone, percent sign or not.

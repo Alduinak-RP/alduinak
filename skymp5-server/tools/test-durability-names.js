@@ -208,22 +208,28 @@ const stubs = {
   pass([{ baseId: SWORD, count: 1, health: 1.1, condition: 0.5 }])
   assert.deepEqual(engine.renames, [[SWORD, 'Steel Sword (97%) (Fine)', 'Steel Sword (50%)', true, false]])
 
-  // A dll without the export: the worn copy keeps its old tag and is never taken off, an unworn copy goes out and in again
+  // A dll without the export: a copy in an extra list keeps its old tag, worn or not, because a copy put in again would lose its favorite mark and hotkey
   reset([{ baseId: SWORD, name: 'Steel Sword (97%)', worn: true }], false)
   pass(worn93)
   assert.deepEqual([engine.calls, names(SWORD)], [[], ['Steel Sword (97%) worn']])
   reset([{ baseId: SWORD, name: 'Steel Sword (97%)' }], false)
   pass(worn93)
-  assert.deepEqual(engine.calls, [[-1, 'Steel Sword (97%)'], [1, 'Steel Sword (93%)']])
-  assert.deepEqual([names(SWORD), engine.misses], [['Steel Sword (93%)'], 0])
-  reset([{ baseId: SWORD, name: 'Steel Sword (97%)' }], false)
-  pass(worn93, { reAdd: false })
-  assert.deepEqual(engine.calls, [], 'not while a spawn outfit settles')
+  assert.deepEqual([engine.calls, names(SWORD)], [[], ['Steel Sword (97%)']], 'an unworn copy is not taken out and put in again')
 
-  // A copy the engine made itself (crafted, picked up) has no name yet: put in again under the tag
+  // A copy the engine made itself (crafted, picked up) has no extra list and so no favorite mark: put in again under the tag, with or without the export
   reset([{ baseId: SWORD, loose: true }], true)
   pass([{ baseId: SWORD, count: 1 }])
-  assert.deepEqual(engine.calls, [[-1, 'Steel Sword'], [1, 'Steel Sword (100%)']])
+  assert.deepEqual([engine.calls, engine.renames], [[[-1, 'Steel Sword'], [1, 'Steel Sword (100%)']], []])
+  reset([{ baseId: SWORD, loose: true }], false)
+  pass(worn93)
+  assert.deepEqual([engine.calls, names(SWORD), engine.misses], [[[-1, 'Steel Sword'], [1, 'Steel Sword (93%)']], ['Steel Sword (93%)'], 0])
+  reset([{ baseId: SWORD, loose: true }], false)
+  pass(worn93, { reAdd: false })
+  assert.deepEqual(engine.calls, [], 'not while a spawn outfit settles')
+  // a favorited plain copy is an extra list without a name: beside it only the loose copy moves
+  reset([{ baseId: SWORD }, { baseId: SWORD, loose: true }], false)
+  pass([{ baseId: SWORD, count: 2 }])
+  assert.deepEqual([engine.calls, engine.lists.map((l) => l.name)], [[[-1, 'Steel Sword'], [1, 'Steel Sword (100%)']], [undefined, 'Steel Sword (100%)']])
 
   // A dressed spawn piece has an extra list without a name, which the export names
   reset([{ baseId: CUIRASS, worn: true }], true)
@@ -251,14 +257,30 @@ const stubs = {
   assert.deepEqual(engine.lists.map((l) => [l.name, l.health]), [['Steel Sword (40%)', 1.2], ['Steel Sword (100%)', undefined]])
   assert.equal(engine.renames.length, 1)
 
-  // Two copies in one stack: only one of them changed, so it leaves the stack instead of the stack being renamed
+  // Two copies in one stack, only one of them changed: the stack is neither renamed as one nor split
   reset([{ baseId: SWORD, name: 'Steel Sword (100%)', count: 2 }], true)
   pass([{ baseId: SWORD, count: 1 }, { baseId: SWORD, count: 1, condition: 0.5 }])
-  assert.deepEqual([engine.renames, names(SWORD)], [[], ['Steel Sword (100%)', 'Steel Sword (50%)']])
+  assert.deepEqual([engine.renames, engine.calls, names(SWORD)], [[], [], ['Steel Sword (100%) x2']])
   // both changed to the same tag: the stack is renamed as one
   reset([{ baseId: SWORD, name: 'Steel Sword (90%)', count: 2 }], true)
   pass([{ baseId: SWORD, count: 2 }])
   assert.deepEqual([engine.calls, names(SWORD)], [[], ['Steel Sword (100%) x2']])
+
+  // Two lists nothing tells apart: a rename may take either, so both repaired or one repaired come out right
+  const twins = [{ baseId: SWORD, name: 'Steel Sword (97%)' }, { baseId: SWORD, name: 'Steel Sword (97%)' }]
+  reset(twins, true)
+  pass([{ baseId: SWORD, count: 2 }])
+  assert.deepEqual([engine.calls, names(SWORD)], [[], ['Steel Sword (100%)', 'Steel Sword (100%)']])
+  reset(twins, true)
+  pass([{ baseId: SWORD, count: 1 }, { baseId: SWORD, count: 1, condition: 0.97 }])
+  assert.deepEqual([engine.calls, names(SWORD)], [[], ['Steel Sword (100%)', 'Steel Sword (97%)']])
+  // twins of one name that differ in tempering or count: the name alone does not say which list, so both keep their tag
+  reset([{ baseId: SWORD, name: 'Steel Sword (97%)' }, { baseId: SWORD, name: 'Steel Sword (97%)', health: 1.2 }], true)
+  pass([{ baseId: SWORD, count: 1 }, { baseId: SWORD, count: 1, health: 1.2, condition: 0.97 }])
+  assert.deepEqual([engine.renames, engine.calls], [[], []])
+  reset([{ baseId: SWORD, name: 'Steel Sword (97%)', count: 2 }, { baseId: SWORD, name: 'Steel Sword (97%)' }], true)
+  pass([{ baseId: SWORD, count: 2, condition: 0.97 }, { baseId: SWORD, count: 1 }])
+  assert.deepEqual([engine.renames, engine.calls], [[], []])
 
   // A base the apply of the same update still changes waits
   reset([{ baseId: SWORD, name: 'Steel Sword (97%)', worn: true }], true)
@@ -292,6 +314,23 @@ const stubs = {
   assert.deepEqual(d.movedNames(player, { baseId: SWORD, count: -2, name: 'Steel Sword (40%)' }, false), ['Steel Sword (12%)', 'Steel Sword (100%)'])
   assert.equal(d.movedNames(player, { baseId: SWORD, count: -1 }, false), undefined, 'a count that does not add up is left to the old message')
   assert.equal(d.movedNames(player, { baseId: GOLD, count: 5 }, true), undefined)
+  // A put copy without a tag (a piece worn since login, no in-place rename) takes the tag the pack lost, as a drop does
+  const armor2 = { entries: [{ baseId: CUIRASS, count: 1, condition: 0.4 }, { baseId: CUIRASS, count: 1 }] }
+  reset([{ baseId: CUIRASS, worn: true }, { baseId: CUIRASS, name: 'Steel Armor (100%)' }], false)
+  d.noteCopies(player)
+  engine.lists.shift()
+  assert.deepEqual(d.movedNames(player, { baseId: CUIRASS, count: 1 }, true, armor2), ['Steel Armor (40%)'], 'the worn-down copy goes, not its pristine twin')
+  assert.deepEqual(d.movedNames(player, { baseId: CUIRASS, count: 1 }, true), ['Steel Armor'], 'no server inventory, no hint')
+  const armor3 = { entries: armor2.entries.concat([{ baseId: CUIRASS, count: 1, condition: 0.7 }]) }
+  assert.deepEqual(d.movedNames(player, { baseId: CUIRASS, count: 1 }, true, armor3), ['Steel Armor'], 'two tags gone for one put: no guess')
+  // a tagged copy put with it accounts for its own tag
+  engine.lists = []
+  assert.deepEqual(d.movedNames(player, { baseId: CUIRASS, count: 2 }, true, armor2), ['Steel Armor (40%)', 'Steel Armor (100%)'])
+  // a taken copy is named as it is
+  reset([{ baseId: CUIRASS, name: 'Steel Armor (100%)' }], false)
+  d.noteCopies(player)
+  engine.lists.push({ baseId: CUIRASS, count: 1 })
+  assert.deepEqual(d.movedNames(player, { baseId: CUIRASS, count: -1 }, false, armor2), ['Steel Armor'])
 
   // A crafted extras report: the tag is not part of the name, and the copy the server claims is the one at the tempered copy's tag
   const report = getCraftReport(

@@ -338,6 +338,11 @@ const squash = (inv: Inventory): Inventory => {
   return { entries: res.filter((x) => x.count !== 0) };
 };
 
+// Raw entries of copies without an extra list, which hold no favorite mark or hotkey either
+const looseEntries = new WeakSet<Entry>();
+
+export const isLooseEntry = (e: Entry): boolean => looseEntries.has(e);
+
 // The copies as the engine holds them: one entry per extra list, then the copies without one
 export const getRawEntries = (refr: ObjectReference): Entry[] => {
   const extraContainerChanges = getExtraContainerChanges(refr.getFormID());
@@ -360,6 +365,7 @@ export const getRawEntries = (refr: ObjectReference): Entry[] => {
     });
 
     if (entry.count !== 0) {
+      looseEntries.add(entry);
       entries.push(entry);
     }
   });

@@ -96,7 +96,7 @@ export class RepairService extends ClientListener {
     if (!setDurabilityConfig(next)) return;
     const config = getDurabilityConfig();
     if (config.enabled) {
-      const rename = canRenameInPlace() ? "worn items are renamed in place" : "setInventoryItemName is not in this SkyrimPlatform, so a worn item's tag is renewed only once it is unequipped";
+      const rename = canRenameInPlace() ? "worn items are renamed in place" : "setInventoryItemName is not in this SkyrimPlatform, so a copy keeps the tag it was added under";
       logToPlatformLog(this, `condition tags on: pristine shown ${config.showAtFull}, broken label ${config.brokenLabel}; ${rename}`);
     } else {
       logTrace(this, `Condition tags off`);
