@@ -877,7 +877,7 @@ html, body {
   word-break: break-word;
 }
 
-#tab-trouble .install-progress { height: 200px; }
+#tab-trouble .install-progress { height: 160px; }
 
 /* Lock badge */
 .badge-locked {

@@ -1055,6 +1055,7 @@ function installLog(msg) {
   installLogLines.push(msg)
   if (installLogLines.length > 300) installLogLines.splice(0, installLogLines.length - 300)
   renderInstallProgress()
+  installProgressEl.scrollIntoView({ block: 'nearest' })
 }
 
 function formatInstallProgress({ phase, file, index, total, skipped }) {
