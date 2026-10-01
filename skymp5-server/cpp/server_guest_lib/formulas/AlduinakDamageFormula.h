@@ -42,6 +42,11 @@ public:
     float naturalDT = 0.f;
     float effectiveDT = 0.f;
     float speedFactor = 1.f;
+    // Damage share the weapon copy keeps at its condition, a broken one never crits
+    float conditionMult = 1.f;
+    bool brokenWeapon = false;
+    // The block was made with a broken shield or weapon
+    bool brokenBlocker = false;
     // Damage as if nothing blocked the hit
     float unblockedDamage = 0.f;
     // What CalculateDamage returned, before the wrappers, poison and the cap
@@ -57,6 +62,9 @@ public:
     // Bit per ItemRows::SlotBucket
     uint8_t buckets = 0;
     int temperStep = 0;
+    // 0 (broken) to 1, 1 while durability is off
+    float condition = 1.f;
+    bool broken = false;
     float dt = 0.f;
   };
 

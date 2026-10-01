@@ -15,6 +15,7 @@
 #include "UpdateGameModeDataMessage.h"
 
 #include "ActionListener.h"
+#include "Durability.h"
 #include "FormCallbacks.h"
 #include "MessageSerializerFactory.h"
 #include "OpenSSLSigner.h"
@@ -478,6 +479,10 @@ void PartOne::HandlePacket(void* partOneInstance, Networking::UserId userId,
       });
 
       this_->serverState.disconnectingUserId = userId;
+      // Pending wear is written before the gamemode sees the player leave
+      if (auto actor = this_->serverState.ActorByUser(userId)) {
+        Durability::Settle(*actor);
+      }
       for (auto& listener : this_->worldState.listeners)
         listener->OnDisconnect(userId);
       return;

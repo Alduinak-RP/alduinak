@@ -1,6 +1,7 @@
 #include "TES5DamageFormula.h"
 
 #include "ConditionsEvaluator.h"
+#include "Durability.h"
 #include "EffectModifiers.h"
 #include "EvaluateTemplate.h"
 #include "HitData.h"
@@ -70,7 +71,8 @@ float TES5DamageFormulaImpl::GetBaseWeaponDamage() const
 float TES5DamageFormulaImpl::CalcWeaponRating() const
 {
   // TODO(#457): take other components into account
-  return GetBaseWeaponDamage();
+  return GetBaseWeaponDamage() *
+    Durability::WornWeaponEffect(aggressor, hitData.source).mult;
 }
 
 // Record fields hold ids relative to the plugin that defines the record
@@ -116,7 +118,8 @@ float TES5DamageFormulaImpl::CalcArmorRatingComponent(
                                        armorData.enchantmentFormId);
     }
 
-    return ac;
+    return ac *
+      Durability::WornArmorEffect(espmProvider, opponentEquipmentEntry);
   }
   return 0;
 }
@@ -172,8 +175,10 @@ float TES5DamageFormulaImpl::CalculateDamage() const
 
   if (hitData.isHitBlocked) {
     // TODO(#460): implement correct block formula
-    damage *= BlockedPassShare(kBlockedHitDamageMult,
-                               GetBlockEffectMult(target, aggressor));
+    // A broken shield or parrying weapon lets at least brokenBlockPass through
+    damage *= std::max(BlockedPassShare(kBlockedHitDamageMult,
+                                        GetBlockEffectMult(target, aggressor)),
+                       Durability::BrokenBlockPass(target));
   }
 
   if (hitData.isSneakAttack) {

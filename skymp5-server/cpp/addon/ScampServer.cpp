@@ -4,6 +4,7 @@
 
 #include "Bot.h"
 #include "ConditionsEvaluator.h"
+#include "Durability.h"
 #include "FormCallbacks.h"
 #include "FormDesc.h"
 #include "GamemodeApi.h"
@@ -147,6 +148,8 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("getHoster", &ScampServer::GetHoster),
       InstanceMethod("getMovementAgeMs", &ScampServer::GetMovementAgeMs),
       InstanceMethod("getCombatStats", &ScampServer::GetCombatStats),
+      InstanceMethod("settleWear", &ScampServer::SettleWear),
+      InstanceMethod("getDurability", &ScampServer::GetDurability),
       InstanceMethod("createBot", &ScampServer::CreateBot),
       InstanceMethod("getUserByActor", &ScampServer::GetUserByActor),
       InstanceMethod("getUserIp", &ScampServer::GetUserIp),
@@ -420,6 +423,31 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
                      resolverOn ? "on" : "off", combatSettings->enabled,
                      combatSettings->durability.enabled,
                      combatSettings->Summary());
+        const auto& durability = combatSettings->durability;
+        if (durability.enabled) {
+          // The tag clients show on a broken copy, read back from the names they describe items with
+          Inventory::SetBrokenLabel(durability.nameTagBrokenLabel);
+          logger->info(
+            "alduinakDamageFormulaSettings: durability is on: worn weapons, "
+            "armor and shields of {} wear on accepted weapon hits (armor "
+            "from {} damage before DT), written when a shown percent moves "
+            "and {} s passed since the last write, after {} s without a "
+            "hit, and on equipment change, drop, put, death, disconnect and "
+            "settleWear; below {} of its condition a copy keeps {} to 1 of "
+            "its damage or DT, a broken weapon deals x{}, broken armor "
+            "gives x{} of its DT, a block with a broken shield or weapon "
+            "lets {} through ('({})' tag)",
+            durability.npcGearWears ? "players and NPCs" : "players",
+            durability.wear.armorMinPreDT, durability.flushMinSeconds,
+            durability.flushCalmSeconds, durability.effect.kneeCondition,
+            durability.effect.effectAtZero, durability.effect.brokenWeaponMult,
+            durability.effect.brokenArmorDT, durability.effect.brokenBlockPass,
+            durability.nameTagBrokenLabel);
+        } else {
+          logger->info("alduinakDamageFormulaSettings: durability.enabled is "
+                       "false, nothing wears and a stored condition changes "
+                       "no hit");
+        }
       }
     }
 
@@ -1087,6 +1115,44 @@ Napi::Value ScampServer::GetCombatStats(const Napi::CallbackInfo& info)
       return info.Env().Null();
     }
     return NapiHelper::ParseJson(info.Env(), formula->GetCombatStats(*actor));
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// settleWear(actorFormId) - writes the actor's pending wear into its inventory copies now; false unless alduinakDamageFormulaSettings.durability.enabled is true and the form is an actor
+Napi::Value ScampServer::SettleWear(const Napi::CallbackInfo& info)
+{
+  try {
+    auto formId = NapiHelper::ExtractUInt32(info[0], "actorFormId");
+    if (!Durability::GetSettings(&partOne->worldState)) {
+      return Napi::Boolean::New(info.Env(), false);
+    }
+    auto& form = partOne->worldState.LookupFormById(formId);
+    MpActor* actor = form ? form->AsActor() : nullptr;
+    return Napi::Boolean::New(info.Env(), actor && Durability::Settle(*actor));
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// getDurability(actorFormId) - every weapon, armor piece and shield copy of the inventory that can wear, with its condition and HP; null unless durability is on and the form is an actor
+Napi::Value ScampServer::GetDurability(const Napi::CallbackInfo& info)
+{
+  try {
+    auto formId = NapiHelper::ExtractUInt32(info[0], "actorFormId");
+    if (!Durability::GetSettings(&partOne->worldState)) {
+      return info.Env().Null();
+    }
+    auto& form = partOne->worldState.LookupFormById(formId);
+    const MpActor* actor = form ? form->AsActor() : nullptr;
+    if (!actor) {
+      return info.Env().Null();
+    }
+    return NapiHelper::ParseJson(info.Env(),
+                                 Durability::GetDurability(*actor));
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }

@@ -1,4 +1,5 @@
 #include "EquipmentBinding.h"
+#include "Durability.h"
 #include "NapiHelper.h"
 #include "UpdateEquipmentMessage.h"
 
@@ -25,6 +26,8 @@ void EquipmentBinding::Set(Napi::Env env, ScampServer& scampServer,
     nlohmann::json j = nlohmann::json::parse(equipmentDump);
     equipment = Equipment::FromJson(j);
   }
+
+  Durability::BindWorn(actor, equipment);
 
   // Clients never apply numChanges 0, so the send always counts as a change
   equipment.numChanges = actor.GetEquipment().numChanges + 1;

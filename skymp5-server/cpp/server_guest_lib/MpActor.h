@@ -21,6 +21,10 @@ namespace HitRules {
 struct CombatState;
 }
 
+namespace Durability {
+struct State;
+}
+
 class MpActor : public MpObjectReference
 {
 public:
@@ -71,6 +75,9 @@ public:
   void SetRaceMenuOpen(bool isOpen);
   void SetAppearance(const Appearance* newAppearance);
   void SetEquipment(const Equipment& newEquipment);
+  // One change form edit for both, then the inventory goes to the owner
+  void SetInventoryAndEquipment(const Inventory& newInventory,
+                                const Equipment& newEquipment);
 
   void SetHealthRespawnPercentage(float percentage);
   void SetMagickaRespawnPercentage(float percentage);
@@ -214,6 +221,9 @@ public:
 
   // Sneak, combat, power attack and shot memory of the rebalance formula, never saved
   HitRules::CombatState& GetCombatState() const noexcept;
+
+  // Wear of the worn gear not yet written into the inventory, never saved
+  Durability::State& GetDurabilityState() const noexcept;
 
 private:
   struct Impl;

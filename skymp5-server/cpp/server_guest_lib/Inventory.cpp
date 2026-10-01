@@ -1,9 +1,11 @@
 #include "Inventory.h"
+#include "ConditionTag.h"
 #include "archives/JsonInputArchive.h"
 #include "archives/JsonOutputArchive.h"
 #include "archives/SimdJsonInputArchive.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 #include <tuple>
@@ -18,6 +20,12 @@ std::unordered_set<uint32_t>& NamedItemBases()
 {
   static std::unordered_set<uint32_t> bases;
   return bases;
+}
+
+std::string& BrokenLabel()
+{
+  static std::string label = "Broken";
+  return label;
 }
 
 bool NearlyEqual(float a, float b)
@@ -124,13 +132,13 @@ bool Inventory::Entry::EqualExceptCount(const Inventory::Entry& other) const
   // nullopt mismatch. Logically it should be the same
   return std::make_tuple(baseId, health, enchantmentId, maxCharge,
                          removeEnchantmentOnUnequip, chargePercent, name, soul,
-                         poisonId, poisonCount, enchantmentEffects,
+                         poisonId, poisonCount, enchantmentEffects, condition,
                          GetWorn()) ==
-    std::make_tuple(other.baseId, other.health, other.enchantmentId,
-                    other.maxCharge, other.removeEnchantmentOnUnequip,
-                    other.chargePercent, other.name, other.soul,
-                    other.poisonId, other.poisonCount,
-                    other.enchantmentEffects, other.GetWorn());
+    std::make_tuple(
+           other.baseId, other.health, other.enchantmentId, other.maxCharge,
+           other.removeEnchantmentOnUnequip, other.chargePercent, other.name,
+           other.soul, other.poisonId, other.poisonCount,
+           other.enchantmentEffects, other.condition, other.GetWorn());
 }
 
 bool Inventory::Entry::SameItemAs(const Entry& other) const
@@ -169,22 +177,24 @@ std::vector<Inventory::Entry> Inventory::FindEntriesFor(const Entry& described,
   }
   uint32_t need = described.count;
 
+  auto take = [&](size_t i) {
+    const uint32_t n = std::min(need, left[i]);
+    left[i] -= n;
+    need -= n;
+    auto same = std::find_if(res.begin(), res.end(), [&](const Entry& r) {
+      return r.EqualExceptCount(entries[i]);
+    });
+    if (same != res.end()) {
+      same->count += n;
+    } else {
+      res.push_back(entries[i]);
+      res.back().count = n;
+    }
+  };
   auto draw = [&](auto&& fits) {
     for (size_t i = 0; i < entries.size() && need > 0; ++i) {
-      if (left[i] == 0 || !fits(entries[i])) {
-        continue;
-      }
-      const uint32_t n = std::min(need, left[i]);
-      left[i] -= n;
-      need -= n;
-      auto same = std::find_if(res.begin(), res.end(), [&](const Entry& r) {
-        return r.EqualExceptCount(entries[i]);
-      });
-      if (same != res.end()) {
-        same->count += n;
-      } else {
-        res.push_back(entries[i]);
-        res.back().count = n;
+      if (left[i] > 0 && fits(entries[i])) {
+        take(i);
       }
     }
   };
@@ -197,6 +207,32 @@ std::vector<Inventory::Entry> Inventory::FindEntriesFor(const Entry& described,
     candidate.SetWorn(Worn::None);
     return candidate.EqualExceptCount(unworn);
   });
+  // Copies that differ in condition: the one the described name's percent tag points at goes first
+  if (const auto tag = ConditionTag::TagPercent(described.name, BrokenLabel());
+      tag && need > 0) {
+    std::vector<size_t> same;
+    bool anyCondition = false;
+    for (size_t i = 0; i < entries.size(); ++i) {
+      if (left[i] > 0 && entries[i].SameItemAs(described)) {
+        same.push_back(i);
+        anyCondition = anyCondition || entries[i].condition.has_value();
+      }
+    }
+    if (anyCondition) {
+      const auto distance = [&](size_t i) {
+        return std::abs(ConditionTag::Percent(entries[i].condition) - *tag);
+      };
+      std::stable_sort(same.begin(), same.end(), [&](size_t a, size_t b) {
+        return distance(a) < distance(b);
+      });
+      for (size_t i : same) {
+        if (need == 0) {
+          break;
+        }
+        take(i);
+      }
+    }
+  }
   draw([&](const Entry& e) { return e.SameItemAs(described); });
   if (described.HasIdentityExtras() && !IsNamedItemBase(described.baseId)) {
     draw([&](const Entry& e) {
@@ -222,6 +258,16 @@ void Inventory::SetNamedItemBases(const std::vector<uint32_t>& baseIds)
 bool Inventory::IsNamedItemBase(uint32_t baseId)
 {
   return baseId == kPropertyKeyBaseId || NamedItemBases().count(baseId) > 0;
+}
+
+void Inventory::SetBrokenLabel(const std::string& label)
+{
+  BrokenLabel() = label;
+}
+
+const std::string& Inventory::GetBrokenLabel()
+{
+  return BrokenLabel();
 }
 
 Inventory& Inventory::AddItem(uint32_t baseId, uint32_t count)

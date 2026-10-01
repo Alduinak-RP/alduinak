@@ -162,6 +162,10 @@ struct CreateActorMessage
       .Serialize("customPropsJsonDumps", customPropsJsonDumps);
 
     CreateActorMessageMainProps::Serialize(archive);
+
+    if (props.inventory) {
+      props.inventory->SerializeConditionTail(archive);
+    }
   }
 
   uint32_t idx = 0;

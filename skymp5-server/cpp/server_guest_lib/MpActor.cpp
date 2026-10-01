@@ -3,6 +3,7 @@
 #include "ActorValues.h"
 #include "ChangeFormGuard.h"
 #include "CropRegeneration.h"
+#include "Durability.h"
 #include "EvaluateTemplate.h"
 #include "FormCallbacks.h"
 #include "GetBaseActorValues.h"
@@ -59,6 +60,7 @@ struct MpActor::Impl
   bool isRespawning = false;
   bool isBlockActive = false;
   HitRules::CombatState combatState;
+  Durability::State durabilityState;
   std::chrono::steady_clock::time_point lastAttributesUpdateTimePoint;
   // Only stamina writes move it, so health hits do not eat stamina regen
   std::chrono::steady_clock::time_point lastStaminaUpdateTimePoint =
@@ -274,6 +276,11 @@ HitRules::CombatState& MpActor::GetCombatState() const noexcept
   return pImpl->combatState;
 }
 
+Durability::State& MpActor::GetDurabilityState() const noexcept
+{
+  return pImpl->durabilityState;
+}
+
 void MpActor::SetRaceMenuOpen(bool isOpen)
 {
   EditChangeForm(
@@ -294,6 +301,16 @@ void MpActor::SetEquipment(const Equipment& newEquipment)
 {
   EditChangeForm(
     [&](MpChangeForm& changeForm) { changeForm.equipment = newEquipment; });
+}
+
+void MpActor::SetInventoryAndEquipment(const Inventory& newInventory,
+                                       const Equipment& newEquipment)
+{
+  EditChangeForm([&](MpChangeForm& changeForm) {
+    changeForm.inv = newInventory;
+    changeForm.equipment = newEquipment;
+  });
+  SendInventoryUpdate();
 }
 
 void MpActor::SetHealthRespawnPercentage(float percentage)
@@ -1646,6 +1663,8 @@ void MpActor::Kill(MpActor* killer, bool shouldTeleport)
 {
   spdlog::trace("MpActor::Kill {:x} - killer is {:x}", GetFormId(),
                 killer ? killer->GetFormId() : 0);
+
+  Durability::OnDeath(*this);
 
   auto& changeForm = ChangeForm();
   const float healthPercentageBeforeDeath =

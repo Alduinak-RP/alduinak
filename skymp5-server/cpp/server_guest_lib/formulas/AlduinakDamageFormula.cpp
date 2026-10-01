@@ -1,6 +1,8 @@
 #include "AlduinakDamageFormula.h"
 
 #include "AlduinakHitRules.h"
+#include "Durability.h"
+#include "DurabilityRules.h"
 #include "HitData.h"
 #include "ItemRowResolver.h"
 #include "MpActor.h"
@@ -134,7 +136,9 @@ nlohmann::json AttackJson(const AlduinakCombatSettings& settings,
     { "powerMult", Num(attack.powerMult) },
     { "sneakMult", Num(attack.sneakMult) },
     { "speedFactor", Num(attack.speedFactor) },
-    { "interval", Num(interval) }
+    { "interval", Num(interval) },
+    { "conditionMult", Num(attack.conditionMult) },
+    { "broken", attack.broken }
   };
 }
 }
@@ -229,6 +233,12 @@ HitMath::Attack AlduinakDamageFormula::GetAttack(const MpActor& aggressor,
     settings, item, RecordSpeed(source, *worldState),
     worn ? WornTemperStep(aggressor, *worn) : 0,
     shoots && !bash ? ShotAmmoDamage(aggressor, source, *worldState) : -1.f);
+  if (settings.durability.enabled && worn) {
+    const auto effect =
+      DurabilityRules::WeaponEffectOf(settings.durability, worn->condition);
+    attack.conditionMult = effect.mult;
+    attack.broken = effect.broken;
+  }
   if (attack.kind == HitMath::AttackKind::None &&
       item.kind != ItemRows::Kind::Staff &&
       item.kind != ItemRows::Kind::Dummy) {
@@ -258,11 +268,17 @@ HitMath::WornDT AlduinakDamageFormula::GetWornDT(
       continue;
     }
     const int step = WornTemperStep(target, entry);
-    worn.Add(settings, item, step);
+    const float conditionMult = settings.durability.enabled
+      ? DurabilityRules::ArmorEffectOf(settings.durability, entry.condition)
+      : 1.f;
+    worn.Add(settings, item, step, conditionMult);
     if (pieces) {
-      pieces->push_back({ entry.baseId, item.kind, item.row, item.buckets,
-                          step,
-                          HitMath::WornDT::PieceDT(settings, item, step) });
+      const bool counts = settings.durability.enabled;
+      pieces->push_back(
+        { entry.baseId, item.kind, item.row, item.buckets, step,
+          counts ? std::clamp(entry.condition.value_or(1.f), 0.f, 1.f) : 1.f,
+          counts && ConditionTag::IsBroken(entry.condition),
+          HitMath::WornDT::PieceDT(settings, item, step, conditionMult) });
     }
   }
   return worn;
@@ -305,6 +321,8 @@ float AlduinakDamageFormula::CalculateDamage(const MpActor& aggressor,
   hit.type = attack.type;
   hit.temperStep = attack.temperStep;
   hit.speedFactor = attack.speedFactor;
+  hit.conditionMult = attack.conditionMult;
+  hit.brokenWeapon = attack.broken;
 
   HitMath::Target defender;
   defender.isPlayer = IsPlayer(target);
@@ -345,8 +363,12 @@ float AlduinakDamageFormula::CalculateDamage(const MpActor& aggressor,
     const float baseShare = npcOnPlayer && worldState
       ? worldState->npcBlockedDamageShare
       : kBlockedHitDamageMult;
-    hit.blockedShare = HitMath::BlockedShare(
-      baseShare, GetBlockEffectMult(target, aggressor));
+    // A broken shield or parrying weapon lets at least brokenBlockPass through
+    const float brokenPass = Durability::BrokenBlockPass(target);
+    hit.brokenBlocker = brokenPass > 0.f;
+    hit.blockedShare =
+      HitMath::BlockedShare(baseShare, GetBlockEffectMult(target, aggressor),
+                            hit.brokenBlocker, brokenPass);
     damage *= hit.blockedShare;
   }
   hit.damage = damage;
@@ -354,7 +376,7 @@ float AlduinakDamageFormula::CalculateDamage(const MpActor& aggressor,
   spdlog::info(
     "AlduinakDamageFormula - {:x} hits {:x} with {:x} ({}{}{}{}, temper "
     "{}):{}{}{}{}{} {} before DT, DT {} worn + {} natural -> {} effective, "
-    "speed x{}, {} unblocked, {} lands{}",
+    "speed x{}, {} unblocked, {} lands{}{}",
     hit.aggressor, hit.target, hit.source, HitMath::AttackKindName(hit.kind),
     hit.row.empty() ? "" : " ", hit.row,
     ItemRows::IsMeleeType(hit.type)
@@ -364,8 +386,15 @@ float AlduinakDamageFormula::CalculateDamage(const MpActor& aggressor,
     hit.power ? " power" : "", hit.sneak ? " sneak" : "",
     hit.bash ? " bash" : "", hit.preDT, hit.wornDT, hit.naturalDT,
     hit.effectiveDT, hit.speedFactor, hit.unblockedDamage, hit.damage,
-    hit.blocked ? fmt::format(" (blocked, share {})", hit.blockedShare)
-                : std::string());
+    hit.blocked ? fmt::format(" (blocked{}, share {})",
+                              hit.brokenBlocker ? " with a broken item" : "",
+                              hit.blockedShare)
+                : std::string(),
+    hit.conditionMult != 1.f
+      ? fmt::format(", the weapon{} deals x{} at its condition",
+                    hit.brokenWeapon ? " is broken and" : "",
+                    hit.conditionMult)
+      : std::string());
 
   lastHit = std::move(hit);
   return damage;
@@ -505,6 +534,8 @@ nlohmann::json AlduinakDamageFormula::GetCombatStats(
                       { "fallback", item.fallback },
                       { "slots", std::move(slots) },
                       { "temperStep", piece.temperStep },
+                      { "condition", Num(piece.condition) },
+                      { "broken", piece.broken },
                       { "dt", Num(piece.dt) },
                       { "countedDT", Num(counted) },
                       { "weight", Num(weight) } });
@@ -531,6 +562,9 @@ nlohmann::json AlduinakDamageFormula::GetCombatStats(
       AttackJson(settings, attack, row,
                  melee >= 0.f ? melee : GetShotInterval(actor, entry.baseId));
     weapon["baseId"] = entry.baseId;
+    weapon["condition"] = settings.durability.enabled
+      ? Num(std::clamp(entry.condition.value_or(1.f), 0.f, 1.f))
+      : 1.0;
     weapon["hand"] = hand == Inventory::Worn::Left ? "left" : "right";
     weapon["item"] = ItemRows::KindName(item.kind);
     weapon["fallback"] = item.fallback;

@@ -13,6 +13,7 @@ struct SetInventoryMessage : public MessageBase<SetInventoryMessage>
   void Serialize(Archive& archive)
   {
     archive.Serialize("t", kMsgType).Serialize("inventory", inventory);
+    inventory.SerializeConditionTail(archive);
   }
 
   Inventory inventory;

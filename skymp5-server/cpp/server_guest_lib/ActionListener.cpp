@@ -1,8 +1,10 @@
 #include "ActionListener.h"
 #include "AnimationSystem.h"
+#include "ConditionTag.h"
 #include "ConditionsEvaluator.h"
 #include "ConsoleCommands.h"
 #include "CropRegeneration.h"
+#include "Durability.h"
 #include "EvaluateTemplate.h"
 #include "Exceptions.h"
 #include "GetBaseActorValues.h"
@@ -680,6 +682,9 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     return;
   }
 
+  // Pending wear belongs to the copies worn until now
+  Durability::Settle(*actor);
+
   bool isAllowed = true;
   const auto actorFormId = actor->GetFormId();
   const Equipment& data = msg.data;
@@ -823,14 +828,33 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
   // Worn items show the extras the server holds, never ones a client made up
   UpdateEquipmentMessage sanitizedMsg = msg;
   bool extrasReplaced = false;
+  const std::string& brokenLabel = Inventory::GetBrokenLabel();
   for (auto& entry : sanitizedMsg.data.inv.entries) {
     if (entry.GetWorn() == Inventory::Worn::None) {
       continue;
     }
     Inventory::Entry one = entry;
     one.count = 1;
+    // A name without a percent tag stands for the copy the slot wears already
+    if (!Inventory::IsNamedItemBase(one.baseId) &&
+        !ConditionTag::TagPercent(one.name, brokenLabel)) {
+      for (const auto& current : actor->GetEquipment().inv.entries) {
+        if (current.baseId == one.baseId && current.condition &&
+            current.GetWorn() == one.GetWorn()) {
+          one.name = one.name.value_or("") + " " +
+            ConditionTag::Tag(current.condition, brokenLabel);
+          break;
+        }
+      }
+    }
     const auto owned = inventory.FindEntriesFor(one);
-    if (owned.empty() || owned[0].SameItemAs(entry)) {
+    // The stored worn entry carries the condition of the server's copy, which the damage formulas read
+    if (owned.empty()) {
+      entry.condition.reset();
+      continue;
+    }
+    if (owned[0].SameItemAs(entry)) {
+      entry.condition = owned[0].condition;
       continue;
     }
     const auto worn = entry.GetWorn();
@@ -870,7 +894,7 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
       actor->SetEquipment(sanitizedMsg.data);
     } else {
       SendToNeighbours(msg.idx, rawMsgData, true);
-      actor->SetEquipment(data);
+      actor->SetEquipment(sanitizedMsg.data);
     }
   } else {
     actor->SendInventoryUpdate();
@@ -1019,6 +1043,7 @@ void ActionListener::OnPutItem(const RawMessageData& rawMsgData,
     static_cast<const Inventory::ExtraData&>(msg);
   entry.SetWorn(Inventory::Worn::None);
 
+  Durability::Settle(*actor);
   const auto owned = actor->GetInventory().FindEntriesFor(entry);
   if (owned.empty()) {
     return ref.PutItem(*actor, entry);
@@ -1091,6 +1116,7 @@ void ActionListener::OnDropItem(const RawMessageData& rawMsgData,
     static_cast<const Inventory::ExtraData&>(msg);
   entry.SetWorn(Inventory::Worn::None);
 
+  Durability::Settle(*ac);
   const auto owned = ac->GetInventory().FindEntriesFor(entry);
   if (owned.empty()) {
     return ac->DropItem(baseId, Inventory::Entry(baseId, msg.count));
@@ -2366,8 +2392,11 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   const float blockMult = npcBlocked && !rebalance
     ? GetBlockEffectMult(targetActor, *aggressor)
     : 1.f;
+  // A broken shield or parrying weapon lets at least brokenBlockPass through
   const float blockedShare = npcBlocked && !rebalance
-    ? BlockedPassShare(partOne.worldState.npcBlockedDamageShare, blockMult)
+    ? std::max(
+        BlockedPassShare(partOne.worldState.npcBlockedDamageShare, blockMult),
+        Durability::BrokenBlockPass(targetActor))
     : 0.f;
   // The formula zeroes a blocked hit, so a leaking one is priced unblocked
   HitData formulaHitData = hitData;
@@ -2509,6 +2538,15 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
                  "{:x} does nothing, {} uses left",
                  targetActor.GetFormId(), aggressor->GetFormId(),
                  *poisoned->poisonId, usesLeft);
+  }
+
+  if (Durability::GetSettings(&partOne.worldState)) {
+    // An accepted hit wears the weapon that dealt it and the gear that took or blocked it
+    Durability::OnWeaponHit(
+      *aggressor, targetActor, hitData,
+      rebalance ? priced.preDT
+                : Durability::RecordDamage(*aggressor, hitData.source),
+      damage);
   }
 
   FireHitDamageEvent("onHitDamage", aggressor, &targetActor, hitData.source,
