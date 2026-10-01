@@ -19,7 +19,7 @@ const compiled = new Module(source)
 compiled.paths = Module._nodeModulePaths(systemsDir)
 compiled._compile(outputFiles[0].text, source)
 const { CombatReadoutSystem, Settings, armorReport, conditionPercent, conditionText, durableCopies, hasDurability, readoutConfig,
-  wornPiecesOf, weaponOf, totalDtOf } = compiled.exports
+  wornPiecesOf, weaponsOf, totalDtOf } = compiled.exports
 
 const PLAYER = 0xff000001
 const CUIRASS = 0x13952
@@ -30,11 +30,34 @@ const SHIELD = 0x13955
 const SWORD = 0x13989
 const DAGGER = 0x13986
 const ROBE = 0x10d671
+const STAFF = 0x29b73
 const NAMES = { [CUIRASS]: 'Steel Armor', [HELMET]: 'Steel Helmet', [GAUNTLETS]: 'Steel Nordic Gauntlets', [BOOTS]: 'Steel Cuffed Boots',
-  [SHIELD]: 'Steel Shield', [SWORD]: 'Steel Sword', [DAGGER]: 'Steel Dagger' }
+  [SHIELD]: 'Steel Shield', [SWORD]: 'Steel Sword', [DAGGER]: 'Steel Dagger', [STAFF]: 'Staff of Flames' }
 const nameOf = (id) => NAMES[id] || `item ${id.toString(16)}`
 
-// The shapes the designs give the two natives
+// getCombatStats as the native builds it (AlduinakDamageFormula::GetCombatStats): one weapons entry per hand, in inventory order
+const attackJson = (kind, type, row, temperStep, baseDamage) => ({ kind, type, row, temperStep, baseDamage,
+  damage: baseDamage * (1 + 0.015 * temperStep), critChance: 0.2, critMult: 1.5, penetration: 0, floor: 0.2, powerMult: 2, sneakMult: 1.5,
+  speedFactor: 1, interval: 0.7 })
+const nativeWeapon = (baseId, hand, type, temperStep, baseDamage) =>
+  ({ ...attackJson('melee', type, `Steel ${type}`, temperStep, baseDamage), baseId, hand, item: 'weapon', fallback: false })
+const nativeStaff = (baseId, hand) => ({ ...attackJson('none', 'none', '', 0, 0), baseId, hand, item: 'staff', fallback: false })
+const nativePiece = (baseId, kind, slots, temperStep, dt, weight) =>
+  ({ baseId, kind, row: 'Steel', class: 'heavy', lightOnHeavy: false, fallback: false, slots, temperStep, dt, countedDT: dt, weight })
+const nativeStats = (weapons, shield = true) => () => ({
+  actorId: PLAYER,
+  isPlayer: true,
+  armorWeight: 35,
+  shieldWeight: shield ? 12 : 0,
+  wornDT: shield ? 6.7455 : 6.0255,
+  naturalDT: 0,
+  pieces: [nativePiece(CUIRASS, 'armor', ['cuirass'], 2, 6.0255, 35), ...(shield ? [nativePiece(SHIELD, 'shield', ['shield'], 0, 0.72, 12)] : [])],
+  weapons,
+  unarmed: attackJson('unarmed', 'unarmed', 'unarmed', 0, 4),
+})
+const FINE_SWORD = nativeWeapon(SWORD, 'right', 'sword', 1, 16.5)
+
+// The shapes the designs gave the two natives before NV3b and NV5 were written
 const steelStats = () => ({
   dt: 14.31,
   armorWeight: 52,
@@ -112,8 +135,8 @@ async function main() {
   await test('the stats readers take the design names and their fallbacks', () => {
     const stats = steelStats()
     assert.equal(wornPiecesOf(stats).length, 5)
-    assert.deepEqual(wornPiecesOf(stats)[0], { baseId: CUIRASS, dt: 8.34, fullDt: 8.34, damage: null, temperStep: 2, condition: null })
-    assert.deepEqual(weaponOf(stats), { baseId: SWORD, dt: null, fullDt: null, damage: 9, temperStep: 1, condition: null })
+    assert.deepEqual(wornPiecesOf(stats)[0], { baseId: CUIRASS, kind: 'armor', left: false, dt: 8.34, fullDt: 8.34, damage: null, temperStep: 2, condition: null })
+    assert.deepEqual(weaponsOf(stats), [{ baseId: SWORD, kind: null, left: false, dt: null, fullDt: null, damage: 9, temperStep: 1, condition: null }])
     assert.equal(totalDtOf(stats), 14.31)
     assert.equal(totalDtOf({ totalDT: 7 }), 7)
     assert.equal(totalDtOf({ wornDT: 6 }), 6)
@@ -122,11 +145,28 @@ async function main() {
     assert.equal(totalDtOf({}), null)
     // A worn piece at 60% of its DT, as NV5 sends it
     assert.deepEqual(wornPiecesOf({ armor: [{ baseId: CUIRASS, dt: 8, effectiveDT: 6.4, temper: 3, condition: 0.2 }] })[0],
-      { baseId: CUIRASS, dt: 6.4, fullDt: 8, damage: null, temperStep: 3, condition: 0.2 })
+      { baseId: CUIRASS, kind: null, left: false, dt: 6.4, fullDt: 8, damage: null, temperStep: 3, condition: 0.2 })
     assert.deepEqual(wornPiecesOf({ pieces: 'none' }), [])
     assert.deepEqual(wornPiecesOf({ pieces: [null, 5, { row: 'Steel' }, { baseId: 0 }] }), [])
-    assert.equal(weaponOf({}), null)
-    assert.equal(weaponOf({ weapon: null }), null)
+    assert.deepEqual(weaponsOf({}), [])
+    assert.deepEqual(weaponsOf({ weapon: null }), [])
+  })
+
+  await test('the stats readers take the native shape: wornDT, pieces and one weapons entry per hand, the right hand first', () => {
+    const stats = nativeStats([nativeWeapon(DAGGER, 'left', 'dagger', 0, 11.055), FINE_SWORD], false)()
+    assert.equal(totalDtOf(stats), 6.0255)
+    assert.deepEqual(wornPiecesOf(stats), [{ baseId: CUIRASS, kind: 'armor', left: false, dt: 6.0255, fullDt: 6.0255, damage: null, temperStep: 2, condition: null }])
+    const held = weaponsOf(stats)
+    assert.deepEqual(held.map((w) => [w.baseId, w.left, w.kind, w.temperStep]), [[SWORD, false, 'melee', 1], [DAGGER, true, 'melee', 0]])
+    assert.ok(Math.abs(held[0].damage - 16.7475) < 1e-9)
+    // The native's array is left as it came
+    assert.equal(stats.weapons[0].baseId, DAGGER)
+    // The array wins over a single object, an empty one is fists, entries that are no weapon are skipped
+    assert.deepEqual(weaponsOf({ weapons: [FINE_SWORD], weapon: { baseId: DAGGER, damage: 5 } }).map((w) => w.baseId), [SWORD])
+    assert.deepEqual(weaponsOf({ weapons: [], weapon: { baseId: DAGGER, damage: 5 } }), [])
+    assert.deepEqual(weaponsOf({ weapons: [null, 7, { hand: 'left' }, { baseId: 0 }] }), [])
+    // No list: the single object is read
+    assert.deepEqual(weaponsOf({ weapons: 'none', weapon: { baseId: DAGGER, damage: 5 } }).map((w) => w.baseId), [DAGGER])
   })
 
   await test('the durability adapter reads copies, and nothing from a missing, throwing or empty native', () => {
@@ -138,15 +178,68 @@ async function main() {
     assert.deepEqual(durableCopies({ getDurability: () => [] }, PLAYER), [])
     const copies = durableCopies(makeMp(null, steelCopies), PLAYER)
     assert.equal(copies.length, 7)
-    assert.deepEqual(copies[0], { baseId: CUIRASS, condition: 0.97, maxHp: 270, worn: true })
+    assert.deepEqual(copies[0], { baseId: CUIRASS, condition: 0.97, maxHp: 270, worn: true, left: false })
     // No condition field is a copy that never wore
-    assert.deepEqual(copies[1], { baseId: HELMET, condition: 1, maxHp: 68, worn: true })
+    assert.deepEqual(copies[1], { baseId: HELMET, condition: 1, maxHp: 68, worn: true, left: false })
     // A shield is worn on the left
-    assert.deepEqual(copies[4], { baseId: SHIELD, condition: 0.5, maxHp: 360, worn: true })
+    assert.deepEqual(copies[4], { baseId: SHIELD, condition: 0.5, maxHp: 360, worn: true, left: true })
     assert.equal(copies[6].worn, false)
     // maxHp wins over hp when the native sends both
     assert.deepEqual(durableCopies({ getDurability: () => ({ items: [{ baseId: SWORD, condition: 0.5, hp: 175, maxHp: 350, worn: true }] }) }, PLAYER),
-      [{ baseId: SWORD, condition: 0.5, maxHp: 350, worn: true }])
+      [{ baseId: SWORD, condition: 0.5, maxHp: 350, worn: true, left: false }])
+  })
+
+  await test('the native shape: the weapon in hand gets its damage and temper line, with and without durability', () => {
+    const stats = nativeStats([FINE_SWORD])
+    const copies = () => [
+      { baseId: CUIRASS, condition: 0.97, hp: 270, worn: true, wornLeft: false },
+      { baseId: SHIELD, condition: 0.5, hp: 360, worn: false, wornLeft: true },
+      { baseId: SWORD, condition: 0.881, hp: 350, worn: true, wornLeft: false },
+    ]
+    assert.deepEqual(armorReport(makeMp(stats, copies), PLAYER, { ...BOTH, wear: false }), [
+      'Armor: DT 6.75 (taken off each weapon hit), weight 35',
+      'Steel Armor: DT 6.03, Superior',
+      'Steel Shield: DT 0.72',
+      'Steel Sword: damage 16.75, Fine',
+    ])
+    assert.deepEqual(armorReport(makeMp(stats, copies), PLAYER, BOTH), [
+      'Armor: DT 6.75 (taken off each weapon hit), weight 35',
+      'Steel Armor: DT 6.03, Superior, 97% (262/270)',
+      'Steel Shield: DT 0.72, 50% (180/360)',
+      'Steel Sword: damage 16.75, Fine, 88% (308/350)',
+    ])
+  })
+
+  await test('the native shape: both hands get a damage line, the right hand first, each with the condition of its own copy', () => {
+    const dual = nativeStats([nativeWeapon(DAGGER, 'left', 'dagger', 2, 11.055), FINE_SWORD], false)
+    assert.deepEqual(armorReport(makeMp(dual, () => [
+      { baseId: DAGGER, condition: 0.6, hp: 350, worn: false, wornLeft: true },
+      { baseId: SWORD, condition: 1, hp: 350, worn: true, wornLeft: false },
+      { baseId: CUIRASS, condition: 1, hp: 270, worn: true, wornLeft: false },
+    ]), PLAYER, BOTH), [
+      'Armor: DT 6.03 (taken off each weapon hit), weight 35',
+      'Steel Armor: DT 6.03, Superior, 100% (270/270)',
+      'Steel Sword: damage 16.75, Fine, 100% (350/350)',
+      'Steel Dagger: damage 11.39, Superior, 60% (210/350)',
+    ])
+    // Two swords of one base: each line takes the copy in its own hand, whatever the order of the copies
+    const twins = nativeStats([nativeWeapon(SWORD, 'left', 'sword', 0, 16.5), FINE_SWORD], false)
+    for (const copies of [
+      [{ baseId: SWORD, condition: 0.3, hp: 350, wornLeft: true }, { baseId: SWORD, condition: 0.9, hp: 350, worn: true }],
+      [{ baseId: SWORD, condition: 0.9, hp: 350, worn: true }, { baseId: SWORD, condition: 0.3, hp: 350, wornLeft: true }],
+    ]) {
+      assert.deepEqual(armorReport(makeMp(twins, () => copies), PLAYER, BOTH).slice(2),
+        ['Steel Sword: damage 16.75, Fine, 90% (315/350)', 'Steel Sword: damage 16.5, 30% (105/350)'])
+    }
+    // A copy list that names no hand still gives each line one copy
+    assert.deepEqual(armorReport(makeMp(twins, () => [{ baseId: SWORD, condition: 0.9, hp: 350, worn: true }, { baseId: SWORD, condition: 0.3, hp: 350, worn: true }]),
+      PLAYER, BOTH).slice(2), ['Steel Sword: damage 16.75, Fine, 90% (315/350)', 'Steel Sword: damage 16.5, 30% (105/350)'])
+  })
+
+  await test('the native shape: a staff has no weapon damage, fists give no weapon line', () => {
+    assert.deepEqual(armorReport(makeMp(nativeStats([nativeStaff(STAFF, 'right')], false), () => []), PLAYER, BOTH).slice(2),
+      ['Staff of Flames: no weapon damage'])
+    assert.equal(armorReport(makeMp(nativeStats([], false), () => []), PLAYER, BOTH).length, 2)
   })
 
   await test('rebalance and durability: DT, temper and condition per worn piece, then the weapon', () => {
@@ -208,7 +301,7 @@ async function main() {
     // Clothing has no DT and no durable copy
     assert.deepEqual(armorReport(makeMp(() => ({ dt: 0, armorWeight: 1, pieces: [{ baseId: ROBE, kind: 'clothing', temperStep: 0, dt: 0 }] }), () => []), PLAYER, BOTH),
       ['Armor: DT 0 (taken off each weapon hit), weight 1', 'item 10d671: DT 0'])
-    // The left hand's dagger is not in the stats, so it follows as a condition line
+    // Stats with the single weapon object: the left hand's dagger is not in them, so it follows as a condition line
     const dual = armorReport(makeMp(() => ({ dt: 0, armorWeight: 0, pieces: [], weapon: { baseId: SWORD, damage: 9, temperStep: 0 } }),
       () => [{ baseId: SWORD, condition: 1, hp: 350, worn: true }, { baseId: DAGGER, condition: 0.6, hp: 350, wornLeft: true }]), PLAYER, BOTH)
     assert.deepEqual(dual, ['You wear no armor: DT 0, every weapon hit lands in full.', 'Steel Sword: damage 9, 100% (350/350)', 'Steel Dagger: 60% (210/350)'])

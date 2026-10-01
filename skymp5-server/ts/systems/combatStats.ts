@@ -32,7 +32,14 @@ export const armorWeightOf = (stats: Record<string, unknown>): number | null => 
 // Names the other fields may carry, the first one present wins
 const TOTAL_DT_FIELDS = ["dt", "totalDT", "wornDT"];
 const PIECE_LIST_FIELDS = ["pieces", "armor", "worn"];
+// The native lists one entry per hand; a single object is read as well
+const WEAPON_LIST_FIELDS = ["weapons"];
 const WEAPON_FIELDS = ["weapon"];
+const KIND_FIELD = "kind";
+const HAND_FIELD = "hand";
+const LEFT_HAND = "left";
+// Kind of a weapon the formula prices no attack for: a staff, a dummy row
+export const NO_ATTACK_KIND = "none";
 const PIECE_DT_NOW_FIELDS = ["effectiveDT", "dt"];
 const PIECE_DT_FULL_FIELDS = ["dt"];
 const TEMPER_FIELDS = ["temperStep", "temper"];
@@ -42,6 +49,10 @@ const CONDITION_FIELDS = ["condition"];
 // A worn armor piece, a shield or the weapon in hand as the stats give it
 export interface GearStats {
   baseId: number;
+  // Armor, shield or attack kind as the stats name it, null when they carry none
+  kind: string | null;
+  // Held in the left hand; false for armor and for stats without a hand
+  left: boolean;
   // DT the piece gives now, null for a weapon
   dt: number | null;
   // DT at full condition, null when the stats carry no separate value
@@ -70,6 +81,8 @@ const gearOf = (entry: unknown): GearStats | null => {
   const condition = numberIn(e, CONDITION_FIELDS);
   return {
     baseId: baseId >>> 0,
+    kind: typeof e[KIND_FIELD] === "string" ? e[KIND_FIELD] as string : null,
+    left: e[HAND_FIELD] === LEFT_HAND,
     dt: numberIn(e, PIECE_DT_NOW_FIELDS),
     fullDt: numberIn(e, PIECE_DT_FULL_FIELDS),
     damage: numberIn(e, DAMAGE_FIELDS),
@@ -84,13 +97,11 @@ export const wornPiecesOf = (stats: Record<string, unknown>): GearStats[] => {
   return (list ?? []).map(gearOf).filter((p): p is GearStats => p !== null);
 };
 
-// The weapon, bow or crossbow in hand, null for fists
-export const weaponOf = (stats: Record<string, unknown>): GearStats | null => {
-  for (const field of WEAPON_FIELDS) {
-    const gear = gearOf(stats[field]);
-    if (gear) return gear;
-  }
-  return null;
+// The weapons, bows, crossbows and staves in hand, the right hand first; empty for fists
+export const weaponsOf = (stats: Record<string, unknown>): GearStats[] => {
+  const list = WEAPON_LIST_FIELDS.map((field) => stats[field]).find(Array.isArray) as unknown[] | undefined;
+  const held = (list ?? WEAPON_FIELDS.map((field) => stats[field])).map(gearOf).filter((w): w is GearStats => w !== null);
+  return held.sort((a, b) => Number(a.left) - Number(b.left));
 };
 
 // DT of everything worn; the sum of the pieces when the stats carry no total

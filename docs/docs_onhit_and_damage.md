@@ -215,8 +215,12 @@ no sound packet, so the notice is text in the System tab only.
 
 **pvp.log.** A player's hit on a player is still one line, `<aggressor> hit <target> for <damage> (source
 <weapon or spell id>)`. With the rebalance on and the new arguments present the line ends with five columns:
-`crit=1 power=0 bash=0 blocked=0 preDT=26.5` (1 or 0 each, then the damage before DT rounded to a tenth). `preDT`
-against the damage shows what the armor took off; a broken sword or a resisted spell shows in the damage itself.
+`crit=1 power=0 bash=0 blocked=0 preDT=26.5` (1 or 0 each, then `preDT` rounded to a tenth). `preDT` is the
+weapon's damage after its temper, a bash and a crit and before the target's DT (`HitMath::PriceHit`). The power or
+sneak multiplier, the speed factor, `playerToNpcMult`, the effect modifiers, the blocked share, poison and the 45
+cap all come after it, so `preDT` minus the damage is what the armor took off only for a plain hit (`power=0`, no
+sneak attack, `blocked=0`, a weapon no faster than its row, no poison, under the cap). A power attack on an
+unarmored player reads about `for 33 ... power=1 ... preDT=16.5`: the damage is above `preDT` and nothing is wrong.
 
 **/armor** (`86_combat_readout.js` and `skymp5-server/ts/systems/combatReadoutSystem.ts`). The chat command lists
 what the player wears and holds, one System tab line each:
@@ -227,18 +231,23 @@ Steel Armor: DT 8.34, Superior, 97% (262/270)
 Steel Helmet: DT 2.03, 100% (68/68)
 Steel Cuffed Boots: DT 1.69, Broken (0/56)
 Steel Shield: DT 0.56, 50% (180/360)
-Steel Sword: damage 9, Fine, 88% (308/350)
+Steel Sword: damage 16.75, Fine, 88% (308/350)
 ```
 
-- The DT, the temper and the weapon line come from the native `getCombatStats(actorId)` and exist while `enabled`
+- The DT, the temper and the weapon lines come from the native `getCombatStats(actorId)` and exist while `enabled`
   is true. A piece below full condition reads `DT 6.4 of 8`. The temper is the quality name of its step (Fine to
   Legendary).
+- The native lists what is held as `weapons`, one entry per hand (`{ baseId, hand: "left" | "right", kind, damage,
+  temperStep, ... }`), and each entry gets a line, the right hand first: a dual wielder reads two damage lines. The
+  damage is the row damage with the temper in it (Steel sword 16.5, Fine x1.015). A staff or another weapon the
+  formula prices no attack for (`kind` `none`) reads `no weapon damage`; fists give no line.
 - The condition comes from the native `getDurability(actorId)` and exists while `durability.enabled` is true: the
   percent of the name tag (rounded down, never 0 above broken), the word of `durability.nameTag.brokenLabel` at 0,
   and the HP of the copy out of its full HP. With durability alone (TES5 damage) the command lists the worn
   durable copies with their condition only.
-- Worn copies the stats do not name (a second weapon) follow as condition lines. An unarmored player reads `You
-  wear no armor: DT 0, every weapon hit lands in full.`
+- A weapon line takes the condition of the copy in its own hand (`wornLeft` of `getDurability`), so two swords of
+  one base keep their own percent. Worn copies the stats do not name follow as condition lines. An unarmored
+  player reads `You wear no armor: DT 0, every weapon hit lands in full.`
 - Staff may name an online player: `/armor <name>`.
 
 `CombatReadoutSystem` registers `globalThis.__alduinakArmorReport(actorId)` at boot only when at least one of the
