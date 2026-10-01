@@ -502,7 +502,9 @@ container loot are off:
 
 The blacksmith, hunter, warrior and the new profession perks ride the marker abilities: each is a magic effect
 with **Perk to Apply**, so the game grants the vanilla perk locally while the
-ability is held and takes it away with the ability. Dual Flurry rank 1 carries
+ability is held and takes it away with the ability (not yet confirmed in game
+for any rank perk; the warrior test at the end of this section checks the
+mechanism). Dual Flurry rank 1 carries
 a condition `HasSpell(Warrior Master) == 0`, so it switches off once rank 2
 arrives. The +25 stamina is a constant Fortify Stamina effect; the server only
 exchanges percentages, so it needs nothing server-side. Quick Shot, Ranger and
@@ -534,7 +536,8 @@ even things out with the weapon and armor balancing") keep to effects the
 player's own client runs, because the server prices every hit itself
 (`TES5DamageFormula`: the weapon's base damage, the target's armour rating read
 from the records, x2 for a power attack, x1.3 for a sneak attack, nothing when
-blocked) and holds no perk data. What a warrior gets therefore works today:
+blocked) and holds no perk data. What a warrior gets therefore runs on the
+client:
 both stances (power attacks with one-handed or two-handed weapons cost 25% less
 stamina, and the server charges no attack stamina of its own without
 SweetPie.esp), Dual Flurry's attack speed, the moves a perk unlocks (Power
@@ -545,7 +548,7 @@ weighs nothing, for the inventory weight and the slowdown the engine gives
 armour; the server checks neither), the stamina pool (+25 a rank to Master,
 +100 at Legendary, +200 in all; the server exchanges percentages) and the
 carry weight (+50 at Master and at Legendary; encumbrance is the client's own,
-and with the Survival carry limit of 150 a warrior's armour and pack matter
+and with r27's Survival carry limit of 150 a warrior's armour and pack matter
 most). Left out: the damage, armour rating, block and critical perks (Armsman,
 Barbarian, Savage Strike, Devastating Blow, Dual Savagery, Juggernaut, Agile
 Defender, Well Fitted, Custom Fit, Matching Set, Shield Wall, Deadly Bash,
@@ -556,9 +559,21 @@ stamina regeneration (Wind Walker), since the server crops a regeneration
 faster than the race's base rate and sends the bar back; and Tower of Strength,
 since a player is staggered on their own client only by a native hit from an
 NPC that client runs or by the server's `stagger` packet, which sets its own
-magnitude. Shield Charge's knock-down and Warmaster's paralysis likewise land
-only on actors the warrior's own client runs. A mage of the same rank holds
-125 to 500 magicka; a warrior holds 25 to 200 stamina more than the race gives.
+magnitude. Shield Charge's knock-down, Warmaster's paralysis and Power Bash's
+stagger likewise land only on actors the warrior's own client runs: a bashed
+player is not staggered (the server sends `stagger` only for a block made
+without stamina), so in PvP a power bash is an ordinary hit. A mage of the same
+rank holds 125 to 500 magicka; a warrior holds 25 to 200 stamina more than the
+race gives.
+
+In game, the proof for every perk an ability grants: a Novice warrior's
+two-handed power attack costs 25% less stamina than a Free character's
+(Champion's Stance), and so does a one-handed one (Fighting Stance, the older
+perk); an Adept bashes with a power attack (Power Bash), and worn light armour
+weighs 0 in the inventory (Unhindered); if the Skills menu opens, Power Bash
+shows as taken in the Block tree. If none of this holds, no rank perk works
+through its ability, while the stamina and carry weight bonuses, plain value
+modifiers, still do.
 
 Over Draw is server-side: a `damageMultConditionalFormulaSettings` rule keyed
 on the Hunter Master marker, bows or crossbows, and a non-player target
