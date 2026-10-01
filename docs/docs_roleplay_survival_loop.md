@@ -320,6 +320,24 @@ behaviour-graph events — no ESP required.**
   the record staff restore from. `skymp5-server/tools/test-bodies.js` runs
   the move, the failures, the worn pieces, the removals and a restart against
   a stub `mp`.
+- **A player's own body**: every death leaves the player's own actor dead
+  where they fell until the engine respawns it after its `spawnDelay`, which
+  the gamemode's `70_admin_loop.js` holds at `respawnSeconds` (15) for every
+  online player (`MpActor::RespawnWithDelay`; the onRespawn hooks then route
+  it to a temple or a realm). Clients that had a copy of the player see the
+  ragdoll for those seconds; one that streams the player in later creates no
+  dead copy (`formView.ts`). Anyone may open the body without a prompt and take
+  `searchPlayerBodyTakeLimit` (2) different items; the take that reaches the
+  limit respawns the player at once, and the respawn keeps everything else
+  (the Player record has no death item). A PK that left a clone has already
+  stripped this actor and respawns it 4 s later; without the `ff_body`
+  registration it keeps the pack for the whole wait like any other death. A
+  hunter may skin the body instead (`docs_roleplay_mastery.md`, Skinning a
+  player's body): Human Flesh and a 10% chance of a Human Heart, nothing of
+  the pack, and from the start of the skinning until the respawn nobody can
+  search the body ("A hunter is skinning this body.", "This body has been
+  skinned. Nothing can be taken from it."). A downed player is alive and is
+  neither searched as a body nor skinned.
 - **No kill cams** (`disableKillCamService.ts`): the engine's kill camera
   (the slow motion arrow or spell follow cam, and the cinematic cut on a
   melee killmove) glitched players who got one with a bow, so every client

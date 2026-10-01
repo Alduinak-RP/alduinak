@@ -87,7 +87,7 @@ export class BodySystem implements System {
   // The clone wears the victim's look and worn gear and takes their pack; the victim keeps only named items (property keys and writings) and respawns shortly after. 0 when no body could be left
   leaveBody(victimId: number, why: string): number {
     const mp = this.mp;
-    const recent = Array.from(this.bodies.values()).find((b) => b.victimId === victimId && Date.now() - b.at < REPEAT_MS);
+    const recent = this.recentBodyOf(victimId);
     if (recent) return recent.id;
     let loc: any, appearance: unknown, equipment: any, inventory: any, profileId = -1;
     try {
@@ -157,6 +157,15 @@ export class BodySystem implements System {
     }, VICTIM_RESPAWN_MS);
     this.log(`[body] ${hex(victimId)} ${why}: body ${hex(cloneId)} holds ${sizeOf(loot)} moved from the victim (${worn.length} shown worn), the victim keeps ${kept.length} named stack(s); moved: ${itemList(loot)}`);
     return cloneId;
+  }
+
+  // A body left for the victim within REPEAT_MS; their own stripped actor respawns VICTIM_RESPAWN_MS after it
+  hasBodyFor(victimId: number): boolean {
+    return !!this.recentBodyOf(victimId);
+  }
+
+  private recentBodyOf(victimId: number): Body | undefined {
+    return Array.from(this.bodies.values()).find((b) => b.victimId === victimId && Date.now() - b.at < REPEAT_MS);
   }
 
   // createActor never streams an actor; setting its location puts it on the grid so nearby clients create it

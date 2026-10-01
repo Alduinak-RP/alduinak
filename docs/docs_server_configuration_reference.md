@@ -1155,6 +1155,10 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 | `huntingButcherChance` | `0.25` | Expert hunter: chance of one extra meat per kind an animal dropped |
 | `huntingMeats` | vanilla and DLC list | Editor ids of what counts as meat for the butcher bonus |
 | `huntingPeltMap` | see `DEFAULT_PELT_MAP` in `huntingSystem.ts` | `{ "<editor id fragment>": "<pelt editor id>" }` replacing the default: the pelt a skinned body gives. The body's own NPC_ editor id is tried first, then the race that supplies its traits, then its template NPC_s (lower-cased); the first fragment found in the earliest name wins |
+| `huntingSkinPlayers` | `"crouch"` | How a hunter with the Hunting Knife skins a dead player's own body while it waits for its respawn (`respawnSeconds`): `"crouch"` crouch and press interact (a plain press searches it), `"interact"` every press skins as on an animal, `"off"` never. A skinned body gives Human Flesh and maybe a Human Heart, never the victim's pack, and cannot be searched by anyone until the respawn. An unknown value logs `[hunting] huntingSkinPlayers ... is not one of crouch, interact, off` and uses `"crouch"`. Read at boot |
+| `huntingHumanFlesh` | `"HumanFlesh"` | Editor id, `"hex:Plugin.esm"` desc or hex id of the item a skinned player's body gives, one each (Skyrim.esm `001016B3`). Not in the load order: players are not skinned (`players not skinned` on the boot line) |
+| `huntingHumanHeart` | `"HumanHeart"` | The same for the item the chance adds (Skyrim.esm `000B18CD`); `""` gives none |
+| `huntingHumanHeartChance` | `0.1` | Chance, 0 to 1, rolled on the server per skinned player body |
 
 ## goldAlertThreshold
 

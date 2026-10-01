@@ -700,11 +700,64 @@ body (an admin- or console-placed animal) is disabled for good (`[hunting] body
 1e9 s `spawnDelay` and the gamemode's death hook (`55_death.js`) gives every
 other killed NPC the same, and plugin-placed NPCs are not loaded while
 `npcEnabled` is false. Only zone animals come back. A pet's body stays
-and gives only its meat; players and companions are never skinned (no
-`ActorTypeAnimal`). A skinner who walks off,
-dies or logs out before the 5 seconds leaves the body skinnable. A hunter without
+and gives only its meat; companions are never skinned (no
+`ActorTypeAnimal`), players only as below. A skinner who walks off,
+dies, goes down, is restrained or logs out before the 5 seconds leaves the body skinnable. A hunter without
 the knife is told "A hunting knife would take its pelt." and the body opens.
 Non-hunters just search. The kneel's wait, checks and fallbacks come with the client build.
+
+#### Skinning a player's body
+
+A player character who dies lies where they fell until the engine respawns
+them after `respawnSeconds` (15 s; `docs_roleplay_survival_loop.md` section 8,
+"A player's own body"). During that wait a hunter may skin the body instead of
+searching it (`huntingSkinPlayers`, default `crouch`): a hunter of any rank who
+holds the Hunting Knife crouches and presses the interact key on the body. The
+search request the client sends for any body reaches `HuntingSystem.trySkin`
+through `SearchSystem.bodyAction` as for an animal, so no client change is
+involved. A plain press opens the search as before, and a hunter carrying the
+knife is told "Crouch and interact to skin the body instead."; `interact` makes
+every press skin, as on an animal, and `off` turns it off. The skinning is the
+animal one: the same 5 s kneel (`actionLock` `IdleKneelingEnter`), the same
+refusals ("A hunting knife would skin the body.", "You are too tired to skin
+it. Rest a while."), half a kill of fatigue by hunter rank and hunter hours.
+Then the skinner gets one Human Flesh (`huntingHumanFlesh`, Skyrim.esm
+`HumanFlesh` `001016B3`) and, when the server's roll is under
+`huntingHumanHeartChance` (0.1), one Human Heart (`huntingHumanHeart`, Skyrim.esm
+`HumanHeart` `000B18CD`); no plugin in the load order overrides either record.
+The butcher's eye does not apply. Nothing of the victim's pack moves: the body
+stays and keeps it, and from the start of the skinning until the respawn every
+search of it is refused for everyone through `SearchSystem.bodyRefusal` ("A
+hunter is skinning this body.", then "This body has been skinned. Nothing can
+be taken from it."), so the rest of that death's loot is out of reach. The
+victim reads "Your body was skinned by a hunter. Nothing was taken from your
+pack." and respawns with everything as after any death.
+
+A body is skinned once per death: the marks live in memory and the respawn
+(`onRespawn`) clears them, so the next death is a fresh body. A second hunter
+is refused through the same search refusal, and a body someone is searching
+cannot be skinned ("... is already being searched."). If the victim respawns
+during the 5 s, the skinner is stood up (an `actionLock` of 0 s) and told "The
+body is gone before you could finish."; a skinner who goes offline, dies, goes
+down, is restrained or ends up out of reach leaves the body skinnable again.
+Only the player's own actor is skinned: a downed player is alive, so neither
+the client (it opens the X menu on a living player) nor the server offers it;
+the clone a PK leaves (no profile id) only opens for search, and the stripped
+actor of a PK victim, which respawns 4 s after its clone is left, is passed
+over (`BodySystem.hasBodyFor`). Without the `ff_body` registration no clone is
+left and a PK victim's own actor keeps the pack for the whole wait, so it is
+skinned like any other death; the afterlife routing still takes the respawn
+to the realm. Staff and admin modes change nothing on either side: skinning
+takes nothing from a victim, and god and ghost mode never die from damage.
+
+Log lines: `[hunting] <skinner> skins the body of player <victim> (profile
+<id>)`, `[hunting] <skinner> skinned the body of player <victim> (profile
+<id>): 1016b3 x1, heart b18cd|no heart (10% chance), nothing of the pack
+taken`, `[hunting] <skinner> stopped skinning the body of player <victim>:
+offline|dead|downed|restrained|out of reach|they respawned|the body is gone`,
+and the boot line ends `players skinned on crouch for 1016b3 and the heart
+b18cd at 10%` (`players not skinned` when off or when the flesh is not in the
+load order). The test: `node skymp5-server/tools/test-player-skinning.js`.
 
 ---
 
