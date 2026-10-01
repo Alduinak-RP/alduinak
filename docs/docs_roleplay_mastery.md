@@ -514,20 +514,39 @@ Graph Variable entry point runs from the graph setup alone), so a perk an
 ability grants later counts only after the next 3D rebuild: check Quick Shot
 and Ranger in game. Block Runner's `bPerkShieldCharge` is kept by the client
 (`sneakBlockSpeedService.ts`): true while the player holds the perk and false
-while sneaking. Its block state uses `NPC_Blocking_ShieldCharge_MT` (run 370),
-which also replaces the sneak movement type (run 222), so a Block Runner ran
-crouched and blocking faster than crouched alone; without the perk a sneak
-block runs at `NPC_Blocking_MT`'s 81. The client checks on every sneak change
-and once a second. This covers a crouch first and a block after it. Not yet
-proven in game: `1hm_behavior.hkx` uses `bPerkShieldCharge` in no transition
-condition, so the graph most likely picks the block state once, when the
-block starts; a block raised standing and kept up through the crouch may then
-keep the 370, and a block raised crouched and kept up after standing may stay
-at 81, until the block is raised again. A sneak block with movement logs
-`SneakBlockSpeedService: sneak block top speed <n> at SpeedMult <m>,
-bPerkShieldCharge false, block raised before the crouch true|false (...)`
-when it ends; a top speed above 222 x SpeedMult / 100 with `true` there shows
-the block-first case is still open. A change of the perk logs
+while sneaking, checked on every sneak change and once a second.
+
+**A crouched block is never faster than crouching.** The behaviour graph's
+`iState` picks the movement type, and a block state outranks the sneak state:
+`BlockDefault_iStateGen` sets 4 (`NPC_Blocking_MT`) at priority 15 and
+`BlockShieldCharge_iStateGen` sets 17 (`NPC_Blocking_ShieldCharge_MT`) at
+priority 16, against the sneak state's 2 (`NPC_Sneaking_MT`) at priority 12.
+Bethesda gave the drawn bow a sneak state of its own (priority 22) and the
+block none, so a sneak block moves like a standing one. At SpeedMult 100
+(Skyrim.esm, no plugin in the load order overrides a MOVT):
+
+| Movement type | walk forward, sideways, back | run forward, sideways, back |
+|---|---|---|
+| `NPC_Sneaking_MT` | 47.2, 41.44, 43.38 | 222, 200, 150 |
+| `NPC_Blocking_MT` | 81, 81, 71 | 81, 81, 71 |
+| `NPC_Blocking_ShieldCharge_MT` | 81, 81, 71 | 370, 370, 205.25 |
+
+So with the walk toggle on, raising the shield took a crouched walk from 47 to
+81 for everyone, and a Block Runner whose block started standing
+(`BlockBehavior` reads `bPerkShieldCharge` as its start state, once, when the
+block starts) kept the 370 through the crouch. While the player sneaks with a
+block up, the client reads `iState` and the run flag every frame and damages
+SpeedMult by the share that brings the block's movement type down to the sneak
+speeds in every direction (x0.51 for a walk, x0.54 for a Block Runner run,
+nothing for a run in `NPC_Blocking_MT`, which is already slower than a sneak
+run), restores it when the block or the crouch ends, and re-reads the movement
+speed both times. A crouched block walked forward is therefore a little slower
+than a crouched walk (41 against 47). The cut follows a SpeedMult that changes
+under it (checked once a second). When a sneak block with movement ends the
+client logs `SneakBlockSpeedService: sneak block top speed <n>: iState <i>,
+walking|running, SpeedMult <held> of <full> (...)`, the graph's `Speed` at its
+highest; it should not pass the sneak speed of the same mode x full SpeedMult /
+100 (x the character's height). A change of the perk logs
 `SneakBlockSpeedService: bPerkShieldCharge true|false: Block Runner held|not
 held, sneaking <bool>`.
 
