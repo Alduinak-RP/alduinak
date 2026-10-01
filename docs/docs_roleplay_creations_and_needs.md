@@ -388,7 +388,11 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
 **HUD:** as in vanilla Survival, the penalty shows as a red segment at the end of the stamina bar (hunger) and the
 magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. The magicka bar is the
 only fatigue display: the `FATIGUE <fatigue>%` line above it (`features/fatigueReadout`, widget id 39) was removed in
-r31 (K1), and `needsState` still carries `fatigue` and `fatigueStageName`, which the client no longer reads. While the
+r31 (K1), and `needsState` still carries `fatigue` and `fatigueStageName`, which the client no longer reads. The red
+end is the stage 2 penalty share, `(exhaustion - 159) / 801`, so the first sixth of the bar spent (160 of 960) shows
+nothing: a Novice crafter (1/12 a craft) sees no red end for 2 crafts and then 10%, an Adept (1/24) for 4 and then 5%,
+an Expert (1/36) for 6 and then 3.5%, a Master or Legendary (1/48) for 8 and then 2.6%, twice as many at the
+half-cost benches, while 10 minutes online refill 16.7%; only a Free character (1/3) sees it from the first craft. While the
 Crafting Menu is open the magicka bar shows on the stamina bar's side, above the menu's bottom bar (`docs_roleplay_frostfall_client.md`, Vanilla
 menus). `needsService.ts` writes the share into the
 Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
@@ -519,6 +523,9 @@ None of these has been run yet.
 - No fatigue readout: with a rested character, mine one vein or craft once; no `FATIGUE <n>%` line shows above the
   magicka bar, and the bar stays full with no red end (a mage's full magicka reads full). From stage 2 the red end
   grows by the penalty share, not the fatigue spent.
+- Ranked crafter: a Novice blacksmith at a forge from a rested bar sees no red end after the first and second craft
+  (8.3% each, still below stage 2), about 10% after the third and 20% after the fourth; the `NeedsService: survival hud`
+  line stays at `exhaustion=0` through the first two and then reads `exhaustion=10` and `exhaustion=20`.
 - Crafting at a forge as a Free (non-blacksmith) character costs 33.2%; from a full bar the third craft closes the menu
   with the "too tired" notice and all three items stay. A Novice blacksmith makes six. A click that slips in before the
   close is refused: the refused item must be absent and its inputs present. Ten minutes online refill 16.7%.
