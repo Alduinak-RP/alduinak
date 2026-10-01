@@ -1542,6 +1542,15 @@ static class Steps
             ctx.GetOrAddAsOverride(c.Mod).Time = time;
             c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): time {from} -> {time}");
         }
+        foreach (var w in Entries(o["weapons"]))
+        {
+            var key = FormKey.Factory(w["item"]!.GetValue<string>());
+            if (!cache.TryResolveContext<IWeapon, IWeaponGetter>(key, out var ctx) || ctx.Record.Data == null) { c.Error($"overrides: weapon {key} not found"); continue; }
+            var animation = Enum.Parse<WeaponAnimationType>(w["animation"]!.GetValue<string>());
+            var from = ctx.Record.Data.AnimationType;
+            ctx.GetOrAddAsOverride(c.Mod).Data!.AnimationType = animation;
+            c.Note($"Override {c.EdidOf(key)} ({key}, from {ctx.ModKey}): animation {from} -> {animation}");
+        }
         foreach (var mv in Entries(o["moves"]))
             MoveReference(c, mv, "overrides");
         foreach (var f in Entries(o["flags"]))

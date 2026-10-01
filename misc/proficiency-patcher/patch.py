@@ -115,7 +115,7 @@ def spec_overrides(spec):
     named = {('RACE', r.lower()) for r in s.get('races', {}).get('races', [])} | {('HDPT', p.lower()) for h in s.get('headParts', []) for p in h['parts']}
     named |= {('LVLI', e['list'].lower()) for e in s.get('leveledItems', [])}
     named |= {('NPC_', n.lower()) for e in s.get('leveledItems', []) + s.get('npcInventories', []) for n in e.get('npcs', [])}
-    # The overrides section: items, recipes, foods, quests, globals, lights, moved and reflagged references by form key, own placed references by editor id
+    # The overrides section: items, recipes, foods, quests, globals, lights, weapons, moved and reflagged references by form key, own placed references by editor id
     o = s.get('overrides', {})
     keyed = {('MISC', m['item'].split(':', 1)[1].lower(), int(m['item'].split(':', 1)[0], 16)) for m in o.get('misc', [])}
     keyed |= {('COBJ', r['recipe'].split(':', 1)[1].lower(), int(r['recipe'].split(':', 1)[0], 16)) for r in o.get('recipes', [])}
@@ -123,6 +123,7 @@ def spec_overrides(spec):
     keyed |= {('QUST', q['quest'].split(':', 1)[1].lower(), int(q['quest'].split(':', 1)[0], 16)) for q in o.get('quests', [])}
     keyed |= {('GLOB', g['global'].split(':', 1)[1].lower(), int(g['global'].split(':', 1)[0], 16)) for g in o.get('globals', [])}
     keyed |= {('LIGH', x['item'].split(':', 1)[1].lower(), int(x['item'].split(':', 1)[0], 16)) for x in o.get('lights', [])}
+    keyed |= {('WEAP', w['item'].split(':', 1)[1].lower(), int(w['item'].split(':', 1)[0], 16)) for w in o.get('weapons', [])}
     keyed |= {('REFR', m['ref'].split(':', 1)[1].lower(), int(m['ref'].split(':', 1)[0], 16)) for m in o.get('moves', [])}
     keyed |= {(t, f['ref'].split(':', 1)[1].lower(), int(f['ref'].split(':', 1)[0], 16)) for f in o.get('flags', []) if 'ref' in f for t in ('REFR', 'PHZD')}
     keyed |= {('ARMO', f['item'].split(':', 1)[1].lower(), int(f['item'].split(':', 1)[0], 16)) for f in o.get('flags', []) if 'item' in f}
