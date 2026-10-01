@@ -4,6 +4,8 @@
 #include "TES5DamageFormula.h"
 #include <cstdint>
 #include <memory>
+#include <nlohmann/json_fwd.hpp>
+#include <optional>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -87,6 +89,21 @@ public:
   // total capped at playerHitCap for a player target
   [[nodiscard]] float CapHit(const MpActor& target, float total) const;
 
+  // Seconds the rate limit asks between two melee hits with the source, below 0 where the record's own limit stays
+  [[nodiscard]] float GetHitInterval(const MpActor& aggressor, uint32_t source,
+                                     bool bash) const;
+
+  // Seconds the bow or crossbow needs between two shots, 0 for anything else
+  [[nodiscard]] float GetShotInterval(const MpActor& shooter,
+                                      uint32_t weaponId,
+                                      bool* quickShot = nullptr) const;
+
+  // A Hunter of Adept rank or above draws faster
+  [[nodiscard]] bool HasQuickShot(const MpActor& actor) const;
+
+  // Worn armor weight, DT per worn piece, the weapons in hand and the fists, for getCombatStats
+  [[nodiscard]] nlohmann::json GetCombatStats(const MpActor& actor) const;
+
   // Fixes the crit rolls, for tests
   void Seed(uint32_t seed) const;
 
@@ -104,5 +121,7 @@ private:
   TES5DamageFormula spellFormula;
   mutable std::mt19937 rng;
   mutable std::unordered_map<uint32_t, RaceInfo> races;
+  // Hunter rank markers that carry QuickShot, read from the load order on first use
+  mutable std::optional<std::vector<uint32_t>> quickShotMarkers;
   mutable LastHit lastHit;
 };

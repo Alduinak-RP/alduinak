@@ -146,6 +146,7 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("setHoster", &ScampServer::SetHoster),
       InstanceMethod("getHoster", &ScampServer::GetHoster),
       InstanceMethod("getMovementAgeMs", &ScampServer::GetMovementAgeMs),
+      InstanceMethod("getCombatStats", &ScampServer::GetCombatStats),
       InstanceMethod("createBot", &ScampServer::CreateBot),
       InstanceMethod("getUserByActor", &ScampServer::GetUserByActor),
       InstanceMethod("getUserIp", &ScampServer::GetUserIp),
@@ -562,6 +563,21 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
         "player hits capped at {}, health snap at {}); spells stay TES5 with "
         "the same cap",
         combatSettings->playerHitCap, combatSettings->healthSnap);
+      logger->info(
+        "alduinakDamageFormulaSettings: hit rules: melee and fists at most "
+        "one hit per {} x the swing of their type, a sneak attack after {} s "
+        "of sneaking and on '{}' targets after {} s without a hit, a "
+        "player's power attack needs a power attack start within {} s and {} "
+        "s after the last one ({}), poison loses the worn DT but keeps {} of "
+        "itself and does nothing on a blocked hit, shots faster than the "
+        "draw are logged",
+        combatSettings->rateLimitFactor, combatSettings->sneakMinSneakSeconds,
+        combatSettings->sneakCalmRuleTargets,
+        combatSettings->sneakTargetCalmSeconds,
+        combatSettings->powerEventWindowSeconds,
+        combatSettings->powerMinIntervalSeconds,
+        combatSettings->powerLogOnly ? "log only" : "enforced",
+        combatSettings->poisonFloor);
     } else {
       formula = std::make_unique<TES5DamageFormula>();
       if (combatSettings) {
@@ -1050,6 +1066,27 @@ Napi::Value ScampServer::GetMovementAgeMs(const Napi::CallbackInfo& info)
         .count();
     return Napi::Number::New(info.Env(),
                              static_cast<double>(std::max<int64_t>(ageMs, 0)));
+  } catch (std::exception& e) {
+    throw Napi::Error::New(info.Env(), (std::string)e.what());
+  }
+  return info.Env().Undefined();
+}
+
+// getCombatStats(actorFormId) - worn armor weight, DT per worn piece, the weapons in hand and the fists as the rebalance formula prices them; null unless alduinakDamageFormulaSettings.enabled is true and the form is an actor
+Napi::Value ScampServer::GetCombatStats(const Napi::CallbackInfo& info)
+{
+  try {
+    auto formId = NapiHelper::ExtractUInt32(info[0], "actorFormId");
+    const auto* formula = partOne->worldState.alduinakDamageFormula;
+    if (!formula) {
+      return info.Env().Null();
+    }
+    auto& form = partOne->worldState.LookupFormById(formId);
+    const MpActor* actor = form ? form->AsActor() : nullptr;
+    if (!actor) {
+      return info.Env().Null();
+    }
+    return NapiHelper::ParseJson(info.Env(), formula->GetCombatStats(*actor));
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }

@@ -19,6 +19,7 @@
 #include "gamemode_events/UpdateAppearanceAttemptEvent.h"
 #include "gamemode_events/UpdateEquipmentAttemptEvent.h"
 #include "formulas/AlduinakDamageFormula.h"
+#include "formulas/AlduinakHitRules.h"
 #include "formulas/EffectModifiers.h"
 #include "formulas/TES5DamageFormula.h"
 #include "script_objects/EspmGameObject.h"
@@ -532,6 +533,10 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
       AnimationVariableBool::kVariable_IsBlocking, msg.data.isBlocking);
     actor->SetAnimationVariableBool(
       AnimationVariableBool::kVariable_IsSneaking, msg.data.isSneaking);
+    if (partOne.worldState.alduinakDamageFormula) {
+      HitRules::NoteSneaking(actor->GetCombatState(), msg.data.isSneaking,
+                             HitRules::Clock::now());
+    }
 
     if (actor->GetBlockCount() == 5) {
       actor->SetIsBlockActive(false);
@@ -1124,6 +1129,26 @@ void ActionListener::OnPlayerBowShot(const RawMessageData& rawMsgData,
   }
 
   ac->RemoveItem(msg.ammoId, 1, nullptr);
+
+  if (const auto* rebalance = partOne.worldState.alduinakDamageFormula) {
+    // The hit this shot lands is priced with this arrow, a shot faster than the draw is only logged
+    const auto now = HitRules::Clock::now();
+    auto& combat = ac->GetCombatState();
+    bool quickShot = false;
+    const float interval =
+      rebalance->GetShotInterval(*ac, msg.weaponId, &quickShot);
+    if (interval > 0.f && combat.lastShotAt) {
+      const float passed = HitRules::SecondsBetween(*combat.lastShotAt, now);
+      if (passed < interval) {
+        spdlog::info("OnPlayerBowShot - {:x} shot {:x} with {:x} {} s after "
+                     "its last shot, faster than the {} s its row allows "
+                     "(QuickShot {}, log only)",
+                     ac->GetFormId(), msg.ammoId, msg.weaponId, passed,
+                     interval, quickShot ? "yes" : "no");
+      }
+    }
+    HitRules::NoteShot(combat, msg.weaponId, msg.ammoId, now);
+  }
 }
 
 void ActionListener::OnFinishSpSnippet(const RawMessageData& rawMsgData,
@@ -2027,7 +2052,9 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   float damage =
     partOne.CalculateDamage(*aggressor, *targetActorPtr, spellCastData);
   damage = damage <= 0.f ? 0.f : damage;
-  if (const auto* rebalance = partOne.worldState.alduinakDamageFormula) {
+  const AlduinakDamageFormula* rebalance =
+    partOne.worldState.alduinakDamageFormula;
+  if (rebalance) {
     // Wrappers included, one spell never takes more than playerHitCap from a player
     const float capped = rebalance->CapHit(*targetActorPtr, damage);
     if (capped < damage) {
@@ -2042,6 +2069,8 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   const bool wardBlocked = IsWardBlocking(*aggressor, *targetActorPtr);
   // A fully blocked attack still asks the gamemode, so god mode and companions see it
   const bool blockedAttack = wardBlocked && damage > 0.f;
+  const HitEventDetails details{ wardBlocked, false, false, false, damage };
+  const HitEventDetails* eventDetails = rebalance ? &details : nullptr;
   if (wardBlocked) {
     damage *= kBlockedHitDamageMult;
     spdlog::info("OnSpellHit - ward of {:x} blocked spell {:x} of {:x}",
@@ -2050,8 +2079,16 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   }
 
   if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, targetActorPtr,
-                          hitData.source, damage, blockedAttack)) {
+                          hitData.source, damage, blockedAttack,
+                          eventDetails)) {
     return;
+  }
+
+  if (rebalance && details.preDT > 0.f && targetActorPtr != aggressor) {
+    // A damaging spell ends the calm a sneak attack needs
+    const auto now = HitRules::Clock::now();
+    HitRules::NoteCombat(aggressor->GetCombatState(), now);
+    HitRules::NoteCombat(targetActorPtr->GetCombatState(), now);
   }
 
   // A refused hit fires no events, a ward-blocked one reaches scripts as blocked and triggers no spell effect
@@ -2080,7 +2117,7 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
                spellCastData.caster);
 
   FireHitDamageEvent("onHitDamage", aggressor, targetActorPtr, hitData.source,
-                     damage);
+                     damage, false, eventDetails);
 
   if (!wardBlocked) {
     ApplyParalysis(*aggressor, *targetActorPtr, hitData.source);
@@ -2152,6 +2189,14 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   // issues
   const bool isSplash = timePassedAnyTarget.count() < kSplashTimeWindow;
 
+  const AlduinakDamageFormula* rebalance =
+    partOne.worldState.alduinakDamageFormula;
+  // Under the rebalance melee and fists follow the rate limit of their type row, below 0 keeps the record's own limit
+  const float rowInterval = rebalance && !isSplash
+    ? rebalance->GetHitInterval(*aggressor, hitData.source,
+                                hitData.isBashAttack)
+    : -1.f;
+
   if (isSplash) {
     spdlog::info("Splash attack detected from aggressor {:x} to target {:x}",
                  aggressor->GetFormId(), targetActor.GetFormId());
@@ -2174,6 +2219,16 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
       spdlog::warn("Splash attack from {:x} to {:x} ignored, too many "
                    "targets hit recently",
                    aggressor->GetFormId(), targetActor.GetFormId());
+      return;
+    }
+  } else if (rowInterval >= 0.f) {
+    if (timePassedAnyTarget.count() < rowInterval) {
+      spdlog::debug(
+        "OnWeaponHit - Target {0:x} is not available for attack due to fast "
+        "attack speed. Weapon: {1:x}. Elapsed time: {2}. Expected attack "
+        "time: {3} (rate limit of the weapon's row)",
+        hitData.target, hitData.source, timePassedAnyTarget.count(),
+        rowInterval);
       return;
     }
   } else if (!CanHit(*aggressor, hitData, timePassedAnyTarget)) {
@@ -2263,15 +2318,50 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     }
   }
 
+  const bool npcAggressor = aggressor->GetProfileId() < 0;
+
+  if (rebalance) {
+    const auto& rules = rebalance->GetSettings();
+    auto& aggressorCombat = aggressor->GetCombatState();
+    if (hitData.isSneakAttack) {
+      const auto verdict = HitRules::CheckSneak(
+        rules, aggressorCombat, targetActor.GetCombatState(),
+        targetActor.GetProfileId() >= 0, currentHitTime);
+      if (verdict != HitRules::SneakVerdict::Ok) {
+        spdlog::info("OnWeaponHit - sneak attack of {:x} on {:x} with {:x} "
+                     "counts as a normal hit: {}",
+                     aggressor->GetFormId(), targetActor.GetFormId(),
+                     hitData.source, HitRules::SneakVerdictText(verdict));
+        hitData.isSneakAttack = false;
+      }
+    }
+    // An NPC's power flag is trusted from its host, bounded by its power multiplier and the cap; a shot has no power attack
+    if (hitData.isPowerAttack && !npcAggressor &&
+        !IsBowOrCrossbowShot(hitData, &partOne.worldState)) {
+      const auto verdict =
+        HitRules::CheckPower(rules, aggressorCombat, currentHitTime);
+      if (!HitRules::PowerPasses(verdict) && rules.powerLogOnly) {
+        spdlog::info("OnWeaponHit - power attack of {:x} on {:x} with {:x} "
+                     "would be refused: {} (power.logOnly, priced as a power "
+                     "attack)",
+                     aggressor->GetFormId(), targetActor.GetFormId(),
+                     hitData.source, HitRules::PowerVerdictText(verdict));
+      } else if (!HitRules::PowerPasses(verdict)) {
+        spdlog::info("OnWeaponHit - power attack of {:x} on {:x} with {:x} "
+                     "counts as a normal hit: {}",
+                     aggressor->GetFormId(), targetActor.GetFormId(),
+                     hitData.source, HitRules::PowerVerdictText(verdict));
+        hitData.isPowerAttack = false;
+      }
+    }
+  }
+
   TrackNpcHitPoison(*aggressor, targetActor, hitData.isHitBlocked);
 
   // A player's block lets npcBlockedDamageShare of an NPC's hit through, a player's hit stays fully blocked
   const bool playerBlocked =
     hitData.isHitBlocked && targetActor.GetProfileId() >= 0;
-  const bool npcAggressor = aggressor->GetProfileId() < 0;
   const bool npcBlocked = playerBlocked && npcAggressor;
-  const AlduinakDamageFormula* rebalance =
-    partOne.worldState.alduinakDamageFormula;
   // The rebalance formula prices a block itself, TES5 gets the block modifier and share from here
   const float blockMult = npcBlocked && !rebalance
     ? GetBlockEffectMult(targetActor, *aggressor)
@@ -2285,8 +2375,10 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   float damage =
     partOne.CalculateDamage(*aggressor, targetActor, formulaHitData);
   damage = damage < 0.f ? 0.f : damage;
+  // Every wrapper of the chain asks the formula first, so this is the hit just priced
+  const AlduinakDamageFormula::LastHit priced =
+    rebalance ? rebalance->GetLastHit() : AlduinakDamageFormula::LastHit();
   if (rebalance && playerBlocked && damage > 0.f) {
-    const auto& priced = rebalance->GetLastHit();
     spdlog::info("OnWeaponHit - {:x} blocked {} {:x} with {:x}, {} of {} "
                  "damage lands (share {}, npcBlockedDamageShare {})",
                  targetActor.GetFormId(), npcAggressor ? "npc" : "player",
@@ -2322,9 +2414,19 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   const auto poisoned = hitData.isBashAttack
     ? std::nullopt
     : FindPoisonedEntry(*aggressor, hitData.source);
+  // Under the rebalance a block stops the poison too and worn DT takes its share of it
+  const bool poisonLands = poisoned &&
+    (!rebalance ||
+     HitRules::PoisonLands(hitData.isHitBlocked, hitData.isBashAttack));
   PoisonHit poison;
-  if (poisoned) {
+  float poisonBeforeDT = 0.f;
+  if (poisonLands) {
     poison = CalculatePoisonHit(*aggressor, targetActor, *poisoned->poisonId);
+    poisonBeforeDT = poison.health;
+    if (rebalance) {
+      poison.health = HitMath::PoisonAfterDT(rebalance->GetSettings(),
+                                             poison.health, priced.wornDT);
+    }
     damage += poison.health;
   }
   if (rebalance) {
@@ -2338,9 +2440,14 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
       damage = capped;
     }
   }
+  const HitEventDetails details{ hitData.isHitBlocked, hitData.isPowerAttack,
+                                 hitData.isBashAttack, priced.crit,
+                                 priced.preDT };
+  const HitEventDetails* eventDetails = rebalance ? &details : nullptr;
   // A fully blocked attack still asks the gamemode, so god mode and companions see it
   if (!FireHitDamageEvent("onHitDamageAttempt", aggressor, &targetActor,
-                          hitData.source, damage, hitData.isHitBlocked)) {
+                          hitData.source, damage, hitData.isHitBlocked,
+                          eventDetails)) {
     return;
   }
 
@@ -2360,6 +2467,11 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     currentActorValues, aggressor,
     std::vector<espm::ActorValue>{ espm::ActorValue::Health });
   aggressor->SetLastHitTime(targetActor.GetFormId(), currentHitTime);
+  if (rebalance) {
+    // A hit dealt, taken or blocked ends the calm a sneak attack needs
+    HitRules::NoteCombat(aggressor->GetCombatState(), currentHitTime);
+    HitRules::NoteCombat(targetActor.GetCombatState(), currentHitTime);
+  }
 
   spdlog::debug(
     "OnWeaponHit - Target {0:x} is hit by {1} damage. Percentage was: {3}, "
@@ -2367,7 +2479,7 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     hitData.target, damage, currentActorValues.healthPercentage,
     healthPercentage, outBaseHealth);
 
-  if (poisoned) {
+  if (poisonLands) {
     if (poison.stamina > 0.f) {
       targetActor.DamageActorValue(espm::ActorValue::Stamina, poison.stamina);
     }
@@ -2375,21 +2487,39 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
       targetActor.DamageActorValue(espm::ActorValue::Magicka, poison.magicka);
     }
     const uint32_t usesLeft = ConsumePoisonCharge(*aggressor, *poisoned);
-    spdlog::info("OnWeaponHit - {:x} poisons {:x} with {:x}: {} health, {} "
-                 "stamina, {} magicka, {} effects ignored, {} uses left",
-                 aggressor->GetFormId(), targetActor.GetFormId(),
-                 *poisoned->poisonId, poison.health, poison.stamina,
-                 poison.magicka, poison.ignored, usesLeft);
+    if (rebalance) {
+      spdlog::info("OnWeaponHit - {:x} poisons {:x} with {:x}: {} health ({} "
+                   "before worn DT {}), {} stamina, {} magicka, {} effects "
+                   "ignored, {} uses left",
+                   aggressor->GetFormId(), targetActor.GetFormId(),
+                   *poisoned->poisonId, poison.health, poisonBeforeDT,
+                   priced.wornDT, poison.stamina, poison.magicka,
+                   poison.ignored, usesLeft);
+    } else {
+      spdlog::info("OnWeaponHit - {:x} poisons {:x} with {:x}: {} health, {} "
+                   "stamina, {} magicka, {} effects ignored, {} uses left",
+                   aggressor->GetFormId(), targetActor.GetFormId(),
+                   *poisoned->poisonId, poison.health, poison.stamina,
+                   poison.magicka, poison.ignored, usesLeft);
+    }
+  } else if (poisoned) {
+    // The attacker's engine spent the charge on the swing, so it is gone here too
+    const uint32_t usesLeft = ConsumePoisonCharge(*aggressor, *poisoned);
+    spdlog::info("OnWeaponHit - {:x} blocked the poisoned hit of {:x}: poison "
+                 "{:x} does nothing, {} uses left",
+                 targetActor.GetFormId(), aggressor->GetFormId(),
+                 *poisoned->poisonId, usesLeft);
   }
 
   FireHitDamageEvent("onHitDamage", aggressor, &targetActor, hitData.source,
-                     damage);
+                     damage, false, eventDetails);
 }
 
 bool ActionListener::FireHitDamageEvent(const char* eventName,
                                         MpActor* aggressor, MpActor* target,
                                         uint32_t sourceId, float damage,
-                                        bool fireOnZeroDamage)
+                                        bool fireOnZeroDamage,
+                                        const HitEventDetails* details)
 {
   if (!aggressor || !target || (damage <= 0.f && !fireOnZeroDamage)) {
     return true;
@@ -2398,6 +2528,13 @@ bool ActionListener::FireHitDamageEvent(const char* eventName,
   argsJson.push_back(target->GetFormId());
   argsJson.push_back(sourceId);
   argsJson.push_back(damage);
+  if (details) {
+    argsJson.push_back(details->blocked);
+    argsJson.push_back(details->power);
+    argsJson.push_back(details->bash);
+    argsJson.push_back(details->critical);
+    argsJson.push_back(details->preDT);
+  }
   CustomEvent hitEvent(aggressor->GetFormId(), eventName, argsJson.dump());
   return hitEvent.Fire(&partOne.worldState);
 }

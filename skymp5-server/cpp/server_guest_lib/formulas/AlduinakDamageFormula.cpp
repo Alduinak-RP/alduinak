@@ -1,13 +1,17 @@
 #include "AlduinakDamageFormula.h"
 
+#include "AlduinakHitRules.h"
 #include "HitData.h"
 #include "ItemRowResolver.h"
 #include "MpActor.h"
 #include "SpellCastData.h"
+#include "TemperCap.h"
 #include "WorldState.h"
 #include "libespm/espm.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
@@ -16,6 +20,9 @@ namespace {
 
 constexpr uint32_t kUnarmedSource = 0x1f4;
 constexpr const char* kHumanoidKeyword = "ActorTypeNPC";
+// QuickShot rides the Hunter rank markers from Adept up
+constexpr const char* kQuickShotProfession = "Hunter";
+constexpr int kQuickShotRank = 2;
 
 bool IsPlayer(const MpActor& actor)
 {
@@ -74,6 +81,23 @@ float WornAmmoDamage(const MpActor& aggressor, WorldState& worldState)
   return -1.f;
 }
 
+// AMMO damage of the arrow or bolt the shooter last fired from this weapon, the worn one once that shot is old
+float ShotAmmoDamage(const MpActor& aggressor, uint32_t weaponId,
+                     WorldState& worldState)
+{
+  const auto& combat = aggressor.GetCombatState();
+  const uint32_t fired = combat.lastShotWeapon == weaponId
+    ? HitRules::FiredAmmo(combat, HitRules::Clock::now())
+    : 0;
+  if (fired) {
+    if (const auto ammo = espm::Convert<espm::AMMO>(
+          worldState.GetEspm().GetBrowser().LookupById(fired).rec)) {
+      return std::max(ammo->GetData(worldState.GetEspmCache()).damage, 0.f);
+    }
+  }
+  return WornAmmoDamage(aggressor, worldState);
+}
+
 float RecordSpeed(uint32_t weaponId, WorldState& worldState)
 {
   const auto weapon = espm::Convert<espm::WEAP>(
@@ -83,6 +107,36 @@ float RecordSpeed(uint32_t weaponId, WorldState& worldState)
   return dnam ? dnam->speed : 0.f;
 }
 
+// Four decimals, so a float reads in JSON as the settings wrote it
+double Num(float value)
+{
+  return std::isfinite(value) ? std::round(value * 10000.0) / 10000.0 : 0.0;
+}
+
+nlohmann::json AttackJson(const AlduinakCombatSettings& settings,
+                          const HitMath::Attack& attack,
+                          const std::string& row, float interval)
+{
+  return nlohmann::json{
+    { "kind", HitMath::AttackKindName(attack.kind) },
+    { "type", ItemRows::WeaponTypeName(attack.type) },
+    { "row", row },
+    { "temperStep", attack.temperStep },
+    { "baseDamage", Num(attack.base) },
+    { "damage",
+      Num(attack.base *
+          (1.f + settings.temperingWeaponPerStep * attack.temperStep) *
+          attack.conditionMult) },
+    { "critChance", Num(attack.critChance) },
+    { "critMult", Num(attack.critMult) },
+    { "penetration", Num(attack.penetration) },
+    { "floor", Num(attack.floor) },
+    { "powerMult", Num(attack.powerMult) },
+    { "sneakMult", Num(attack.sneakMult) },
+    { "speedFactor", Num(attack.speedFactor) },
+    { "interval", Num(interval) }
+  };
+}
 }
 
 AlduinakDamageFormula::AlduinakDamageFormula(
@@ -174,7 +228,7 @@ HitMath::Attack AlduinakDamageFormula::GetAttack(const MpActor& aggressor,
   auto attack = HitMath::WeaponAttack(
     settings, item, RecordSpeed(source, *worldState),
     worn ? WornTemperStep(aggressor, *worn) : 0,
-    shoots && !bash ? WornAmmoDamage(aggressor, *worldState) : -1.f);
+    shoots && !bash ? ShotAmmoDamage(aggressor, source, *worldState) : -1.f);
   if (attack.kind == HitMath::AttackKind::None &&
       item.kind != ItemRows::Kind::Staff &&
       item.kind != ItemRows::Kind::Dummy) {
@@ -323,4 +377,180 @@ float AlduinakDamageFormula::CalculateDamage(
 {
   // OnSpellHit caps the hit after the outer wrappers
   return spellFormula.CalculateDamage(aggressor, target, spellCastData);
+}
+
+float AlduinakDamageFormula::GetHitInterval(const MpActor& aggressor,
+                                            uint32_t source, bool bash) const
+{
+  return HitRules::HitInterval(resolver->GetSettings(),
+                               GetAttack(aggressor, source, bash));
+}
+
+bool AlduinakDamageFormula::HasQuickShot(const MpActor& actor) const
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState || !IsPlayer(actor)) {
+    return false;
+  }
+  if (!quickShotMarkers) {
+    quickShotMarkers.emplace();
+    auto& cache = worldState->GetEspmCache();
+    for (const auto& spell :
+         worldState->GetEspm().GetBrowser().GetDistinctRecordsByType("SPEL")) {
+      const auto marker =
+        TemperCap::ParseMarkerEditorId(spell.rec->GetEditorId(cache));
+      if (marker && marker->profession == kQuickShotProfession &&
+          marker->rank >= kQuickShotRank) {
+        quickShotMarkers->push_back(spell.ToGlobalId(spell.rec->GetId()));
+      }
+    }
+    spdlog::info("AlduinakDamageFormula - {} {} rank markers from {} up "
+                 "shorten the shot interval (QuickShot)",
+                 quickShotMarkers->size(), kQuickShotProfession,
+                 TemperCap::kRankNames[kQuickShotRank]);
+  }
+  return std::any_of(
+    quickShotMarkers->begin(), quickShotMarkers->end(),
+    [&](uint32_t spellId) { return actor.IsSpellLearned(spellId); });
+}
+
+float AlduinakDamageFormula::GetShotInterval(const MpActor& shooter,
+                                             uint32_t weaponId,
+                                             bool* quickShot) const
+{
+  if (quickShot) {
+    *quickShot = false;
+  }
+  WorldState* worldState = shooter.GetParent();
+  if (!worldState) {
+    return 0.f;
+  }
+  const auto& settings = resolver->GetSettings();
+  const auto& item = resolver->Resolve(weaponId, *worldState);
+  if (item.kind == ItemRows::Kind::Crossbow) {
+    return HitRules::CrossbowShotInterval(settings);
+  }
+  if (item.kind != ItemRows::Kind::Bow) {
+    return 0.f;
+  }
+  const bool quick = HasQuickShot(shooter);
+  if (quickShot) {
+    *quickShot = quick;
+  }
+  const float recordSpeed = RecordSpeed(weaponId, *worldState);
+  const float speedFactor = recordSpeed > 0.f
+    ? HitMath::SpeedFactor(settings, HitMath::BowCycle(recordSpeed),
+                           HitMath::BowCycle(item.speed))
+    : 1.f;
+  return HitRules::BowShotInterval(settings, item.speed, speedFactor, quick);
+}
+
+nlohmann::json AlduinakDamageFormula::GetCombatStats(
+  const MpActor& actor) const
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState) {
+    throw std::runtime_error("AlduinakDamageFormula - no world state");
+  }
+  const auto& settings = resolver->GetSettings();
+  auto& browser = worldState->GetEspm().GetBrowser();
+  auto& cache = worldState->GetEspmCache();
+
+  std::vector<WornPiece> worn;
+  const HitMath::WornDT wornDT = GetWornDT(actor, &worn);
+
+  // A hit meets the best piece of a slot group, a second one adds nothing
+  std::array<bool, ItemRows::kNumShareBuckets> taken{};
+  bool shieldTaken = false;
+  float armorWeight = 0.f;
+  float shieldWeight = 0.f;
+  auto pieces = nlohmann::json::array();
+  for (const auto& piece : worn) {
+    const auto& item = resolver->Resolve(piece.baseId, *worldState);
+    const auto armor =
+      espm::Convert<espm::ARMO>(browser.LookupById(piece.baseId).rec);
+    const float weight =
+      armor ? std::max(armor->GetData(cache).weight, 0.f) : 0.f;
+    const bool isShield = piece.kind == ItemRows::Kind::Shield;
+    (isShield ? shieldWeight : armorWeight) += weight;
+
+    float counted = 0.f;
+    auto slots = nlohmann::json::array();
+    if (isShield) {
+      slots.push_back(ItemRows::SlotBucketName(ItemRows::SlotBucket::Shield));
+      if (!shieldTaken && piece.dt == wornDT.shield) {
+        counted = piece.dt;
+        shieldTaken = true;
+      }
+    } else {
+      for (size_t i = 0; i < taken.size(); ++i) {
+        const auto bucket = static_cast<ItemRows::SlotBucket>(i);
+        if (!item.Covers(bucket) || !(item.slotShare > 0.f)) {
+          continue;
+        }
+        slots.push_back(ItemRows::SlotBucketName(bucket));
+        const float share = piece.dt * settings.slotShare[i] / item.slotShare;
+        if (!taken[i] && share == wornDT.buckets[i]) {
+          counted += share;
+          taken[i] = true;
+        }
+      }
+    }
+    pieces.push_back(
+      nlohmann::json{ { "baseId", piece.baseId },
+                      { "kind", ItemRows::KindName(piece.kind) },
+                      { "row", piece.row },
+                      { "class", ItemRows::ArmorClassName(item.armorClass) },
+                      { "lightOnHeavy", item.lightOnHeavy },
+                      { "fallback", item.fallback },
+                      { "slots", std::move(slots) },
+                      { "temperStep", piece.temperStep },
+                      { "dt", Num(piece.dt) },
+                      { "countedDT", Num(counted) },
+                      { "weight", Num(weight) } });
+  }
+
+  auto weapons = nlohmann::json::array();
+  for (const auto& entry : actor.GetEquipment().inv.entries) {
+    const auto hand = entry.GetWorn();
+    if (hand == Inventory::Worn::None) {
+      continue;
+    }
+    const auto& item = resolver->Resolve(entry.baseId, *worldState);
+    if (item.kind != ItemRows::Kind::Weapon &&
+        item.kind != ItemRows::Kind::Bow &&
+        item.kind != ItemRows::Kind::Crossbow &&
+        item.kind != ItemRows::Kind::Staff &&
+        item.kind != ItemRows::Kind::Dummy) {
+      continue;
+    }
+    std::string row;
+    const auto attack = GetAttack(actor, entry.baseId, false, &row);
+    const float melee = HitRules::HitInterval(settings, attack);
+    auto weapon =
+      AttackJson(settings, attack, row,
+                 melee >= 0.f ? melee : GetShotInterval(actor, entry.baseId));
+    weapon["baseId"] = entry.baseId;
+    weapon["hand"] = hand == Inventory::Worn::Left ? "left" : "right";
+    weapon["item"] = ItemRows::KindName(item.kind);
+    weapon["fallback"] = item.fallback;
+    weapons.push_back(std::move(weapon));
+  }
+
+  std::string fistRow;
+  const auto fists = GetAttack(actor, kUnarmedSource, false, &fistRow);
+
+  return nlohmann::json{
+    { "actorId", actor.GetFormId() },
+    { "isPlayer", IsPlayer(actor) },
+    { "armorWeight", Num(armorWeight) },
+    { "shieldWeight", Num(shieldWeight) },
+    { "wornDT", Num(wornDT.Total()) },
+    { "naturalDT", Num(GetNaturalDT(actor)) },
+    { "pieces", std::move(pieces) },
+    { "weapons", std::move(weapons) },
+    { "unarmed",
+      AttackJson(settings, fists, fistRow,
+                 std::max(HitRules::HitInterval(settings, fists), 0.f)) }
+  };
 }

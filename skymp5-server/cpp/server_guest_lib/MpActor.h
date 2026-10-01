@@ -17,6 +17,10 @@ struct ActorValues;
 class RespawnEvent;
 class ActiveMagicEffectsMap;
 
+namespace HitRules {
+struct CombatState;
+}
+
 class MpActor : public MpObjectReference
 {
 public:
@@ -207,6 +211,9 @@ public:
   std::optional<AnimationData> GetLastAnimEvent() const;
   // A server-originated animation: stored for later spawns and sent to the actor's listeners, never to its own user
   void SetLastAnimEventAndBroadcast(const std::string& animEventName);
+
+  // Sneak, combat, power attack and shot memory of the rebalance formula, never saved
+  HitRules::CombatState& GetCombatState() const noexcept;
 
 private:
   struct Impl;

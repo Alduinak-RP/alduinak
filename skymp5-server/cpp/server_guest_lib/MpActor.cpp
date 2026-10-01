@@ -16,6 +16,7 @@
 #include "SpSnippetFunctionGen.h"
 #include "TempleRespawn.h"
 #include "WorldState.h"
+#include "formulas/AlduinakHitRules.h"
 #include "gamemode_events/CustomEvent.h"
 #include "gamemode_events/DeathEvent.h"
 #include "gamemode_events/DropItemEvent.h"
@@ -57,6 +58,7 @@ struct MpActor::Impl
   uint32_t respawnTimerIndex = 0;
   bool isRespawning = false;
   bool isBlockActive = false;
+  HitRules::CombatState combatState;
   std::chrono::steady_clock::time_point lastAttributesUpdateTimePoint;
   // Only stamina writes move it, so health hits do not eat stamina regen
   std::chrono::steady_clock::time_point lastStaminaUpdateTimePoint =
@@ -265,6 +267,11 @@ void MpActor::SetLastAnimEventAndBroadcast(const std::string& animEventName)
       listener->GetActorToSendTo().SendToUser(msg, true);
     }
   }
+}
+
+HitRules::CombatState& MpActor::GetCombatState() const noexcept
+{
+  return pImpl->combatState;
 }
 
 void MpActor::SetRaceMenuOpen(bool isOpen)

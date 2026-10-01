@@ -156,10 +156,22 @@ private:
                                        const RestorationChannel& channel);
   void ApplyRestorationChannelRemainder(uint32_t casterId,
                                         const RestorationChannel& channel);
-  // Returns false when a gamemode handler blocked the event
+  // What the rebalance formula adds to the arguments of the hit damage events
+  struct HitEventDetails
+  {
+    bool blocked = false;
+    bool power = false;
+    bool bash = false;
+    bool critical = false;
+    // Damage before DT, for a spell its damage before a ward
+    float preDT = 0.f;
+  };
+
+  // Returns false when a gamemode handler blocked the event; details follow the damage as blocked, power, bash, critical, preDT
   bool FireHitDamageEvent(const char* eventName, MpActor* aggressor,
                           MpActor* target, uint32_t sourceId, float damage,
-                          bool fireOnZeroDamage = false);
+                          bool fireOnZeroDamage = false,
+                          const HitEventDetails* details = nullptr);
 
   void OnSpellHit(MpActor* aggressor, MpObjectReference* targetRef,
                   const HitData& hitData);
