@@ -6,6 +6,7 @@ import { effectiveRaceId, npcChainOf } from "./npcTemplate";
 import { MasterySystem } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
 import { isRestrained } from "./captureSystem";
+import { addEntries, conditionOf, readInventory, withCount } from "./inventoryExtras";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -432,7 +433,10 @@ export class HuntingSystem implements System {
     const taken = entries.filter((e) => Number(e.count) > 0 && match(Number(e.baseId) >>> 0));
     if (!taken.length) return 0;
     mp.set(bodyId, "inventory", { entries: entries.filter((e) => !taken.includes(e)) });
-    for (const e of taken) addItemTo(mp, actorId, Number(e.baseId) >>> 0, Number(e.count));
+    // AddItem gives a pristine copy, so a stack that carries wear (durability) moves as the entry it is
+    const used = taken.filter((e) => conditionOf(e) < 1);
+    for (const e of taken.filter((e) => !used.includes(e))) addItemTo(mp, actorId, Number(e.baseId) >>> 0, Number(e.count));
+    if (used.length) mp.set(actorId, "inventory", addEntries(readInventory(mp, actorId), used.map((e) => withCount(e, Number(e.count)))));
     return taken.length;
   }
 

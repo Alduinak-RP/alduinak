@@ -1,8 +1,10 @@
 import * as fs from "fs";
+import { Settings } from "../settings";
 import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { NEVER_RESPAWN } from "./npcPlacement";
 import { looseEntries } from "./companionSystem";
 import { InventoryEntry, addEntries, isNamedItemBase, readInventory } from "./inventoryExtras";
+import { SettleWear, wearSettler } from "./durabilityNative";
 import { destroyRef, hex, isAlive, userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { markDeathAlerted } from "./discordAlerts";
@@ -66,6 +68,7 @@ export class BodySystem implements System {
     this.mp = ctx.svr as Mp;
     this.loadRegistry();
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.adoptLeftovers());
+    this.settleWear = wearSettler(this.mp, (await Settings.get()).allSettings as Record<string, unknown> | null, this.log);
   }
 
   async updateAsync(): Promise<void> {
@@ -87,6 +90,8 @@ export class BodySystem implements System {
     const recent = this.recentBodyOf(victimId);
     if (recent) return recent.id;
     let loc: any, appearance: unknown, equipment: any, inventory: any, profileId = -1;
+    // The wear of the last fight goes into the copies before they leave the victim
+    this.settleWear(victimId);
     try {
       profileId = Number(mp.get(victimId, "profileId"));
       loc = mp.get(victimId, "locationalData");
@@ -330,6 +335,7 @@ export class BodySystem implements System {
   }
 
   private mp: Mp = null;
+  private settleWear: SettleWear = () => { };
   private nextCheckAt = 0;
   // baseId -> whether the load order holds it
   private knownBases = new Map<number, boolean>();

@@ -5,15 +5,17 @@ import { MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
 import { LEGENDARY_STEP, TemperRecipe, espmRecordIds, qualityName, recipesAt, temperCapStep } from "./temperRecipes";
 import {
-  EnchantmentEffect, Inventory, InventoryEntry, Item, addEntries, copyValidExtras, describeExtras, healthStep,
+  EnchantmentEffect, Inventory, InventoryEntry, Item, addEntries, byNearestCondition, copyValidExtras, describeExtras, healthStep,
   isEnchanted, isSet, readInventory, sameBase, sameEffects, sameFloat, sameItem, withCount,
 } from "./inventoryExtras";
+import { conditionTagPattern, durabilityTags } from "./durabilityNative";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
 // Records extras players make in vanilla, paid for from the server's own copies and clamped to vanilla limits; souls are soul trap's
 // A temper follows the native CraftService: the recipe's rank gates, the rank cap of the recipe's profession and one craft of fatigue
+// Condition (durability) is the server's alone: a result keeps the condition of the copy it was made from and a reported one only says which copy is meant
 //
 // Client -> Server: { customPacketType: "craftedExtras", workbench, gained: Entry[], lost: Entry[] }
 //   gained: local copies the server lacks; lost: server copies the player no longer has (the sources and inputs)
@@ -155,9 +157,15 @@ const chargeOf = (e: InventoryEntry): number => (typeof e.chargePercent === "num
 const formulaCost = (baseCost: number, e: EnchantmentEffect): number =>
   baseCost * Math.pow(Math.max(e.magnitude, 1), 1.1) * Math.pow(Math.max(e.duration / 10, 1), 1.1);
 
-const cleanName = (name: unknown): string | undefined => {
+// conditionTag is the " (97%)" or " (Broken)" a durability client shows after a name, null with durability off
+const cleanName = (name: unknown, conditionTag: RegExp | null): string | undefined => {
   if (typeof name !== "string") return undefined;
-  const text = name.replace(/[\u0000-\u001f\u007f]/g, "").replace(TEMPER_SUFFIX, "").trim().slice(0, 128);
+  let text = name.replace(/[\u0000-\u001f\u007f]/g, "").replace(TEMPER_SUFFIX, "");
+  // The engine puts the quality after the tag ("Steel Sword (97%) (Fine)"), so both come off until neither is left
+  while (conditionTag && (conditionTag.test(text) || TEMPER_SUFFIX.test(text))) {
+    text = text.replace(conditionTag, "").replace(TEMPER_SUFFIX, "");
+  }
+  text = text.trim().slice(0, 128);
   return text || undefined;
 };
 
@@ -171,6 +179,8 @@ export class CraftedExtrasSystem implements System {
     const mp = ctx.svr as Mp;
     const all = ((await Settings.get()).allSettings || {}) as Record<string, unknown>;
     this.temperRules = all["craftedExtrasTemperRules"] !== false;
+    const tags = durabilityTags(all);
+    this.conditionTag = tags.enabled ? conditionTagPattern(tags.brokenLabel) : null;
     this.log(`[crafted] a reported temper ${this.temperRules ? "follows its recipe's rank gates and rank cap and costs a craft of fatigue" : "takes materials only, craftedExtrasTemperRules is false"}`);
     const previous = typeof mp.onEatItem === "function" ? mp.onEatItem : null;
     mp.onEatItem = (...args: unknown[]) => {
@@ -285,20 +295,23 @@ export class CraftedExtrasSystem implements System {
     return out;
   }
 
-  // Each lost line claims the server's own copies: the same copy first, then any copy of the same item
+  // Each lost line claims the server's own copies: the same copy first, then any copy of the same item, the one nearest to the line's condition before the others
   private resolveLost(inv: Inventory, lost: InventoryEntry[]): PoolEntry[] {
     const avail = inv.entries.map((e) => e.count);
     const pool: PoolEntry[] = [];
     for (const l of lost) {
       let need = l.count;
+      const order = byNearestCondition(inv.entries, l.condition);
       const take = (fits: (e: InventoryEntry) => boolean): void => {
-        inv.entries.forEach((e, index) => {
-          if (need <= 0 || avail[index] <= 0 || !fits(e)) return;
+        for (const index of order) {
+          const e = inv.entries[index];
+          if (need <= 0) return;
+          if (avail[index] <= 0 || !fits(e)) continue;
           const n = Math.min(need, avail[index]);
           avail[index] -= n;
           need -= n;
           pool.push({ index, entry: e, claimed: n, left: n });
-        });
+        }
       };
       take((e) => sameItem(e, l) && sameFloat(chargeOf(e), chargeOf(l)));
       take((e) => sameItem(e, l));
@@ -388,7 +401,7 @@ export class CraftedExtrasSystem implements System {
         delete out.maxCharge;
         delete out.chargePercent;
       }
-      const name = cleanName(g.name);
+      const name = cleanName(g.name, this.conditionTag);
       if (name) out.name = name;
       else delete out.name;
       notes.push(`enchanted with a size ${soul.size} soul`);
@@ -452,6 +465,10 @@ export class CraftedExtrasSystem implements System {
       }
     }
 
+    // A craft never repairs: the result keeps the wear of the server copy, whatever the report says
+    if (typeof s.condition === "number") out.condition = s.condition;
+    else delete out.condition;
+
     return notes.length ? { entry: out, reserve, soul, credit, temper, notes } : null;
   }
 
@@ -467,8 +484,10 @@ export class CraftedExtrasSystem implements System {
       if (!hand) return skip("no worn weapon");
       const inv = readInventory(mp, actorId);
       const bare = (i: Item): Item => ({ ...i, poisonId: undefined, poisonCount: undefined });
-      let index = inv.entries.findIndex((e) => sameItem(e, hand));
-      if (index < 0) index = inv.entries.findIndex((e) => !isSet(e.poisonId) && sameItem(bare(e), bare(hand)));
+      // Of copies that differ only by wear the worn one is the one at the equipment entry's condition
+      const order = byNearestCondition(inv.entries, hand.condition);
+      let index = order.find((i) => sameItem(inv.entries[i], hand)) ?? -1;
+      if (index < 0) index = order.find((i) => !isSet(inv.entries[i].poisonId) && sameItem(bare(inv.entries[i]), bare(hand))) ?? -1;
       if (index < 0) return skip(`no inventory copy of worn ${extras(hand)}`);
       const source = inv.entries[index];
       if ((source.poisonId || 0) === poisonId) return skip(`${extras(source)} already carries it`);
@@ -727,6 +746,7 @@ export class CraftedExtrasSystem implements System {
   }
 
   private temperRules = true;
+  private conditionTag: RegExp | null = null;
   private lastReportAt = new Map<number, number>();
   private lastNoticeAt = new Map<number, number>();
   private poisonCredits = new Map<number, PoisonCredit[]>();
@@ -734,3 +754,6 @@ export class CraftedExtrasSystem implements System {
   private keywordCache = new Map<number, number[]>();
   private caps: Map<string, Cap> | null = null;
 }
+
+// Exported for unit testing of the name rules.
+export const __test = { cleanName };

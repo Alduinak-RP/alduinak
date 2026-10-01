@@ -6,6 +6,7 @@ import { isBound, isRestrained } from "./captureSystem";
 import { baseIdOf, isAlive, isBleedingOut, isPlayerActor, nameShownTo } from "./actorUtil";
 import { fieldData, view } from "./espmMagic";
 import { HostingSystem } from "./hostingSystem";
+import { SettleWear, wearSettler } from "./durabilityNative";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -103,6 +104,7 @@ export class SearchSystem implements System {
   private startMaxDistance = DEFAULT_START_MAX_DISTANCE;
   private keepMaxDistance = DEFAULT_KEEP_MAX_DISTANCE;
   private playerBodyTakeLimit = DEFAULT_PLAYER_BODY_TAKE_LIMIT;
+  private settleWear: SettleWear = () => { };
   // NPC base id -> extra reach of its body
   private bodyReachCache = new Map<number, number>();
 
@@ -119,6 +121,7 @@ export class SearchSystem implements System {
     if (Number.isInteger(rawCooldown) && rawCooldown >= 0) this.consentCooldownMs = rawCooldown;
     const rawLimit = Number(all?.["searchPlayerBodyTakeLimit"]);
     if (Number.isInteger(rawLimit) && rawLimit >= 0) this.playerBodyTakeLimit = rawLimit;
+    this.settleWear = wearSettler(ctx.svr, all, this.log);
     this.installTakeHook(ctx);
     this.installPutHook(ctx);
   }
@@ -457,6 +460,8 @@ export class SearchSystem implements System {
     }
     this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, auto, pet });
     this.searching.set(searcherActorId, targetActorId);
+    // What is taken from a searched player carries the wear of their last fight
+    this.settleWear(targetActorId);
     ctx.svr.sendCustomPacket(searcherUser, JSON.stringify({
       customPacketType: "searchApproved",
       target: targetActorId,

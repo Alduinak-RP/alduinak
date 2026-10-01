@@ -2,7 +2,8 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, AFTERLIFE_EVENT, AFTERLIFE_REVIVED_EVENT } from "./system";
 import { addItemTo, addSpellTo, chainMpHook, hex, holdsItem, isAlive, isPlayerActor, notifyActor, removeSpellFrom, userOf } from "./actorUtil";
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
-import { readInventory, sameExtras } from "./inventoryExtras";
+import { readInventory, sameExtras, withoutCondition } from "./inventoryExtras";
+import { SettleWear, wearSettler } from "./durabilityNative";
 import { AdminRoleConfig, AdminTier, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -168,7 +169,9 @@ export class AfterlifeSystem implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     this.ctx = ctx;
     const mp = ctx.svr as Mp;
-    this.limits = readCharacterLimits((await Settings.get()).allSettings as Record<string, unknown> | null);
+    const all = (await Settings.get()).allSettings as Record<string, unknown> | null;
+    this.limits = readCharacterLimits(all);
+    this.settleWear = wearSettler(mp, all, this.log);
     (globalThis as any).__alduinakRevive = (actorId: number, by: string) => this.revive(Number(actorId) >>> 0, String(by));
     await this.resolveLooks(mp);
     chainMpHook(mp, "onRespawn", (rawId: number) => {
@@ -426,10 +429,12 @@ export class AfterlifeSystem implements System {
   }
 
   // Takes back as many plain copies as dress() granted, worn ones first, so a revive carries none of it to Tamriel and the player's own pieces stay
+  // A granted piece worn down in the realm (durability) is still a plain copy
   private undress(mp: Mp, actorId: number): void {
     const record = outfitOf(mp, actorId);
     if (!record) return;
     try {
+      this.settleWear(actorId);
       const owed = new Map(Object.entries(record.granted).map(([base, count]) => [Number(base) >>> 0, count]));
       const { entries } = readInventory(mp, actorId);
       const counts = entries.map((e) => Number(e.count) || 0);
@@ -438,7 +443,7 @@ export class AfterlifeSystem implements System {
       for (const i of order) {
         const base = Number(entries[i].baseId) >>> 0;
         const due = owed.get(base) ?? 0;
-        if (!due || !sameExtras(entries[i], { baseId: base, count: 1 })) continue;
+        if (!due || !sameExtras(withoutCondition(entries[i]), { baseId: base, count: 1 })) continue;
         const n = Math.min(due, counts[i]);
         counts[i] -= n;
         owed.set(base, due - n);
@@ -471,5 +476,6 @@ export class AfterlifeSystem implements System {
   private ctx: SystemContext | null = null;
   private nextPollAt = 0;
   private limits = readCharacterLimits(null);
+  private settleWear: SettleWear = () => { };
   private looks: Record<RealmId, RealmLook> = { sovngarde: NO_LOOK, soulCairn: NO_LOOK };
 }
