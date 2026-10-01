@@ -11,7 +11,7 @@ own when the character logs out, crashes or the server restarts.
 
 - Race list: `skymp5-server/ts/systems/raceCatalog.ts` (reads every RACE, HDPT and KYWD record of the load order once, in the background)
 - Transform and revert: `skymp5-server/ts/systems/polymorph.ts`, wired into `adminSystem.ts` (actions `raceList`, `polymorph`, `polymorphRevert`, cap `polymorph`)
-- Client: `skymp5-client/src/services/services/polymorphService.ts` (switches the local skeleton), `adminMenuService.ts` (passthrough)
+- Client: `skymp5-client/src/services/services/polymorphService.ts` (switches the local skeleton, keeps weapons sheathed where a draw would crash, sends a creature's attacks, fits the camera), `adminMenuService.ts` (passthrough)
 - Front: `skymp5-front/src/features/adminPanel/polymorphTab.tsx`
 - Character record: `private.polymorph` (the original appearance, the gear worn before a creature form, the race, when and by whom) and the indexed marker `private.indexed.polymorph` so a restart finds every character left transformed
 - Test: `node skymp5-server/tools/test-polymorph.js`
@@ -64,6 +64,54 @@ character still carries, on the client at once and in the server's
 `equipment` 1.5 s later, after the other players' copies rebuilt the body.
 Playable, vampire and other humanoid races keep the gear.
 
+### Weapons and attacks
+
+On a weapon draw the engine shows the player's shield or torch: the
+`weaponDraw` animation event runs `RightHandWeaponDrawHandler`, which for the
+player alone looks up the Shield Biped Object of the base's race and indexes
+the biped slots with it. A race without one (`-1` in the RACE DATA: 101 of the
+134 creature races and both Dremora races on the test load order) makes it
+read the slot before the array, which is whatever memory lies in front of it.
+Both crashes of 2026-10-01 (Riekling, Dragon Priest) are that read
+(`SkyrimSE.exe+072ED84`/`+072ECFA`, function 40419, `RBP` -1), and nearly
+every creature behaviour graph carries the `weaponDraw` event. So:
+
+- The catalog reads the Shield Biped Object. A form of a race without one has
+  the fighting controls off (`noDraw` in the packet): no weapon, spell or fist
+  is drawn in it. PolymorphService checks the lock every update, because other
+  services switch the fighting controls back on, and a weapon drawn at the
+  moment of the transform is put away before the race switches.
+- A creature under that lock attacks on the attack key (the control
+  `Right Attack/Block`, the left mouse button by default): the client sends
+  the next attack event of the race's attack data (`ATKE`, bashes left out,
+  power attacks only for a race with nothing else, eight at most) to the
+  graph, one every 0.9 s at most. The hit is the engine's own unarmed hit
+  (source `1f4`), which the server accepts for any race and rates with the
+  race's unarmed damage. Dragon priests, seekers, chickens and hares have no
+  attack data and do not attack.
+- A Dremora form keeps its gear but cannot draw it; the admin's reply says so.
+- A creature of a race with a shield biped object (Draugr, Falmer, skeletons,
+  spriggans, gargoyles, the frost atronach) draws and attacks the engine's
+  way. Only the graphs with an idle for the attack action answer the attack
+  key: Draugr, Falmer and gargoyles on both hands, spriggans and the frost
+  atronach on the left hand (block key) only.
+
+A native guard on that handler would lift the lock; none is written yet.
+
+### Camera
+
+The third person camera pivots at the root of the player's 3D plus the height
+of the skeleton's `Camera3rd [Cam3]` node. Only the playable skeletons, the
+vampire lord, the werewolf and the storm atronach have that node, so a creature
+form's pivot sat at its feet. 1.5 s after the switch PolymorphService looks for
+the node; without it, it measures the height of the skeleton's head node (a
+list of the vanilla head node names), adds it to `fOverShoulderPosZ` and
+`fOverShoulderCombatPosZ`, scales `fVanityModeMinDist` and
+`fVanityModeMaxDist` by height / 120 (1 to 4) for a tall body and calls
+`UpdateThirdPerson`. The four settings go back before the next race switch, on
+Revert and on a new spawn. The switch to first person is off in a creature
+form.
+
 ### Sex
 
 A race with a skeleton for one sex only (Alduin, the undead dragon, the
@@ -112,8 +160,9 @@ own:
 Server (`gameserver.log`); the transform and a manual revert also go to `admin.log` and the admin Discord alert, and an automatic revert to `admin.log` only (`the polymorph of actor ff000a31 was reverted on logout`):
 
 ```
-AdminSystem: race catalog 170 race(s) (10 playable, 11 vampire, 15 people, 134 creature), 0 refused without a skeleton, 29 marked as crash risks and refused, in 470 ms
-AdminSystem: profile 12 (senior) polymorphed "Hrolf" (profile 12, actor ff000a31) from Nord (NordRace) into Wolf (WolfRace) [1320a:Skyrim.esm creature], male, no FaceGen head, gear taken off
+AdminSystem: race catalog 170 race(s) (10 playable, 11 vampire, 15 people, 134 creature), 0 refused without a skeleton, 29 marked as crash risks and refused, 103 without a shield biped object keep weapons sheathed, in 470 ms
+AdminSystem: profile 12 (senior) polymorphed "Hrolf" (profile 12, actor ff000a31) from Nord (NordRace) into Wolf (WolfRace) [1320a:Skyrim.esm creature], male, no FaceGen head, gear taken off, weapons stay sheathed (no shield biped object), 8 attack event(s) on the attack key
+AdminSystem: profile 12 (senior) polymorphed "Hrolf" (profile 12, actor ff000a31) from Nord (NordRace) into Dremora (DremoraRace) [131f0:Skyrim.esm people], male, race default head (3 part(s)), gear kept, weapons stay sheathed (no shield biped object)
 AdminSystem: polymorph of "Hrolf" (profile 12, actor ff000a31) by profile 12 (senior) refused: Dragon Race (DragonRace) is marked as a crash risk (flying race: players cannot fly it and dragon forms are known to crash), refused
 AdminSystem: polymorph of "Hrolf" (profile 12, actor ff000a31) by profile 12 (senior) refused: That is the character's own race, use Revert
 AdminSystem: polymorph revert ff000a31 by profile 12 (senior): Wolf (WolfRace) back to Nord (NordRace), transformed 95 s by profile 12, 6 worn item(s) put back
@@ -124,7 +173,13 @@ AdminSystem: polymorph boot check, 0 character(s) left transformed were reverted
 Client (`skyrim-platform.log`, from PolymorphService):
 
 ```
-PolymorphService: polymorph: race 1320a, actor race 13746 -> 1320a, base race 1320a, look applied, gear off (6 worn before), third person
+PolymorphService: polymorph: race 1320a, actor race 13746 -> 1320a, base race 1320a, look applied, gear off (6 worn before), third person, weapons stay sheathed, 8 attack event(s) on the attack key
+PolymorphService: polymorph camera: no Camera3rd [Cam3] on the skeleton, pivot raised 62 to Canine_Head, zoom range x1.00
+PolymorphService: polymorph camera: the skeleton has Camera3rd [Cam3], nothing changed
+PolymorphService: polymorph camera: no known head node after 5 tries, the pivot stays at the feet
+PolymorphService: polymorph camera: settings put back
+PolymorphService: polymorph attack: attackStart_Attack1 sent, 0.3 s later the graph reads IsAttacking true
+PolymorphService: polymorph: weapon still drawn after 30 tries, race 1320a not switched
 PolymorphService: polymorph revert: race 13746, actor race 1320a -> 13746, base race 13746, look applied, gear kept, re-dressed 6 of 6 worn item(s)
 PolymorphService: polymorph: took off 12eb7, a creature form wears no gear
 SendInputsService: equipment report #41 in a creature form: 1 worn item(s) left out
@@ -132,7 +187,10 @@ SendInputsService: equipment report #41 in a creature form: 1 worn item(s) left 
 
 "switch failed" after the actor race means `Actor.SetRace` did not take;
 "look not received yet" means the appearance update had not arrived 1.5 s
-after the switch (it applies when it lands).
+after the switch (it applies when it lands). The attack line is written for the
+first five attacks of a form; "IsAttacking false" means the graph did not take
+the event in the state it was in (a creature that only attacks from its combat
+stance, which needs the weapon draw this form must not make).
 
 ## Rights
 

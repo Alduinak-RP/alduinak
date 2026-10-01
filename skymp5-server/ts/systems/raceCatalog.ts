@@ -26,12 +26,19 @@ export interface RaceEntry {
   morph: string;
   // Why the race is a known crash risk, "" when none is known
   risk: string;
+  // False without a shield biped object: the engine's weapon draw then reads before the player's biped slots and crashes
+  shield: boolean;
+  // Attack events of the race's attack data (ATKE) a creature form attacks with: no bashes, power attacks only when it has nothing else
+  attacks: string[];
   male: RaceSex;
   female: RaceSex;
 }
 
 // RACE DATA flags follow the skill boosts, heights and weights
 const FLAGS_OFFSET = 32;
+// Shield Biped Object, -1 for none
+const SHIELD_OFFSET = 80;
+const MAX_ATTACKS = 8;
 const PLAYABLE = 0x1;
 const FACEGEN = 0x2;
 const CHILD = 0x4;
@@ -58,6 +65,8 @@ interface RaceDraft {
   flags: number;
   morph: string;
   keywords: string[];
+  shield: boolean;
+  attacks: string[];
   male: SexDraft;
   female: SexDraft;
 }
@@ -91,6 +100,13 @@ function groupOf(d: RaceDraft, drafts: Map<string, RaceDraft>): RaceGroup {
   const base = d.morph ? drafts.get(d.morph.toLowerCase()) : undefined;
   if (base && (base.flags & PLAYABLE) && d.keywords.includes("vampire")) return "vampire";
   return (d.flags & FACEGEN) || d.keywords.includes("actortypenpc") ? "people" : "creature";
+}
+
+// Bashes need a shield or weapon, and a race with plain attacks keeps its power attacks for the AI
+function attackEvents(rec: EspmRecord): string[] {
+  const events = rec.fields.filter((f) => f.type === "ATKE").map((f) => cstr(f.data)).filter((e) => e.length > 0 && !/bash/i.test(e));
+  const plain = events.filter((e) => !/power/i.test(e));
+  return (plain.length ? plain : events).slice(0, MAX_ATTACKS);
 }
 
 function riskOf(d: RaceDraft): string {
@@ -138,6 +154,8 @@ export async function buildRaceCatalog(dataDir: string, loadOrder: string[], log
       flags,
       morph: nam8 ? descOf(u32(nam8)) : "",
       keywords,
+      shield: !!data && data.length >= SHIELD_OFFSET + 4 && data.readInt32LE(SHIELD_OFFSET) >= 0,
+      attacks: attackEvents(rec),
       ...readSexes(rec, descOf),
     });
   });
@@ -159,6 +177,8 @@ export async function buildRaceCatalog(dataDir: string, loadOrder: string[], log
       faceGen: !!(d.flags & FACEGEN),
       morph: d.morph,
       risk: riskOf(d),
+      shield: d.shield,
+      attacks: d.attacks,
       male: sexOf(d.male),
       female: sexOf(d.female),
     });

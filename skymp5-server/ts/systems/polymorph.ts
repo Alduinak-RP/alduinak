@@ -6,7 +6,7 @@ import { sendJson } from "./playerText";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Admin Polymorph: swaps a character's appearance race and sends its owner { customPacketType: "polymorph", on, raceId, gearOff, worn } so PolymorphService switches the skeleton
+// Admin Polymorph: swaps a character's appearance race and sends its owner { customPacketType: "polymorph", on, raceId, gearOff, noDraw, attacks, worn } so PolymorphService switches the skeleton
 
 // Original look of a transformed character, kept on the actor so a logout, crash or restart puts it back
 const RECORD_PROP = "private.polymorph";
@@ -46,6 +46,8 @@ export interface Transformed {
   female: boolean;
   swapped: boolean;
   gearOff: boolean;
+  noDraw: boolean;
+  attacks: number;
   face: string;
 }
 
@@ -76,7 +78,7 @@ export class Polymorph {
           this.byDesc = new Map(races.map((r) => [r.desc.toLowerCase(), r]));
           const groups = RACE_GROUPS.map((g) => `${races.filter((r) => r.group === g).length} ${g}`).join(", ");
           const refused = races.filter((r) => !r.male.usable && !r.female.usable).length;
-          this.log(`AdminSystem: race catalog ${races.length} race(s) (${groups}), ${refused} refused without a skeleton, ${races.filter((r) => r.risk).length} marked as crash risks and refused, in ${Date.now() - started} ms`);
+          this.log(`AdminSystem: race catalog ${races.length} race(s) (${groups}), ${refused} refused without a skeleton, ${races.filter((r) => r.risk).length} marked as crash risks and refused, ${races.filter((r) => !r.shield).length} without a shield biped object keep weapons sheathed, in ${Date.now() - started} ms`);
         })
         .catch((e) => this.log(`AdminSystem: race catalog build failed: ${e}`))
         .finally(() => { this.build = null; });
@@ -123,6 +125,9 @@ export class Polymorph {
     const { look, face } = this.lookFor(mp, entry, original, raceId, swapped ? !female : female);
     look.name = current.name;
     const gearOff = entry.group === "creature";
+    // A weapon draw by a race without a shield biped object crashes the game; a creature kept from drawing attacks with its race's attack events
+    const noDraw = !entry.shield;
+    const attacks = gearOff && noDraw ? entry.attacks : [];
     let equipment = prev?.equipment ?? null;
     if (gearOff && !equipment) {
       try { equipment = mp.get(actorId, "equipment") ?? null; } catch { }
@@ -134,8 +139,8 @@ export class Polymorph {
     // Copies of other players drop the gear before the creature body arrives, so no weapon lands on a skeleton without its nodes
     if (gearOff) mp.set(actorId, "equipment", { inv: { entries: [] }, numChanges: 0 });
     mp.set(actorId, "appearance", look);
-    sendJson(mp, userOf(mp, actorId), { customPacketType: "polymorph", on: true, raceId, gearOff, worn: [] });
-    return { entry, from: this.nameOfId(mp, original.raceId >>> 0), female: !!look.isFemale, swapped, gearOff, face };
+    sendJson(mp, userOf(mp, actorId), { customPacketType: "polymorph", on: true, raceId, gearOff, noDraw, attacks, worn: [] });
+    return { entry, from: this.nameOfId(mp, original.raceId >>> 0), female: !!look.isFemale, swapped, gearOff, noDraw, attacks: attacks.length, face };
   }
 
   // Puts the stored look back with the current name, so a /mask made while transformed stays; notify false spares a client heading to the main menu
@@ -154,7 +159,7 @@ export class Polymorph {
       return null;
     }
     const raceId = rec.appearance.raceId >>> 0;
-    if (notify) sendJson(mp, userOf(mp, actorId), { customPacketType: "polymorph", on: false, raceId, gearOff: false, worn });
+    if (notify) sendJson(mp, userOf(mp, actorId), { customPacketType: "polymorph", on: false, raceId, gearOff: false, noDraw: false, attacks: [], worn });
     if (rec.equipment) {
       setTimeout(() => {
         if (this.recordOf(mp, actorId)) return;

@@ -1,6 +1,6 @@
 'use strict'
 
-// polymorph.ts against a stub mp and a fixed race list: refusals, transform, face rules, gear, sex swap, revert and the restart lookup: node tools/test-polymorph.js
+// polymorph.ts against a stub mp and a fixed race list: refusals, transform, face rules, gear, the weapon lock and attack events, sex swap, revert and the restart lookup: node tools/test-polymorph.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -23,13 +23,15 @@ const idOf = (desc) => {
 
 const sex = (usable, head = [], faceTexture = '') => ({ usable, head, faceTexture })
 const race = (desc, edid, group, faceGen, extra = {}) => ({
-  desc, edid, name: edid.replace(/Race.*/, ''), group, faceGen, morph: '', risk: '', male: sex(true), female: sex(true), ...extra,
+  desc, edid, name: edid.replace(/Race.*/, ''), group, faceGen, morph: '', risk: '', shield: true, attacks: [], male: sex(true), female: sex(true), ...extra,
 })
 const RACES = [
   race('13746:Skyrim.esm', 'NordRace', 'playable', true, { male: sex(true, ['1:Skyrim.esm', '2:Skyrim.esm']), female: sex(true, ['3:Skyrim.esm'], '3b522:Skyrim.esm') }),
   race('13745:Skyrim.esm', 'KhajiitRace', 'playable', true, { male: sex(true, ['51616:Skyrim.esm', '5150d:Skyrim.esm']), female: sex(true, ['51612:Skyrim.esm'], 'f00:Missing.esp') }),
   race('88794:Skyrim.esm', 'NordRaceVampire', 'vampire', true, { morph: '13746:Skyrim.esm' }),
-  race('1320a:Skyrim.esm', 'WolfRace', 'creature', false),
+  race('1320a:Skyrim.esm', 'WolfRace', 'creature', false, { shield: false, attacks: ['attackStart_Attack1', 'attackStart_AttackLeft1'] }),
+  race('131f0:Skyrim.esm', 'DremoraRace', 'people', true, { shield: false, attacks: ['attackStart'] }),
+  race('d53:Skyrim.esm', 'DraugrRace', 'creature', false, { attacks: ['attackStart1HMSwipe'] }),
   race('e7713:Skyrim.esm', 'AlduinRace', 'creature', false, { female: sex(false), risk: 'flying race' }),
   race('17f44:Skyrim.esm', 'SkeeverRace', 'creature', false, { female: sex(false) }),
   race('99999:Skyrim.esm', 'BrokenRace', 'creature', false, { male: sex(false), female: sex(false) }),
@@ -102,13 +104,17 @@ assert.deepEqual(t.p['private.polymorph'].appearance, NORD_LOOK)
 assert.deepEqual(t.p['private.polymorph'].equipment.inv.entries, WORN.slice(0, 2), 'only the worn entries are kept')
 assert.equal(t.p['private.polymorph'].by, 12)
 assert.equal(t.p['private.indexed.polymorph'], 'on')
-assert.deepEqual(t.packets.pop(), { u: 3, customPacketType: 'polymorph', on: true, raceId: 0x1320a, gearOff: true, worn: [] })
+assert.equal(r.noDraw, true)
+assert.equal(r.attacks, 2)
+assert.deepEqual(t.packets.pop(), { u: 3, customPacketType: 'polymorph', on: true, raceId: 0x1320a, gearOff: true, noDraw: true, attacks: ['attackStart_Attack1', 'attackStart_AttackLeft1'], worn: [] })
 
 // Wolf to the Nord's vampire form: the stored original stays, the own face comes back, the gear stays off until Revert
 const since = t.p['private.polymorph'].since
 r = t.pm.transform(t.mp, t.id, '88794:Skyrim.esm', 13)
 assert.equal(r.face, 'own face kept')
 assert.equal(r.gearOff, false)
+assert.equal(r.noDraw, false, 'a race with a shield biped object draws weapons')
+assert.deepEqual(t.packets.pop().attacks, [], 'a humanoid form attacks the engine way')
 assert.deepEqual(t.p.appearance, { ...NORD_LOOK, raceId: 0x88794 })
 assert.deepEqual(t.p['private.polymorph'].appearance, NORD_LOOK)
 assert.deepEqual(t.p['private.polymorph'].equipment.inv.entries, WORN.slice(0, 2))
@@ -125,6 +131,8 @@ assert.equal(t.p['private.indexed.polymorph'], null)
 const back = t.packets.pop()
 assert.equal(back.on, false)
 assert.equal(back.raceId, 0x13746)
+assert.equal(back.noDraw, false)
+assert.deepEqual(back.attacks, [])
 assert.deepEqual(back.worn, [WORN[0]], 'only worn items the character still carries go back on')
 assert.equal(timers.length, 1)
 timers.shift()()
@@ -140,6 +148,17 @@ assert.deepEqual(t.p.appearance.headpartIds, [0x51612])
 assert.equal(t.p.appearance.headTextureSetId, 0)
 assert.equal(t.p.appearance.skinColor, 111, 'a FaceGen race keeps the colours')
 assert.deepEqual(t.p.equipment.inv.entries, WORN, 'a playable race keeps the gear')
+
+// A humanoid race without a shield biped object keeps its gear and its weapons sheathed; a creature with one draws and attacks the engine way
+t = setup()
+r = t.pm.transform(t.mp, t.id, '131f0:Skyrim.esm', 1)
+assert.equal(r.gearOff, false)
+assert.equal(r.noDraw, true)
+assert.deepEqual(t.packets.pop(), { u: 3, customPacketType: 'polymorph', on: true, raceId: 0x131f0, gearOff: false, noDraw: true, attacks: [], worn: [] })
+r = t.pm.transform(t.mp, t.id, 'd53:Skyrim.esm', 1)
+assert.equal(r.gearOff, true)
+assert.equal(r.noDraw, false)
+assert.deepEqual(t.packets.pop().attacks, [])
 
 // A female admin into a male-only race gets the male body; the revert brings her back
 t = setup({ ...NORD_LOOK, isFemale: true })

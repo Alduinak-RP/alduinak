@@ -8,18 +8,40 @@ import { syncRaceAbilities } from "../../sync/spell";
 import { Entry, getInventory } from "../../sync/inventory";
 import { countWorn, equipEntries, getUnwornSaved } from "../../sync/equipment";
 import { logToPlatformLog } from "../../logging";
-import { EquipEvent } from "skyrimPlatform";
+import { buttonEventKeyCode, isGameInputBlocked, isPlayerDowned } from "./widgetMenuUtil";
+import { ButtonEvent, DxScanCode, EquipEvent } from "skyrimPlatform";
 
 const PLAYER_FORM_ID = 0x14;
 // The race switch reloads the 3D; the look and the gear go on after it
 const SETTLE_SEC = 1.5;
 const RETRY_SEC = 1;
 const MAX_TRIES = 30;
+const ATTACK_CONTROL = "Right Attack/Block";
+const ATTACK_GAP_MS = 900;
+const ATTACK_CHECK_SEC = 0.3;
+const ATTACK_LOG_COUNT = 5;
+// The third person camera pivots at this node's height; only the playable skeletons carry it
+const CAMERA_NODE = "Camera3rd [Cam3]";
+// Head nodes of the creature skeletons, the most common first
+const HEAD_NODES = [
+  "NPC Head [Head]", "NPC Head", "Canine_Head", "Sabrecat_Head [Head]", "DragPriestNPC Head [Head]", "HEAD", "Head [Head]", "Mammoth Head",
+  "Horker_Head", "Goat_Head", "Boar_Head", "ElkScull", "Scull", "HorseScull", "RabbitHead", "FireAtronach_Head [Head]", "ChaurusFlyerHead",
+  "DwarvenSpiderHead_XYZ", "IW Head", "Wisp Head", "SlaughterfishHead", "NPC Head MagicNode [Hmag]",
+];
+const CAMERA_HEIGHT_SETTINGS = ["fOverShoulderPosZ:Camera", "fOverShoulderCombatPosZ:Camera"];
+const CAMERA_DISTANCE_SETTINGS = ["fVanityModeMinDist:Camera", "fVanityModeMaxDist:Camera"];
+const HUMAN_HEAD_HEIGHT = 120;
+const MIN_HEAD_HEIGHT = 10;
+const MAX_HEAD_HEIGHT = 1000;
+const MAX_DISTANCE_SCALE = 4;
+const CAMERA_TRIES = 5;
 
 interface PolymorphOrder {
   on: boolean;
   raceId: number;
   gearOff: boolean;
+  noDraw: boolean;
+  attacks: string[];
   worn: Entry[];
 }
 
@@ -28,9 +50,14 @@ const hex = (id: number): string => (id >>> 0).toString(16);
 /**
  * Admin Polymorph (AdminSystem, Admin > Polymorph): the server swaps the appearance race, which rebuilds this character on every other client.
  * The local player also needs Actor.SetRace for the new skeleton, since the appearance apply only swaps the base's race and head.
- *   Server -> Client: { customPacketType: "polymorph", on, raceId, gearOff, worn }  worn: the entries to put back on a revert
+ *   Server -> Client: { customPacketType: "polymorph", on, raceId, gearOff, noDraw, attacks, worn }  worn: the entries to put back on a revert
  * A creature form takes the gear off and forces third person first (creature skeletons have no first person body), takes off whatever is put on in it
  * and keeps worn gear out of the equipment reports meanwhile.
+ * noDraw keeps the weapon sheathed: on a weapon draw the engine shows the player's shield through the race's shield biped object, and a race without one
+ * (most creatures, Dremora) makes it read before the biped slots and crash. Such a form has the fighting controls off, and a creature among them attacks
+ * with its race's attack events on the attack key instead (most creature graphs have no idle for the player's attack action anyway).
+ * A creature skeleton has no Camera3rd node, which leaves the camera pivot at the feet, so the pivot is raised to the head through the camera settings,
+ * and the switch to first person is off in a creature form.
  */
 export class PolymorphService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -40,9 +67,17 @@ export class PolymorphService extends ClientListener {
     this.controller.emitter.on("createActorMessage", (e) => {
       if (!e.message.isMe) return;
       this.gearOff = false;
+      this.noDraw = false;
+      this.attacks = [];
       this.seq++;
+      this.controller.once("update", () => {
+        this.restoreCamera();
+        this.releaseControls();
+      });
     });
     this.controller.on("equip", (e) => this.onEquip(e));
+    this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
+    this.controller.on("update", () => this.holdControls());
   }
 
   // SendInputsService leaves worn gear out of the equipment it reports while this holds
@@ -58,9 +93,15 @@ export class PolymorphService extends ClientListener {
       on: content["on"] === true,
       raceId: Number(content["raceId"]) >>> 0,
       gearOff: content["gearOff"] === true,
+      noDraw: content["noDraw"] === true,
+      attacks: Array.isArray(content["attacks"]) ? (content["attacks"] as unknown[]).filter((a): a is string => typeof a === "string" && a.length > 0) : [],
       worn: worn.filter((e) => e && typeof e.baseId === "number"),
     };
     this.gearOff = order.on && order.gearOff;
+    this.noDraw = order.on && order.noDraw;
+    this.attacks = order.on ? order.attacks : [];
+    this.attackIndex = 0;
+    this.attackLogs = 0;
     // Only the latest order runs; natives throw in the packet-handler context, so it waits for update
     const seq = ++this.seq;
     this.controller.once("update", () => this.apply(order, seq, 1));
@@ -78,15 +119,20 @@ export class PolymorphService extends ClientListener {
     }
     // A load finishes first, and a race switch in the saddle would leave the rider on the horse's skeleton
     const loading = sp.Ui.isMenuOpen("Loading Menu") || sp.Ui.isMenuOpen("Main Menu") || !player.is3DLoaded();
-    if (loading || player.isOnMount()) {
+    const mounted = !loading && player.isOnMount();
+    // The new graph would draw a drawn weapon again, so it is put away in the body that still has a shield slot
+    const drawn = !loading && !mounted && this.noDraw && player.isWeaponDrawn();
+    if (loading || mounted || drawn) {
       if (attempt >= MAX_TRIES) {
-        logToPlatformLog(this, `${label}: ${loading ? "still loading" : "still mounted"} after ${MAX_TRIES} tries, race ${hex(order.raceId)} not switched`);
+        logToPlatformLog(this, `${label}: ${loading ? "still loading" : mounted ? "still mounted" : "weapon still drawn"} after ${MAX_TRIES} tries, race ${hex(order.raceId)} not switched`);
         return;
       }
-      if (!loading) player.dismount();
+      if (mounted) player.dismount();
+      if (drawn) player.sheatheWeapon();
       sp.Utility.wait(RETRY_SEC).then(() => this.controller.once("update", () => this.apply(order, seq, attempt + 1)));
       return;
     }
+    this.restoreCamera();
     const wornBefore = countWorn(getInventory(player));
     if (this.gearOff) {
       player.unequipAll();
@@ -118,7 +164,108 @@ export class PolymorphService extends ClientListener {
     const now = player.getRace()?.getFormID() ?? 0;
     const base = sp.ActorBase.from(player.getBaseObject())?.getRace()?.getFormID() ?? 0;
     const gear = this.gearOff ? `off (${wornBefore} worn before), third person` : "kept";
-    logToPlatformLog(this, `${label}: race ${hex(order.raceId)}, actor race ${hex(before)} -> ${hex(now)}${now === order.raceId ? "" : " (switch failed)"}, base race ${hex(base)}, look ${lookApplied ? "applied" : "not received yet"}, gear ${gear}${dressed}`);
+    const fight = this.noDraw ? `, weapons stay sheathed, ${this.attacks.length} attack event(s) on the attack key` : "";
+    logToPlatformLog(this, `${label}: race ${hex(order.raceId)}, actor race ${hex(before)} -> ${hex(now)}${now === order.raceId ? "" : " (switch failed)"}, base race ${hex(base)}, look ${lookApplied ? "applied" : "not received yet"}, gear ${gear}${dressed}${fight}`);
+    this.releaseControls();
+    if (order.on) this.fitCamera(seq, 1);
+  }
+
+  // Raises the camera pivot to the head of a skeleton without the camera node and widens the zoom range of a tall one
+  private fitCamera(seq: number, attempt: number): void {
+    const sp = this.sp;
+    const player = sp.Game.getPlayer();
+    if (!player || seq !== this.seq) return;
+    const loaded = player.is3DLoaded();
+    if (loaded && sp.NetImmerse.hasNode(player, CAMERA_NODE, false)) {
+      logToPlatformLog(this, `polymorph camera: the skeleton has ${CAMERA_NODE}, nothing changed`);
+      return;
+    }
+    const head = loaded ? HEAD_NODES.find((node) => sp.NetImmerse.hasNode(player, node, false)) : undefined;
+    const height = head ? sp.NetImmerse.getNodeWorldPositionZ(player, head, false) - player.getPositionZ() : 0;
+    if (!head || !(height > MIN_HEAD_HEIGHT && height < MAX_HEAD_HEIGHT)) {
+      if (attempt < CAMERA_TRIES) {
+        sp.Utility.wait(RETRY_SEC).then(() => this.controller.once("update", () => this.fitCamera(seq, attempt + 1)));
+        return;
+      }
+      const why = !loaded ? "3D not loaded" : head ? `${head} reads a height of ${height.toFixed(0)}` : "no known head node";
+      logToPlatformLog(this, `polymorph camera: ${why} after ${CAMERA_TRIES} tries, the pivot stays at the feet`);
+      return;
+    }
+    this.restoreCamera();
+    const saved: Record<string, number> = {};
+    for (const name of [...CAMERA_HEIGHT_SETTINGS, ...CAMERA_DISTANCE_SETTINGS]) saved[name] = sp.Utility.getINIFloat(name);
+    const scale = Math.min(MAX_DISTANCE_SCALE, Math.max(1, height / HUMAN_HEAD_HEIGHT));
+    for (const name of CAMERA_HEIGHT_SETTINGS) sp.Utility.setINIFloat(name, saved[name] + height);
+    for (const name of CAMERA_DISTANCE_SETTINGS) sp.Utility.setINIFloat(name, saved[name] * scale);
+    sp.Game.updateThirdPerson();
+    this.cameraSaved = saved;
+    logToPlatformLog(this, `polymorph camera: no ${CAMERA_NODE} on the skeleton, pivot raised ${height.toFixed(0)} to ${head}, zoom range x${scale.toFixed(2)}`);
+  }
+
+  private restoreCamera(): void {
+    const saved = this.cameraSaved;
+    if (!saved) return;
+    this.cameraSaved = null;
+    for (const name of Object.keys(saved)) this.sp.Utility.setINIFloat(name, saved[name]);
+    this.sp.Game.updateThirdPerson();
+    logToPlatformLog(this, "polymorph camera: settings put back");
+  }
+
+  // Other services switch controls back on (a restraint ending, a body set down), so the locks are checked every update
+  private holdControls(): void {
+    if (!this.noDraw && !this.gearOff) return;
+    const game = this.sp.Game;
+    const fighting = this.noDraw && game.isFightingControlsEnabled();
+    const camSwitch = this.gearOff && game.isCamSwitchControlsEnabled();
+    if (!fighting && !camSwitch) return;
+    game.disablePlayerControls(false, fighting, camSwitch, false, false, false, false, false, 0);
+    if (fighting) this.fightingLocked = true;
+    if (camSwitch) this.camSwitchLocked = true;
+  }
+
+  // Gives back the controls the current form no longer needs locked
+  private releaseControls(): void {
+    const fighting = this.fightingLocked && !this.noDraw;
+    const camSwitch = this.camSwitchLocked && !this.gearOff;
+    if (!fighting && !camSwitch) return;
+    this.sp.Game.enablePlayerControls(false, fighting, camSwitch, false, false, false, false, false, 0);
+    if (fighting) this.fightingLocked = false;
+    if (camSwitch) this.camSwitchLocked = false;
+  }
+
+  private onButtonEvent(e: ButtonEvent): void {
+    if (!this.attacks.length || !e.isDown) return;
+    if (e.userEventName !== ATTACK_CONTROL && buttonEventKeyCode(e) !== this.attackKey()) return;
+    const now = Date.now();
+    if (now - this.lastAttackMs < ATTACK_GAP_MS || isGameInputBlocked(this.sp, this.controller) || isPlayerDowned(this.controller)) return;
+    this.lastAttackMs = now;
+    const event = this.attacks[this.attackIndex++ % this.attacks.length];
+    this.controller.once("update", () => this.attack(event));
+  }
+
+  private attack(event: string): void {
+    const sp = this.sp;
+    const player = sp.Game.getPlayer();
+    if (!player || !this.attacks.length || player.isDead()) return;
+    sp.Debug.sendAnimationEvent(player, event);
+    if (this.attackLogs >= ATTACK_LOG_COUNT) return;
+    this.attackLogs++;
+    sp.Utility.wait(ATTACK_CHECK_SEC).then(() => this.controller.once("update", () => {
+      const attacking = sp.Game.getPlayer()?.getAnimationVariableBool("IsAttacking");
+      logToPlatformLog(this, `polymorph attack: ${event} sent, ${ATTACK_CHECK_SEC} s later the graph reads IsAttacking ${attacking}`);
+    }));
+  }
+
+  // A button event may carry no control name while the fighting controls are off, so the key is matched as well
+  private attackKey(): number {
+    if (this.attackKeyCode === 0) {
+      let code: number | undefined;
+      try {
+        code = [0, 1].map((device) => this.sp.Input.getMappedKey(ATTACK_CONTROL, device)).find((c) => c > 0);
+      } catch { /* SKSE input not ready */ }
+      this.attackKeyCode = code ?? DxScanCode.LeftMouseButton;
+    }
+    return this.attackKeyCode;
   }
 
   // Creature skeletons have no weapon or armour nodes, so anything put on comes off on the next update
@@ -138,5 +285,14 @@ export class PolymorphService extends ClientListener {
   }
 
   private gearOff = false;
+  private noDraw = false;
+  private attacks: string[] = [];
+  private attackIndex = 0;
+  private attackLogs = 0;
+  private lastAttackMs = 0;
+  private attackKeyCode = 0;
+  private fightingLocked = false;
+  private camSwitchLocked = false;
+  private cameraSaved: Record<string, number> | null = null;
   private seq = 0;
 }
