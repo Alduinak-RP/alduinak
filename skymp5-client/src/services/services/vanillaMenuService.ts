@@ -28,6 +28,8 @@ const HUD_STAMINA = `${HUD_ROOT}.Stamina`;
 // Right edge of each meter's art from its origin, from sprites 758 and 766 of hudmenu.swf (SkyUI and vanilla alike)
 const MAGICKA_ART_RIGHT = 338.8;
 const STAMINA_ART_RIGHT = -46.2;
+// SkyUI's crafting bottom bar tops out 58 px above the visible bottom; the magicka art ends 15.5 px above its origin, so 48 clears it for any safe zone
+const CRAFTING_MAGICKA_LIFT = 48;
 // The meter sprites' Pause label (HUDMenu.METER_PAUSE_FRAME), the first fully faded in frame
 const METER_SHOWN_FRAME = 40;
 const HUD_RECHECK_MS = 1000;
@@ -98,7 +100,7 @@ export class VanillaMenuService extends ClientListener {
     this.syncHud();
   }
 
-  // The Crafting Menu pushes the HUD's InventoryMode, which hides all three bars; the magicka bar, which carries fatigue, stays up at the stamina bar's place
+  // The Crafting Menu pushes the HUD's InventoryMode, which hides all three bars; the magicka bar, which carries fatigue, stays up on the stamina bar's side above the bottom bar
   private holdCraftingMagicka(): void {
     const ui = this.sp.Ui;
     if (!ui.isMenuOpen(Menu.HUD)) return;
@@ -110,8 +112,8 @@ export class VanillaMenuService extends ClientListener {
       }
       meter = this.craftingMeter = { x: ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`), y: ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._y`), settle: 0, opened: this.describeMagicka() };
       ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._x`, ui.getFloat(Menu.HUD, `${HUD_STAMINA}._x`) + STAMINA_ART_RIGHT - MAGICKA_ART_RIGHT);
-      ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._y`, ui.getFloat(Menu.HUD, `${HUD_STAMINA}._y`));
-      this.logOnce("crafting:shown", `Crafting Menu: magicka bar moved from x=${Math.round(meter.x)} to the stamina bar's place x=${Math.round(ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`))}`);
+      ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._y`, ui.getFloat(Menu.HUD, `${HUD_STAMINA}._y`) - CRAFTING_MAGICKA_LIFT);
+      this.logOnce("crafting:shown", `Crafting Menu: magicka bar moved from x=${Math.round(meter.x)} y=${Math.round(meter.y)} to the stamina bar's side above the bottom bar, x=${Math.round(ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`))} y=${Math.round(ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._y`))}`);
     }
     if (!ui.getBool(Menu.HUD, `${HUD_MAGICKA}._visible`)) ui.setBool(Menu.HUD, `${HUD_MAGICKA}._visible`, true);
     if (meter.settle > 0) {

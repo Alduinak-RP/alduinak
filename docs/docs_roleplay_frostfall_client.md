@@ -195,10 +195,15 @@ line to `skyrim-platform.log`.
   again), and `HUDMenu.ShowElements` hides `Health`, `Magica` and `Stamina` in
   it, as none of them carries an `InventoryMode` flag. While a Crafting Menu is
   open the service keeps `_root.HUDMovieBaseInstance.Magica`, which carries the
-  red fatigue end, visible at the stamina bar's place: its `_x` becomes
+  red fatigue end, visible on the stamina bar's side: its `_x` becomes
   `Stamina._x - 385` (the right edge of the meter art lies 338.8 px right of
   the magicka origin and 46.2 px left of the stamina origin, the same in
-  SkyUI's and the vanilla `hudmenu.swf`) and its `_y` the stamina bar's. A
+  SkyUI's and the vanilla `hudmenu.swf`) and its `_y` `Stamina._y - 48`. At the
+  stamina bar's own height it would cover SkyUI's crafting bottom bar, whose
+  top sits 58 px above the visible bottom whatever the safe zone (74.95 px art,
+  `_y += safeRect.y - _height + 17`) and whose right end holds the skill row
+  (`SMITHING 15 [meter] 16`); the magicka art ends 15.5 px above its origin,
+  so the lift keeps it above the bar for any safe zone. A
   full, idle bar fades out, so the clip is held on frame 40 (`Pause`,
   `METER_PAUSE_FRAME`, the first fully faded in frame of its 200-frame fade)
   through queued `PlayForward(40)` and `gotoAndStop(40)` invokes whenever it
@@ -208,7 +213,8 @@ line to `skyrim-platform.log`.
   stage 2); the close line below shows whether they did. On close the bar
   goes back to its own place and plays on from frame 40, fading a few seconds
   later as after any other change. Log lines: `Crafting Menu: magicka bar
-  moved from x=<a> to the stamina bar's place x=<b>` once a session, and on
+  moved from x=<a> y=<b> to the stamina bar's side above the bottom bar, x=<c>
+  y=<d>` once a session, and on
   every close `Crafting Menu closed: HUD magicka <p>% penalty <q>%, player
   magicka <r>% at open, ... at close`: the HUD's own last values beside the
   player's magicka, where a close penalty equal to the `exhaustion=` of the

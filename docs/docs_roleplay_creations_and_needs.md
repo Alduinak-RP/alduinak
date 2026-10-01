@@ -389,7 +389,7 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
 magicka bar (fatigue), so the magicka bar's fill is real magicka against the reduced maximum. The magicka bar is the
 only fatigue display: the `FATIGUE <fatigue>%` line above it (`features/fatigueReadout`, widget id 39) was removed in
 r31 (K1), and `needsState` still carries `fatigue` and `fatigueStageName`, which the client no longer reads. While the
-Crafting Menu is open the magicka bar shows at the stamina bar's place (`docs_roleplay_frostfall_client.md`, Vanilla
+Crafting Menu is open the magicka bar shows on the stamina bar's side, above the menu's bottom bar (`docs_roleplay_frostfall_client.md`, Vanilla
 menus). `needsService.ts` writes the share into the
 Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
 (0x2EDF, `SRHP`) and `Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100 (the penalty share times
