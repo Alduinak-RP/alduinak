@@ -688,7 +688,7 @@ export class AdminSystem implements System {
           this.adminLog(`profile ${adminProfile} was refused a PK of ${target.name} (profile ${target.profileId}): ${refusal}`, false);
           return this.reply(mp, userId, false, refusal);
         }
-        this.adminLog(`profile ${adminProfile} PK'd ${target.name} (profile ${target.profileId}), their soul goes to Sovngarde`);
+        this.adminLog(`profile ${adminProfile} PK'd ${target.name} (profile ${target.profileId}), their soul goes to Sovngarde`, false);
         this.reply(mp, userId, true, `PK'd ${target.name}`);
       } else if (action === "masteryGrant") {
         const amount = Number(content["amount"]);

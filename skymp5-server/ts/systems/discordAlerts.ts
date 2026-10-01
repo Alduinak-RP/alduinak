@@ -90,10 +90,10 @@ async function flush(): Promise<void> {
   });
 }
 
-// Raw event-log line, sent as is and unfiltered: callers go through discordAlert; a repeat inside one batch is counted, not resent
+// Raw event-log line, sent as is and unfiltered: callers go through discordAlert; a repeat of the line just before it is counted, not resent
 function postEventLog(line: string, here = false): void {
-  const same = pending.find((p) => p.line === line);
-  if (same) same.count++;
+  const last = pending[pending.length - 1];
+  if (last && last.line === line) last.count++;
   else if (pending.length >= MAX_PENDING && !here) skipped++;
   else pending.push({ line, here, count: 1 });
   flushTimer ??= setTimeout(() => void flush(), FLUSH_MS);
