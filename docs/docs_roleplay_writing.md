@@ -99,7 +99,8 @@ from the pack, selected entry "<name>"` (or `selected entry unread`).
 
 The composer has a title field (40 characters) and pages: a letter is one
 page of 2,000 characters, a journal up to 50 and a book up to 100 pages of
-1,500 characters each. Tags (see Markup) do not count toward a page's length.
+1,500 characters each. Tags the page honours (see Markup) do not count toward
+a page's length; a tag shown as written counts like any text.
 **Sign it** is on by default. Writing uses up the
 blank and gives the written item, named `<title> (<id>)` or `<Kind> (<id>)`
 without a title.
@@ -127,7 +128,10 @@ Rules: tag names ignore case; an unknown tag (`[sic]`), a closing tag with
 nothing open, a tag with a wrong value (`[head=4]`, `[color=url(x)]`,
 `[font=comic]`) and `[fancy]` before anything but a letter are shown as
 written; tags still open at the end of a page close there; a closing tag
-closes the tags opened inside it; nesting stops at 8 levels and a page honours
+closes the tags opened inside it and opens them again right after it, so
+overlapping formats both hold (`[b]Hel[font=daedric]lo[/b] wor[/font]ld` is
+bold Hel, bold Daedric lo, Daedric wor); a heading inside a heading shows as
+written; nesting stops at 8 levels and a page honours
 400 tags, the rest shows as text. One line break right after a heading,
 centre or right block or a dividing line is dropped, since they start and end
 their own lines. There is no escape character. Each page is rendered on its
@@ -165,7 +169,9 @@ parser and the limits.
   tag, **Ink** and **Font** open a list and wrap the selection in the chosen
   ink or font (several fonts can share a page), the bullet button bullets
   every selected line, **Line** inserts `[hr]`, **Capital** puts `[fancy]`
-  before the next letter and **Plain** strips the tags from the selection.
+  before the next letter outside a tag (nothing when that letter already has
+  one) and **Plain** strips the tags from the selection, closing the formats
+  around it before it and opening them again after it.
   The buttons never take the focus, so the selection stays. **Preview** shows
   the page as readers will see it. Each page shows its visible count against
   the limit, red when over (**Write it** is then off). Escape closes an open
@@ -293,8 +299,11 @@ Consequences:
   Dropped items vanish after two minutes and lose their name on a restart.
 - **Search and pet windows refuse writings** (`searchSystem.ts` `stuck()`),
   in both directions, because those windows list stacks without names and a
-  take could move the wrong letter. Couriers cannot be robbed of letters at
-  launch.
+  take could move the wrong letter, so a living courier cannot be robbed of
+  letters. The one exception is the body a PK leaves: the victim's writings
+  and property keys go onto it with the rest of the pack, and its window
+  lists them by name, so a looter takes them, document and all
+  (`docs_roleplay_survival_loop.md` section 8).
 - **Trade and chests** move the named copy intact; the trade window shows the
   name, never the text.
 - **A forgotten pet** (its body removed, vanished, or its dead record dropped
@@ -477,7 +486,7 @@ end an edit on the reply to a save.
 |---|---|---|
 | `writingEnabled` | `false` | turns the feature on; also a row in the manager Settings tab |
 | `writingTitleMaxLen` | 40 | characters in a title |
-| `writingLetterMaxLen` | 2000 | characters in a letter, tags not counted; the raw text with its tags holds twice that |
+| `writingLetterMaxLen` | 2000 | characters in a letter, honoured tags not counted; the raw text with its tags holds twice that |
 | `writingPageMaxLen` | 1500 | characters per journal or book page, counted the same way |
 | `writingJournalMaxPages` | 50 | pages in a journal |
 | `writingBookMaxPages` | 100 | pages in a book |
@@ -553,7 +562,12 @@ In this order:
   previewed, on the note texture with torn edges (the game shows through the
   edges, no square corners). A second reader sees the same. Type `<b>x</b>`
   and `[sic]`: both show as typed. 2,000 letters plus tags are accepted;
-  2,001 letters are refused with "A page holds 2000 characters at most.".
+  2,001 letters are refused with "A page holds 2000 characters at most.",
+  and so are 2,000 letters plus a `[head=4]`, which shows as text. With the
+  caret at the start of `[center][head=1]Title`, **Capital** illuminates the
+  T; pressing it again does nothing. Bold `Hello`, select `lo wor` and pick
+  a font: `lo` is bold in that font and ` wor` in that font only, with no
+  `[/font]` printed.
 - A journal and a book open as a two-page spread; type on both pages, turn
   with Next, Write it, read it back; the signature and mark close the last
   page. A finished book's copy reads the same.
@@ -563,7 +577,7 @@ In this order:
 - A letter written before K8 reads as before, on the note texture.
 - At 1280x720 the composer, the note and the spread fit the screen.
 - Dropping a writing puts it back with the message; the search and pet windows
-  refuse it.
+  refuse it, except a PK body's, which lists it by name and lets it be taken.
 - Finish a book, copy it onto a Blank Book, read the copy ("A copy").
 - Relog and restart: names and text persist.
 - Staff Read, Rename and Destroy from the Personal Menu, each in `admin.log`.

@@ -75,11 +75,57 @@ const SEAL_FACTIONS = [
   "hold:telvanni", "hold:redoran", "hold:dres", "hold:indoril", "hold:sadras",
 ];
 
-// The front's markup tags (skymp5-front/src/features/writing/markup.tsx TAG); they do not count toward a page's length
+// The front's markup tags (skymp5-front/src/features/writing/markup.tsx TAG); those its parser honours do not count toward a page's length
 const MARKUP_TAG = /\[(\/?)(b|bold|i|italic|u|s|color|head|bullet|font|fancy|center|right|hr)(?:=("?)([^\]"\n]{1,24})\3)?\/?\]/gi;
 // Room for tags on top of the visible characters, and a bound on how many a page may carry
 const MARKUP_ROOM = 2;
 const MAX_TAGS_PER_PAGE = 400;
+// The front parser's rules (markup.tsx parse): depth, aliases, ink keys, and font keys and labels compared as letters only
+const MARKUP_MAX_DEPTH = 8;
+const MARKUP_ALIAS: Record<string, string> = { bold: "b", italic: "i" };
+const MARKUP_INKS = new Set(["black", "brown", "red", "blue", "green", "purple", "gold", "grey", "gray"]);
+const MARKUP_FONTS = new Set(["hand", "handwritten", "book", "plain", "daedric", "dragon", "dwemer", "falmer", "mage", "magescript", "unreadable", "symbols"]);
+
+const markupKey = (s: string): string => s.toLowerCase().replace(/[^a-z]/g, "");
+
+const markupArgOk = (tag: string, raw: string | undefined): boolean => {
+  if (tag === "color") return raw !== undefined && (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw.trim()) || MARKUP_INKS.has(markupKey(raw)));
+  if (tag === "head") return raw !== undefined && /^[1-3]$/.test(raw);
+  if (tag === "font") return raw !== undefined && MARKUP_FONTS.has(markupKey(raw));
+  return raw === undefined;
+};
+
+// The characters a reader sees: a tag the front shows as written counts like any text; test-writing-markup.js holds it to the front's plainText
+export const markupVisibleLength = (text: string): number => {
+  const open: string[] = [];
+  const re = new RegExp(MARKUP_TAG.source, "gi");
+  let hidden = 0;
+  let tags = 0;
+  let fancySeen = false;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (++tags > MAX_TAGS_PER_PAGE) break;
+    const tag = MARKUP_ALIAS[m[2].toLowerCase()] || m[2].toLowerCase();
+    const raw = m[4];
+    let done = false;
+    if (m[1] === "/") {
+      const i = open.lastIndexOf(tag);
+      if (i >= 0) open.splice(i, 1);
+      done = i >= 0 || (tag === "fancy" && fancySeen);
+    } else if (tag === "bullet" || tag === "hr") {
+      done = raw === undefined;
+    } else if (tag === "fancy") {
+      if (raw === undefined && /[a-z]/i.test(text.charAt(re.lastIndex))) {
+        re.lastIndex += 1;
+        fancySeen = done = true;
+      }
+    } else if (markupArgOk(tag, raw) && open.length < MARKUP_MAX_DEPTH && !(tag === "head" && open.includes("head"))) {
+      open.push(tag);
+      done = true;
+    }
+    if (done) hidden += m[0].length;
+  }
+  return text.length - hidden;
+};
 
 type View = "compose" | "read" | "sealed" | "list";
 
@@ -690,12 +736,12 @@ export class WritingSystem implements System {
       if (typeof page !== "string" || page.length > maxLen * 4) return null;
       const text = sanitize(page);
       const tags = text.match(MARKUP_TAG)?.length ?? 0;
-      if (text.replace(MARKUP_TAG, "").length > maxLen) {
-        this.notice(mp, userId, `A page holds ${maxLen} characters at most.`);
-        return null;
-      }
       if (text.length > maxLen * MARKUP_ROOM || tags > MAX_TAGS_PER_PAGE) {
         this.notice(mp, userId, "That page carries too much formatting.");
+        return null;
+      }
+      if (markupVisibleLength(text) > maxLen) {
+        this.notice(mp, userId, `A page holds ${maxLen} characters at most.`);
         return null;
       }
       pages.push(text);

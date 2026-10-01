@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { ConfirmBar, PaperReader, sendToClient as send, useCloseOnUnfocus, useEscapeLayer } from '../parchment';
 import { assetUrl } from '../../utils/assetUrl';
-import { FONTS, INKS, MARKUP_ROOM, Markup, TAG, plainText } from './markup';
+import { FONTS, INKS, MARKUP_ROOM, Markup, addCapital, plainText, unformatRange } from './markup';
 import './styles.scss';
 
 export { Markup, plainText } from './markup';
@@ -211,16 +211,8 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSu
     const lines = t.slice(from, e).split('\n').map((l) => '[bullet] ' + l).join('\n');
     return { text: t.slice(0, from) + lines + t.slice(e), start: from, end: from + lines.length };
   });
-  const capital = (): void => edit((t, s) => {
-    const m = /[a-z]/i.exec(t.slice(s));
-    if (!m) return null;
-    const at = s + m.index;
-    return { text: t.slice(0, at) + '[fancy]' + t.slice(at), start: at + 8, end: at + 8 };
-  });
-  const unformat = (): void => edit((t, s, e) => {
-    const plain = t.slice(s, e).replace(new RegExp(TAG.source, 'gi'), '');
-    return { text: t.slice(0, s) + plain + t.slice(e), start: s, end: s + plain.length };
-  });
+  const capital = (): void => edit(addCapital);
+  const unformat = (): void => edit(unformatRange);
 
   const tools: Array<[string, string, () => void]> = [
     ['B', 'Bold', wrap('[b]', '[/b]')],

@@ -42,7 +42,7 @@ export const INKS: Array<{ key: string; hex: string }> = [
   { key: 'grey', hex: '#55504a' },
 ];
 
-// Same pattern as MARKUP_TAG in skymp5-server/ts/systems/writingSystem.ts, which counts a page's length without these tags
+// Same pattern as MARKUP_TAG in skymp5-server/ts/systems/writingSystem.ts, which counts a page's length without the tags this parser honours
 export const TAG = /\[(\/?)(b|bold|i|italic|u|s|color|head|bullet|font|fancy|center|right|hr)(?:=("?)([^\]"\n]{1,24})\3)?\/?\]/gi;
 
 // Mirrors MARKUP_ROOM on the server: a page's raw text may be this many times its visible limit
@@ -68,6 +68,8 @@ const inkOf = (value: string): string => {
 interface Tagged {
   tag: string;
   arg: string;
+  // The tag as written, to open it again
+  raw: string;
   children: MdNode[];
 }
 
@@ -84,25 +86,43 @@ const argOf = (tag: string, raw: string | undefined): string | null => {
   return raw === undefined ? '' : null;
 };
 
-export const parseMarkup = (text: string): MdNode[] => {
-  const root: Tagged = { tag: '', arg: '', children: [] };
+interface Parsed {
+  nodes: MdNode[];
+  // The raw text less the tags honoured
+  visible: string;
+  // Tags still open where the parse stopped
+  open: Array<{ tag: string; raw: string }>;
+}
+
+// stop: parse the tags that start before it only
+const parse = (text: string, stop = Infinity): Parsed => {
+  const root: Tagged = { tag: '', arg: '', raw: '', children: [] };
   const stack: Tagged[] = [root];
   const top = (): Tagged => stack[stack.length - 1];
   const re = new RegExp(TAG.source, 'gi');
   let at = 0;
   let tags = 0;
   let fancySeen = false;
+  let visible = '';
   const pushText = (s: string): void => {
     if (!s) return;
+    visible += s;
     const kids = top().children;
     if (typeof kids[kids.length - 1] === 'string') kids[kids.length - 1] += s;
     else kids.push(s);
   };
-  // Blocks start and end their own lines, so one line break beside a block tag is dropped
+  // Blocks start and end their own lines, so one line break beside a block tag is not drawn; it still counts
   const skipBreak = (): void => {
-    if (text[re.lastIndex] === '\n') re.lastIndex += 1;
+    if (text[re.lastIndex] !== '\n') return;
+    re.lastIndex += 1;
+    visible += '\n';
   };
-  for (let m = re.exec(text); m; m = re.exec(text)) {
+  const open = (tag: string, arg: string, raw: string): void => {
+    const el: Tagged = { tag, arg, raw, children: [] };
+    top().children.push(el);
+    stack.push(el);
+  };
+  for (let m = re.exec(text); m && m.index < stop; m = re.exec(text)) {
     pushText(text.slice(at, m.index));
     const close = m[1] === '/';
     const tag = ALIAS[m[2].toLowerCase()] || m[2].toLowerCase();
@@ -113,30 +133,33 @@ export const parseMarkup = (text: string): MdNode[] => {
         let i = stack.length - 1;
         while (i > 0 && stack[i].tag !== tag) i--;
         if (i > 0) {
+          // Tags opened inside the closed one close with it and open again, so overlapping formats both hold
+          const reopen = stack.slice(i + 1);
           stack.length = i;
+          for (const el of reopen) open(el.tag, el.arg, el.raw);
           done = true;
           if (BLOCKS.has(tag)) skipBreak();
         } else if (tag === 'fancy' && fancySeen) {
           done = true;
         }
       } else if ((tag === 'bullet' || tag === 'hr') && raw === undefined) {
-        top().children.push({ tag, arg: '', children: [] });
+        top().children.push({ tag, arg: '', raw: m[0], children: [] });
         done = true;
         if (tag === 'hr') skipBreak();
       } else if (tag === 'fancy') {
         const letter = raw === undefined ? text.charAt(re.lastIndex) : '';
         if (/[a-z]/i.test(letter)) {
-          top().children.push({ tag, arg: letter.toUpperCase(), children: [] });
+          top().children.push({ tag, arg: letter.toUpperCase(), raw: m[0], children: [] });
+          visible += letter;
           re.lastIndex += 1;
           fancySeen = true;
           done = true;
         }
       } else {
         const arg = argOf(tag, raw);
-        if (arg !== null && stack.length <= MAX_DEPTH) {
-          const el: Tagged = { tag, arg, children: [] };
-          top().children.push(el);
-          stack.push(el);
+        // A heading inside a heading would multiply its size
+        if (arg !== null && stack.length <= MAX_DEPTH && !(tag === 'head' && stack.some((el) => el.tag === 'head'))) {
+          open(tag, arg, m[0]);
           done = true;
           if (BLOCKS.has(tag)) skipBreak();
         }
@@ -145,12 +168,49 @@ export const parseMarkup = (text: string): MdNode[] => {
     if (!done) pushText(m[0]);
     at = re.lastIndex;
   }
-  pushText(text.slice(at));
-  return root.children;
+  pushText(text.slice(at, Math.max(at, Math.min(stop, text.length))));
+  return { nodes: root.children, visible, open: stack.slice(1).map((el) => ({ tag: el.tag, raw: el.raw })) };
 };
 
-// The text a reader sees, for previews and counts; the server counts the same way
-export const plainText = (text: string): string => text.replace(new RegExp(TAG.source, 'gi'), '');
+export const parseMarkup = (text: string): MdNode[] => parse(text).nodes;
+
+// The text a reader sees, tags shown as written included, for previews and counts; writingSystem.ts markupVisibleLength counts the same way
+export const plainText = (text: string): string => parse(text).visible;
+
+export interface MarkupEdit {
+  text: string;
+  start: number;
+  end: number;
+}
+
+// An illuminated capital for the next letter outside a tag, from the start of a tag the caret sits in; null when that letter has one
+export const addCapital = (text: string, caret: number): MarkupEdit | null => {
+  const around = new RegExp(TAG.source, 'gi');
+  let from = caret;
+  for (let m = around.exec(text); m && m.index < caret; m = around.exec(text)) if (caret < m.index + m[0].length) from = m.index;
+  const tag = new RegExp(TAG.source, 'giy');
+  for (let at = from; at < text.length; at++) {
+    tag.lastIndex = at;
+    const m = tag.exec(text);
+    if (m) {
+      if (/^\[fancy\/?\]$/i.test(m[0]) && /[a-z]/i.test(text.charAt(at + m[0].length))) return null;
+      at += m[0].length - 1;
+    } else if (/[a-z]/i.test(text.charAt(at))) {
+      return { text: text.slice(0, at) + '[fancy]' + text.slice(at), start: at + 8, end: at + 8 };
+    }
+  }
+  return null;
+};
+
+// The selection without tags; formats open around it close before it and open again after it, so their tags outside still pair up
+export const unformatRange = (text: string, start: number, end: number): MarkupEdit | null => {
+  if (start === end) return null;
+  const plain = text.slice(start, end).replace(new RegExp(TAG.source, 'gi'), '');
+  const closes = parse(text, start).open.reverse().map((o) => '[/' + o.tag + ']').join('');
+  const opens = parse(text, end).open.map((o) => o.raw).join('');
+  const at = start + closes.length;
+  return { text: text.slice(0, start) + closes + plain + opens + text.slice(end), start: at, end: at + plain.length };
+};
 
 const fancyCache = new Map<string, string>();
 
