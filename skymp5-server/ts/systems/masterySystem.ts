@@ -56,7 +56,8 @@ const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
 // Recipes whose rank bonus belongs to several professions, by editor id prefix
 const SHARED_RECIPES: Array<[string, string[]]> = [
   ["AldRecipeKiln_Charcoal", ["woodworker", "blacksmith", "miner"]],
-  ["AldRecipeWriting_SealingWax", ["blacksmith", "alchemist"]]
+  // One wax recipe per station (AldRecipeWriting_SealingWax<Station>); each one's conditions name who makes it there
+  ["AldRecipeWriting_SealingWax", ["blacksmith", "alchemist", "miner", "tailor", "hunter", "woodworker", "cook"]]
 ];
 // Crafting at their benches costs half: cooking, alchemy, and refining at the smelter (miner) and the tanning rack (hunter)
 const HALF_COST_BENCHES_OF = ["cook", "alchemist", "miner", "hunter"];

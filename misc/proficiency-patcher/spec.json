@@ -7702,6 +7702,9 @@
     "all": [
      "Guard",
      "Solitude"
+    ],
+    "match": [
+     "TemperArmorTH_SolitudeShield"
     ]
    },
    {
@@ -7710,6 +7713,9 @@
     "all": [
      "Guard",
      "Markarth"
+    ],
+    "match": [
+     "TemperArmorTH_MarkarthShield"
     ]
    },
    {
@@ -7729,13 +7735,18 @@
     "all": [
      "Guard",
      "Hjaalmarch"
+    ],
+    "match": [
+     "TemperArmorTH_MorthalShield"
     ]
    },
    {
     "id": "hold:eastmarch",
     "name": "Guard of Eastmarch",
     "match": [
-     "AldRecipeArmorGuardHelmetFullEastmarch"
+     "AldRecipeArmorGuardHelmetFullEastmarch",
+     "TemperArmorTH_WindhelmCloakP",
+     "TemperArmorTH_WindhelmShield"
     ],
     "all": [
      "Guard",
@@ -7748,6 +7759,9 @@
     "all": [
      "Guard",
      "Winterhold"
+    ],
+    "match": [
+     "TemperArmorTH_WinterholdShield"
     ]
    },
    {
@@ -7756,6 +7770,9 @@
     "all": [
      "Guard",
      "Riften"
+    ],
+    "match": [
+     "TemperArmorTH_RiftenShield"
     ]
    },
    {
@@ -7766,7 +7783,8 @@
      "Dawnstar"
     ],
     "match": [
-     "Pale Guard"
+     "Pale Guard",
+     "TemperArmorTH_DawnstarShield"
     ]
    },
    {
@@ -7775,6 +7793,10 @@
     "all": [
      "Guard",
      "Whiterun"
+    ],
+    "match": [
+     "TemperArmorTH_WhiterunCloakCeremonial",
+     "TemperArmorTH_WhiterunShield"
     ]
    },
    {
@@ -9091,6 +9113,158 @@
    {
     "edid": "AldRecipeWriting_SealingWax",
     "bench": "CraftingSmelter",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "miner"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxForge",
+    "formId": "0x0413E6",
+    "bench": "CraftingSmithingForge",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxTanningRack",
+    "formId": "0x0413E7",
+    "bench": "CraftingTanningRack",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "tailor",
+     "hunter"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxLoom",
+    "formId": "0x0413E8",
+    "bench": "MCE_CraftingLoom",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "tailor"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxWoodcrafting",
+    "formId": "0x0413E9",
+    "bench": "AldCraftingWoodcrafting",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "woodworker"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxCookpot",
+    "formId": "0x0413EA",
+    "bench": "CraftingCookpot",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxOven",
+    "formId": "0x0413EB",
+    "bench": "BYOHCraftingOven",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxAlchemy",
+    "formId": "0x0413EC",
+    "bench": "AldCraftingAlchemy",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxMead",
+    "formId": "0x0413ED",
+    "bench": "AldCraftingMead",
+    "output": "AldSealingWax",
+    "count": 1,
+    "profession": "blacksmith",
+    "tier": "Novice",
+    "items": {
+     "BeeHiveHusk": 1,
+     "Charcoal": 1
+    },
+    "also": [
+     "alchemist",
+     "cook"
+    ]
+   },
+   {
+    "edid": "AldRecipeWriting_SealingWaxGrainMill",
+    "formId": "0x0413EE",
+    "bench": "AldCraftingGrainMill",
     "output": "AldSealingWax",
     "count": 1,
     "profession": "blacksmith",

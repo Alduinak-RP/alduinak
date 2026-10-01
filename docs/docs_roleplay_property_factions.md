@@ -425,18 +425,21 @@ crafts must hold both the `craft` rank and that profession rank; gear whose
 material is Master work (the Winterhold buckler and shield, the Falkreath
 Warhammer) stays Master. From r18 to r23 every piece asked for an Expert, which
 no player had reached, so the craft ranks saw none of it; plugin r24 brought
-it down. Two gaps remain from the source plugins: the four Immersive Armors
-Falkreath pieces (IARFalkreathBoots, Cuirass, Gauntlets, Helmet) list an
-ingredient that does not exist (Update.esm 0x01DA0BF1), so the server matches
-no recipe for them, and the nine `MCE_vol_GuardCapeRecipe_*` capes sit on a
-bench that does not exist (the `vol_GuardCapeRecipe_*` copies at the tanning
-rack make the same capes). Thirteen Improve entries carry no hold marker and
-came down with their recipes: twelve `TemperArmorTH_*` pieces (the Whiterun
-ceremonial cloak and Windhelm cloak P, the Whiterun, Solitude, Markarth,
-Riften, Dawnstar, Morthal and Winterhold shields, the heavy Whiterun shield
-and both Windhelm shields) any tailor or woodworker of the tier may improve, and
-`TemperArmorStormcloakCuirass`, which every Stormcloak blacksmith improves
-from Novice; improving only works on a piece already held.
+it down. The four Immersive Armors Falkreath pieces (IARFalkreathBoots,
+Cuirass, Gauntlets, Helmet) take a Fur Plate, 0x01DA0BF1, which Immersive
+Armors injects into Update.esm's id range (`IAMIFurPlate`), and the nine
+`MCE_vol_GuardCapeRecipe_*` capes sit at the loom and take thread
+(`MCE_CraftingLoom` 0x016CE000 and `MCE_Thread` 0x016CE001, injected the same
+way by More Craftable Equipment); the r24 notes called these ids missing, a
+scan of the load order found all three, and the server's record lookup reads
+injected records. Since plugin r25 the twelve `TemperArmorTH_*` Improve
+entries that carried no hold marker (the Whiterun ceremonial cloak and
+Windhelm cloak P, the Whiterun, Solitude, Markarth, Riften, Dawnstar, Morthal
+and Winterhold shields, the heavy Whiterun shield and both Windhelm shields)
+ask for their hold's craft rank like every other hold temper.
+`TemperArmorStormcloakCuirass` keeps the Stormcloak marker alone, so every
+Stormcloak blacksmith improves it from Novice; improving only works on a
+piece already held.
 
 ### Rules
 

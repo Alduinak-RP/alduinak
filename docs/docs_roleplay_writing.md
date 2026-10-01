@@ -45,8 +45,8 @@ never by form id.
 Recipes: anyone makes the blanks (tier `Anyone`), at the tanning rack or at
 the woodcrafting bench, from Roll of Paper (the vanilla `PaperRoll`), a
 journal or book with leather and one Leather Strips; a Novice woodworker makes
-the paper from firewood; the Sealing Wax is Novice blacksmith or alchemist
-work:
+the paper from firewood; the Sealing Wax is Novice work at every crafting
+station (plugin r25), see the second table:
 
 | Output | Bench | Ingredients |
 |---|---|---|
@@ -57,7 +57,29 @@ work:
 | Blank Journal | woodcrafting bench | 2 Roll of Paper, 1 Leather, 1 Leather Strips |
 | Blank Book | tanning rack | 4 Roll of Paper, 2 Leather, 1 Leather Strips |
 | Blank Book | woodcrafting bench | 4 Roll of Paper, 1 Leather, 1 Leather Strips |
-| Sealing Wax | smelter | 1 Beehive Husk, 1 Charcoal (blacksmith or alchemist Novice) |
+| Sealing Wax | every crafting station | 1 Beehive Husk, 1 Charcoal (Novice, see below) |
+
+The Sealing Wax has one recipe per station, all with the same ingredients. A
+Novice blacksmith or alchemist, the two who made it before r25, sees it at
+every station; a Novice of a profession that works a station sees it there:
+
+| Station | Recipe | Also made by |
+|---|---|---|
+| smelter | `AldRecipeWriting_SealingWax` | miner |
+| forge, anvil, Skyforge | `AldRecipeWriting_SealingWaxForge` | |
+| tanning rack | `AldRecipeWriting_SealingWaxTanningRack` | tailor, hunter |
+| loom | `AldRecipeWriting_SealingWaxLoom` | tailor |
+| woodcrafting bench | `AldRecipeWriting_SealingWaxWoodcrafting` | woodworker |
+| cooking pot, spit | `AldRecipeWriting_SealingWaxCookpot` | cook |
+| oven | `AldRecipeWriting_SealingWaxOven` | cook |
+| alchemy lab | `AldRecipeWriting_SealingWaxAlchemy` | |
+| meadery boilers | `AldRecipeWriting_SealingWaxMead` | cook |
+| grain mill | `AldRecipeWriting_SealingWaxGrainMill` | |
+
+Farmers, warriors and mages work no station and make none. The armour
+workbench and the grindstone list only Improve entries, so no recipe can show
+there. Each maker pays the fatigue of their own rank and the wax counts as
+their work (`SHARED_RECIPES` in `masterySystem.ts`).
 
 No quill or inkwell is needed. Only the server creates the written items
 (Letter, Sealed Letter, Journal, Book). A written item without a name, for
