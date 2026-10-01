@@ -30,11 +30,14 @@ export const refreshMovement = (ac: Pick<Actor, "modActorValue">): void => {
   ac.modActorValue("CarryWeight", -1);
 };
 
+// Float noise beside a whole maximum is rounded away; a fractional maximum (a cold or needs penalty) stays as it is
+export const wholeWhenNear = (value: number): number => Math.abs(value - Math.round(value)) < 0.001 ? Math.round(value) : value;
+
 export const getMaximumActorValue = (ac: Actor, avName: string): number => {
   const currentPercentage = ac.getActorValuePercentage(avName);
   return currentPercentage === 0 ?
     ac.getBaseActorValue(avName) :
-    Math.ceil(ac.getActorValue(avName) / currentPercentage);
+    wholeWhenNear(ac.getActorValue(avName) / currentPercentage);
 }
 
 export const setActorValuePercentage = (ac: Actor, avName: string, percentage: number): void => {

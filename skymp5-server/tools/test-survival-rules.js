@@ -177,11 +177,12 @@ const makeMp = () => {
   const calls = []
   const packets = []
   const healthSent = []
+  const sentOrder = []
   const known = (id) => { if (!learned.has(id)) learned.set(id, new Set()); return learned.get(id) }
   return {
-    props, learned: known, users, calls, packets, healthSent,
+    props, learned: known, users, calls, packets, healthSent, sentOrder,
     get: (id, key) => props.get(`${id >>> 0}:${key}`),
-    set: (id, key, v) => { props.set(`${id >>> 0}:${key}`, v); if (key === 'percentages') healthSent.push([id >>> 0, v.health]) },
+    set: (id, key, v) => { props.set(`${id >>> 0}:${key}`, v); if (key === 'percentages') { healthSent.push([id >>> 0, v.health]); sentOrder.push(`health ${v.health}`) } },
     lookupEspmRecordById: (id) => RECORDS.get(id >>> 0) || null,
     getIdFromDesc: (d) => parseInt(String(d).split(':')[0], 16) >>> 0,
     getDescFromId: (id) => desc(id),
@@ -191,7 +192,7 @@ const makeMp = () => {
     getActorName: (id) => props.get(`${id >>> 0}:appearance`)?.name,
     getUserActor: (userId) => { for (const [a, u] of users) if (u === userId) return a; return 0 },
     isConnected: () => true,
-    sendCustomPacket: (userId, text) => { packets.push([userId, JSON.parse(text)]) },
+    sendCustomPacket: (userId, text) => { packets.push([userId, JSON.parse(text)]); sentOrder.push(JSON.parse(text).customPacketType) },
     callPapyrusFunction: (_kind, _cls, method, self, args) => {
       const actor = parseInt(self.desc, 16) >>> 0
       const spells = known(actor)
@@ -925,10 +926,16 @@ async function main() {
     assert.equal(t.rec(a).cold, 400)
     assert.equal(t.rec(b).cold, 55)
     assert.ok(t.logs.some((l) => l.startsWith(`[survival] ${h} body:`) && l.includes('cold 400 (Very Cold), warmed offline 0.5 h: 900 -> 400, level 0 (interior; interior)')), t.logs.join('\n'))
+    t.mp.set(a, 'percentages', { health: 0.01, magicka: 1, stamina: 1 })
+    t.mp.sentOrder.length = 0
     t.mp.onRespawn(a)
     await tick()
     assert.equal(t.rec(a).cold, 55)
     assert.ok(t.logs.includes(`[survival] ${h} respawned: cold 400 -> 55`))
+    const order = t.mp.sentOrder.filter((x) => x === 'survivalState' || x.startsWith('health'))
+    assert.deepEqual(order, ['survivalState', 'health 1', 'health 0.01'], 'the state lifts the cold penalty before the health write')
+    assert.equal(t.states(a).pop().coldPenalty, 0)
+    assert.ok(t.logs.indexOf(`[survival] ${h} respawned: cold 400 -> 55`) < t.logs.indexOf(`[survival] ${h} respawned: health 1 of 100 sent to the client`))
     const sent = t.states(a).length
     t.sys.customPacket(ua, 'survivalRequest', {}, t.ctx)
     assert.equal(t.states(a).length, sent + 1)

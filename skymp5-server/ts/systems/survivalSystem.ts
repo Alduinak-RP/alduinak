@@ -1630,21 +1630,22 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.sendState(mp, entry, false);
   }
 
-  // A respawn wakes with the respawn health and at the new-character cold
+  // A respawn wakes at the new-character cold and with the respawn health, written once the state has lifted the cold penalty on the client
   private onRespawn(ctx: SystemContext, actorId: number): void {
     const entry = this.online.get(actorId);
     const mp = ctx.svr as Mp;
     if (!entry) return;
+    if (entry.coldAt && this.cold.enabled) {
+      const before = entry.rec.cold;
+      entry.rec.warmBonus = false;
+      entry.killed = false;
+      entry.swimming = false;
+      this.setCold(mp, actorId, entry, this.cold.start, "");
+      this.save(mp, entry);
+      this.log(`[survival] ${hex(actorId)} respawned: cold ${Math.round(before)} -> ${this.cold.start}`);
+      this.sendState(mp, entry, true);
+    }
     this.wake(mp, actorId, "respawned");
-    if (!entry.coldAt || !this.cold.enabled) return;
-    const before = entry.rec.cold;
-    entry.rec.warmBonus = false;
-    entry.killed = false;
-    entry.swimming = false;
-    this.setCold(mp, actorId, entry, this.cold.start, "");
-    this.save(mp, entry);
-    this.log(`[survival] ${hex(actorId)} respawned: cold ${Math.round(before)} -> ${this.cold.start}`);
-    this.sendState(mp, entry, true);
   }
 
   // Sets cold with Survival's warm bonus, swaps the stage ability and tells the player when the stage changed, and kills at the maximum when asked

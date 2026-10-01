@@ -476,7 +476,12 @@ re-send as the hunger stages), and at creation finish:
     SurvivalSystem therefore writes `percentages` right after the native respawn, full first and then the share (the
     native sends only a changed value), so the client stands up with the true health and the regeneration clock starts
     at the respawn: `[survival] <id> respawned: health 1 of 100 sent to the client`, after a revive `[survival] <id>
-    revived: health 1 of 100 sent to the client (was 35%)`.
+    revived: health 1 of 100 sent to the client (was 35%)`. At a respawn the cold reset and its `survivalState` go
+    out first, so the client lifts the cold penalty of the death before the health write: under a penalty the
+    maximum can be a fraction (an Orc at 55% has 67.5), and the client's old helper rounded it up before taking the
+    share, which left the health just below 0 and downed the player at the temple. The client helper
+    (`getMaximumActorValue`) now rounds only float noise beside a whole maximum, which also covers a staff revive of
+    a character still under the penalty.
   - Nothing gives health back afterwards: the login and spawn sync send the stored share, the needs and cold
     penalties move the maximum and keep the share, and `AldSurvival_AbNoHealthRegen` stops the client's regeneration.
     Until NV1 (`healthRegenerationMultiplier` 0) the server still accepts a client's health reports up to the race's
