@@ -9,6 +9,7 @@ import { isPlayerCharacterId } from "./playerActionService";
 import { PetService } from "./petService";
 import { MountService } from "./mountService";
 import { JobService } from "./jobService";
+import { RemoteServer } from "./remoteServer";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -32,6 +33,10 @@ const PROMPT_POLL_MS = 500;
 
 // Game is hunted, not searched; the server refuses it the same way (huntingSystem.isAnimal)
 const ANIMAL_KEYWORD = "ActorTypeAnimal";
+
+// HousingSystem sets it on a door half with a pinned letter; the prompt's verb then ends in a scroll
+const DOOR_NOTE_PROP = "ff_doorNote";
+const DOOR_NOTE_MARK = "\u{1F4DC}";
 
 interface Prompt {
   verb: string;
@@ -155,9 +160,16 @@ export class InteractionPromptService extends ClientListener {
 
     const label = (ref.getDisplayName() || base.getName() || "").trim();
     if (!label) return null;
-    const verb = this.verbFor(ref, base.getType());
+    const type = base.getType();
+    const verb = this.verbFor(ref, type);
     if (!verb) return null;
-    return { verb, label };
+    return { verb: type === FormType.Door && this.hasPinnedNote(ref) ? `${verb} ${DOOR_NOTE_MARK}` : verb, label };
+  }
+
+  private hasPinnedNote(ref: ObjectReference): boolean {
+    const remoteId = localIdToRemoteId(ref.getFormID());
+    const form = remoteId ? this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === remoteId) : undefined;
+    return (form as Record<string, unknown> | undefined)?.[DOOR_NOTE_PROP] === true;
   }
 
   // Player characters get the interaction menu on the activate key; names

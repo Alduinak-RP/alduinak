@@ -77,6 +77,8 @@ type Mp = any;
 
 const HOUSING_PROP = "private.housing";
 const NOTE_PROP = "private.doorNote";
+// Neighbour-visible marker on a half with a note (50_properties.js registers it); clients add a scroll to its prompt
+const NOTE_MARK_PROP = "ff_doorNote";
 const OWNER_INDEX_PROP = "private.indexed.housingOwner";
 const REGISTRY_FILE = "./housing.json";
 
@@ -305,6 +307,7 @@ export class HousingSystem implements System {
   // A fresh actor needs the full picture: names and locks for every claim.
   private onActorAssigned(ctx: SystemContext, userId: number): void {
     this.menuDoors.delete(userId);
+    if (!this.notesMarked) this.markPinnedNotes(ctx);
     this.pushDecor(ctx, userId);
     const actorId = this.actorOf(ctx, userId);
     if (actorId && this.keySplitOnLogin) this.splitUncutKeys(ctx, actorId);
@@ -713,11 +716,35 @@ export class HousingSystem implements System {
   private writeNote(ctx: SystemContext, door: number, note: DoorNote | null): boolean {
     try {
       (ctx.svr as Mp).set(door, NOTE_PROP, note);
-      return true;
     } catch (e) {
       this.log(`[housing] note write failed for door ${door.toString(16)}: ${e}`);
       return false;
     }
+    this.markNote(ctx, door, !!note);
+    return true;
+  }
+
+  private markNote(ctx: SystemContext, door: number, pinned: boolean): boolean {
+    try {
+      (ctx.svr as Mp).set(door, NOTE_MARK_PROP, pinned ? true : null);
+      return true;
+    } catch (e) {
+      if (!this.noteMarkWarned) this.log(`[housing] door note markers are off, ${NOTE_MARK_PROP} could not be set (register it in 50_properties.js and run Build gamemode): ${e}`);
+      this.noteMarkWarned = true;
+      return false;
+    }
+  }
+
+  // Notes pinned before the marker existed get it once the gamemode has registered the property, at the first login
+  private markPinnedNotes(ctx: SystemContext): void {
+    this.notesMarked = true;
+    let marked = 0;
+    for (const { primary, rec } of this.liveClaims(ctx)) {
+      for (const door of rec.partner ? [primary, rec.partner] : [primary]) {
+        if (this.readNote(ctx, door) && this.markNote(ctx, door, true)) marked++;
+      }
+    }
+    this.log(`[housing] door note markers: ${marked} pinned notes on claimed doors marked for clients`);
   }
 
   // A door that is no faction's with no note on this half; the caller checks the claim
@@ -1512,6 +1539,8 @@ export class HousingSystem implements System {
   private baseTypeCache = new Map<number, string>();
   private outdoorsCache = new Map<number, boolean>();
   private lockSummaryLogged = false;
+  private notesMarked = false;
+  private noteMarkWarned = false;
   private unclaimableLogged = new Set<number>();
   private lastRequestMs = new Map<number, number>();
   private lastDenyMs = new Map<number, number>();
