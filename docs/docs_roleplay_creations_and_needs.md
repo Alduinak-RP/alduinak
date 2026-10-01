@@ -393,7 +393,7 @@ end is the stage 2 penalty share, `(exhaustion - 159) / 801`, so the first sixth
 nothing: a Novice crafter (1/12 a craft) sees no red end for 2 crafts and then 10%, an Adept (1/24) for 4 and then 5%,
 an Expert (1/36) for 6 and then 3.5%, a Master or Legendary (1/48) for 8 and then 2.6%, twice as many at the
 half-cost benches, while 10 minutes online refill 16.7%; only a Free character (1/3) sees it from the first craft. While the
-Crafting Menu is open the magicka bar shows on the stamina bar's side, above the menu's bottom bar (`docs_roleplay_frostfall_client.md`, Vanilla
+Crafting Menu is open the magicka bar shows in the health bar's place at the bottom centre, above the menu's bottom bar, and no health bar shows (`docs_roleplay_frostfall_client.md`, Vanilla
 menus). `needsService.ts` writes the share into the
 Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
 (0x2EDF, `SRHP`) and `Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100 (the penalty share times
@@ -529,9 +529,10 @@ None of these has been run yet.
 - Crafting at a forge as a Free (non-blacksmith) character costs 33.2%; from a full bar the third craft closes the menu
   with the "too tired" notice and all three items stay. A Novice blacksmith makes six. A click that slips in before the
   close is refused: the refused item must be absent and its inputs present. Ten minutes online refill 16.7%.
-- Magicka bar while crafting: open a forge with a rested Free character; the magicka bar shows full at the bottom right,
-  where the stamina bar sits, and does not fade. The first craft (33.2%, stage 2) puts a red end of about 20% on it at
-  once, the second about 60%. Close the menu: the bar is back at the bottom left and fades a few seconds later.
+- Magicka bar while crafting: open a forge with a rested Free character; the magicka bar shows full at the bottom centre,
+  where the health bar sits, just above the menu's bottom bar, does not fade, and no health bar shows. The first craft
+  (33.2%, stage 2) puts a red end of about 20% on it at once, the second about 60%. Close the menu: the bar is back at
+  the bottom left and fades a few seconds later, and the health bar shows again when health changes.
   `skyrim-platform.log` has `Crafting Menu closed: HUD magicka .. penalty 0% ... at open, HUD magicka .. penalty 60% ...
   at close` matching the last `exhaustion=60`.
 - Eat any food with fatigue past stage 2: the magicka bar's red end must not move.

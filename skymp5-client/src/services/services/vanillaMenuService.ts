@@ -22,12 +22,12 @@ const HIDDEN_SYSTEM_ENTRIES = ["$QUICKSAVE", "$SAVE", "$LOAD", "$INSTALLED CONTE
 // hudmenu.swf's movie; SkyUI's widget manager puts its widgets in WidgetContainer beside it
 const HUD_ROOT = "_root.HUDMovieBaseInstance";
 const HUD_CLIPS = [HUD_ROOT, "_root.WidgetContainer"];
-// The meters Lock("BL") and Lock("BR") pin by their origins to the safe area's bottom corners
+// The meters Lock("B") and Lock("BL") pin by their origins to the safe area's bottom edge, its middle and its left corner
+const HUD_HEALTH = `${HUD_ROOT}.Health`;
 const HUD_MAGICKA = `${HUD_ROOT}.Magica`;
-const HUD_STAMINA = `${HUD_ROOT}.Stamina`;
-// Right edge of each meter's art from its origin, from sprites 758 and 766 of hudmenu.swf (SkyUI and vanilla alike)
-const MAGICKA_ART_RIGHT = 338.8;
-const STAMINA_ART_RIGHT = -46.2;
+// Centre of each meter's art from its origin, from sprites 750 and 758 of hudmenu.swf (SkyUI and vanilla alike)
+const HEALTH_ART_CENTRE = -0.6;
+const MAGICKA_ART_CENTRE = 192.4;
 // SkyUI's crafting bottom bar tops out 58 px above the visible bottom; the magicka art ends 15.5 px above its origin, so 48 clears it for any safe zone
 const CRAFTING_MAGICKA_LIFT = 48;
 // The meter sprites' Pause label (HUDMenu.METER_PAUSE_FRAME), the first fully faded in frame
@@ -61,14 +61,19 @@ interface CraftingMeter {
   x: number;
   y: number;
   settle: number;
+  // The health bar was showing in the menu and this service hid it
+  healthHidden: boolean;
   opened: string;
 }
+
+// Papyrus pools strings without case, so a clip's name can come back in the casing another script used first
+const sameName = (read: string, name: string) => (read || "").toLowerCase() === name.toLowerCase();
 
 interface NativeMenuList {
   hideMenuListEntries?: (menuName: string, entriesPath: string, texts: string[]) => string[] | null;
 }
 
-// Trims the vanilla menus the browser menus replace and keeps the magicka bar up while crafting, through the menus' own ActionScript
+// Trims the vanilla menus the browser menus replace and shows the magicka bar in the health bar's place while crafting, through the menus' own ActionScript
 export class VanillaMenuService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -100,20 +105,27 @@ export class VanillaMenuService extends ClientListener {
     this.syncHud();
   }
 
-  // The Crafting Menu pushes the HUD's InventoryMode, which hides all three bars; the magicka bar, which carries fatigue, stays up on the stamina bar's side above the bottom bar
+  // The Crafting Menu pushes the HUD's InventoryMode, which hides all three bars; the magicka bar, which carries fatigue, stays up in the health bar's place above the bottom bar and the health bar stays hidden
   private holdCraftingMagicka(): void {
     const ui = this.sp.Ui;
     if (!ui.isMenuOpen(Menu.HUD)) return;
     let meter = this.craftingMeter;
     if (!meter) {
-      if (ui.getString(Menu.HUD, `${HUD_MAGICKA}._name`) !== "Magica" || ui.getString(Menu.HUD, `${HUD_STAMINA}._name`) !== "Stamina") {
+      const health = ui.getString(Menu.HUD, `${HUD_HEALTH}._name`);
+      const magicka = ui.getString(Menu.HUD, `${HUD_MAGICKA}._name`);
+      if (!sameName(health, "Health") || !sameName(magicka, "Magica")) {
         this.crafting = false;
-        return this.logOnce("crafting:missing", `Crafting Menu: magicka bar left hidden, ${HUD_MAGICKA} or ${HUD_STAMINA} not found`);
+        return this.logOnce("crafting:missing", `Crafting Menu: magicka bar left hidden, ${HUD_HEALTH}._name reads "${health}" and ${HUD_MAGICKA}._name "${magicka}"`);
       }
-      meter = this.craftingMeter = { x: ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`), y: ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._y`), settle: 0, opened: this.describeMagicka() };
-      ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._x`, ui.getFloat(Menu.HUD, `${HUD_STAMINA}._x`) + STAMINA_ART_RIGHT - MAGICKA_ART_RIGHT);
-      ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._y`, ui.getFloat(Menu.HUD, `${HUD_STAMINA}._y`) - CRAFTING_MAGICKA_LIFT);
-      this.logOnce("crafting:shown", `Crafting Menu: magicka bar moved from x=${Math.round(meter.x)} y=${Math.round(meter.y)} to the stamina bar's side above the bottom bar, x=${Math.round(ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`))} y=${Math.round(ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._y`))}`);
+      meter = this.craftingMeter = { x: ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`), y: ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._y`), settle: 0, healthHidden: false, opened: this.describeMagicka() };
+      ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._x`, ui.getFloat(Menu.HUD, `${HUD_HEALTH}._x`) + HEALTH_ART_CENTRE - MAGICKA_ART_CENTRE);
+      ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._y`, ui.getFloat(Menu.HUD, `${HUD_HEALTH}._y`) - CRAFTING_MAGICKA_LIFT);
+      this.logOnce("crafting:shown", `Crafting Menu: magicka bar moved from x=${Math.round(meter.x)} y=${Math.round(meter.y)} to the health bar's place above the bottom bar, x=${Math.round(ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._x`))} y=${Math.round(ui.getFloat(Menu.HUD, `${HUD_MAGICKA}._y`))}`);
+    }
+    if (ui.getBool(Menu.HUD, `${HUD_HEALTH}._visible`)) {
+      ui.setBool(Menu.HUD, `${HUD_HEALTH}._visible`, false);
+      meter.healthHidden = true;
+      this.logOnce("crafting:health", "Crafting Menu: the health bar was showing, hidden until the menu closes");
     }
     if (!ui.getBool(Menu.HUD, `${HUD_MAGICKA}._visible`)) ui.setBool(Menu.HUD, `${HUD_MAGICKA}._visible`, true);
     if (meter.settle > 0) {
@@ -136,6 +148,7 @@ export class VanillaMenuService extends ClientListener {
     if (!meter || !ui.isMenuOpen(Menu.HUD)) return;
     ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._x`, meter.x);
     ui.setFloat(Menu.HUD, `${HUD_MAGICKA}._y`, meter.y);
+    if (meter.healthHidden) ui.setBool(Menu.HUD, `${HUD_HEALTH}._visible`, true);
     // As RunMeterAnim does: the bar holds a few seconds and fades unless magicka moves
     ui.invokeInt(Menu.HUD, `${HUD_MAGICKA}.PlayForward`, METER_SHOWN_FRAME);
     logToPlatformLog(this, `Crafting Menu closed: ${meter.opened} at open, ${this.describeMagicka()} at close`);
@@ -164,7 +177,7 @@ export class VanillaMenuService extends ClientListener {
     }
     this.hudDirty = false;
     this.hudCheckAt = now + HUD_RECHECK_MS;
-    if (ui.getString(Menu.HUD, `${HUD_ROOT}._name`) !== "HUDMovieBaseInstance") {
+    if (!sameName(ui.getString(Menu.HUD, `${HUD_ROOT}._name`), "HUDMovieBaseInstance")) {
       this.logOnce("hud:missing", `HUD Menu left as it is: ${HUD_ROOT} not found`);
       return;
     }
@@ -180,7 +193,7 @@ export class VanillaMenuService extends ClientListener {
       return;
     }
     const ui = this.sp.Ui;
-    if (ui.getString(Menu.Journal, journalAt("SystemTab._name")) !== "SystemTab") {
+    if (!sameName(ui.getString(Menu.Journal, journalAt("SystemTab._name")), "SystemTab")) {
       if (++j.misses > MAX_PATH_MISSES) this.failJournal(j, `${journalAt("SystemTab")} not found`);
       return;
     }

@@ -195,15 +195,19 @@ line to `skyrim-platform.log`.
   again), and `HUDMenu.ShowElements` hides `Health`, `Magica` and `Stamina` in
   it, as none of them carries an `InventoryMode` flag. While a Crafting Menu is
   open the service keeps `_root.HUDMovieBaseInstance.Magica`, which carries the
-  red fatigue end, visible on the stamina bar's side: its `_x` becomes
-  `Stamina._x - 385` (the right edge of the meter art lies 338.8 px right of
-  the magicka origin and 46.2 px left of the stamina origin, the same in
-  SkyUI's and the vanilla `hudmenu.swf`) and its `_y` `Stamina._y - 48`. At the
-  stamina bar's own height it would cover SkyUI's crafting bottom bar, whose
+  red fatigue end, visible in the health bar's place at the bottom centre (the
+  owner's 2026-10-01 request; it stood on the stamina bar's side before): its
+  `_x` becomes `Health._x - 193` (the centre of the meter art lies 192.4 px
+  right of the magicka origin and 0.6 px left of the health origin, the same in
+  SkyUI's and the vanilla `hudmenu.swf`) and its `_y` `Health._y - 48`. At the
+  health bar's own height it would cover SkyUI's crafting bottom bar, whose
   top sits 58 px above the visible bottom whatever the safe zone (74.95 px art,
-  `_y += safeRect.y - _height + 17`) and whose right end holds the skill row
-  (`SMITHING 15 [meter] 16`); the magicka art ends 15.5 px above its origin,
-  so the lift keeps it above the bar for any safe zone. A
+  `_y += safeRect.y - _height + 17`); the magicka art ends 15.5 px above its
+  origin, so the lift keeps it above the bar for any safe zone. A health bar
+  that shows while the menu is open is hidden (`Health._visible`, checked
+  every update) and shown again at the close. The clips are found by their
+  `_name`, compared without case: Papyrus pools strings without case, so
+  `Health` can come back as another script first wrote it. A
   full, idle bar fades out, so the clip is held on frame 40 (`Pause`,
   `METER_PAUSE_FRAME`, the first fully faded in frame of its 200-frame fade)
   through queued `PlayForward(40)` and `gotoAndStop(40)` invokes whenever it
@@ -213,13 +217,19 @@ line to `skyrim-platform.log`.
   stage 2); the close line below shows whether they did. On close the bar
   goes back to its own place and plays on from frame 40, fading a few seconds
   later as after any other change. Log lines: `Crafting Menu: magicka bar
-  moved from x=<a> y=<b> to the stamina bar's side above the bottom bar, x=<c>
-  y=<d>` once a session, and on
+  moved from x=<a> y=<b> to the health bar's place above the bottom bar, x=<c>
+  y=<d>` once a session, `Crafting Menu: the health bar was showing, hidden
+  until the menu closes` once a session when that happened, and on
   every close `Crafting Menu closed: HUD magicka <p>% penalty <q>%, player
   magicka <r>% at open, ... at close`: the HUD's own last values beside the
   player's magicka, where a close penalty equal to the `exhaustion=` of the
   last `NeedsService: survival hud` line means the bar followed the crafts;
-  `magicka bar left hidden, ... not found` when the paths are missing.
+  `magicka bar left hidden, _root.HUDMovieBaseInstance.Health._name reads
+  "<a>" and _root.HUDMovieBaseInstance.Magica._name "<b>"` when the clips are
+  not found. The owner's test of 2026-10-01 logged the older `magicka bar left
+  hidden, ... Magica or ... Stamina not found` at the first forge, so the bar
+  never showed there. That check compared `Stamina` by exact case, the likely
+  cause (not proven: the old line did not print what it read).
 
 ---
 

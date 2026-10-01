@@ -40,9 +40,15 @@ module.exports = {
         use: ["style-loader", "css-loader"],
       },
       {
+        // A CSS mask is fetched with CORS, which the game's file:// page fails, so mask art travels as a data URI
+        test: /-mask\.png$/,
+        type: "asset/inline",
+      },
+      {
         // Native webpack 5 asset handling. The old file-loader rule emitted JS
         // stubs in place of images, so every SCSS url() resolved to a script.
         test: /\.(png|svg|jpg|gif|mp3|wav)$/,
+        exclude: /-mask\.png$/,
         type: "asset/resource",
       },
     ],

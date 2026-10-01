@@ -713,8 +713,10 @@ $admin-row-gutter: 16px;
     font-size: 16px;
   }
 
+  // Starts under the Name column: the list's border plus a row's gutter
   &__pager {
     align-items: center;
+    padding-left: $admin-row-gutter + 1px;
   }
 
   &__pager-page {

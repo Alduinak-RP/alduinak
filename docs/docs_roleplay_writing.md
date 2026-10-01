@@ -193,7 +193,14 @@ parser and the limits.
 
 The paper textures are JPEG under an alpha mask (`-webkit-mask-image`), so the
 torn edges stay transparent at a tenth of the PNG size: note 77 KB + 11 KB,
-journal 124 KB + 5 KB, sealed letter 15 KB + 2 KB. Their size follows the
+journal 124 KB + 5 KB, sealed letter 15 KB + 2 KB. The masks are built into
+`build.js` as data URIs (the `-mask.png` rule of `skymp5-front/webpack.config.ts`):
+the browser fetches a mask with CORS, the game loads the UI from
+`file:///Data/Platform/UI/index.html`, and a `file://` page fails that fetch
+(`Access to image at 'file:///.../<hash>.png' from origin 'null' has been
+blocked by CORS policy`), which leaves the whole paper transparent with the
+ink on the dark screen, as the first in-game test of 2026-10-01 showed. A
+page served over http, like a scratch build, never shows this. Their size follows the
 screen height: on 1080p the note reads about 860 px tall and the spread about
 760 px tall under the composer's panels, and 1280x720 fits too.
 
