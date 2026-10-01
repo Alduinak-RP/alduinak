@@ -84,6 +84,8 @@ export interface HousingData {
 
 // Mirrors cleanName in the server's housingSystem.
 const NAME_CHARS = /^[A-Za-z0-9 '_-]+$/;
+// False: the menu offers no Lock Exit, as the server never locks an exit; true brings it back with housingSystem's EXIT_LOCKS
+const EXIT_LOCKS = false;
 
 // Actions that ask before they go to the server
 type Pending = 'voidKeys' | 'giveUp' | 'breakLock' | 'pinNote' | 'giveFaction';
@@ -190,7 +192,7 @@ const Housing = ({ data }: { data: HousingData }) => {
   }, []);
 
   const lockState = data.sides
-    ? ` · entrance ${data.lockedEntrance ? 'locked' : 'open'} · exit ${data.lockedExit ? 'locked' : 'open'}`
+    ? ` · entrance ${data.lockedEntrance ? 'locked' : 'open'}${EXIT_LOCKS ? ` · exit ${data.lockedExit ? 'locked' : 'open'}` : ''}`
     : (data.locked ? ' · locked' : ' · unlocked');
   const holder = faction && faction.role ? "Your faction's" : isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder';
   const status = hasAccess ? holder + lockState : (data.owned ? 'Owned by another' : 'Unclaimed');
@@ -255,12 +257,14 @@ const Housing = ({ data }: { data: HousingData }) => {
               >
                 {data.lockedEntrance ? 'Unlock Entrance' : 'Lock Entrance'}
               </button>
-              <button
-                className="housing__button housing__button--primary"
-                onClick={() => send(data.lockedExit ? ev.unlockExit : ev.lockExit)}
-              >
-                {data.lockedExit ? 'Unlock Exit' : 'Lock Exit'}
-              </button>
+              {EXIT_LOCKS ? (
+                <button
+                  className="housing__button housing__button--primary"
+                  onClick={() => send(data.lockedExit ? ev.unlockExit : ev.lockExit)}
+                >
+                  {data.lockedExit ? 'Unlock Exit' : 'Lock Exit'}
+                </button>
+              ) : null}
             </>
           ) : null}
 
@@ -338,7 +342,9 @@ const Housing = ({ data }: { data: HousingData }) => {
         </div>
 
         {isOwner && data.sides ? (
-          <p className="housing__hint">A locked entrance stops everyone coming in, a locked exit everyone going out, you included, until it is unlocked here. Leave the exit open and nobody is shut inside. A key lets its holder lock and unlock both too: trade it or leave it in a chest. Void all keys cancels every copy.</p>
+          <p className="housing__hint">{EXIT_LOCKS
+            ? 'A locked entrance stops everyone coming in, a locked exit everyone going out, you included, until it is unlocked here. Leave the exit open and nobody is shut inside. A key lets its holder lock and unlock both too: trade it or leave it in a chest. Void all keys cancels every copy.'
+            : 'A locked entrance stops everyone coming in, you included, until it is unlocked here. Nobody is ever shut inside: the way out always opens. A key lets its holder lock and unlock it too: trade it or leave it in a chest. Void all keys cancels every copy.'}</p>
         ) : null}
 
         {isOwner && !data.sides ? (

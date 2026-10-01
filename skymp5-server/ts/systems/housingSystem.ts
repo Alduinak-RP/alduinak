@@ -117,6 +117,8 @@ const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ a
 // The half of a door someone uses: outdoors or indoors of a worldspace-to-interior pair, "" for a property with one lock
 type DoorSide = "outside" | "inside" | "";
 const LOCK_OF_SIDE: Record<DoorSide, string> = { outside: "entrance", inside: "exit", "": "lock" };
+// False: the exit of a door with two halves is never locked, a lock only keeps people out; true brings Lock Exit back
+const EXIT_LOCKS = false;
 
 // One claimed property. Stored on the primary reference. owner 0 is an
 // ownerless stub kept only to carry `serial` forward.
@@ -504,6 +506,10 @@ export class HousingSystem implements System {
   // The lock of one half, or with side "" both; a property with one lock always turns both
   private doLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, side: DoorSide, locked: boolean): void {
     const action = `${locked ? "lock" : "unlock"}${side ? LOCK_OF_SIDE[side] : ""}`;
+    if (!EXIT_LOCKS && side === "inside") {
+      this.refuse(ctx, userId, actorId, action, primary, "An exit is never locked. Lock the entrance to keep people out.");
+      return;
+    }
     if (rec.owner === 0) {
       this.refuse(ctx, userId, actorId, action, primary, "Claim it first.");
       return;
@@ -646,7 +652,8 @@ export class HousingSystem implements System {
     const canLock = owned && this.hasAccess(ctx, primary, rec!, actorId);
     const holdsKey = canLock && !isOwner && !isManager;
     const lockedEntrance = owned && rec!.lockedEntrance;
-    const lockedExit = owned && rec!.lockedExit;
+    const sidedMenu = owned && this.hasSides(ctx, primary, rec!);
+    const lockedExit = owned && rec!.lockedExit && (EXIT_LOCKS || !sidedMenu);
 
     let view: string;
     if (isOwner) view = "owner";
@@ -1133,7 +1140,7 @@ export class HousingSystem implements System {
   // A property with one lock is shut by either flag
   private lockedAt(rec: PropertyRecord, side: DoorSide): boolean {
     if (side === "outside") return rec.lockedEntrance;
-    if (side === "inside") return rec.lockedExit;
+    if (side === "inside") return EXIT_LOCKS && rec.lockedExit;
     return rec.lockedEntrance || rec.lockedExit;
   }
 
