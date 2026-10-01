@@ -24,7 +24,9 @@ ARMO::Data ARMO::GetData(CompressedFieldsCache& compressedFieldsCache) const
       } else if (!std::memcmp(type, "BODT", 4) && dataSize >= 8) {
         result.bodt.present = true;
         result.bodt.bodyPartFlags = *reinterpret_cast<const uint32_t*>(data);
-        result.bodt.skill = *reinterpret_cast<const uint32_t*>(data + 4);
+        // The 12-byte form holds a flags byte and padding before the armor type
+        result.bodt.skill = *reinterpret_cast<const uint32_t*>(
+          data + (dataSize >= 12 ? 8 : 4));
       } else if (!std::memcmp(type, "BOD2", 4) && dataSize >= 8) {
         result.bod2.present = true;
         result.bod2.bodyPartFlags = *reinterpret_cast<const uint32_t*>(data);

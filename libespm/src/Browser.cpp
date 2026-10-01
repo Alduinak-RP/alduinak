@@ -1,5 +1,6 @@
 #include "libespm/Browser.h"
 #include "libespm/ACHR.h"
+#include "libespm/ARMO.h"
 #include "libespm/CELL.h"
 #include "libespm/COBJ.h"
 #include "libespm/CellOrGridPos.h"
@@ -12,9 +13,12 @@
 #include "libespm/NAVM.h"
 #include "libespm/NavMeshKey.h"
 #include "libespm/QUST.h"
+#include "libespm/RACE.h"
 #include "libespm/REFR.h"
 #include "libespm/RecordHeader.h"
 #include "libespm/RefrKey.h"
+#include "libespm/SPEL.h"
+#include "libespm/WEAP.h"
 #include "libespm/WRLD.h"
 #include <cstring>
 #include <optional>
@@ -50,6 +54,10 @@ struct Browser::Impl
   std::vector<const RecordHeader*> quests;
   std::vector<const RecordHeader*> worlds;
   std::vector<const RecordHeader*> cells;
+  std::vector<const RecordHeader*> spells;
+  std::vector<const RecordHeader*> races;
+  std::vector<const RecordHeader*> weapons;
+  std::vector<const RecordHeader*> armors;
 
   GroupStack grStack;
   std::vector<std::unique_ptr<GroupStack>> grStackCopies;
@@ -139,9 +147,21 @@ const std::vector<const RecordHeader*>& Browser::GetRecordsByType(
   if (!std::strcmp(type, espm::CELL::kType)) {
     return pImpl->cells;
   }
+  if (!std::strcmp(type, espm::SPEL::kType)) {
+    return pImpl->spells;
+  }
+  if (!std::strcmp(type, espm::RACE::kType)) {
+    return pImpl->races;
+  }
+  if (!std::strcmp(type, espm::WEAP::kType)) {
+    return pImpl->weapons;
+  }
+  if (!std::strcmp(type, espm::ARMO::kType)) {
+    return pImpl->armors;
+  }
   throw std::runtime_error("GetRecordsByType currently supports only REFR, "
-                           "COBJ, ENCH, KYWD, FACT, QUST, WRLD and CELL "
-                           "records");
+                           "COBJ, ENCH, KYWD, FACT, QUST, WRLD, CELL, SPEL, "
+                           "RACE, WEAP and ARMO records");
 }
 
 const std::vector<const RecordHeader*>& Browser::GetRecordsAtPos(
@@ -275,6 +295,22 @@ bool Browser::ReadAny(const GroupStack* parentGrStack)
 
     if (utils::Is<espm::QUST>(t)) {
       pImpl->quests.push_back(recHeader);
+    }
+
+    if (utils::Is<espm::SPEL>(t)) {
+      pImpl->spells.push_back(recHeader);
+    }
+
+    if (utils::Is<espm::RACE>(t)) {
+      pImpl->races.push_back(recHeader);
+    }
+
+    if (utils::Is<espm::WEAP>(t)) {
+      pImpl->weapons.push_back(recHeader);
+    }
+
+    if (utils::Is<espm::ARMO>(t)) {
+      pImpl->armors.push_back(recHeader);
     }
 
     if (utils::Is<espm::WRLD>(t)) {

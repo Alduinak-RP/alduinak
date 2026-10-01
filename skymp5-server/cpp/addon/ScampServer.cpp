@@ -17,6 +17,7 @@
 #include "formulas/DamageMultConditionalFormula.h"
 #include "formulas/DamageMultFormula.h"
 #include "formulas/EffectModifiers.h"
+#include "formulas/ItemRowResolver.h"
 #include "formulas/SweetPieDamageFormula.h"
 #include "formulas/SweetPieSpellDamageFormula.h"
 #include "formulas/TES5DamageFormula.h"
@@ -385,9 +386,44 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
                    partOne->worldState.regenerationMultiplier);
     }
 
+    // alduinakDamageFormulaSettings: the rebalance rows of the damage formula and durability, read only while enabled or durability.enabled is true
+    std::shared_ptr<const AlduinakCombatSettings> combatSettings;
+    if (auto it = serverSettings.find("alduinakDamageFormulaSettings");
+        it != serverSettings.end() && !it->is_null()) {
+      std::vector<std::string> problems, warnings;
+      combatSettings =
+        AlduinakCombatSettings::FromJson(*it, problems, warnings);
+      for (auto& warning : warnings) {
+        logger->warn("alduinakDamageFormulaSettings: {}", warning);
+      }
+      constexpr size_t kMaxProblemLines = 20;
+      for (size_t i = 0; i < problems.size() && i < kMaxProblemLines; ++i) {
+        spdlog::error("alduinakDamageFormulaSettings: {}", problems[i]);
+      }
+      if (!combatSettings) {
+        spdlog::error("alduinakDamageFormulaSettings is rejected for {} "
+                      "problem(s): the rebalance formula, durability and "
+                      "effect modifiers stay off, the server prices hits as "
+                      "without the block",
+                      problems.size());
+      } else {
+        const bool resolverOn =
+          combatSettings->enabled || combatSettings->durability.enabled;
+        if (resolverOn) {
+          partOne->worldState.itemRowResolver =
+            std::make_shared<ItemRowResolver>(combatSettings);
+        }
+        logger->info("alduinakDamageFormulaSettings: the item row resolver "
+                     "is {} (enabled {}, durability.enabled {}); {}",
+                     resolverOn ? "on" : "off", combatSettings->enabled,
+                     combatSettings->durability.enabled,
+                     combatSettings->Summary());
+      }
+    }
+
     // alduinakDamageFormulaSettings.effectModifiers: Ability and Disease skill modifiers scale weapon damage and blocking, only while enabled or durability.enabled is true
     if (auto it = serverSettings.find("alduinakDamageFormulaSettings");
-        it != serverSettings.end() && it->is_object()) {
+        combatSettings && it != serverSettings.end() && it->is_object()) {
       const auto flag = [](const nlohmann::json& object, const char* key,
                            bool fallback) {
         auto found = object.find(key);
@@ -529,6 +565,9 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       ScriptStorageFactory::Create(serverSettings));
 
     partOne->AttachEspm(espm);
+    if (partOne->worldState.itemRowResolver) {
+      partOne->worldState.itemRowResolver->Bind(partOne->worldState);
+    }
     partOne->animationSystem.Init(&partOne->worldState);
 
     if (conditionsEvaluatorSettings.is_object()) {
@@ -1557,7 +1596,7 @@ Napi::Value ScampServer::GetAllForms(const Napi::CallbackInfo& info)
   }
 }
 
-// Global ids of the winning records of one type (COBJ, ENCH and the other types libespm indexes)
+// Global ids of the winning records of one type (COBJ, ENCH, SPEL, RACE, WEAP, ARMO and the other types libespm indexes)
 Napi::Value ScampServer::GetEspmRecordIdsByType(const Napi::CallbackInfo& info)
 {
   try {

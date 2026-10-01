@@ -31,6 +31,7 @@
 #endif
 
 class MpActor;
+class ItemRowResolver;
 class FormCallbacks;
 class MpChangeForm;
 namespace Viet {
@@ -268,6 +269,9 @@ public:
 
   // Ability and Disease skill modifiers scale weapon damage and blocking
   bool effectModifiers = false;
+
+  // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
+  std::shared_ptr<ItemRowResolver> itemRowResolver;
 
   bool disableVanillaScriptsInExterior = true;
 
