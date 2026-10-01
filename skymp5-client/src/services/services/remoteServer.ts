@@ -22,7 +22,7 @@ import { ObjectReferenceEx } from '../../extensions/objectReferenceEx';
 import { IdManager } from '../../lib/idManager';
 import { nameof } from '../../lib/nameof';
 import { refreshMovement, setActorValuePercentage } from '../../sync/actorvalues';
-import { applyAppearanceToPlayer } from '../../sync/appearance';
+import { Appearance, applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '../../sync/equipment';
 import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { Movement, NiPoint3 } from '../../sync/movement';
@@ -1317,14 +1317,35 @@ export class RemoteServer extends ClientListener {
 
     if (i === this.getMyActorIndex() && newAppearance) {
       this.controller.once("update", () => {
-        applyAppearanceToPlayer(newAppearance);
-        const player = Game.getPlayer();
-        if (player) {
-          syncRaceAbilities(player, []);
+        if (this.ownAppearanceHeld) {
+          this.heldOwnAppearance = newAppearance;
+          return;
         }
-        logTrace(this, "Applied appearance to the player");
+        this.applyOwnAppearance(newAppearance);
       });
     }
+  }
+
+  private applyOwnAppearance(appearance: Appearance): void {
+    applyAppearanceToPlayer(appearance);
+    const player = Game.getPlayer();
+    if (player) {
+      syncRaceAbilities(player, []);
+    }
+    logTrace(this, "Applied appearance to the player");
+  }
+
+  // PolymorphService holds the own look back while its race switch waits for a weapon to be put away
+  holdOwnAppearance(): void {
+    this.ownAppearanceHeld = true;
+  }
+
+  // Ends the hold: a held look of that race goes on (must run on update), any other is dropped
+  releaseOwnAppearance(raceId = 0): void {
+    const look = this.heldOwnAppearance;
+    this.ownAppearanceHeld = false;
+    this.heldOwnAppearance = undefined;
+    if (look && look.raceId >>> 0 === raceId) this.applyOwnAppearance(look);
   }
 
   private onUpdateEquipmentMessage(event: ConnectionMessage<UpdateEquipmentMessage>): void {
@@ -1918,6 +1939,8 @@ export class RemoteServer extends ClientListener {
   private cloneCastReport: { cloneId: number, at: number, text: string, spellCasts: number } | undefined = undefined;
   private lastCloneCastReportAt = 0;
   private playerSpawnSeq = 0;
+  private ownAppearanceHeld = false;
+  private heldOwnAppearance: Appearance | undefined = undefined;
   private numSetInventory = 0;
   private playerTeleport?: PlayerTeleport;
   private resyncing = false;

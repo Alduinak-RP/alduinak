@@ -80,12 +80,24 @@ every creature behaviour graph carries the `weaponDraw` event. So:
   the fighting controls off (`noDraw` in the packet): no weapon, spell or fist
   is drawn in it. PolymorphService checks the lock every update, because other
   services switch the fighting controls back on, and a weapon drawn at the
-  moment of the transform is put away before the race switches.
+  moment of the transform is put away before the race switches. A draw still
+  under way counts as drawn (the graph's `IsEquipping`), and until the weapon
+  is away RemoteServer holds the new look back too, so the base keeps the race
+  with a shield slot while a `weaponDraw` event can still arrive
+  (`PolymorphService: polymorph: a weapon is drawn or being drawn, the race
+  switch and the look wait until it is away`). This relies on the appearance
+  update and the `polymorph` packet arriving in the same network tick, as the
+  server sends them together.
 - A creature under that lock attacks on the attack key (the control
   `Right Attack/Block`, the left mouse button by default): the client sends
   the next attack event of the race's attack data (`ATKE`, bashes left out,
   power attacks only for a race with nothing else, eight at most) to the
-  graph, one every 0.9 s at most. The hit is the engine's own unarmed hit
+  graph, one every 0.9 s at most. No attack is sent while the player is
+  bound, carried, carrying someone, downed, in an execution pose or an action
+  lock (RestraintService's `isPoseLocked`), while chat or a menu has the
+  input, or while the Dialogue, Magic, Favorites, Message Box or Sleep/Wait
+  menu is open, and a click that waited more than 0.2 s behind a pausing menu
+  is dropped. The hit is the engine's own unarmed hit
   (source `1f4`), which the server accepts for any race and rates with the
   race's unarmed damage. Dragon priests, seekers, chickens and hares have no
   attack data and do not attack.
@@ -97,6 +109,11 @@ every creature behaviour graph carries the `weaponDraw` event. So:
   atronach on the left hand (block key) only.
 
 A native guard on that handler would lift the lock; none is written yet.
+
+When a form ends (Revert, or a switch to a form that needs fewer locks) the
+fighting and camera-switch controls are handed back and RestraintService
+writes its own locks and pose again at once, so a player reverted while bound,
+carried or downed stays unable to fight or to leave third person.
 
 ### Camera
 
@@ -179,6 +196,7 @@ PolymorphService: polymorph camera: the skeleton has Camera3rd [Cam3], nothing c
 PolymorphService: polymorph camera: no known head node after 5 tries, the pivot stays at the feet
 PolymorphService: polymorph camera: settings put back
 PolymorphService: polymorph attack: attackStart_Attack1 sent, 0.3 s later the graph reads IsAttacking true
+PolymorphService: polymorph: a weapon is drawn or being drawn, the race switch and the look wait until it is away
 PolymorphService: polymorph: weapon still drawn after 30 tries, race 1320a not switched
 PolymorphService: polymorph revert: race 13746, actor race 1320a -> 13746, base race 13746, look applied, gear kept, re-dressed 6 of 6 worn item(s)
 PolymorphService: polymorph: took off 12eb7, a creature form wears no gear

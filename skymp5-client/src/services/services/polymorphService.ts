@@ -1,6 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { parseCustomPacket } from "./customPacketUtil";
 import { RemoteServer } from "./remoteServer";
+import { RestraintService } from "./restraintService";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { applyAppearanceToPlayer } from "../../sync/appearance";
@@ -8,8 +9,8 @@ import { syncRaceAbilities } from "../../sync/spell";
 import { Entry, getInventory } from "../../sync/inventory";
 import { countWorn, equipEntries, getUnwornSaved } from "../../sync/equipment";
 import { logToPlatformLog } from "../../logging";
-import { buttonEventKeyCode, isGameInputBlocked, isPlayerDowned } from "./widgetMenuUtil";
-import { ButtonEvent, DxScanCode, EquipEvent } from "skyrimPlatform";
+import { buttonEventKeyCode, isGameInputBlocked } from "./widgetMenuUtil";
+import { ButtonEvent, DxScanCode, EquipEvent, Menu } from "skyrimPlatform";
 
 const PLAYER_FORM_ID = 0x14;
 // The race switch reloads the 3D; the look and the gear go on after it
@@ -18,6 +19,9 @@ const RETRY_SEC = 1;
 const MAX_TRIES = 30;
 const ATTACK_CONTROL = "Right Attack/Block";
 const ATTACK_GAP_MS = 900;
+const ATTACK_STALE_MS = 200;
+// Menus with a cursor that isGameInputBlocked does not cover
+const CLICK_MENUS = [Menu.Dialogue, Menu.Magic, Menu.Favorites, Menu.MessageBox, Menu.Sleep];
 const ATTACK_CHECK_SEC = 0.3;
 const ATTACK_LOG_COUNT = 5;
 // The third person camera pivots at this node's height; only the playable skeletons carry it
@@ -70,6 +74,7 @@ export class PolymorphService extends ClientListener {
       this.noDraw = false;
       this.attacks = [];
       this.seq++;
+      this.controller.lookupListener(RemoteServer).releaseOwnAppearance();
       this.controller.once("update", () => {
         this.restoreCamera();
         this.releaseControls();
@@ -102,6 +107,8 @@ export class PolymorphService extends ClientListener {
     this.attacks = order.on ? order.attacks : [];
     this.attackIndex = 0;
     this.attackLogs = 0;
+    // The base keeps its race, and its shield slot, until apply has the weapon away
+    if (this.noDraw) this.controller.lookupListener(RemoteServer).holdOwnAppearance();
     // Only the latest order runs; natives throw in the packet-handler context, so it waits for update
     const seq = ++this.seq;
     this.controller.once("update", () => this.apply(order, seq, 1));
@@ -112,26 +119,31 @@ export class PolymorphService extends ClientListener {
     const player = sp.Game.getPlayer();
     if (!player || seq !== this.seq) return;
     const label = order.on ? "polymorph" : "polymorph revert";
+    const remote = this.controller.lookupListener(RemoteServer);
     const race = sp.Race.from(sp.Game.getFormEx(order.raceId));
     if (!race) {
       logToPlatformLog(this, `${label}: race ${hex(order.raceId)} is not in this client's load order, nothing switched`);
+      remote.releaseOwnAppearance();
       return;
     }
     // A load finishes first, and a race switch in the saddle would leave the rider on the horse's skeleton
     const loading = sp.Ui.isMenuOpen("Loading Menu") || sp.Ui.isMenuOpen("Main Menu") || !player.is3DLoaded();
     const mounted = !loading && player.isOnMount();
-    // The new graph would draw a drawn weapon again, so it is put away in the body that still has a shield slot
-    const drawn = !loading && !mounted && this.noDraw && player.isWeaponDrawn();
+    // A drawn weapon is put away, and a draw under way ends, while the base still has the race with a shield slot
+    const drawn = !loading && !mounted && this.noDraw && (player.isWeaponDrawn() || player.getAnimationVariableBool("IsEquipping"));
     if (loading || mounted || drawn) {
       if (attempt >= MAX_TRIES) {
         logToPlatformLog(this, `${label}: ${loading ? "still loading" : mounted ? "still mounted" : "weapon still drawn"} after ${MAX_TRIES} tries, race ${hex(order.raceId)} not switched`);
+        remote.releaseOwnAppearance();
         return;
       }
       if (mounted) player.dismount();
       if (drawn) player.sheatheWeapon();
+      if (drawn && attempt === 1) logToPlatformLog(this, `${label}: a weapon is drawn or being drawn, the race switch and the look wait until it is away`);
       sp.Utility.wait(RETRY_SEC).then(() => this.controller.once("update", () => this.apply(order, seq, attempt + 1)));
       return;
     }
+    remote.releaseOwnAppearance(order.raceId);
     this.restoreCamera();
     const wornBefore = countWorn(getInventory(player));
     if (this.gearOff) {
@@ -231,13 +243,17 @@ export class PolymorphService extends ClientListener {
     this.sp.Game.enablePlayerControls(false, fighting, camSwitch, false, false, false, false, false, 0);
     if (fighting) this.fightingLocked = false;
     if (camSwitch) this.camSwitchLocked = false;
+    // A restraint writes its own locks only when its state changes
+    this.controller.lookupListener(RestraintService).reapplyPoses();
   }
 
   private onButtonEvent(e: ButtonEvent): void {
     if (!this.attacks.length || !e.isDown) return;
     if (e.userEventName !== ATTACK_CONTROL && buttonEventKeyCode(e) !== this.attackKey()) return;
     const now = Date.now();
-    if (now - this.lastAttackMs < ATTACK_GAP_MS || isGameInputBlocked(this.sp, this.controller) || isPlayerDowned(this.controller)) return;
+    if (now - this.lastAttackMs < ATTACK_GAP_MS || isGameInputBlocked(this.sp, this.controller) || this.clickMenuOpen()) return;
+    // Bound, carried, carrying, downed, in an execution pose or an action lock
+    if (this.controller.lookupListener(RestraintService).isPoseLocked) return;
     this.lastAttackMs = now;
     const event = this.attacks[this.attackIndex++ % this.attacks.length];
     this.controller.once("update", () => this.attack(event));
@@ -246,7 +262,8 @@ export class PolymorphService extends ClientListener {
   private attack(event: string): void {
     const sp = this.sp;
     const player = sp.Game.getPlayer();
-    if (!player || !this.attacks.length || player.isDead()) return;
+    // A click that a pausing menu kept waiting is dropped
+    if (!player || !this.attacks.length || player.isDead() || Date.now() - this.lastAttackMs > ATTACK_STALE_MS) return;
     sp.Debug.sendAnimationEvent(player, event);
     if (this.attackLogs >= ATTACK_LOG_COUNT) return;
     this.attackLogs++;
@@ -254,6 +271,14 @@ export class PolymorphService extends ClientListener {
       const attacking = sp.Game.getPlayer()?.getAnimationVariableBool("IsAttacking");
       logToPlatformLog(this, `polymorph attack: ${event} sent, ${ATTACK_CHECK_SEC} s later the graph reads IsAttacking ${attacking}`);
     }));
+  }
+
+  private clickMenuOpen(): boolean {
+    try {
+      return CLICK_MENUS.some((menu) => this.sp.Ui.isMenuOpen(menu));
+    } catch {
+      return false;
+    }
   }
 
   // A button event may carry no control name while the fighting controls are off, so the key is matched as well
