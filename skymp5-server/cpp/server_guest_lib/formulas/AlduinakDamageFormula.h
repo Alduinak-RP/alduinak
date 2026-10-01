@@ -12,7 +12,7 @@
 class ItemRowResolver;
 class WorldState;
 
-// The rebalance formula of alduinakDamageFormulaSettings: row damage against worn DT for weapon hits, TES5 with the player cap for spells
+// The rebalance formula of alduinakDamageFormulaSettings: row damage against worn DT for weapon hits, TES5 for spells
 class AlduinakDamageFormula : public IDamageFormula
 {
 public:

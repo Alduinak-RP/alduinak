@@ -2028,7 +2028,15 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
     partOne.CalculateDamage(*aggressor, *targetActorPtr, spellCastData);
   damage = damage <= 0.f ? 0.f : damage;
   if (const auto* rebalance = partOne.worldState.alduinakDamageFormula) {
-    damage = rebalance->CapHit(*targetActorPtr, damage);
+    // Wrappers included, one spell never takes more than playerHitCap from a player
+    const float capped = rebalance->CapHit(*targetActorPtr, damage);
+    if (capped < damage) {
+      spdlog::info("OnSpellHit - {:x} hit by {:x} with {:x}: {} damage "
+                   "capped at {}",
+                   targetActorPtr->GetFormId(), aggressor->GetFormId(),
+                   hitData.source, damage, capped);
+      damage = capped;
+    }
   }
 
   const bool wardBlocked = IsWardBlocking(*aggressor, *targetActorPtr);

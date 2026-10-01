@@ -321,14 +321,6 @@ float AlduinakDamageFormula::CalculateDamage(
   const MpActor& aggressor, const MpActor& target,
   const SpellCastData& spellCastData) const
 {
-  const float damage =
-    spellFormula.CalculateDamage(aggressor, target, spellCastData);
-  const float capped = CapHit(target, damage);
-  if (capped < damage) {
-    spdlog::info("AlduinakDamageFormula - spell {:x} of {:x} on {:x}: {} "
-                 "damage capped at {}",
-                 spellCastData.spell, aggressor.GetFormId(),
-                 target.GetFormId(), damage, capped);
-  }
-  return capped;
+  // OnSpellHit caps the hit after the outer wrappers
+  return spellFormula.CalculateDamage(aggressor, target, spellCastData);
 }
