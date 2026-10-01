@@ -28,7 +28,6 @@ export const sneakBlockSpeedFactor = (iState: number, running: boolean): number 
 };
 
 export class SneakBlockSpeedService extends ClientListener {
-  private sneaking: boolean | undefined;
   private hadPerk: boolean | undefined;
   private nextCheckMs = 0;
   private factor = 1;
@@ -46,21 +45,18 @@ export class SneakBlockSpeedService extends ClientListener {
   private onUpdate(): void {
     const player = this.sp.Game.getPlayer();
     if (!player) return;
-    const sneaking = player.isSneaking();
-    this.holdSneakBlockSpeed(player, sneaking);
+    this.holdSneakBlockSpeed(player, player.isSneaking());
     const now = Date.now();
-    if (sneaking === this.sneaking && now < this.nextCheckMs) return;
-    this.sneaking = sneaking;
+    if (now < this.nextCheckMs) return;
     this.nextCheckMs = now + PERK_CHECK_MS;
-    // The engine sets the variable only when the graph is built, so the client keeps it to the perk held and off while sneaking
+    // The engine sets the variable only when the graph is built, so the client keeps it to the perk held
     const perk = this.sp.Perk.from(this.sp.Game.getFormEx(BLOCK_RUNNER_PERK));
     const hasPerk = !!perk && player.hasPerk(perk);
     const perkChanged = hasPerk !== this.hadPerk;
     this.hadPerk = hasPerk;
-    const want = hasPerk && !sneaking;
-    if (player.getAnimationVariableBool(SHIELD_CHARGE_VAR) === want) return;
-    player.setAnimationVariableBool(SHIELD_CHARGE_VAR, want);
-    if (perkChanged) logToPlatformLog(this, `${SHIELD_CHARGE_VAR} ${want}: Block Runner ${hasPerk ? "held" : "not held"}, sneaking ${sneaking}`);
+    if (player.getAnimationVariableBool(SHIELD_CHARGE_VAR) === hasPerk) return;
+    player.setAnimationVariableBool(SHIELD_CHARGE_VAR, hasPerk);
+    if (perkChanged) logToPlatformLog(this, `${SHIELD_CHARGE_VAR} ${hasPerk}: Block Runner ${hasPerk ? "held" : "not held"}`);
   }
 
   // No block movement type knows about sneaking, so a sneak block's SpeedMult is damaged down to the sneak speeds and restored after it
@@ -72,7 +68,8 @@ export class SneakBlockSpeedService extends ClientListener {
       return;
     }
     const iState = player.getAnimationVariableInt("iState");
-    const running = this.sp.TESModPlatform.isPlayerRunningEnabled() || player.isRunning();
+    // The engine walks an over-encumbered actor whatever the run flag says
+    const running = (this.sp.TESModPlatform.isPlayerRunningEnabled() || player.isRunning()) && player.getActorValue("CarryWeight") >= player.getTotalItemWeight();
     this.setSpeedFactor(player, sneakBlockSpeedFactor(iState, running));
     const speed = player.getAnimationVariableFloat("Speed");
     if (speed <= this.topSpeed) return;

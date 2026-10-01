@@ -513,8 +513,11 @@ perks only when it builds the character's behaviour graph (the Set Boolean
 Graph Variable entry point runs from the graph setup alone), so a perk an
 ability grants later counts only after the next 3D rebuild: check Quick Shot
 and Ranger in game. Block Runner's `bPerkShieldCharge` is kept by the client
-(`sneakBlockSpeedService.ts`): true while the player holds the perk and false
-while sneaking, checked on every sneak change and once a second.
+(`sneakBlockSpeedService.ts`): true while the player holds the perk, crouched
+or not, checked once a second. A Block Runner's block therefore always starts
+in the Shield Charge state, so one raised crouched and kept up after standing
+has the 370 at once (it stayed at 81 while the variable was switched off for
+the crouch).
 
 **A crouched block is never faster than crouching.** The behaviour graph's
 `iState` picks the movement type, and a block state outranks the sneak state:
@@ -532,10 +535,12 @@ block none, so a sneak block moves like a standing one. At SpeedMult 100
 | `NPC_Blocking_ShieldCharge_MT` | 81, 81, 71 | 370, 370, 205.25 |
 
 So with the walk toggle on, raising the shield took a crouched walk from 47 to
-81 for everyone, and a Block Runner whose block started standing
-(`BlockBehavior` reads `bPerkShieldCharge` as its start state, once, when the
-block starts) kept the 370 through the crouch. While the player sneaks with a
-block up, the client reads `iState` and the run flag every frame and damages
+81 for everyone, and a Block Runner's block (`BlockBehavior` reads
+`bPerkShieldCharge` as its start state, once, when the block starts) kept the
+370 through the crouch. While the player sneaks with a
+block up, the client reads `iState` and the run flag every frame (an
+over-encumbered player, or one carrying a body, counts as walking: the engine
+walks them whatever the run flag says) and damages
 SpeedMult by the share that brings the block's movement type down to the sneak
 speeds in every direction (x0.51 for a walk, x0.54 for a Block Runner run,
 nothing for a run in `NPC_Blocking_MT`, which is already slower than a sneak
@@ -548,7 +553,7 @@ walking|running, SpeedMult <held> of <full> (...)`, the graph's `Speed` at its
 highest; it should not pass the sneak speed of the same mode x full SpeedMult /
 100 (x the character's height). A change of the perk logs
 `SneakBlockSpeedService: bPerkShieldCharge true|false: Block Runner held|not
-held, sneaking <bool>`.
+held`.
 
 **The warrior's perks** (plugin r24, the owner's "give warriors more perks to
 even things out with the weapon and armor balancing") keep to effects the
