@@ -117,11 +117,16 @@ rule as "A stranger"):
 
 A seal and a signature carry the mark of the sealer's or author's faction,
 recorded when the wax is pressed or the writing is made (`factionId` on the
-person record). The faction is the one whose title the character shows in the
-Faction tab (**Show Title** doubles as the "seal as" choice); with no title
-shown, or a title of a faction without artwork, the first of the character's
-factions with artwork is used, guilds and the Legion before the hold court,
-since nearly every character is a hold citizen. Artwork exists for the nine
+person record). The faction is the one whose title the character shows with
+their name at that moment (**Show Title** in the Faction tab is the "seal as"
+choice): a Winterhold citizen who is also in the Dark Brotherhood presses the
+Brotherhood's mark while showing their Speaker title and the Court of
+Winterhold's while showing their court title. With no title shown, or a title
+of a faction without artwork, the seal is plain: the sealed face shows no mark
+and only "Closed with the seal of <name>." or "Closed with an unfamiliar
+seal.", a signature gets no mark under it, and the sealer reads "You press a
+plain seal into the wax. Show a faction title to press its mark." (untitled)
+instead of "You press your seal into the wax.". Artwork exists for the nine
 hold courts, the Imperial Legion, the College of Winterhold and the Dark
 Brotherhood (`SEAL_FACTIONS` in `writingSystem.ts`, the `SEALS` table in the
 front); the Stormcloaks and the other factions press no mark. The ids are the
@@ -241,6 +246,9 @@ menu.
   container, an unclaimed door or a faction door. One note per door
   reference, so a house door carries one note outside and one inside, and the
   menu shows the note of the half it was opened at.
+- Seen from outside the menu: while a note hangs on a half, everyone near it
+  sees the door's interact prompt end in a scroll ("OPEN 📜", "UNLOCK 📜"),
+  and it goes the moment the note is taken down or crumbles.
 - Who takes it down (**Take down the note**, or **Take it down** in the
   reader): the character that pinned it (same account and same character), and
   on a claimed door the owner (any character of the owning account), a key
@@ -258,7 +266,13 @@ menu.
 
 Storage: `private.doorNote` `{ id, by, byProfile, byName, at }` on the door
 reference, riding its changeform into MongoDB like `private.housing`; the text
-stays in `writings/<id>.json`. Pinning neither makes nor destroys a document,
+stays in `writings/<id>.json`. The half also carries `ff_doorNote` (true, null
+once the note is gone), a neighbour-visible property the gamemode registers in
+`50_properties.js`, which the client's prompt reads. Without that registration
+notes still pin and the server logs once `[housing] door note markers are off,
+ff_doorNote could not be set ...`; the first login after a start marks notes
+pinned before the marker existed: `[housing] door note markers: N pinned notes
+on claimed doors marked for clients`. Pinning neither makes nor destroys a document,
 so the per-character counters do not move. The server acts on the half the
 player last opened the housing menu at (checked for reach again), never on a
 door id from the packet. Code: `housingSystem.ts` (Door notes section) and the

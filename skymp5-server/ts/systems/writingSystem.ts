@@ -62,7 +62,7 @@ const DAY_MS = 24 * 3600000;
 const MAX_PINNABLE_LISTED = 100;
 const CHANGE_FAILED = "That cannot be changed right now.";
 
-// Factions with a mark in skymp5-front/src/img/seals, guilds and the Legion before the hold courts
+// Factions with a mark in skymp5-front/src/img/seals
 const SEAL_FACTIONS = [
   "faction:dark-brotherhood", "faction:college-of-winterhold", "faction:imperial-legion",
   "hold:haafingar", "hold:the-reach", "hold:falkreath", "hold:hjaalmarch", "hold:eastmarch",
@@ -363,7 +363,7 @@ export class WritingSystem implements System {
     doc.seal = { ...this.person(mp, actorId), at: Date.now() };
     this.persist(doc);
     this.appendLog(`${describeActor(mp, actorId)} sealed letter ${id} ${JSON.stringify(doc.title)}${doc.seal.factionId ? ` as ${doc.seal.factionId}` : ""}`);
-    this.notice(mp, userId, "You press your seal into the wax.");
+    this.notice(mp, userId, doc.seal.title ? "You press your seal into the wax." : "You press a plain seal into the wax. Show a faction title to press its mark.");
     this.openDoc(mp, userId, actorId, id);
   }
 
@@ -802,12 +802,10 @@ export class WritingSystem implements System {
     return { actorId: 0, profileId: -1, realName: "", shownName: "", title: "", factionId: "" };
   }
 
-  // The faction whose title the character shows, else the first of theirs with a mark
+  // The faction of the title the character shows, "" with no title shown or a title of a faction without a mark
   private sealFactionOf(actorId: number): string {
-    const mine = this.factions.membershipsOfActor(actorId).map((m) => m.factionId);
-    const shown = this.factions.titleFactionOf(actorId);
-    if (SEAL_FACTIONS.includes(shown) && mine.includes(shown)) return shown;
-    return SEAL_FACTIONS.find((id) => mine.includes(id)) || "";
+    const shown = this.factions.titleOfActor(actorId) ? this.factions.titleFactionOf(actorId) : "";
+    return SEAL_FACTIONS.includes(shown) && this.factions.membershipsOfActor(actorId).some((m) => m.factionId === shown) ? shown : "";
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
