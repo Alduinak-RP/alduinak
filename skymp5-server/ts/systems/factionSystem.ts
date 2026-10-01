@@ -63,6 +63,8 @@ const REGENCY_CHECK_MS = 5000;
 const RELEASE_RETRIES = 5;
 const RELEASE_RETRY_MS = 30000;
 const MAX_QUEUED = 3;
+// A housing request waits this long for fresh ranks, then goes on with the cached ones
+const FRESH_RANKS_WAIT_MS = 1500;
 const TITLE_PROP = "private.factionTitle";
 const TITLE_FF = "ff_factionTitle";
 // One border refusal line per actor this often
@@ -155,6 +157,7 @@ export class FactionSystem implements System {
     this.housing.factionDef = (factionId) => (this.definitionsLoaded ? this.defs.get(factionId) ?? null : undefined);
     this.housing.territoryRefusal = (actorId, factionId, action) => this.territoryRefusal(actorId, factionId, action);
     this.housing.factionRights = (actorId) => this.propertyRights(actorId);
+    this.housing.factionFresh = (userId, job) => this.withFreshRanks(userId, job);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => { void this.onAssign(userId, actorId >>> 0); });
     ctx.gm.on(CHARACTER_LIST_EVENT, (profileId: number, entries: CharacterListEntry[]) => this.onCharacterList(profileId, entries));
@@ -951,6 +954,18 @@ export class FactionSystem implements System {
     if (!self) return this.cachedAccess(actorId);
     this.applyAccess(self.profileId, await this.backend()!.fetchAccess(self.profileId));
     return this.cachedAccess(actorId);
+  }
+
+  // Housing's menu and faction claim requests, after the player's earlier faction requests and with their ranks reloaded
+  private withFreshRanks(userId: number, job: () => void): void {
+    void this.queued(userId, async () => {
+      const actorId = this.actorOf(userId);
+      if (actorId && this.backend()) {
+        const fetched = this.refreshActorAccess(actorId).catch((e) => this.log(`[factions] ranks not reloaded for a property request, the cached ones apply: ${e}`));
+        await Promise.race([fetched, new Promise((done) => setTimeout(done, FRESH_RANKS_WAIT_MS))]);
+      }
+      job();
+    });
   }
 
   // Every online character of the profile gets its narrowed copy; Spawn keeps the full payload for the next character select

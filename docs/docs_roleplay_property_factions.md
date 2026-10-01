@@ -589,10 +589,20 @@ next to the personal claims above (2026-09-30, H5).
   `[housing] claimfaction <id> refused for <who>: <reason>`. Rename, void keys,
   transfer and give up are now logged for personal claims too (`as owner` or
   `as manager`).
+- **Fresh ranks**: a membership changed on the dashboard does not reach an
+  online player by itself, so opening the housing menu, Claim for and any
+  request on a faction claim first reload the player's ranks from the backend
+  (in their faction request queue, like the Faction menu). A replaced leader
+  or a removed member loses their rights over the claim at their next menu or
+  request, and the new leader gets the owner view at theirs, with no relog. The reload waits at most
+  1.5 seconds; a slow or failed one leaves the ranks loaded last and logs
+  `[factions] ranks not reloaded for a property request, the cached ones
+  apply: <error>`. Break lock tells members by the ranks loaded last.
 - **Test**: `node skymp5-server/tools/test-faction-claims.js` drives the
   housing system with a stub server: who is offered the claim, the stored
-  record, member locks, manager-only actions, a new leader, a court's hold,
-  the hand-over, transfer, give up, Break lock and an old record.
+  record, member locks, manager-only actions, a new leader, waiting for fresh
+  ranks, a court's hold, the hand-over, transfer, give up, Break lock and an
+  old record.
 
 ### The Faction menu
 
@@ -661,8 +671,8 @@ which reports every account's slots whenever the character select list is sent.
   `If-None-Match`, so an unchanged table is a 304, and on a change reloads the
   ranks of every online character, so deletes and permission edits apply
   without a restart or relog. A membership added or removed in the dashboard's
-  Assignments panel still reaches an online player at their next Faction menu
-  or login.
+  Assignments panel still reaches an online player at their next Faction menu,
+  housing menu or login.
 - **File and wipe**: definitions (`factions`, `requirements`, `retired`) and
   memberships (`assignments`) share `data/faction-whitelist.json`; the
   pre-launch wipe (`deploy/mongodb/wipe-world.js`) clears only `assignments`.

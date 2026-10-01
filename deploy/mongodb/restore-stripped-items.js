@@ -268,7 +268,7 @@ function statusOf(doc, live, row, ctx) {
   if (!ctx.owners) return 'ok'
   const now = ctx.owners.get(doc.formDesc)
   if (!now) return `the housing claim of ${ownerLabel(row.owner)} is gone`
-  if (now.profile !== row.owner.profile) return `the claim changed hands: ${ownerLabel(row.owner)} then, ${ownerLabel(now)} now`
+  if (now.profile !== row.owner.profile || (now.profile === -1 && now.name !== row.owner.name)) return `the claim changed hands: ${ownerLabel(row.owner)} then, ${ownerLabel(now)} now`
   return 'ok'
 }
 

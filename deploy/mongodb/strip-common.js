@@ -87,9 +87,18 @@ async function withCol(settings, fn, open) {
   try { return await fn(col) } finally { await client.close().catch(() => {}) }
 }
 
+// A personal claim (owner profile above 0) or a faction claim (owner -1 and the faction id)
 function housingOf(doc) {
   const rec = doc.dynamicFields && doc.dynamicFields[HOUSING_PROP]
-  return rec && typeof rec === 'object' && formIds.num(rec.owner) > 0 ? rec : null
+  if (!rec || typeof rec !== 'object') return null
+  const owner = formIds.num(rec.owner)
+  return owner > 0 || (owner === -1 && typeof rec.faction === 'string' && rec.faction) ? rec : null
+}
+
+// A faction claim is labelled by its faction id, with profile -1
+function claimOwner(rec) {
+  const profile = formIds.num(rec.owner)
+  return { name: profile === -1 ? rec.faction : rec.ownerName, profile }
 }
 
 function ownerLabel(o) { return `${o.name || '?'} (profile ${o.profile})` }
@@ -106,7 +115,7 @@ async function scanClaims(col, list, withContainers) {
       const rec = housingOf(doc)
       if (!rec) continue
       claims++
-      const owner = { name: rec.ownerName, profile: formIds.num(rec.owner) }
+      const owner = claimOwner(rec)
       owned.set(doc.formDesc, owner)
       for (const id of arr(rec.containers)) {
         const desc = formIds.descOf(id, list.slots)

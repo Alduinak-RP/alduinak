@@ -189,6 +189,31 @@ test('the claim stays with the faction when the leader is replaced', () => {
   assert.equal(t.rec().faction, COMPANIONS)
 })
 
+test('the menu and faction claim requests wait for fresh ranks, personal claims do not', () => {
+  const t = setup()
+  const waiting = []
+  const jobs = []
+  t.sys.factionFresh = (userId, job) => { waiting.push(userId); jobs.push(job) }
+  const release = () => jobs.splice(0).forEach((job) => job())
+  t.act(OWNER, 'claim', HOUSE)
+  assert.equal(t.rec(HOUSE).owner, 14, 'a personal claim runs at once')
+  assert.equal(waiting.length, 0)
+  t.rights.delete(MANAGER)
+  assert.equal(t.menu(MANAGER), undefined, 'no menu before the ranks are back')
+  t.rights.set(MANAGER, [{ id: COMPANIONS, name: 'The Companions', use: true, manage: true }])
+  release()
+  assert.deepEqual(t.packets.find((p) => p.customPacketType === 'propertyMenu').claimFactions, [{ id: COMPANIONS, name: 'The Companions' }])
+  t.act(MANAGER, 'claimfaction', DOOR, { faction: COMPANIONS })
+  assert.equal(t.rec(), undefined)
+  release()
+  assert.equal(t.rec().faction, COMPANIONS)
+  t.rights.delete(MEMBER)
+  t.act(MEMBER, 'lock')
+  release()
+  assert.match(t.notice(), /You have no key to this/, 'a member removed meanwhile no longer locks it')
+  assert.deepEqual(waiting, [t.user(MANAGER), t.user(MANAGER), t.user(MEMBER)])
+})
+
 test('a court claims only inside its own hold, and its ranks act only standing in it', () => {
   const t = setup()
   t.rights.set(MANAGER, [{ id: WHITERUN, name: 'Court of Whiterun', use: true, manage: true }])

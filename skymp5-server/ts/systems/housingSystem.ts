@@ -274,10 +274,23 @@ export class HousingSystem implements System {
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     switch (type) {
-      case "propertyInfoRequest": this.onInfoRequest(ctx, userId, content); break;
-      case "propertyRequest": this.onPropertyRequest(ctx, userId, content); break;
+      case "propertyInfoRequest": this.withFreshRanks(userId, () => this.onInfoRequest(ctx, userId, content), true); break;
+      case "propertyRequest": this.withFreshRanks(userId, () => this.onPropertyRequest(ctx, userId, content), this.touchesFactionClaim(ctx, content)); break;
       default: break;
     }
+  }
+
+  // Ranks change on the dashboard without a relog, so a menu and any request on a faction claim wait for fresh ones
+  private withFreshRanks(userId: number, job: () => void, needed: boolean): void {
+    if (needed && this.factionFresh) this.factionFresh(userId, job);
+    else job();
+  }
+
+  private touchesFactionClaim(ctx: SystemContext, content: Content): boolean {
+    if (content["action"] === "claimfaction") return true;
+    const target = toFormId(content["target"]);
+    const primary = target ? this.primaryOf(ctx, target) : 0;
+    return !!primary && !!this.read(ctx, primary)?.faction;
   }
 
   async updateAsync(ctx: SystemContext): Promise<void> {
@@ -892,6 +905,9 @@ export class HousingSystem implements System {
 
   // Set by FactionSystem: the actor's own factions and what each rank allows on faction claims, staff powers left out
   factionRights: ((actorId: number) => FactionRight[]) | null = null;
+
+  // Set by FactionSystem: runs the job in the player's faction queue once their ranks are reloaded from the backend
+  factionFresh: ((userId: number, job: () => void) => void) | null = null;
 
   // Both halves of a teleport door, just the ref for anything else
   doorSides(ctx: SystemContext, refrId: number): number[] {

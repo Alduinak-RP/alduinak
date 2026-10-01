@@ -507,6 +507,18 @@ async function main() {
   assert.match(r.h('b36b:The Great City of Solitude.esp').status, /claim of Fixture F \(profile 7\) is gone/)
   assert.equal(r.h('c0cee:Skyrim.esm').status, 'ok')
 
+  // A faction claim (owner -1 and the faction id) is scanned like a personal one and owned by the faction
+  w = world()
+  Object.assign(w.find(d => d.formDesc === '902:Skyrim.esm').dynamicFields['private.housing'], { owner: new Int32(-1), faction: 'faction:companions' })
+  const claimed = await S.findTargets((await stub(w).open()).col, { ...list, slots }, true)
+  assert.equal(claimed.claims, 3)
+  assert.deepEqual(claimed.owned.get('c4bd5:Skyrim.esm'), { name: 'faction:companions', profile: -1 })
+  r = await plan(w)
+  assert.match(r.h('c4bd5:Skyrim.esm').status, /changed hands: Fixture E \(profile 23\) then, faction:companions \(profile -1\) now/)
+  Object.assign(w.find(d => d.formDesc === '902:Skyrim.esm').dynamicFields['private.housing'], { owner: new Int32(23), faction: '' })
+  w.find(d => d.formDesc === '903:Skyrim.esm').dynamicFields['private.housing'] = { owner: new Int32(-1), ownerName: '', containers: [] }
+  assert.equal((await S.findTargets((await stub(w).open()).col, { ...list, slots }, true)).claims, 2, 'owner -1 without a faction id is no claim')
+
   // Stacked return into the same chest merges into the admin's entry instead of adding a second stack
   w = world()
   addEntry(doc(w, 'c0cee:Skyrim.esm'), EINHERJAR_BOOTS, 40)
