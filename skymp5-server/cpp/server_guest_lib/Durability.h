@@ -68,6 +68,24 @@ bool BindWorn(const MpActor& actor, Equipment& equipment);
 // BindWorn on the stored equipment after the inventory was rewritten; before is the inventory as it was, which tells a repaired worn copy from its twins
 void SyncWorn(MpActor& actor, const Inventory* before = nullptr);
 
+// Index of the inventory copy a worn entry of a client's equipment report stands for (Inventory::FindWornCopy with the copy the slot wears), -1 while durability is off or for an item that never wears
+[[nodiscard]] int ReportedWornCopy(const MpActor& actor,
+                                   const Inventory::Entry& worn,
+                                   const Inventory& report,
+                                   std::vector<uint32_t>& left);
+
+// What a removal by plain {baseId, count} takes while durability is on, since a worn-down copy no longer equals the plain entry: plain copies first, then any other copy except of named item bases; the entries as given while it is off or the inventory is short
+[[nodiscard]] std::vector<Inventory::Entry> ResolveRemoval(
+  const WorldState* worldState, const Inventory& inventory,
+  const std::vector<Inventory::Entry>& entries);
+
+// The inventory copy the worn slot of a base stands for, the right hand first; null without one or while durability is off
+[[nodiscard]] const Inventory::Entry* WornCopy(const MpActor& actor,
+                                               uint32_t baseId);
+
+// The worn entry of a base takes the tempering of its improved copy, so the slot stays bound to that copy
+void OnWornCopyTempered(MpActor& actor, uint32_t baseId, float health);
+
 // Settles a dying actor, after deathWear when that is set
 void OnDeath(MpActor& actor);
 

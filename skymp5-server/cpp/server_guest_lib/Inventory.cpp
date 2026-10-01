@@ -161,6 +161,20 @@ bool Inventory::Entry::SameItemAs(const Entry& other) const
     poisonCount.value_or(0) == other.poisonCount.value_or(0);
 }
 
+bool Inventory::Entry::SameItemExceptPoison(const Entry& other) const
+{
+  if (baseId != other.baseId) {
+    return false;
+  }
+  Entry a = *this;
+  Entry b = other;
+  a.poisonId.reset();
+  a.poisonCount.reset();
+  b.poisonId.reset();
+  b.poisonCount.reset();
+  return a.SameItemAs(b);
+}
+
 bool Inventory::Entry::HasIdentityExtras() const
 {
   return !SameItemAs(Entry(baseId, 0));
@@ -247,6 +261,77 @@ std::vector<Inventory::Entry> Inventory::FindEntriesFor(const Entry& described,
     return {};
   }
   return res;
+}
+
+int Inventory::FindWornCopy(const Entry& worn, const Inventory& report,
+                            const std::optional<float>* bound,
+                            std::vector<uint32_t>& left) const
+{
+  if (left.size() != entries.size()) {
+    left.clear();
+    for (const auto& e : entries) {
+      left.push_back(e.count);
+    }
+  }
+  std::vector<size_t> same;
+  for (size_t i = 0; i < entries.size(); ++i) {
+    if (left[i] > 0 && entries[i].SameItemExceptPoison(worn)) {
+      same.push_back(i);
+    }
+  }
+  if (same.empty()) {
+    return -1;
+  }
+  const auto slotCopy = [&](size_t i) {
+    return bound && entries[i].condition == *bound;
+  };
+
+  // A copy the report shows unworn under its own percent is not the worn one; the slot's copy is given up last
+  std::vector<uint32_t> open = left;
+  for (const auto& shown : report.entries) {
+    const auto tag =
+      shown.baseId == worn.baseId && shown.GetWorn() == Worn::None
+        ? ConditionTag::TagPercent(shown.name, BrokenLabel())
+        : std::nullopt;
+    if (!tag || !shown.SameItemExceptPoison(worn)) {
+      continue;
+    }
+    uint32_t need = shown.count;
+    for (const bool slot : { false, true }) {
+      for (size_t i : same) {
+        if (slotCopy(i) == slot &&
+            ConditionTag::Percent(entries[i].condition) == *tag) {
+          const uint32_t n = std::min(need, open[i]);
+          open[i] -= n;
+          need -= n;
+        }
+      }
+    }
+  }
+  const bool anyOpen = std::any_of(same.begin(), same.end(),
+                                   [&](size_t i) { return open[i] > 0; });
+
+  const int wanted =
+    ConditionTag::TagPercent(worn.name, BrokenLabel()).value_or(100);
+  size_t best = same.front();
+  int bestDistance = -1;
+  for (size_t i : same) {
+    if (anyOpen && open[i] == 0) {
+      continue;
+    }
+    if (slotCopy(i)) {
+      best = i;
+      break;
+    }
+    const int distance =
+      std::abs(ConditionTag::Percent(entries[i].condition) - wanted);
+    if (bestDistance < 0 || distance < bestDistance) {
+      best = i;
+      bestDistance = distance;
+    }
+  }
+  --left[best];
+  return static_cast<int>(best);
 }
 
 void Inventory::SetNamedItemBases(const std::vector<uint32_t>& baseIds)

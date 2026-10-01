@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include "ConditionsEvaluator.h"
+#include "Durability.h"
 #include "MpActor.h"
 #include "PartOne.h"
 #include "RawMessageData.h"
@@ -361,10 +362,15 @@ void CraftService::UseTemperRecipe(MpActor* me,
   const float maxHealth = GetMaxTemperHealth(me, br, recipe);
   const float health = std::min(temperHealth, maxHealth);
 
+  // Durability: the copy a worn slot stands for goes first while the temper improves it
+  const Inventory::Entry* wornCopy = Durability::WornCopy(*me, itemId);
+  const bool wornTarget =
+    wornCopy && health > wornCopy->health.value_or(1.f) + 0.001f;
+
   // The worn copy first, then the least improved one
-  const Inventory::Entry* target = nullptr;
+  const Inventory::Entry* target = wornTarget ? wornCopy : nullptr;
   for (auto& entry : me->GetInventory().entries) {
-    if (entry.baseId != itemId || !entry.count) {
+    if (wornTarget || entry.baseId != itemId || !entry.count) {
       continue;
     }
     if (!target) {
@@ -407,7 +413,9 @@ void CraftService::UseTemperRecipe(MpActor* me,
                me->GetFormId(), itemId, health, temperHealth, maxHealth);
 
   CraftEvent craftEvent(me, itemId, 1, recipeId, entries, &from, &to);
-  craftEvent.Fire(me->GetParent());
+  if (craftEvent.Fire(me->GetParent()) && wornTarget) {
+    Durability::OnWornCopyTempered(*me, itemId, health);
+  }
 }
 
 // KWDA holds ids relative to the bench plugin's master list, the recipe's bench keyword is compared as a combined id

@@ -1,5 +1,6 @@
 #include "MpObjectReference.h"
 #include "ChangeFormGuard.h"
+#include "Durability.h"
 #include "EvaluateTemplate.h"
 #include "FormCallbacks.h"
 #include "GetWeightFromRecord.h"
@@ -896,7 +897,9 @@ void MpObjectReference::AddItems(const std::vector<Inventory::Entry>& entries)
 void MpObjectReference::RemoveItem(uint32_t baseId, uint32_t count,
                                    MpObjectReference* target)
 {
-  RemoveItems({ { baseId, count } }, target);
+  RemoveItems(Durability::ResolveRemoval(GetParent(), GetInventory(),
+                                         { { baseId, count } }),
+              target);
 }
 
 void MpObjectReference::RemoveItems(

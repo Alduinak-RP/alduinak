@@ -1,6 +1,5 @@
 #include "ActionListener.h"
 #include "AnimationSystem.h"
-#include "ConditionTag.h"
 #include "ConditionsEvaluator.h"
 #include "ConsoleCommands.h"
 #include "CropRegeneration.h"
@@ -828,26 +827,19 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
   // Worn items show the extras the server holds, never ones a client made up
   UpdateEquipmentMessage sanitizedMsg = msg;
   bool extrasReplaced = false;
-  const std::string& brokenLabel = Inventory::GetBrokenLabel();
+  std::vector<uint32_t> copiesLeft;
   for (auto& entry : sanitizedMsg.data.inv.entries) {
     if (entry.GetWorn() == Inventory::Worn::None) {
       continue;
     }
     Inventory::Entry one = entry;
     one.count = 1;
-    // A name without a percent tag stands for the copy the slot wears already
-    if (!Inventory::IsNamedItemBase(one.baseId) &&
-        !ConditionTag::TagPercent(one.name, brokenLabel)) {
-      for (const auto& current : actor->GetEquipment().inv.entries) {
-        if (current.baseId == one.baseId && current.condition &&
-            current.GetWorn() == one.GetWorn()) {
-          one.name = one.name.value_or("") + " " +
-            ConditionTag::Tag(current.condition, brokenLabel);
-          break;
-        }
-      }
-    }
-    const auto owned = inventory.FindEntriesFor(one);
+    // Durability: a slot keeps its copy unless the report shows that copy unworn, so a stale percent tag moves no wear to a twin
+    const int copy =
+      Durability::ReportedWornCopy(*actor, one, msg.data.inv, copiesLeft);
+    const auto owned = copy >= 0
+      ? std::vector<Inventory::Entry>{ inventory.entries[copy] }
+      : inventory.FindEntriesFor(one);
     // The stored worn entry carries the condition of the server's copy, which the damage formulas read
     if (owned.empty()) {
       entry.condition.reset();

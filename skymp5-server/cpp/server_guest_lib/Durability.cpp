@@ -60,27 +60,17 @@ bool WearsOut(const Context& ctx, uint32_t baseId)
     !ctx.resolver->IsExempt(baseId, *ctx.worldState);
 }
 
-// The same copy apart from the poison a hit spends on it
-bool SameCopy(Inventory::Entry a, Inventory::Entry b)
-{
-  a.poisonId.reset();
-  a.poisonCount.reset();
-  b.poisonId.reset();
-  b.poisonCount.reset();
-  return a.SameItemAs(b);
-}
-
 float ConditionOf(const std::optional<float>& condition)
 {
   return std::clamp(condition.value_or(1.f), 0.f, 1.f);
 }
 
-// The worn copy of the weapon that hit, the right hand first
-const Inventory::Entry* FindWornWeapon(const MpActor& actor, uint32_t source)
+// The worn entry of a base, the right hand first
+const Inventory::Entry* FindWorn(const MpActor& actor, uint32_t baseId)
 {
   const Inventory::Entry* found = nullptr;
   for (const auto& entry : actor.GetEquipment().inv.entries) {
-    if (entry.baseId != source || entry.GetWorn() == Inventory::Worn::None) {
+    if (entry.baseId != baseId || entry.GetWorn() == Inventory::Worn::None) {
       continue;
     }
     if (entry.GetWorn() == Inventory::Worn::Right) {
@@ -136,7 +126,7 @@ int FindCopy(const Inventory& inventory, uint32_t baseId,
     if (entry.baseId != baseId || entry.count == 0) {
       continue;
     }
-    const bool twin = worn && SameCopy(entry, *worn);
+    const bool twin = worn && entry.SameItemExceptPoison(*worn);
     const bool exact = entry.condition == condition;
     const int rank = twin && exact ? 0 : twin ? 1 : exact ? 2 : 3;
     const float distance =
@@ -177,8 +167,7 @@ uint32_t CountTwins(const Inventory& inventory, const Inventory::Entry& worn,
 {
   uint32_t count = 0;
   for (const auto& entry : inventory.entries) {
-    if (entry.baseId == worn.baseId && entry.condition == condition &&
-        SameCopy(entry, worn)) {
+    if (entry.condition == condition && entry.SameItemExceptPoison(worn)) {
       count += entry.count;
     }
   }
@@ -196,7 +185,7 @@ std::optional<std::optional<float>> RewrittenCondition(
   }
   std::optional<std::optional<float>> gained;
   for (const auto& entry : after.entries) {
-    if (entry.baseId != worn.baseId || !SameCopy(entry, worn) ||
+    if (!entry.SameItemExceptPoison(worn) ||
         (gained && *gained == entry.condition) ||
         CountTwins(after, worn, entry.condition) <=
           CountTwins(before, worn, entry.condition)) {
@@ -429,7 +418,7 @@ DurabilityRules::WeaponEffect Durability::WornWeaponEffect(
   const MpActor& aggressor, uint32_t source)
 {
   const auto* settings = GetSettings(aggressor.GetParent());
-  const auto* worn = settings ? FindWornWeapon(aggressor, source) : nullptr;
+  const auto* worn = settings ? FindWorn(aggressor, source) : nullptr;
   return worn ? DurabilityRules::WeaponEffectOf(*settings, worn->condition)
               : DurabilityRules::WeaponEffect();
 }
@@ -523,7 +512,7 @@ void WearFromHit(MpActor& aggressor, MpActor& target, const Context& context,
 
   const auto& wear = ctx->settings->wear;
   if (Wears(aggressor, *ctx) && WearsOut(*ctx, hitData.source)) {
-    if (const auto* worn = FindWornWeapon(aggressor, hitData.source)) {
+    if (const auto* worn = FindWorn(aggressor, hitData.source)) {
       AddWear(aggressor, *worn,
               DurabilityRules::AggressorWear(wear, shoots, facts));
     }
@@ -614,6 +603,71 @@ void Durability::SyncWorn(MpActor& actor, const Inventory* before)
   if (BindWornEntries(*ctx, actor.GetInventory(), equipment, before)) {
     actor.SetEquipment(equipment);
   }
+}
+
+int Durability::ReportedWornCopy(const MpActor& actor,
+                                 const Inventory::Entry& worn,
+                                 const Inventory& report,
+                                 std::vector<uint32_t>& left)
+{
+  const auto ctx = ContextOf(actor);
+  if (!ctx || Inventory::IsNamedItemBase(worn.baseId) ||
+      !IsDurable(ctx->resolver->Resolve(worn.baseId, *ctx->worldState))) {
+    return -1;
+  }
+  const std::optional<float>* bound = nullptr;
+  for (const auto& current : actor.GetEquipment().inv.entries) {
+    if (current.GetWorn() == worn.GetWorn() &&
+        current.SameItemExceptPoison(worn)) {
+      bound = &current.condition;
+      break;
+    }
+  }
+  return actor.GetInventory().FindWornCopy(worn, report, bound, left);
+}
+
+std::vector<Inventory::Entry> Durability::ResolveRemoval(
+  const WorldState* worldState, const Inventory& inventory,
+  const std::vector<Inventory::Entry>& entries)
+{
+  if (!GetSettings(worldState)) {
+    return entries;
+  }
+  Inventory rest = inventory;
+  std::vector<Inventory::Entry> resolved;
+  for (const auto& entry : entries) {
+    const auto found = rest.FindEntriesFor(entry, true);
+    if (found.empty()) {
+      resolved.push_back(entry);
+      continue;
+    }
+    rest.RemoveItems(found);
+    resolved.insert(resolved.end(), found.begin(), found.end());
+  }
+  return resolved;
+}
+
+const Inventory::Entry* Durability::WornCopy(const MpActor& actor,
+                                             uint32_t baseId)
+{
+  const auto* worn = ContextOf(actor) ? FindWorn(actor, baseId) : nullptr;
+  const auto& inventory = actor.GetInventory();
+  const int index =
+    worn ? FindCopy(inventory, baseId, worn->condition, worn) : -1;
+  return index >= 0 ? &inventory.entries[index] : nullptr;
+}
+
+void Durability::OnWornCopyTempered(MpActor& actor, uint32_t baseId,
+                                    float health)
+{
+  const auto* worn = ContextOf(actor) ? FindWorn(actor, baseId) : nullptr;
+  if (!worn) {
+    return;
+  }
+  Equipment equipment = actor.GetEquipment();
+  equipment.inv.entries[worn - actor.GetEquipment().inv.entries.data()]
+    .health = health;
+  actor.SetEquipment(equipment);
 }
 
 void Durability::OnDeath(MpActor& actor)

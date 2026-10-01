@@ -170,6 +170,8 @@ public:
 
     // Same item as clients see it: charge, worn state, condition, float noise and names (except on named item bases) drift
     bool SameItemAs(const Entry& other) const;
+    // SameItemAs apart from the poison a hit spends
+    bool SameItemExceptPoison(const Entry& other) const;
     bool HasIdentityExtras() const;
 
     friend bool operator==(const Entry& lhs, const Entry& rhs)
@@ -198,6 +200,11 @@ public:
   // Own entries a client-described one stands for: exact extras (same worn state first), then the same item (copies closest to the percent tag of the described name first), then a plain copy for extras never recorded, then with anyExtras any copy of the base except named item bases; empty if short
   std::vector<Entry> FindEntriesFor(const Entry& described,
                                     bool anyExtras = false) const;
+
+  // Index of the own copy a worn entry of a client's equipment report stands for, -1 without the same item: copies at the percent a tagged unworn copy of the report shows stay with that one, of the rest the copy at *bound (the one the slot wears) goes first, then the closest to the worn name's tag; left counts the copies not taken yet and is filled when empty
+  int FindWornCopy(const Entry& worn, const Inventory& report,
+                   const std::optional<float>* bound,
+                   std::vector<uint32_t>& left) const;
 
   bool HasItem(uint32_t baseId) const;
   uint32_t GetItemCount(uint32_t baseId) const;

@@ -1,5 +1,6 @@
 #include "CraftEvent.h"
 
+#include "Durability.h"
 #include "MpActor.h"
 
 CraftEvent::CraftEvent(MpActor* actor_, uint32_t craftedItemBaseId_,
@@ -39,7 +40,8 @@ std::string CraftEvent::GetArgumentsJsonArray() const
 
 void CraftEvent::OnFireSuccess(WorldState*)
 {
-  actor->RemoveItems(entries);
+  actor->RemoveItems(Durability::ResolveRemoval(
+    actor->GetParent(), actor->GetInventory(), entries));
   if (temperedFrom && temperedTo) {
     actor->RemoveItems({ *temperedFrom });
     actor->AddItems({ *temperedTo });

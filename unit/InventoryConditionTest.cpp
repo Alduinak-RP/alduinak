@@ -168,6 +168,120 @@ TEST_CASE("FindEntriesFor takes the copy the described name's tag points at",
   REQUIRE_FALSE(found[0].condition.has_value());
 }
 
+TEST_CASE("A worn slot keeps its copy unless the report shows that copy "
+          "unworn",
+          "[Inventory][Durability]")
+{
+  const auto shown = [](const char* name, Inventory::Worn worn) {
+    auto entry = Sword(1, std::nullopt, std::string(name));
+    entry.SetWorn(worn);
+    return entry;
+  };
+  const auto right = [&](const char* name) {
+    return shown(name, Inventory::Worn::Right);
+  };
+  const auto unworn = [&](const char* name) {
+    return shown(name, Inventory::Worn::None);
+  };
+  const auto find = [](const Inventory& inv, const Inventory& report,
+                       const std::optional<float>* bound, size_t at = 0) {
+    std::vector<uint32_t> left;
+    return inv.FindWornCopy(report.entries[at], report, bound, left);
+  };
+
+  // The pristine spare lies before the sword in hand, which wore to 93% under a name that still says 100%
+  Inventory inv;
+  inv.entries = { Sword(1, std::nullopt), Sword(1, 0.93f) };
+  const std::optional<float> at93 = 0.93f;
+  const std::optional<float> pristine;
+
+  Inventory report;
+  report.entries = { right("Steel Sword (100%)"),
+                     unworn("Steel Sword (100%)") };
+  REQUIRE(find(inv, report, &at93) == 1);
+  // The same report without a remembered slot: the spare takes its own tag, the worn copy is what is left
+  REQUIRE(find(inv, report, nullptr) == 1);
+
+  // The spare was drawn: the old sword shows its own percent in the pack
+  report.entries = { right("Steel Sword (100%)"),
+                     unworn("Steel Sword (93%)") };
+  REQUIRE(find(inv, report, &at93) == 0);
+
+  // Renamed in place: the tag follows the copy
+  report.entries = { right("Steel Sword (93%)"),
+                     unworn("Steel Sword (100%)") };
+  REQUIRE(find(inv, report, &at93) == 1);
+
+  // A client without names: the slot's copy, pristine or worn, whatever the order
+  report.entries = { right("Steel Sword"), unworn("Steel Sword") };
+  report.entries[0].name.reset();
+  report.entries[1].name.reset();
+  REQUIRE(find(inv, report, &at93) == 1);
+  REQUIRE(find(inv, report, &pristine) == 0);
+  inv.entries = { Sword(1, 0.93f), Sword(1, std::nullopt) };
+  REQUIRE(find(inv, report, &pristine) == 1);
+  // No slot and no tag reads as pristine
+  REQUIRE(find(inv, report, nullptr) == 1);
+
+  // A newly drawn copy among three goes by its tag once the others are accounted for
+  inv.entries = { Sword(1, std::nullopt), Sword(1, 0.93f), Sword(1, 0.8f) };
+  report.entries = { right("Steel Sword (80%)"), unworn("Steel Sword (93%)"),
+                     unworn("Steel Sword (100%)") };
+  REQUIRE(find(inv, report, &at93) == 2);
+  // Stale tags in the pack as well: the slot's copy stays
+  report.entries = { right("Steel Sword (100%)"), unworn("Steel Sword (95%)"),
+                     unworn("Steel Sword (85%)") };
+  REQUIRE(find(inv, report, &at93) == 1);
+  // No slot and nothing accounted for: the closest percent
+  REQUIRE(find(inv, report, nullptr) == 0);
+
+  // Two of one stack, one worn: the stack still holds the worn one
+  inv.entries = { Sword(2, std::nullopt) };
+  report.entries = { right("Steel Sword (100%)"),
+                     unworn("Steel Sword (100%)") };
+  REQUIRE(find(inv, report, &pristine) == 0);
+
+  // More copies in the report than the server holds: the slot's copy is given up last, and never to nothing
+  inv.entries = { Sword(1, 0.93f) };
+  report.entries = { right("Steel Sword (93%)"), unworn("Steel Sword (93%)") };
+  REQUIRE(find(inv, report, &at93) == 0);
+
+  // One base in both hands: each hand keeps its own copy and none is taken twice
+  inv.entries = { Sword(1, std::nullopt), Sword(1, 0.93f) };
+  report.entries = { right("Steel Sword (100%)"),
+                     shown("Steel Sword (100%)", Inventory::Worn::Left) };
+  std::vector<uint32_t> left;
+  REQUIRE(inv.FindWornCopy(report.entries[0], report, &at93, left) == 1);
+  REQUIRE(inv.FindWornCopy(report.entries[1], report, &pristine, left) == 0);
+  REQUIRE(inv.FindWornCopy(report.entries[1], report, &pristine, left) == -1);
+
+  // Another temper is another item, a spent poison charge is not
+  Inventory::Entry fine = Sword(1, 0.5f);
+  fine.health = 1.1f;
+  Inventory::Entry poisoned = Sword(1, 0.93f);
+  poisoned.poisonId = 0x3a5a4;
+  poisoned.poisonCount = 2;
+  inv.entries = { fine, Sword(1, std::nullopt), poisoned };
+  Inventory::Entry described = right("Steel Sword (100%)");
+  described.poisonId = 0x3a5a4;
+  described.poisonCount = 3;
+  REQUIRE_FALSE(described.SameItemAs(poisoned));
+  REQUIRE(described.SameItemExceptPoison(poisoned));
+  REQUIRE_FALSE(described.SameItemExceptPoison(fine));
+  report.entries = { described, unworn("Steel Sword (100%)") };
+  REQUIRE(find(inv, report, &at93) == 2);
+  Inventory::Entry describedFine = right("Steel Sword (100%) (Fine)");
+  describedFine.health = 1.1f;
+  report.entries = { describedFine, unworn("Steel Sword (100%)") };
+  REQUIRE(find(inv, report, nullptr) == 0);
+
+  // Another base or no copy at all: nothing, the caller resolves as before
+  Inventory::Entry iron(kIronSword, 1);
+  iron.SetWorn(Inventory::Worn::Right);
+  report.entries = { iron };
+  REQUIRE(find(inv, report, nullptr) == -1);
+}
+
 TEST_CASE("The tag draw changes nothing while no copy carries a condition",
           "[Inventory][Durability]")
 {
