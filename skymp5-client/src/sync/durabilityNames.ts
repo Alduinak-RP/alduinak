@@ -261,6 +261,7 @@ const renameCopies = (refr: ObjectReference, form: Form, raws: Entry[], copies: 
         done.add(raw);
         counts.renamed += stack.length;
         tagsWritten = tagsWritten || !!tag;
+        if (!raw.worn && !raw.wornLeft && raws.some((x) => x.worn || x.wornLeft)) wornTwinRenamed = true;
         return;
       }
     }
@@ -320,6 +321,14 @@ export const applyDurabilityNames = (refr: ObjectReference, serverInv: Inventory
     keptLoggedAt = Date.now();
     logToPlatformLog("DurabilityNames", `${counts.kept} item(s) keep an old condition tag, in-place rename ${nativeRename() ? "refused" : "missing (setInventoryItemName)"}`);
   }
+};
+
+// An unworn copy of a worn base got a new tag, so the next equipment report lets the server bind the copy really in hand
+let wornTwinRenamed = false;
+export const takeWornTwinRename = (): boolean => {
+  const was = wornTwinRenamed;
+  wornTwinRenamed = false;
+  return was;
 };
 
 const taggedName = (name: string, tag: string): string => (tag ? `${plainName(name)} ${tag}` : plainName(name));

@@ -12,6 +12,7 @@ import { Actor, EquipEvent, FormType, Menu } from "skyrimPlatform";
 import { getAppearance } from "../../sync/appearance";
 import { ActorValues, getActorValues } from "../../sync/actorvalues";
 import { countWorn, getEquipment } from "../../sync/equipment";
+import { takeWornTwinRename } from "../../sync/durabilityNames";
 import { nextHostAttempt } from "../../view/hostAttempts";
 import { SkympClient } from "./skympClient";
 import { MessageWithRefrId } from "../events/sendMessageWithRefrIdEvent";
@@ -323,6 +324,9 @@ export class SendInputsService extends ClientListener {
             this.equipmentChanged = true;
             this.spawnReportsToLog = 5;
             return;
+        }
+        if (takeWornTwinRename()) {
+            this.equipmentChanged = true;
         }
         // Coalesce bursts: rapid re-equips flood the server with reliable updates whose forced-revert snippets can freeze the client (S2)
         if (this.equipmentChanged && Date.now() - this.lastEquipmentSentMs >= 300) {
