@@ -54,6 +54,7 @@ import { RefDecorService } from "./services/services/refDecorService";
 import { PlayerActionService } from "./services/services/playerActionService";
 import { EmoteService } from "./services/services/emoteService";
 import { MasteryService } from "./services/services/masteryService";
+import { SneakBlockSpeedService } from "./services/services/sneakBlockSpeedService";
 import { NeedsService } from "./services/services/needsService";
 import { AttributeBonusService } from "./services/services/attributeBonusService";
 import { BountyBoardService } from "./services/services/bountyBoardService";
@@ -168,6 +169,7 @@ const main = () => {
       new PlayerActionService(sp, controller),
       new EmoteService(sp, controller),
       new MasteryService(sp, controller),
+      new SneakBlockSpeedService(sp, controller),
       new NeedsService(sp, controller),
       new AttributeBonusService(sp, controller),
       new BountyBoardService(sp, controller),

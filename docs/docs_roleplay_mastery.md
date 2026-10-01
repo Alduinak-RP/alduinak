@@ -489,8 +489,21 @@ ability is held and takes it away with the ability. Dual Flurry rank 1 carries
 a condition `HasSpell(Warrior Master) == 0`, so it switches off once rank 2
 arrives. The +25 stamina is a constant Fortify Stamina effect; the server only
 exchanges percentages, so it needs nothing server-side. Quick Shot, Ranger and
-Block Runner drive animation graph variables, which vanilla never applies
-through an effect: check them in game after the first deploy.
+Block Runner drive animation graph variables, which the engine sets from the
+perks only when it builds the character's behaviour graph (the Set Boolean
+Graph Variable entry point runs from the graph setup alone), so a perk an
+ability grants later counts only after the next 3D rebuild: check Quick Shot
+and Ranger in game. Block Runner's `bPerkShieldCharge` is kept by the client
+(`sneakBlockSpeedService.ts`): true while the player holds the perk and false
+while sneaking. Its block state uses `NPC_Blocking_ShieldCharge_MT` (run 370),
+which also replaces the sneak movement type (run 222), so a Block Runner ran
+crouched and blocking faster than crouched alone; without the perk a sneak
+block runs at `NPC_Blocking_MT`'s 81. The client checks on every sneak change
+and once a second. A sneak block with movement logs
+`SneakBlockSpeedService: sneak block top speed <n> at SpeedMult <m>,
+bPerkShieldCharge false (...)` when it ends, and a change of the perk
+`SneakBlockSpeedService: bPerkShieldCharge true|false: Block Runner held|not
+held, sneaking <bool>`.
 
 Over Draw is server-side: a `damageMultConditionalFormulaSettings` rule keyed
 on the Hunter Master marker, bows or crossbows, and a non-player target
