@@ -600,12 +600,28 @@ regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
   diseases, not six rolls. Never from a player, a pet, a blocked hit or a spell; werewolves and werebears carry nothing
   (`survivalDiseaseCarrierExclude`). Disease resistance is the race's (Argonian 75, Redguard 50, Wood Elf 75 with plugin
   r27a) plus any learned ability, capped at 85 like the native resistances.
-- **Contagion** (the diseases an Oblivion beggar carried): every `survivalContagionCheckSeconds` (60) each online player
-  carrying a contagious disease, at any stage, exposes each other player within `survivalContagionRange` (300 units,
-  about 4 m, same cell or world) to one server roll of `survivalContagionChance` (5%) x (1 - disease resistance / 100)
-  per disease, and the same pair and disease roll again only after `survivalContagionCooldownMinutes` (30): an hour next
-  to someone sick is two rolls per disease, about 10%. Players only (there are no beggar NPCs); nobody in creation, dead
-  or in the god, ghost or invis admin mode spreads or catches it. The cooldowns live in memory, so a restart rolls afresh.
+- **Contagion** (the diseases an Oblivion beggar carried) is a client check, so the server does no proximity work
+  (the owner's call, to keep the calculations off the server):
+  - The server writes each player's actor property `ff_contagious`, the ids of the contagious diseases they carry at
+    any stage (or null), only when it changes: at login when the stored value differs, at a catch and at a cure.
+    Every client gets it for itself and for the players around it.
+  - Every `survivalContagionCheckSeconds` (60), the first check at a random second after the state arrives, each client
+    looks at the players it already has loaded in its own cell or world within `survivalContagionRange`, which
+    defaults to the chat's whisper range `chatRanges.whisper` (150 units, about 2 m). When any of them carries a
+    contagious disease this player's own `ff_contagious` lacks, it sends one small `survivalExposure` packet naming
+    them and those diseases. Nobody sick near: no packet.
+  - The server takes one report per player per 55 s (the check interval less 5 s). For each disease it checks only that
+    the disease is contagious, that the named source carries it and that the reporter does not. Then it rolls
+    `survivalContagionChance` (5%) x (1 - disease resistance / 100) once per disease, however many sick players
+    stand near, named after the first source that carries it. It does no distance check.
+  - Every minute at whispering distance rolls again, so ten minutes beside someone sick is about a 40% chance per
+    disease and half an hour about 79%.
+  - Players only (there are no beggar NPCs). Nobody in creation, dead, in an afterlife realm (Sovngarde, the Soul
+    Cairn) or in the god, ghost or invis admin mode spreads or catches it, and a player at `survivalMaxDiseases`
+    rolls nothing (the rolls stop once the player reaches it). A catch is logged, a spared roll is not.
+  - **The trade-off:** a modified client could skip its reports, or lie about the distance, and so avoid catching
+    diseases (or catch them from farther away). It cannot infect anyone else: a report only ever makes the reporter
+    sick, and only with a disease a source really carries.
 - **At most `survivalMaxDiseases` (4)** at once, which also keeps the speed penalties in check; a success beyond it is
   refused and logged. Food poisoning does not count.
 - **Progression** by wall clock, offline included: stage 2 after `survivalDiseaseStageHours[0]` (84 h, 3.5 days) and
@@ -643,12 +659,18 @@ freezing area, diseases with their next stage time, afflictions, food poisoning)
 ### Protocol and storage
 
 - Client -> Server: `{ customPacketType: "survivalRequest" }` after load and widget reset (the state again);
-  `{ customPacketType: "survivalReport", swimming, flameCloak, engineWarmth? }` on change. `survivalRequest`,
-  `needsRequest`, `weatherRequest` and `gameTimeRequest` schedule the login window re-send of the survival spells.
+  `{ customPacketType: "survivalReport", swimming, flameCloak, engineWarmth? }` on change;
+  `{ customPacketType: "survivalExposure", sources: [{ actorId, diseases: [id] }] }` at a contagion check that found a
+  carrier in range (at most 8 sources and 32 diseases each are read). `survivalRequest`, `needsRequest`,
+  `weatherRequest` and `gameTimeRequest` schedule the login window re-send of the survival spells.
 - Server -> Client: `{ customPacketType: "survivalState", cold, coldStage, coldStageName, coldPenalty, temperatureLevel,
-  warmth, freezingArea, afflictions: [name], diseases: [{ name, stage }] }` on change and on request (cold and coldStage
-  -1 with cold off; while food poisoning runs, `diseases` starts with `{ "name": "Food poisoning", "stage": 1 }`, so the
-  HUD's Sick line shows it too); notices through `masteryNotice`.
+  warmth, freezingArea, afflictions: [name], diseases: [{ name, stage }], contagion: { seconds, range } | null }` on
+  change and on request (cold and coldStage -1 with cold off; while food poisoning runs, `diseases` starts with
+  `{ "name": "Food poisoning", "stage": 1 }`, so the HUD's Sick line shows it too; `contagion` is the client's check
+  interval and range, null while contagion is off); notices through `masteryNotice`.
+- `ff_contagious` on the character, seen by its owner and its neighbours: `["collywobbles", "chills"]` or null. It must
+  be registered in the gamemode (`50_properties.js`, staged in `Desktop/alduinak-r13/live/r27-SV4b/`); without it the
+  server logs `[survival] ff_contagious could not be written, ...` once and nobody catches anything by contagion.
 - `private.survival` on the character: `{ v: 1, at, body: { spells, respawn }, foodPoisonUntil, foodPoisonSpell, cold,
   coldSpell, warmBonus, warmUntil, afflictions: { <key>: { until, spell } }, lastRoll, diseases: [{ id, stage, nextAt,
   since, from, spell }] }`. Spells are stored as `"id:Plugin"` descs and diseases by catalog id, never raw form ids, so the
@@ -658,8 +680,11 @@ freezing area, diseases with their next stage time, afflictions, food poisoning)
 
 - Boot: `[survival] ready: ...` (body rules, raw meat, cure, shrines, afflictions), `[survival] cold: ...` (every cold
   number in force), `[survival] diseases: 27 of 27 in the plugin (19 contagious); stage 2 after 84 h and stage 3 after
-  84 h more, ...; at most 4 at once; carriers ...; contagion 5% x (1 - disease resist) per disease and pair every 30 min
-  within 300 units, ...; server factors ...` (with an older plugin `0 of 27 in the plugin ..., none is given`), and
+  84 h more, ...; at most 4 at once; carriers ...; contagion by client report: each client checks the players it has
+  loaded every 60 s (the first at a random second) and reports those within 150 units (the chat whisper range,
+  chatRanges.whisper) whose ff_contagious names a disease it lacks; the server takes one report per player per 55 s and
+  rolls 5% x (1 - disease resist) once per disease it confirms ...; server factors ...` (with an older plugin `0 of 27
+  in the plugin ..., none is given`), and
   `[needs] modifier sources: race (...); survival (diseases ...)`. With survival off: `[survival] off (survivalEnabled
   false): ...`.
 - Play: the login `body:` line above; `[survival] <id> cold 55 -> 155 (Chilly), level ...`; `... area freezing (region
@@ -667,11 +692,17 @@ freezing area, diseases with their next stage time, afflictions, food poisoning)
   food poisoning 50% x (1 - disease resist 0%) = 50%, roll 0.312, poisoned for 24 h until 14:05`; `... starving:
   weakened 20%, roll 0.112, weakened for 24 h until 14:05`; `[survival] <id> hit by SkeeverRace <npc>: skeever 10% x (1 -
   disease resist 0%) = 10%, roll 0.043, caught ataxia (AldDisease_Ataxia1), stage 2 at 10-04 14:00` (or `spared`, or
-  `refused: already sick with 4`); `[survival] contagion <sick> -> <exposed>: collywobbles 5% x ... = 5%, roll 0.412,
-  spared`; `... rockjoint worsened 1 -> 3 (AldDisease_Rockjoint3, due 10-01 09:00), stays until cured`; `... cured by
+  `refused: already sick with 4`); `[survival] contagion <exposed id> from <sick id> [profile P] "Name": collywobbles 5% x
+  (1 - disease resist 0%) = 5%, roll 0.012, caught collywobbles (AldDisease_Collywobbles1), stage 2 at 10-04 14:00`
+  (catches only); `[survival] contagion report from <id> named nothing catchable: <sick id> collywobbles not carried,
+  ...` (a report the records refute, at most once per player in 10 minutes; the reasons are `from no other online
+  player`, `from a hidden, dead, fallen or unsettled player`, `not contagious`, `not carried`, `held already`,
+  `unknown`); `... rockjoint worsened 1 -> 3 (AldDisease_Rockjoint3, due 10-01 09:00), stays until cured`; `... cured by
   ...`; `... prayed at <shrine> <ref>: no cure, notice sent`; `... given rockjoint stage 2 by profile N, ...`.
-- Client (`skyrim-platform.log`): `SurvivalService: survival client on: ...`, `survival hud cold=.. temperature=..
-  freezingArea=..`, `movement refreshed after cold stage ...`, `local disease dropped ...`.
+- Client (`skyrim-platform.log`): `SurvivalService: survival client on: ..., contagion check every 60 s within 150
+  units of the loaded players' ff_contagious`, `survival hud cold=.. temperature=.. freezingArea=..`, `movement
+  refreshed after cold stage ...`, `local disease dropped ...`, `contagion exposure reported: ff000a12
+  collywobbles/chills at 96 units` (each report sent).
 
 ### Checks on the Test Server
 
@@ -687,7 +718,10 @@ Quick-test values (remove them before any Migrate settings): `survivalColdHoursT
 7. Creature diseases: fight skeevers and wolves; the hit lines, Active Effects shows the disease, it survives a relog,
    and with the quick-test stage hours it worsens offline.
 8. Afflictions: starve with low `needsHungerStages`; Weakened within a few rolls, cured by a potion, expiring.
-9. Contagion: one tester sick with Collywobbles, another within 3 m for two minutes at chance 1 catches it; at 10 m not.
+9. Contagion (needs `ff_contagious` registered, `live/r27-SV4b`): one tester sick with Collywobbles, another within 2 m
+   (whispering distance) for two minutes at chance 1 catches it; the healthy tester's platform log shows `contagion
+   exposure reported: ...` with the distance and the server's contagion line names the sick tester; at 4 m nothing is
+   reported.
 10. A shrine while sick: the notice, the disease stays.
 11. Arrows and lockpicks weigh 0.1.
 12. Admin (with FR2): reset, set cold, give and cure a disease from the Players tab.

@@ -9,6 +9,8 @@ import { NeedsService, UPDATE_ESM, globalOf, readGlobal } from "./needsService";
 import { RemoteServer } from "./remoteServer";
 import { applyAttributePenalty, COLD_PENALTY_AV } from "../../sync/attributePenalty";
 import { refreshMovement } from "../../sync/actorvalues";
+import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
+import { FormModel } from "../../view/model";
 import { logToPlatformLog } from "../../logging";
 
 const PLAYER_ID = 0x14;
@@ -40,6 +42,13 @@ const WARMTH_REPORT_MS = 20000;
 const MOVEMENT_REFRESH_MS = 2000;
 // The HUD line is logged again when the penalty crosses one of these steps, in percent
 const PENALTY_LOG_STEP = 5;
+// Set by SurvivalSystem on each player: the contagious disease ids they carry, or null
+const CONTAGIOUS_PROP = "ff_contagious";
+
+interface ContagionCheck {
+  seconds: number;
+  range: number;
+}
 
 interface SurvivalState {
   cold: number;
@@ -51,9 +60,22 @@ interface SurvivalState {
   freezingArea: boolean;
   afflictions: string[];
   diseases: Array<{ name: string; stage: number }>;
+  contagion: ContagionCheck | null;
 }
 
 const num = (v: unknown, fallback: number): number => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+
+const parseContagion = (v: unknown): ContagionCheck | null => {
+  const c = v && typeof v === "object" ? v as Record<string, unknown> : {};
+  const seconds = num(c["seconds"], 0);
+  const range = num(c["range"], 0);
+  return seconds > 0 && range > 0 ? { seconds, range } : null;
+};
+
+const contagiousOf = (form: FormModel | undefined): string[] => {
+  const v = form ? (form as Record<string, unknown>)[CONTAGIOUS_PROP] : null;
+  return Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : [];
+};
 
 const parseState = (content: Record<string, unknown>): SurvivalState => ({
   cold: num(content["cold"], -1),
@@ -68,6 +90,7 @@ const parseState = (content: Record<string, unknown>): SurvivalState => ({
     ? (content["diseases"] as unknown[]).filter((d) => d && typeof d === "object")
       .map((d) => ({ name: String((d as Record<string, unknown>)["name"] || ""), stage: num((d as Record<string, unknown>)["stage"], 1) }))
     : [],
+  contagion: parseContagion(content["contagion"]),
 });
 
 const hex = (id: number): string => (id >>> 0).toString(16);
@@ -80,11 +103,16 @@ const listText = (items: string[]): string => items.join(", ") || "none";
  * spells change, reports swimming, a flame cloak and the engine's warmth total, and drops a disease the player's own
  * engine gave that the server never granted. What the server granted is the spawn's learnedSpells plus every Actor
  * AddSpell and RemoveSpell snippet it sent the player since. Nothing runs until a survivalState arrives.
+ * Contagion is checked here so the server does no proximity work: every contagion.seconds, from a random first second,
+ * the players this client has loaded within contagion.range (the chat whisper range) whose ff_contagious names a
+ * disease the player's own ff_contagious lacks go out in one survivalExposure; nothing is sent when nobody is near. The
+ * server checks the records and rolls. Skipping the report only spares this player; it can never infect anyone else.
  *
  *   Client -> Server: { "customPacketType": "survivalRequest" }
  *                     { "customPacketType": "survivalReport", "swimming", "flameCloak", "engineWarmth"? }
+ *                     { "customPacketType": "survivalExposure", "sources": [{ "actorId", "diseases": [id] }] }
  *   Server -> Client: { "customPacketType": "survivalState", "cold", "coldStage", "coldStageName", "coldPenalty",
- *                       "temperatureLevel", "warmth", "freezingArea", "afflictions", "diseases" }
+ *                       "temperatureLevel", "warmth", "freezingArea", "afflictions", "diseases", "contagion": { "seconds", "range" } | null }
  */
 export class SurvivalService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -97,6 +125,7 @@ export class SurvivalService extends ClientListener {
       this.reported = "";
       this.unlistedSeen = [];
       this.warmthDueAt = 0;
+      this.contagionAt = 0;
       this.firstState = true;
       this.request();
     }));
@@ -197,6 +226,33 @@ export class SurvivalService extends ClientListener {
       this.guardAt = now + GUARD_MS;
       this.guardDiseases(player);
     }
+    if (this.state.contagion) this.checkContagion(player, now, this.state.contagion);
+  }
+
+  // Loaded players within range carrying a contagious disease the player lacks, reported in one packet; the first check at a random second
+  private checkContagion(player: Actor, now: number, check: ContagionCheck): void {
+    const every = check.seconds * 1000;
+    if (!this.contagionAt) this.contagionAt = now + Math.random() * every;
+    if (now < this.contagionAt) return;
+    this.contagionAt = now + every;
+    const world = this.controller.lookupListener(RemoteServer).getWorldModel();
+    const mine = contagiousOf(world.forms[world.playerCharacterFormIdx]);
+    const here = ObjectReferenceEx.getWorldOrCell(player);
+    const pos = ObjectReferenceEx.getPos(player);
+    const sources = new Array<{ actorId: number; diseases: string[] }>();
+    const seen = new Array<string>();
+    for (const form of world.forms) {
+      if (!form || form.isMyClone || typeof form.refrId !== "number" || !form.movement || form.movement.worldOrCell !== here) continue;
+      const diseases = contagiousOf(form).filter((id) => mine.indexOf(id) === -1);
+      if (!diseases.length) continue;
+      const distance = ObjectReferenceEx.getDistance(pos, form.movement.pos);
+      if (distance > check.range) continue;
+      sources.push({ actorId: form.refrId, diseases });
+      seen.push(`${hex(form.refrId)} ${diseases.join("/")} at ${Math.round(distance)} units`);
+    }
+    if (!sources.length) return;
+    sendCustomPacket(this.controller, { customPacketType: "survivalExposure", sources });
+    logToPlatformLog(this, `contagion exposure reported: ${seen.join(", ")}`);
   }
 
   // Swimming and a flame cloak on change, the engine's warmth total once due
@@ -281,7 +337,8 @@ export class SurvivalService extends ClientListener {
       `engine warmth ${WARMTH_REPORT_MS / 1000} s after the last equip change, movement refresh ${MOVEMENT_REFRESH_MS / 1000} s after a stage or disease change, ` +
       `disease guard every ${GUARD_MS / 1000} s over ${this.diseaseIds().length} of ${total} disease spells (dropped when neither the spawn list nor a later ` +
       `server AddSpell names it at two checks in a row, ${this.serverSpells.size} server grant(s) and removal(s) so far), ` +
-      `freezing water global AldSurvival_FreezingArea ${freezing}`);
+      `freezing water global AldSurvival_FreezingArea ${freezing}, ` +
+      `contagion ${state.contagion ? `check every ${state.contagion.seconds} s within ${state.contagion.range} units of the loaded players' ${CONTAGIOUS_PROP}` : "off"}`);
   }
 
   private state: SurvivalState | null = null;
@@ -293,6 +350,7 @@ export class SurvivalService extends ClientListener {
   private pollAt = 0;
   private guardAt = 0;
   private warmthDueAt = 0;
+  private contagionAt = 0;
   private reported = "";
   private flameCloak = false;
   private hudLogKey = "";

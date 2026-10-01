@@ -30,8 +30,9 @@ export interface Carrier {
 export interface ContagionConfig {
   chance: number;
   range: number;
+  // Where the range came from, for the boot line
+  rangeFrom: string;
   checkSeconds: number;
-  cooldownMinutes: number;
 }
 
 export interface DiseaseConfig {
@@ -119,7 +120,8 @@ const DEFAULTS = {
   exclude: ["werewolf", "werebear"],
   stageHours: [84, 84],
   max: 4,
-  contagion: { chance: 0.05, range: 300, checkSeconds: 60, cooldownMinutes: 30 },
+  // The gamemode chat's whisper range (25_chat_core.js RANGE.whisper), about 2 m
+  contagion: { chance: 0.05, range: 150, checkSeconds: 60 },
 };
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -211,6 +213,9 @@ export const parseDiseaseSettings = (all: Record<string, unknown>, problems: str
     else bad("survivalDiseaseCarrierExclude", "is not a list of strings");
   }
   const c = DEFAULTS.contagion;
+  const chat = all["chatRanges"];
+  const whisper = isObject(chat) && typeof chat.whisper === "number" && Number.isFinite(chat.whisper) && chat.whisper > 0 ? chat.whisper : 0;
+  const range = num("survivalContagionRange", whisper || c.range, (v) => v > 0);
   return {
     enabled,
     diseases,
@@ -220,9 +225,9 @@ export const parseDiseaseSettings = (all: Record<string, unknown>, problems: str
     max: num("survivalMaxDiseases", DEFAULTS.max, (v) => Number.isInteger(v) && v >= 1),
     contagion: {
       chance: num("survivalContagionChance", c.chance, (v) => v >= 0 && v <= 1),
-      range: num("survivalContagionRange", c.range, (v) => v > 0),
+      range,
+      rangeFrom: all["survivalContagionRange"] === range ? "survivalContagionRange" : whisper ? "the chat whisper range, chatRanges.whisper" : "the chat whisper range",
       checkSeconds: num("survivalContagionCheckSeconds", c.checkSeconds, (v) => v >= 1),
-      cooldownMinutes: num("survivalContagionCooldownMinutes", c.cooldownMinutes, (v) => v >= 0),
     },
   };
 };
@@ -239,6 +244,9 @@ export const pickDisease = (candidates: string[], held: string[], roll: number):
   const left = candidates.filter((id) => held.indexOf(id) === -1);
   return left.length ? left[Math.min(left.length - 1, Math.floor(roll * left.length))] : "";
 };
+
+// Shortest time between two exposure reports the server accepts from one player, a little under the client's check interval
+export const exposureGapMs = (checkSeconds: number): number => Math.max(checkSeconds / 2, checkSeconds - 5) * 1000;
 
 export const resistedChance = (chance: number, resist: number): number => clamp(chance * (1 - resist / 100), 0, 1);
 
