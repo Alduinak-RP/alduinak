@@ -10,7 +10,7 @@ import {
   setInventory,
 } from 'skyrimPlatform';
 
-import { Entry, Inventory, getInventory, getPlayerEnchantment, isBoundItem } from './inventory';
+import { Entry, Inventory, getInventory, getPlayerEnchantment, healthStep, isBoundItem } from './inventory';
 
 export const enum SpellType {
   Left,
@@ -86,6 +86,9 @@ const withoutBoundItems = (inv: Inventory): Inventory => ({
 
 // The saved worn items the player's spawn apply dresses in
 export const getPlayerWorn = (eq: Equipment): Entry[] => withoutBoundItems(filterWorn(eq.inv)).entries;
+
+// setInventory adds a plain copy, which the inventory apply would swap for the tempered or poisoned server copy, unequipping it
+const dressesPlain = (e: Entry): boolean => healthStep(e.health) === healthStep() && !e.poisonId;
 
 export const getUnwornSaved = (ac: Actor, eq: Equipment): Entry[] => {
   const local = getInventory(ac).entries;
@@ -201,7 +204,7 @@ export const applyEquipment = (ac: Actor, eq: Equipment): boolean => {
   ac.removeAllItems(null, false, true);
 
   const isPlayer = ac.getFormID() === 0x14;
-  const worn = isPlayer ? { entries: getPlayerWorn(eq) } : filterWorn(eq.inv);
+  const worn = isPlayer ? { entries: getPlayerWorn(eq).filter(dressesPlain) } : filterWorn(eq.inv);
   const newInventory = removeUnnecessaryExtra(worn, isPlayer);
 
   setInventory(ac.getFormID(), newInventory);

@@ -70,7 +70,7 @@ import {
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
 import { TimersService } from './timersService';
-import { logTrace, logError, logToPlatformLog } from '../../logging';
+import { clientScriptStartedAt, logTrace, logError, logToPlatformLog } from '../../logging';
 import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved, resyncHandGraph } from '../../sync/equipment';
 import { isRiderClone } from '../../sync/mountApply';
 
@@ -88,7 +88,7 @@ export const getPcInventory = (): Inventory | undefined => {
   return undefined;
 };
 
-const setPcInventory = (inv: Inventory): void => {
+const setPcInventory = (inv: Inventory | undefined): void => {
   storage['pcInv'] = inv;
 };
 
@@ -161,22 +161,92 @@ interface RaceCheck {
 }
 
 const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
+// A frame at least this long counts as a hitch in the spawn and race menu timing lines
+const SLOW_FRAME_MS = 250;
 let spawnEquipment: Equipment | undefined;
 let spawnEquipmentSettleUntil = 0;
 let spawnEquipmentRedressed = false;
 let spawnEquipmentMenuUsed = false;
+// A top-up equips what the dress left unworn once the inventory apply it waits for has landed
+let spawnTopUp: "none" | "apply" | "queued" | "landed" = "none";
+
+interface FrameStats {
+  frames: number;
+  longest: number;
+  slow: number;
+}
+
+const newFrameStats = (): FrameStats => ({ frames: 0, longest: 0, slow: 0 });
+
+const noteFrame = (stats: FrameStats, gap: number): void => {
+  stats.frames++;
+  stats.longest = Math.max(stats.longest, gap);
+  if (gap >= SLOW_FRAME_MS) stats.slow++;
+};
+
+const describeFrames = (stats: FrameStats): string =>
+  `${stats.frames} frames, longest ${stats.longest} ms, ${stats.slow} over ${SLOW_FRAME_MS} ms`;
+
+// One spawn's load timeline and the inventory and equip work it took, logged once its outfit settles
+interface SpawnTiming {
+  seq: number;
+  createdAt: number;
+  loadAt: number;
+  loadedAt: number;
+  dressedAt: number;
+  inventoryAt: number;
+  raceMenuMs: number;
+  strips: number;
+  topUps: number;
+  topUpEquips: number;
+  applies: number;
+  added: number;
+  removed: number;
+  equips: number;
+  unequips: number;
+  frames: FrameStats;
+}
+let spawnTiming: SpawnTiming | undefined;
+
+const after = (from: number, at: number): string => (at ? `+${at - from} ms` : "none");
+
+const logSpawnTiming = (player: Actor): void => {
+  const t = spawnTiming;
+  if (!t) return;
+  spawnTiming = undefined;
+  const start = t.createdAt;
+  const raceMenu = t.raceMenuMs ? `, race menu open ${t.raceMenuMs} ms of it` : "";
+  logToPlatformLog("RemoteServer", `spawn timing (spawn ${t.seq}): createActor ${start - clientScriptStartedAt} ms after the client script started;`,
+    `load requested ${after(start, t.loadAt)}, loaded ${after(start, t.loadedAt)}, outfit applied ${after(start, t.dressedAt)},`,
+    `inventory applied ${after(start, t.inventoryAt)}, settled ${after(start, Date.now())}${raceMenu};`,
+    `${t.strips} strip(s), ${t.topUps} top-up(s) equipping ${t.topUpEquips}, ${t.applies} inventory apply(ies) adding ${t.added} and removing ${t.removed} stack(s),`,
+    `${t.equips} equip and ${t.unequips} unequip event(s); after the outfit apply ${describeFrames(t.frames)};`,
+    `inventory ${getInventory(player).entries.length} entries, worn ${countWorn(getInventory(player))}`);
+};
 
 const applySpawnEquipment = (player: Actor, eq: Equipment): void => {
   spawnEquipment = eq;
   spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
   spawnEquipmentRedressed = false;
   spawnEquipmentMenuUsed = false;
+  spawnTopUp = "apply";
+  if (spawnTiming) spawnTiming.strips++;
   applyEquipment(player, eq);
+};
+
+// A spawn's later passes re-sync the inventory and top up the outfit without a strip, which would empty the pack until the next periodic apply
+const resyncSpawnEquipment = (): void => {
+  if (!spawnEquipment) return;
+  spawnTopUp = "apply";
+  spawnEquipmentSettleUntil = Date.now() + SPAWN_EQUIPMENT_SETTLE_MS;
+  requestPcInventoryApply();
 };
 
 // Reports taken while the spawn apply strips and re-dresses the player read naked
 export const settleSpawnEquipment = (player: Actor): boolean => {
   if (!spawnEquipment) {
+    // A spawn with no saved outfit is timed up to the settle time after its first inventory apply
+    if (spawnTiming?.inventoryAt && Date.now() - spawnTiming.inventoryAt >= SPAWN_EQUIPMENT_SETTLE_MS) logSpawnTiming(player);
     return false;
   }
   // In these menus the player picks their own outfit
@@ -185,7 +255,19 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
     return true;
   }
   // The race menu undresses the player on purpose until it closes
-  if (Date.now() < spawnEquipmentSettleUntil || Ui.isMenuOpen('RaceSex Menu')) {
+  if (Ui.isMenuOpen('RaceSex Menu')) {
+    return true;
+  }
+  if (spawnTopUp === "landed") {
+    spawnTopUp = "none";
+    const unworn = spawnEquipmentMenuUsed ? [] : getUnwornSaved(player, spawnEquipment);
+    equipEntries(player, unworn);
+    if (spawnTiming) {
+      spawnTiming.topUps++;
+      spawnTiming.topUpEquips += unworn.length;
+    }
+  }
+  if (Date.now() < spawnEquipmentSettleUntil) {
     return true;
   }
   const unworn = getUnwornSaved(player, spawnEquipment);
@@ -193,6 +275,8 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
   logToPlatformLog("RemoteServer", `spawn outfit settled: ${unworn.length} of ${getPlayerWorn(spawnEquipment).length} saved not worn, worn ${countWorn(getInventory(player))}, menu used ${spawnEquipmentMenuUsed},`, redress ? "re-dressing" : "done");
   if (!redress) {
     spawnEquipment = undefined;
+    spawnTopUp = "none";
+    logSpawnTiming(player);
     // The report that follows lands inside the server's spawn guard like a manual re-equip
     resyncHandGraph(player, (text) => logToPlatformLog("RemoteServer", text));
     requestWornEnchantmentReapply();
@@ -209,6 +293,10 @@ on('update', () => {
   if (isBadMenuShown()) {
     return;
   }
+  // The adds an apply queued land at the end of its frame
+  if (spawnTopUp === "queued") {
+    spawnTopUp = "landed";
+  }
   const player = Game.getPlayer()!;
   if (encumbranceRefreshPending) {
     encumbranceRefreshPending = false;
@@ -222,13 +310,23 @@ on('update', () => {
     pcInvLastApply = Date.now();
     const pcInv = getPcInventory();
     if (pcInv) {
+      const diff = getDiff(pcInv, getInventory(player), true, "apply").entries;
       // applyInventory keeps summoned bound items, so their pending removal is not a change
-      encumbranceRefreshPending = getDiff(pcInv, getInventory(player), true, "apply").entries.some((e) => {
+      encumbranceRefreshPending = diff.some((e) => {
         const f = e.count < 0 ? Game.getFormEx(e.baseId) : null;
         return !f || !isBoundItem(f);
       });
       applyInventory(player, pcInv, false, true);
       requestWornEnchantmentReapply();
+      if (spawnTopUp === "apply") {
+        spawnTopUp = "queued";
+      }
+      if (spawnTiming) {
+        spawnTiming.inventoryAt = spawnTiming.inventoryAt || Date.now();
+        spawnTiming.applies++;
+        spawnTiming.added += diff.filter((e) => e.count > 0).length;
+        spawnTiming.removed += diff.filter((e) => e.count < 0).length;
+      }
     }
   }
 });
@@ -271,19 +369,40 @@ export class RemoteServer extends ClientListener {
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.RaceSex) {
         this.raceMenuSeen = true;
+        this.raceMenuFrames = { ...newFrameStats(), openedAt: Date.now(), switches: 0 };
         logToPlatformLog(this, `RaceSex Menu opened, creation pending ${this.raceMenuPending}`);
       }
       if (e.name === Menu.Magic) this.logRaceAbilitiesInMagicMenu();
     });
     this.controller.on("menuClose", (e) => {
       if (e.name === Menu.RaceSex) {
-        logToPlatformLog(this, `RaceSex Menu closed, creation pending ${this.raceMenuPending}, loading ${Ui.isMenuOpen(Menu.Loading)}`);
+        const stats = this.raceMenuFrames;
+        this.raceMenuFrames = undefined;
+        const openMs = stats ? Date.now() - stats.openedAt : 0;
+        if (spawnTiming) spawnTiming.raceMenuMs += openMs;
+        const frames = stats ? `, open ${openMs} ms, ${stats.switches} race switch(es), ${describeFrames(stats)}` : "";
+        logToPlatformLog(this, `RaceSex Menu closed, creation pending ${this.raceMenuPending}, loading ${Ui.isMenuOpen(Menu.Loading)}${frames}`);
         this.raceMenuPending = false;
         this.queueRaceCheck("race menu closed");
       }
     });
+    this.controller.on("switchRaceComplete", (e) => {
+      if (this.raceMenuFrames && e.subject?.getFormID() === 0x14) this.raceMenuFrames.switches++;
+    });
+    // Frame gaps measured on tick, which runs in every menu
+    this.controller.on("tick", () => this.noteFrameGap());
+    // Every service constructor has run by the next tick
+    this.controller.once("tick", () => logToPlatformLog(this, `startup: client services ready ${Date.now() - clientScriptStartedAt} ms after the client script started`));
+    this.controller.emitter.on("browserWindowLoaded", () => {
+      if (this.frontLoadedLogged) return;
+      this.frontLoadedLogged = true;
+      logToPlatformLog(this, `startup: front page loaded ${Date.now() - clientScriptStartedAt} ms after the client script started`);
+    });
+    this.controller.on("equip", (e) => this.noteSpawnEquipEvent(e.actor, true));
+    this.controller.on("unequip", (e) => this.noteSpawnEquipEvent(e.actor, false));
     this.controller.emitter.on("gameLoad", () => {
       this.lastLoadAt = Date.now();
+      if (spawnTiming && !spawnTiming.loadedAt) spawnTiming.loadedAt = this.lastLoadAt;
       this.queueRaceCheck("load");
     });
     this.controller.emitter.on("applyDeathStateEvent", (e) => {
@@ -318,6 +437,21 @@ export class RemoteServer extends ClientListener {
     if (refs.some((ref) => ref?.getFormID() === 0x14)) {
       requestWornEnchantmentReapply();
     }
+  }
+
+  private noteFrameGap(): void {
+    const now = Date.now();
+    const gap = this.lastTickAt ? now - this.lastTickAt : 0;
+    this.lastTickAt = now;
+    if (!gap) return;
+    if (spawnTiming?.dressedAt) noteFrame(spawnTiming.frames, gap);
+    if (this.raceMenuFrames) noteFrame(this.raceMenuFrames, gap);
+  }
+
+  private noteSpawnEquipEvent(actor: ObjectReference | null | undefined, equip: boolean): void {
+    if (!spawnTiming || actor?.getFormID() !== 0x14) return;
+    if (equip) spawnTiming.equips++;
+    else spawnTiming.unequips++;
   }
 
   // Menus hold inventory entries, so the check waits for them to close
@@ -827,6 +961,14 @@ export class RemoteServer extends ClientListener {
     const spawnSeq = msg.isMe ? ++this.playerSpawnSeq : this.playerSpawnSeq;
     if (msg.isMe) {
       this.raceCheck = { spawnSeq, formIdx: i, synced: false, settleFrom: 0, due: "spawn", menuLoggedAt: 0 };
+      spawnTiming = {
+        seq: spawnSeq, createdAt: Date.now(), loadAt: 0, loadedAt: 0, dressedAt: 0, inventoryAt: 0, raceMenuMs: 0,
+        strips: 0, topUps: 0, topUpEquips: 0, applies: 0, added: 0, removed: 0, equips: 0, unequips: 0, frames: newFrameStats(),
+      };
+      // The previous character's pack is never applied to this one before its own arrives
+      setPcInventory(undefined);
+      spawnEquipment = undefined;
+      spawnTopUp = "none";
     }
 
     // TODO: move to a separate module
@@ -845,8 +987,16 @@ export class RemoteServer extends ClientListener {
     }
 
     const numSetInventory = this.numSetInventory;
+    let dressed = false;
 
     const applyPcInv = () => {
+      if (spawnSeq !== this.playerSpawnSeq) return;
+      if (dressed) {
+        resyncSpawnEquipment();
+        return;
+      }
+      dressed = true;
+      if (spawnTiming?.seq === spawnSeq) spawnTiming.dressedAt = Date.now();
       const skipInventory = numSetInventory !== this.numSetInventory;
       if (msg.equipment) {
         applySpawnEquipment(Game.getPlayer()!, msg.equipment);
@@ -855,6 +1005,8 @@ export class RemoteServer extends ClientListener {
 
       if (skipInventory) {
         logTrace(this, 'Skipping inventory apply due to newer setInventory message');
+        // The strip emptied the pack, so the newer inventory goes on again
+        requestPcInventoryApply();
         return;
       }
 
@@ -1001,6 +1153,7 @@ export class RemoteServer extends ClientListener {
             }
 
             logTrace(this, `loading game in world/cell`, msg.transform.worldOrCell.toString(16));
+            if (spawnTiming?.seq === spawnSeq) spawnTiming.loadAt = Date.now();
             const loadGameService = this.controller.lookupListener(LoadGameService);
             if (!loadGameService.loadGame(
               msg.transform.pos,
@@ -1744,4 +1897,7 @@ export class RemoteServer extends ClientListener {
   private raceMenuSettledAt = 0;
   private lastLoadAt = 0;
   private raceCheck?: RaceCheck;
+  private lastTickAt = 0;
+  private raceMenuFrames?: FrameStats & { openedAt: number; switches: number };
+  private frontLoadedLogged = false;
 }

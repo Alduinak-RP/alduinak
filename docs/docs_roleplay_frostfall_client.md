@@ -217,6 +217,58 @@ line to `skyrim-platform.log`.
 
 ---
 
+## Loading in
+
+What the client does from the server's `createActor` for the player to a
+dressed player with a full pack, and the `skyrim-platform.log` lines that time
+it.
+
+**Startup.** The client script starts right after the engine's data load
+(`skse message type 8`); `EngineFixes.log` prints `time to main menu <ms>` for
+the engine load before it (25.8 s on a 2026-09-30 player log, against about
+0.2 s for the client script). `RemoteServer: startup: client services ready N
+ms after the client script started` covers the bundle and every service
+constructor, `startup: front page loaded N ms after ...` the CEF login page.
+
+**Spawn outfit** (`remoteServer.ts`, `sync/equipment.ts`). The first spawn
+pass strips the player once (`removeAllItems`, `unequipAll`), dresses the
+saved worn pieces through `setInventory` and applies the server inventory.
+Tempered (health above 1) and poisoned pieces stay out of that dress:
+`setInventory` can only add a plain copy, which the inventory apply then
+swapped for the server's copy, taking the piece off the player again. The
+second pass (0.3 s after a load, 1.3 s after an in-game move) does not strip:
+it applies the inventory again, and one frame after an apply has landed (its
+adds run at the end of the frame) a top-up equips the saved pieces still
+unworn, tempered ones included. The settle check 2.5 s after the last pass
+re-dresses once, as before. The second pass used to strip everything again
+and skip its own inventory apply (the first pass had bumped the counter it
+compared), so the pack held only the worn pieces until the periodic apply up
+to 5 s later and the outfit came on only at the settle re-dress (owner's log
+2026-09-22: both passes 78 ms apart, `3 of 3 saved not worn, worn 0,
+re-dressing` 2.5 s later, 26 entries back only after that). An own
+`createActor` drops the stored inventory of the previous character, so the
+periodic apply cannot add that pack to the new character before its own
+arrives, and a pass of an older spawn does nothing. `applyInventory` no
+longer prints each `TESModPlatform.addItemEx` call to the console and queues
+one 3D rebuild per apply.
+
+**Timing lines.** Once per spawn, when the outfit settles:
+`RemoteServer: spawn timing (spawn N): createActor A ms after the client
+script started; load requested +B ms, loaded +C ms, outfit applied +D ms,
+inventory applied +E ms, settled +F ms[, race menu open G ms of it]; S
+strip(s), T top-up(s) equipping U, I inventory apply(ies) adding X and
+removing Y stack(s), Q equip and R unequip event(s); after the outfit apply
+F frames, longest L ms, K over 250 ms; inventory N entries, worn W`. One
+strip, two inventory applies and nothing removed is the expected shape;
+removals mean the local pack held items the server does not have, and many
+more unequip events than worn pieces mean something took the outfit off
+again. `load requested none` is a spawn by an in-game move. The race menu
+close line ends with `open N ms, R race switch(es), F frames, longest L ms,
+K over 250 ms`, frames counted on `tick`, which runs in every menu: one long
+frame per race switch is the engine building the new race's head and body.
+
+---
+
 ## Engine crash guards
 
 **Occlusion plane sets** (`Hooks.cpp` `InstallCompoundFrustumStateGuard`, 1.6

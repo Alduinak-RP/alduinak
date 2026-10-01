@@ -1,6 +1,9 @@
 import { once, printConsole } from "@skyrim-platform/skyrim-platform";
 import { ClientListener } from "./services/services/clientListener";
 
+// Evaluated with the bundle's first imports, so it stands for the client script's start
+export const clientScriptStartedAt = Date.now();
+
 // TODO: redirect this to spdlog
 export function logError(service: ClientListener | string, ...rest: unknown[]) {
 
