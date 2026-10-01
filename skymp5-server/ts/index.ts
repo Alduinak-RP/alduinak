@@ -288,12 +288,14 @@ const main = async () => {
   const factionSystem = new FactionSystem(log, housingSystem);
   // A PK leaves a lootable body at the spot of death
   const bodySystem = new BodySystem(log);
-  // A player's own body is not searched from its skinning until the respawn, a PK body only while it is skinned
+  // A player's own body or a PK body is not searched while a hunter skins it
   searchSystem.bodyRefusal = (searcherId, bodyId) => huntingSystem.searchRefusal(bodyId) || bodySystem.refusalFor(searcherId, bodyId);
   // A PK body holds the victim's keys and writings, taken from its window like any other item
   searchSystem.namedLoot = (bodyId) => !!bodySystem.bodyOf(bodyId);
   huntingSystem.leftBody = (victimId) => bodySystem.hasBodyFor(victimId);
   huntingSystem.pkBodyOf = (bodyId) => bodySystem.bodyOf(bodyId);
+  // A skinned PK body hands its whole pack to the skinner
+  huntingSystem.emptyPkBody = (bodyId, skinnerId) => bodySystem.emptyInto(bodyId, skinnerId, "skinned");
   // Finish off: holders of the execute permission kill a downed player and send them to Sovngarde
   const executionSystem = new ExecutionSystem(log, captureSystem, bleedoutSystem, factionSystem, afterlifeSystem, bodySystem, furnitureSeatSystem);
   adminSystem.setExecutionSystem(executionSystem);

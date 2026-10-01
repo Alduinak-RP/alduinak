@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { NEVER_RESPAWN } from "./npcPlacement";
 import { looseEntries } from "./companionSystem";
-import { isNamedItemBase } from "./inventoryExtras";
+import { InventoryEntry, addEntries, isNamedItemBase, readInventory } from "./inventoryExtras";
 import { destroyRef, hex, isAlive } from "./actorUtil";
 import { markDeathAlerted } from "./discordAlerts";
 
@@ -162,6 +162,26 @@ export class BodySystem implements System {
   bodyOf(bodyId: number): { victimId: number; profileId: number } | undefined {
     const body = this.bodies.get(bodyId);
     return body && { victimId: body.victimId, profileId: body.profileId };
+  }
+
+  // Everything the body holds goes to the actor, keys and writings under their names; "N item(s) in M stack(s)", "" when it held nothing, or throws and the body keeps it
+  emptyInto(bodyId: number, actorId: number, why: string): string {
+    const mp = this.mp;
+    const body = this.bodies.get(bodyId);
+    if (!body) throw new Error(`${hex(bodyId)} is no PK body`);
+    const loot = looseEntries(mp.get(bodyId, "inventory")) as unknown as InventoryEntry[];
+    if (!loot.length) return "";
+    mp.set(bodyId, "inventory", { entries: [] });
+    try {
+      mp.set(actorId, "inventory", addEntries(readInventory(mp, actorId), loot));
+    } catch (e) {
+      let outcome = "the body keeps it";
+      try { mp.set(bodyId, "inventory", { entries: loot }); } catch (e2) { outcome = `NOT given back (${e2}), staff must restore ${hex(bodyId)}: ${itemList(loot)}`; }
+      this.log(`[body] ${hex(bodyId)} of ${hex(body.victimId)} ${why}: moving the pack to ${hex(actorId)} failed, ${outcome}: ${e}`);
+      throw e;
+    }
+    this.log(`[body] ${hex(bodyId)} of ${hex(body.victimId)} ${why}: ${sizeOf(loot)} moved to ${hex(actorId)} (${loot.filter(isNamed).length} named); moved: ${itemList(loot)}`);
+    return sizeOf(loot);
   }
 
   private recentBodyOf(victimId: number): Body | undefined {

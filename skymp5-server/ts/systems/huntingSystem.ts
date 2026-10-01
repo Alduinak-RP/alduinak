@@ -18,9 +18,9 @@ type Mp = any;
 // corpseConsumed event (NpcSpawnSystem), any other body disabled for good, as no other NPC respawns (placed ones never do and the
 // gamemode's death hook gives the rest a 1e9 s delay). A pet's body stays and gives only its meat. Skinning costs half a kill of fatigue by hunter rank and credits hunter hours.
 // A player character's own body, which lies dead until its respawn (respawnSeconds), or the body a PK leaves instead (BodySystem) is skinned the same way,
-// only through bodyAction, once per death for Human Flesh, a chance of a Human Heart and, on a body that looks Khajiit, a chance of a Khajiit Pelt;
-// nothing of the pack goes to the skinner and the body stays where it lies. SearchSystem refuses every search of an own body from the start of the
-// skinning until the respawn, and of a PK body only during the skinning, after which it keeps its pack for the usual loot rules.
+// only through bodyAction, once per death for Human Flesh, a chance of a Human Heart and, on a body that looks Khajiit, a chance of a Khajiit Pelt.
+// SearchSystem refuses every search of the body during the skinning. An own body then goes like a looted one: the victim respawns at once with their
+// whole pack. A PK body hands the skinner everything it holds, keys and writings under their names, and BodySystem removes it once emptied.
 //
 // server-settings.json keys (all optional):
 //   huntingButcherChance         chance an Expert or better hunter's skinning gives one more cut of meat, default 0.25
@@ -236,7 +236,8 @@ export class HuntingSystem implements System {
     if (!rank || this.playerSkins.has(bodyId) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
     const knife = holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE_ID);
     const crouched = this.playerSkinMode !== "crouch" || isSneaking(mp, actorId);
-    // An own body's search refusal already says it was skinned; a PK body opens for the search
+    // The search refusal tells the victim's own account and the skinned own body; a skinned PK body opens for the search
+    if (body.pk && body.profileId >= 0 && this.profileOf(mp, actorId) === body.profileId) return false;
     const skinned = this.wasSkinned(mp, body);
     const refusal = skinned ? (body.pk && crouched && knife ? "This body has already been skinned." : "")
       : !crouched ? (knife ? "Crouch and interact to skin the body instead." : "")
@@ -265,7 +266,7 @@ export class HuntingSystem implements System {
     return body.pk ? this.isSkinned(mp, body.bodyId) : this.skinnedPlayers.has(body.bodyId);
   }
 
-  // Flesh, maybe the heart and on a Khajiit maybe the pelt, never the pack; an own body is then refused to searches until the respawn
+  // Flesh, maybe the heart and on a Khajiit maybe the pelt; a PK body adds its whole pack, an own body goes with the victim's respawn
   private finishPlayerSkin(ctx: SystemContext, job: PlayerSkin): void {
     if (this.playerSkins.get(job.bodyId) !== job) return;
     this.playerSkins.delete(job.bodyId);
@@ -285,13 +286,35 @@ export class HuntingSystem implements System {
       addItemTo(mp, skinnerId, this.humanFleshId, 1);
       if (heart) addItemTo(mp, skinnerId, this.humanHeartId, 1);
       if (pelt) addItemTo(mp, skinnerId, this.khajiitPeltId, 1);
+      let moved = "";
+      let packPart = "nothing of the pack taken, the victim respawns now";
+      if (job.pk) {
+        try {
+          moved = this.emptyPkBody?.(bodyId, skinnerId) ?? "";
+          packPart = moved ? `the pack went to the skinner: ${moved}` : "the body held nothing";
+        } catch (e) {
+          packPart = `the body keeps its pack, the hand-off failed: ${e}`;
+        }
+      }
       this.needs.pay(ctx, skinnerId, "fight", this.mastery.rankOf(ctx, skinnerId, "hunter"), "skin", true);
       this.mastery.creditWork(skinnerId, "hunter");
-      notifyActor(mp, job.victimId, job.pk ? "The body you left behind was skinned by a hunter." : "Your body was skinned by a hunter. Nothing was taken from your pack.");
+      if (moved) notifyActor(mp, skinnerId, "You also take everything the body held.");
+      notifyActor(mp, job.victimId, !job.pk ? "A hunter skinned your body, so you return now. Nothing was taken from your pack."
+        : moved ? "A hunter skinned the body you left behind and took everything it held." : "The body you left behind was skinned by a hunter.");
       const peltPart = khajiit ? `, ${pelt ? `Khajiit pelt ${hex(this.khajiitPeltId)}` : "no Khajiit pelt"} (${pct(this.khajiitPeltChance)} chance)` : "";
-      this.log(`[hunting] ${hex(skinnerId)} skinned ${bodyName(job)} (profile ${job.profileId}): ${hex(this.humanFleshId)} x1, ${heart ? `heart ${hex(this.humanHeartId)}` : "no heart"}${this.humanHeartId ? ` (${pct(this.heartChance)} chance)` : ""}${peltPart}, ${job.pk ? "the body keeps its pack" : "nothing of the pack taken"}`);
+      this.log(`[hunting] ${hex(skinnerId)} skinned ${bodyName(job)} (profile ${job.profileId}): ${hex(this.humanFleshId)} x1, ${heart ? `heart ${hex(this.humanHeartId)}` : "no heart"}${this.humanHeartId ? ` (${pct(this.heartChance)} chance)` : ""}${peltPart}, ${packPart}`);
+      if (!job.pk) this.respawnSkinned(mp, job.victimId);
     } catch (e) {
       this.log(`[hunting] skinning ${bodyName(job)} by ${hex(skinnerId)} failed: ${e}`);
+    }
+  }
+
+  // A skinned own body goes like a looted one; when the respawn fails it lies, refused to searches, until respawnSeconds
+  private respawnSkinned(mp: Mp, victimId: number): void {
+    try {
+      mp.respawnActor(victimId);
+    } catch (e) {
+      this.log(`[hunting] respawning player ${hex(victimId)} after the skinning failed, the body lies until its respawn: ${e}`);
     }
   }
 
@@ -450,7 +473,7 @@ export class HuntingSystem implements System {
   private heartChance = DEFAULT_HEART_CHANCE;
   // Player bodies, own or PK, being skinned right now
   private playerSkins = new Map<number, PlayerSkin>();
-  // Own bodies skinned since their death -> the skinner; cleared by the respawn, while a PK body carries SKINNED_PROP
+  // Own bodies skinned since their death -> the skinner; cleared by the respawn the skinning starts, while a PK body carries SKINNED_PROP
   private skinnedPlayers = new Map<number, number>();
   private khajiitPeltId = 0;
   private khajiitPeltChance = DEFAULT_KHAJIIT_PELT_CHANCE;
@@ -459,4 +482,6 @@ export class HuntingSystem implements System {
   leftBody?: (victimId: number) => boolean;
   // Set by index.ts: the victim and account of a body a PK left, undefined for any other actor
   pkBodyOf?: (bodyId: number) => { victimId: number; profileId: number } | undefined;
+  // Set by index.ts: moves a PK body's whole pack to the skinner, "N item(s) in M stack(s)" or "" when it held nothing; throws when it stays
+  emptyPkBody?: (bodyId: number, skinnerId: number) => string;
 }

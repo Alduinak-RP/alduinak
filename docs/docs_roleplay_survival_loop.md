@@ -365,9 +365,13 @@ behaviour-graph events — no ESP required.**
   it. A hunter may skin the body (`docs_roleplay_mastery.md`, Skinning a
   player's body) for Human Flesh, a 10% chance of a Human Heart and, when it
   looks Khajiit, a 20% chance of a Khajiit Pelt, once for as long as it lies
-  (`private.skinned` on the body); its pack stays on it for the loot rules
-  above, and searches are refused only during the 5 s skinning. The victim's
-  own stripped actor is then never skinned for the same death. `createActor` only adds the form and never streams it, so
+  (`private.skinned` on the body), and the skinner takes everything it holds
+  too, keys and writings under their names (`BodySystem.emptyInto`, the owner's
+  rule of 2026-10-01; `[body] <id> of <victim> skinned: N item(s) in M
+  stack(s) moved to <skinner> (K named); moved: ...`); searches are refused
+  only during the 5 s skinning, and the emptied body then goes by the rule
+  below. The victim's own account never skins it, and the victim's own
+  stripped actor is never skinned for the same death. `createActor` only adds the form and never streams it, so
   once the clone is dressed and dead it is put on the grid with
   `mp.set(body, "locationalData", ...)` (`MpActor::Teleport`, whose first
   `SetPos` runs `ForceSubscriptionsUpdate`) and every client nearby creates
@@ -426,10 +430,14 @@ behaviour-graph events — no ESP required.**
   registration it keeps the pack for the whole wait like any other death. A
   hunter may skin the body instead (`docs_roleplay_mastery.md`, Skinning a
   player's body): Human Flesh, a 10% chance of a Human Heart and on a
-  Khajiit a 20% chance of a Khajiit Pelt, nothing of
-  the pack, and from the start of the skinning until the respawn nobody can
-  search the body ("A hunter is skinning this body.", "This body has been
-  skinned. Nothing can be taken from it."). A downed player is alive and is
+  Khajiit a 20% chance of a Khajiit Pelt, nothing of the pack. Nobody can
+  search the body during the 5 s skinning ("A hunter is skinning this
+  body."), and then it goes like a looted body (the owner's rule of
+  2026-10-01): the player respawns at once with everything they carried
+  and reads "A hunter skinned your body, so you return now. Nothing was
+  taken from your pack." If that respawn fails the body lies until
+  `respawnSeconds`, refused to every search ("This body has been skinned.
+  Nothing can be taken from it."). A downed player is alive and is
   neither searched as a body nor skinned. A search prompt still open when
   either side dies is void: the next search request drops it, so it no longer
   blocks the body, and an answer after the death is ignored (the searcher reads

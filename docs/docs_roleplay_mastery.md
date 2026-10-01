@@ -811,23 +811,43 @@ record the boot logs `[hunting] not in the load order, ignored: ...,
 AldKhajiitPelt` once, the boot line reads `no Khajiit pelt`, and a Khajiit
 body gives only the flesh and the heart roll; a server restart with the new
 plugin picks it up. Khajiit NPCs are not skinned (only animals and players
-are). The butcher's eye does not apply. Nothing of the pack moves to the
-skinner. A player's own body stays and keeps its pack, and from the start of
-the skinning until the respawn every search of it is refused for everyone
-through `SearchSystem.bodyRefusal` ("A hunter is skinning this body.", then
-"This body has been skinned. Nothing can be taken from it."), so the rest of
-that death's loot is out of reach. The victim reads "Your body was skinned by a
-hunter. Nothing was taken from your pack." and respawns with everything as
-after any death. A PK body keeps its pack too, but it is refused to searches
-only during the 5 s; after that it opens again under the PK body rules
-(anyone but the victim's own account, until it is emptied or removed), so the
-skinner gets only the flesh, heart and pelt rolls and the loot stays on the
-body for whoever searches it, the skinner included. The victim reads "The body
-you left behind was skinned by a hunter."
+are). The butcher's eye does not apply. During the 5 s every search of the
+body is refused for everyone through `SearchSystem.bodyRefusal` ("A hunter is
+skinning this body."). What happens next follows the owner's rules of
+2026-10-01. A player's own body (a death that left no PK body) then goes the
+way a looted one does: the server respawns the victim at once
+(`mp.respawnActor`, as the take that reaches `searchPlayerBodyTakeLimit`
+does), so the body disappears for everyone and the victim keeps their whole
+pack; the skinner gets only the flesh, heart and pelt rolls. The victim reads
+"A hunter skinned your body, so you return now. Nothing was taken from your
+pack." just before the respawn, which the onRespawn hooks route to a temple
+or a realm as after any death. Should that respawn fail (`[hunting]
+respawning player <victim> after the skinning failed, the body lies until its
+respawn: <error>`), the body lies until `respawnSeconds` and every search of
+it is refused ("This body has been skinned. Nothing can be taken from it."),
+like a body looted to its limit. A PK body hands the skinner everything it
+holds besides the rolls: gold, gear, property keys and writings, each key or
+writing under its own name, so it still opens its door or reads its document
+(`BodySystem.emptyInto`, which merges the stacks into the skinner's inventory
+record like the pet system's key rescue; the body is emptied first and the
+skinner filled after, so no stack ever has two owners, and if the skinner
+cannot take it the body gets it back). There is no carry weight or inventory
+size check on the server, so a full pack may leave the skinner
+over-encumbered, as looting it by hand would. The skinner reads "You also
+take everything the body held." (not when the body was already empty) and
+the victim "A hunter skinned the body you left behind and took everything it
+held." ("The body you left behind was skinned by a hunter." when nothing
+moved). The emptied body then goes by the PK body rule (`docs_roleplay_survival_loop.md`
+section 8, "The body"): at the next 2 s check it stops showing its worn
+pieces, and it is removed at the first check that comes 60 s or more after
+the death, so within 2 s when it is skinned later than that. Until then it
+opens for a search like any emptied PK body. The victim's own account never skins their PK body: a
+hunter of that account is passed over silently and the search refusal says
+"You cannot loot the body of your own fallen character."
 
 A body is skinned once per death. On a player's own body the mark lives in
-memory and the respawn (`onRespawn`) clears it, so the next death is a fresh
-body. A PK body carries the mark as `private.skinned` (the skinner's actor
+memory and the respawn the skinning starts (`onRespawn`) clears it, so the
+next death is a fresh body. A PK body carries the mark as `private.skinned` (the skinner's actor
 id), which is saved with it, so it is skinned once for as long as it lies,
 across restarts too. One death is never skinned through both bodies: once a
 PK body is left, the victim's own stripped actor is passed over while that
@@ -838,11 +858,13 @@ noticed up to 100 ms after the death) gives nothing, as the PK body now holds
 that death: the victim's stripped actor respawns 4 s after the PK body is
 left, before the 5 s skinning ends, so the skinning stops with `... they
 respawned` and "The body is gone before you could finish."; `... a PK body
-took their pack` shows only when that respawn failed. On a player's own body
-a second hunter is refused through the same search refusal. On a PK body
+took their pack` shows only when that respawn failed. A player's own body is
+gone once skinned, so a second hunter finds nothing to skin (if the respawn
+failed, the search refusal turns them away). On a PK body
 already skinned a crouched hunter with the knife reads "This body has already
 been skinned." and the interact goes on into the search window under the PK
-body rules, with no flesh and no `skins the PK body` line. A body someone is searching
+body rules (empty unless someone put something in since), with no flesh and
+no `skins the PK body` line. A body someone is searching
 cannot be skinned ("... is already being searched."). Only that search
 request skins a player's body: the native activation the same key press also
 sends (`mp.onActivate`, the path of plugin-placed animals) passes it over
@@ -860,24 +882,34 @@ other dead actor without a profile id is passed over. Without the `ff_body`
 registration no PK body is left and a PK victim's own actor keeps the pack for
 the whole wait, so it is skinned like any other death; the afterlife routing
 still takes the respawn to the realm. Staff and admin modes change nothing on
-either side: skinning takes nothing from a victim, and god and ghost mode never
+either side: skinning takes nothing a living character carries (a PK body's
+pack left the victim when the body was left), and god and ghost mode never
 die from damage.
 
 Log lines: `[hunting] <skinner> skins the body of player <victim> (profile
 <id>)` (`the PK body <body> of player <victim>` for a PK body, the same in
 every line below), `[hunting] <skinner> skinned the body of player <victim>
 (profile <id>): 1016b3 x1, heart b18cd|no heart (10% chance)[, Khajiit pelt
-<id>|no Khajiit pelt (20% chance)], nothing of the pack taken|the body keeps
-its pack` (the pelt part only on a Khajiit body while the pelt resolves),
-`[hunting] <skinner> stopped skinning the body of player <victim>:
+<id>|no Khajiit pelt (20% chance)], <pack>` (the pelt part only on a Khajiit
+body while the pelt resolves; `<pack>` is `nothing of the pack taken, the
+victim respawns now` on an own body, and on a PK body `the pack went to the
+skinner: N item(s) in M stack(s)`, `the body held nothing` or `the body keeps
+its pack, the hand-off failed: <error>`), on a PK body before it `[body]
+<body> of <victim> skinned: N item(s) in M stack(s) moved to <skinner> (K
+named); moved: <base> x<count>, db0e2 "<key name>" x1, ...` (the record
+staff restore from) or `[body] <body> of <victim> skinned: moving the pack to
+<skinner> failed, the body keeps it: <error>`, `[hunting] respawning player
+<victim> after the skinning failed, the body lies until its respawn:
+<error>`, `[hunting] <skinner> stopped skinning the body of player <victim>:
 offline|dead|downed|restrained|out of reach|they respawned|the body is
 gone|a PK body took their pack` (the last only when a PK victim's 4 s
 respawn failed; a PK during an own-body skinning normally ends it with `they
 respawned`), and the boot line ends `players skinned on
 crouch for 1016b3 and the heart b18cd at 10%, the Khajiit pelt <id> at 20% for
 race 13745, 88845` (`, no Khajiit pelt` without the record; `players not
-skinned` when off or when the flesh is not in the load order). The test: `node
-skymp5-server/tools/test-player-skinning.js`.
+skinned` when off or when the flesh is not in the load order). The tests: `node
+skymp5-server/tools/test-player-skinning.js` and, for the PK body's hand-off,
+`node skymp5-server/tools/test-bodies.js`.
 
 ---
 

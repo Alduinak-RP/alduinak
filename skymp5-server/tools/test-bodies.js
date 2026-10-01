@@ -1,6 +1,6 @@
 'use strict'
 
-// bodySystem.ts against a stub mp and a fake clock: the move of the whole pack from victim to body, failures that give the pack back, worn pieces, removal only once emptied and restarts: node tools/test-bodies.js
+// bodySystem.ts against a stub mp and a fake clock: the move of the whole pack from victim to body, failures that give the pack back, worn pieces, removal only once emptied, restarts and a skinner taking the pack: node tools/test-bodies.js
 
 const assert  = require('node:assert/strict')
 const fs      = require('fs')
@@ -231,6 +231,40 @@ async function setup (settings = {}, s = stubMp()) {
   seconds(60)
   await t.poll()
   assert.equal(t.lines.at(-1), `[body] ${id2.toString(16)} of ff000d66 removed: emptied`)
+
+  // Skinned: the whole pack moves to the skinner, the key under its name, and the emptied body goes by the usual rule
+  const SKINNER = 0xff000a01
+  t = await setup()
+  t.props.set(SKINNER, { type: 'MpActor', profileId: 9, inventory: { entries: [] } })
+  const id5 = t.sys.leaveBody(VICTIM, 'finished off by ff000011')
+  assert.equal(t.sys.emptyInto(id5, SKINNER, 'skinned'), '123 item(s) in 4 stack(s)')
+  assert.deepEqual(t.props.get(id5).inventory.entries, [])
+  const got = t.props.get(SKINNER).inventory
+  assert.deepEqual(got.entries.find((e) => e.baseId === KEY), { baseId: KEY, count: 1, name: 'Breezehome key' }, 'the key keeps its name')
+  for (const base of Object.keys(TOTAL)) assert.equal(countOf(got, Number(base)), TOTAL[base], `the skinner holds all of ${Number(base).toString(16)}`)
+  assert.equal(t.lines.at(-1), `[body] ${id5.toString(16)} of ff000d66 skinned: 123 item(s) in 4 stack(s) moved to ff000a01 (1 named); moved: f x120, 12eb7 x1, 12e49 x1, db0e2 "Breezehome key" x1`)
+  assert.equal(t.sys.emptyInto(id5, SKINNER, 'skinned'), '', 'an empty body hands over nothing')
+  assert.throws(() => t.sys.emptyInto(VICTIM, SKINNER, 'skinned'), /no PK body/)
+  await t.poll()
+  assert.deepEqual(t.props.get(id5).equipment.inv.entries, [], 'the emptied body stops showing the worn pieces')
+  assert.equal(t.props.has(id5), true, 'it lies out the minute since the death')
+  seconds(60)
+  await t.poll()
+  assert.equal(t.lines.at(-1), `[body] ${id5.toString(16)} of ff000d66 removed: emptied`)
+
+  // The skinner cannot take the pack: the body keeps it and the caller hears why
+  t = await setup()
+  t.props.set(SKINNER, { type: 'MpActor', profileId: 9, inventory: { entries: [] } })
+  const id6 = t.sys.leaveBody(VICTIM, 'finished off by ff000011')
+  const set = t.mp.set
+  t.mp.set = (id, key, value) => {
+    if (id === SKINNER && key === 'inventory') throw new Error('refused')
+    set(id, key, value)
+  }
+  assert.throws(() => t.sys.emptyInto(id6, SKINNER, 'skinned'), /refused/)
+  assert.equal(countOf(t.props.get(id6).inventory, GOLD), 120)
+  assert.equal(countOf(t.props.get(id6).inventory, KEY), 1)
+  assert.equal(t.lines.at(-1), `[body] ${id6.toString(16)} of ff000d66 skinned: moving the pack to ff000a01 failed, the body keeps it: Error: refused`)
 
   console.log('test-bodies: all passed')
 })().catch((e) => { console.error(e); process.exit(1) })
