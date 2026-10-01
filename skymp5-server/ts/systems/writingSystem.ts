@@ -67,7 +67,15 @@ const SEAL_FACTIONS = [
   "faction:dark-brotherhood", "faction:college-of-winterhold", "faction:imperial-legion",
   "hold:haafingar", "hold:the-reach", "hold:falkreath", "hold:hjaalmarch", "hold:eastmarch",
   "hold:winterhold", "hold:the-rift", "hold:the-pale", "hold:whiterun",
+  "faction:house-telvanni", "faction:house-redoran", "faction:house-dres", "faction:house-indoril",
+  "faction:house-sadras", "faction:morag-tong",
 ];
+
+// The front's markup tags (skymp5-front/src/features/writing/markup.tsx TAG); they do not count toward a page's length
+const MARKUP_TAG = /\[(\/?)(b|bold|i|italic|u|s|color|head|bullet|font|fancy|center|right|hr)(?:=("?)([^\]"\n]{1,24})\3)?\/?\]/gi;
+// Room for tags on top of the visible characters, and a bound on how many a page may carry
+const MARKUP_ROOM = 2;
+const MAX_TAGS_PER_PAGE = 400;
 
 type View = "compose" | "read" | "sealed" | "list";
 
@@ -660,8 +668,13 @@ export class WritingSystem implements System {
       // Bound the work before sanitize walks the payload
       if (typeof page !== "string" || page.length > maxLen * 4) return null;
       const text = sanitize(page);
-      if (text.length > maxLen) {
+      const tags = text.match(MARKUP_TAG)?.length ?? 0;
+      if (text.replace(MARKUP_TAG, "").length > maxLen) {
         this.notice(mp, userId, `A page holds ${maxLen} characters at most.`);
+        return null;
+      }
+      if (text.length > maxLen * MARKUP_ROOM || tags > MAX_TAGS_PER_PAGE) {
+        this.notice(mp, userId, "That page carries too much formatting.");
         return null;
       }
       pages.push(text);

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 import { PaperReader, useEscapeLayer } from '../parchment';
-import { sealMark } from '../writing';
+import { Markup, plainText, sealMark } from '../writing';
 import './styles.scss';
 
 interface HousingEvents {
@@ -214,7 +214,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           <button className="housing__note" onClick={() => setReading(true)}>
             <span className="housing__note-label">{note.mine ? 'Your note is pinned here' : 'A note is pinned here'}</span>
             <span className="housing__note-title">{note.title}</span>
-            <span className="housing__note-text">{note.text}</span>
+            <span className="housing__note-text">{plainText(note.text)}</span>
           </button>
         ) : null}
 
@@ -388,10 +388,11 @@ const Housing = ({ data }: { data: HousingData }) => {
         <PaperReader
           heading={note.title}
           text={note.text}
+          body={<Markup text={note.text} />}
           byline={note.byline}
           mark={sealMark(note.signFaction, true)}
           meta={note.brokenSeals}
-          wide
+          note
           onBack={() => setReading(false)}
         >
           {note.canTakeDown ? (

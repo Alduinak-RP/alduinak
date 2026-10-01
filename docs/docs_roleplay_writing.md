@@ -15,7 +15,8 @@ key carries its property:
 - Server piece: `skymp5-server/ts/systems/writingSystem.ts` (rules, packets, staff tools) and `writingStore.ts` (storage)
 - Client piece: `skymp5-client/src/services/services/writingService.ts` (widget 33)
 - Front piece: `skymp5-front/src/features/writing/`, built on the paper widgets in `features/parchment/` that the missive board uses too
-- Seal artwork: `skymp5-front/src/img/seals/<faction-slug>.png`, 256 px on the long side, made from the owner's `Graphics\Seals` set by `misc/seal-icons.py`
+- Seal artwork: `skymp5-front/src/img/seals/<faction-slug>.png`, 256 px on the long side, made from the owner's `Graphics\Seals` set by `misc/seal-icons.py` (the Dunmer house marks from `Graphics\writing` by `misc/writing-art.ps1`)
+- Paper art, illuminated capitals and fonts: `skymp5-front/src/img/writing/` and `skymp5-front/src/fonts/writing/`, made from the owner's `Graphics\writing` set by `misc/writing-art.ps1` and `misc/writing-fonts.py` (see Markup)
 - Plugin records: the `writing` section of `misc/proficiency-patcher/spec.json`
 
 The feature stays off until `writingEnabled` is `true` in
@@ -78,9 +79,97 @@ the base id. The server answers from what the player carries:
 
 The composer has a title field (40 characters) and pages: a letter is one
 page of 2,000 characters, a journal up to 50 and a book up to 100 pages of
-1,500 characters each. **Sign it** is on by default. Writing uses up the
+1,500 characters each. Tags (see Markup) do not count toward a page's length.
+**Sign it** is on by default. Writing uses up the
 blank and gives the written item, named `<title> (<id>)` or `<Kind> (<id>)`
 without a title.
+
+### Markup (2026-09, K8)
+
+The text is stored as plain text with tags in square brackets, after Space
+Station 14's paper. The front renders them as React elements only (no HTML is
+ever injected), so anything else in the text, `<b>` included, shows as typed.
+
+| Tag | Shows |
+|---|---|
+| `[b]..[/b]` or `[bold]..[/bold]` | bold |
+| `[i]..[/i]` or `[italic]..[/italic]` | italic |
+| `[u]..[/u]`, `[s]..[/s]` | underlined, struck through |
+| `[color=red]..[/color]` | an ink: black, brown, red, blue, green, purple, gold, grey, or any `#rgb` / `#rrggbb` |
+| `[head=1]..[/head]` (1 to 3) | a heading on its own line, 1 the largest and centred |
+| `[center]..[/center]`, `[right]..[/right]` | lines centred or set right |
+| `[bullet]` (or `[bullet/]`) | a bullet point |
+| `[hr]` | a dividing line |
+| `[font=daedric]..[/font]` (or `[font="Mage Script"]`) | that font, by key or name: `hand` Handwritten, `book` Book, `plain` Plain (Georgia), `daedric`, `dragon`, `dwemer`, `falmer`, `mage` Mage Script, `unreadable`, `symbols` |
+| `[fancy]A` | an illuminated capital for the letter that follows; a `[/fancy]` after it is dropped |
+
+Rules: tag names ignore case; an unknown tag (`[sic]`), a closing tag with
+nothing open, a tag with a wrong value (`[head=4]`, `[color=url(x)]`,
+`[font=comic]`) and `[fancy]` before anything but a letter are shown as
+written; tags still open at the end of a page close there; a closing tag
+closes the tags opened inside it; nesting stops at 8 levels and a page honours
+400 tags, the rest shows as text. One line break right after a heading,
+centre or right block or a dividing line is dropped, since they start and end
+their own lines. There is no escape character. Each page is rendered on its
+own, so a tag never runs over a page turn.
+
+Fonts: letters and journals are written in Handwritten and books in Book by
+default (the vanilla note and book faces, `SkyrimBooks_Handwritten_Bold` and
+`SkyrimBooks_Gaelic`, kept to Latin-1 by `misc/writing-fonts.py`, 83 KB and 28
+KB as WOFF instead of 9.1 MB and 3.5 MB). Dragon, Falmer and Mage Script only
+have capitals, so their text is drawn in capitals; Unreadable only has digits,
+so its letters become scribbles (each letter is drawn as a digit, its char
+code modulo 10); Symbols draws the keyboard symbols (`! # $ % & @` and so on)
+as Skyrim glyphs and leaves letters in Georgia. Any glyph a font lacks falls
+back to Georgia.
+
+Illuminated capitals: `img/writing/fancy/<LETTER>.png`, 128 px on the long
+side, from the owner's `Graphics\writing\fancy` set (all 26 letters as of
+2026-09-30). A letter with no image is drawn three lines tall in the Book face
+in wax red, so a missing file never breaks a page.
+
+Limits (server, `readPages`): the visible text (the page without the tags,
+`MARKUP_TAG` in `writingSystem.ts`, the same pattern as `TAG` in the front's
+`markup.tsx`) holds `writingLetterMaxLen` or `writingPageMaxLen` characters
+("A page holds N characters at most."); the raw text, tags included, holds
+twice that and at most 400 tags ("That page carries too much formatting.").
+`tools/test-writing-markup.js` checks that the two patterns are equal, the
+parser and the limits.
+
+### The composer and the readers
+
+- Composer: a dark panel with the title and a toolbar over the paper, and a
+  bar under it with the pager, **Sign it**, **Write it** and **Cancel**. The
+  page is raw text with its tags; selecting words and pressing **B**, **I**,
+  **U**, **S**, **H1** to **H3**, **Centre** or **Right** wraps them in the
+  tag, **Ink** and **Font** open a list and wrap the selection in the chosen
+  ink or font (several fonts can share a page), the bullet button bullets
+  every selected line, **Line** inserts `[hr]`, **Capital** puts `[fancy]`
+  before the next letter and **Plain** strips the tags from the selection.
+  The buttons never take the focus, so the selection stays. **Preview** shows
+  the page as readers will see it. Each page shows its visible count against
+  the limit, red when over (**Write it** is then off). Escape closes an open
+  list first, then an edit.
+- Letters are written and read on the vanilla note texture; journals and
+  books open as a two-page spread on the journal texture, two fields side by
+  side, **Previous** and **Next** turning two pages, **Remove these pages**
+  dropping the two shown. An empty page between written ones stays a blank
+  page.
+- A book or journal shows its title at the top of the first page and the
+  signature, with the mark, after the text of the last page; the page numbers
+  sit at the foot of each page, and the meta lines (pages, "A copy", broken
+  seals, staff lines) and the buttons in the bar under the book.
+- The sealed face is the vanilla sealed-letter art with the faction mark
+  pressed on it, and the caption, the seal line and the broken seals under it.
+- A door note (housing menu) reads on the note texture with its markup, and
+  its card shows the first lines without the tags.
+- The missive board keeps its plain paper.
+
+The paper textures are JPEG under an alpha mask (`-webkit-mask-image`), so the
+torn edges stay transparent at a tenth of the PNG size: note 77 KB + 11 KB,
+journal 124 KB + 5 KB, sealed letter 15 KB + 2 KB. Their size follows the
+screen height: on 1080p the note reads about 860 px tall and the spread about
+760 px tall under the composer's panels, and 1280x720 fits too.
 
 ### Who may do what
 
@@ -132,6 +221,16 @@ Brotherhood (`SEAL_FACTIONS` in `writingSystem.ts`, the `SEALS` table in the
 front); the Stormcloaks and the other factions press no mark. The ids are the
 stable faction ids of `faction-whitelist.json`; renaming one there silently
 drops its mark.
+
+Marks also wait for six factions that do not exist yet (2026-09-30, K8):
+`faction:house-telvanni` (the Telvanni seal, drawn in purple ink, on the
+sealed face and the Telvanni banner under a signature), `faction:house-redoran`,
+`faction:house-dres`, `faction:house-indoril` (their banners),
+`faction:house-sadras` (the gold-on-blue emblem, `sadras.png`) and
+`faction:morag-tong` (the red wax seal). A faction made in the dashboard or the
+manager gets the id `faction:<group name as a slug>`, so the groups must be
+named "House Telvanni", "House Redoran", "House Dres", "House Indoril", "House
+Sadras" and "Morag Tong" (army or guild type) for the marks to apply.
 
 Heraldry is public: the sealed face shows the mark and its caption ("Court of
 Haafingar") above "Closed with an unfamiliar seal.", and the opened letter
@@ -358,8 +457,8 @@ end an edit on the reply to a save.
 |---|---|---|
 | `writingEnabled` | `false` | turns the feature on; also a row in the manager Settings tab |
 | `writingTitleMaxLen` | 40 | characters in a title |
-| `writingLetterMaxLen` | 2000 | characters in a letter |
-| `writingPageMaxLen` | 1500 | characters per journal or book page |
+| `writingLetterMaxLen` | 2000 | characters in a letter, tags not counted; the raw text with its tags holds twice that |
+| `writingPageMaxLen` | 1500 | characters per journal or book page, counted the same way |
 | `writingJournalMaxPages` | 50 | pages in a journal |
 | `writingBookMaxPages` | 100 | pages in a book |
 | `writingMaxDocuments` | 200 | documents one character may have made within `writingDocumentDays` |
@@ -421,6 +520,20 @@ In this order:
 - A pre-change document opens as before, without marks; re-sealing one writes
   `seal.factionId` and the `writing.log` line ends `as hold:...`.
 - The missive board's paper is unchanged.
+- Markup (K8): write a letter with every toolbar button, two fonts on one line
+  and an illuminated capital; Preview, Write it, then read it: it looks as
+  previewed, on the note texture with torn edges (the game shows through the
+  edges, no square corners). A second reader sees the same. Type `<b>x</b>`
+  and `[sic]`: both show as typed. 2,000 letters plus tags are accepted;
+  2,001 letters are refused with "A page holds 2000 characters at most.".
+- A journal and a book open as a two-page spread; type on both pages, turn
+  with Next, Write it, read it back; the signature and mark close the last
+  page. A finished book's copy reads the same.
+- Fonts: each font in the Font list draws its sample; Falmer, Dragon and Mage
+  Script text comes out in capitals; Unreadable comes out as scribbles.
+- A sealed letter shows the sealed-letter art with the mark on it.
+- A letter written before K8 reads as before, on the note texture.
+- At 1280x720 the composer, the note and the spread fit the screen.
 - Dropping a writing puts it back with the message; the search and pet windows
   refuse it.
 - Finish a book, copy it onto a Blank Book, read the copy ("A copy").

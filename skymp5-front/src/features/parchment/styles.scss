@@ -1,4 +1,4 @@
-// Paper reader, confirm bar, composer and buttons shared by the missive board and the writings; swap background-image art in on __read and __compose-text
+// Paper reader, confirm bar, composer and buttons shared by the missive board and the writings; __art layers the vanilla paper textures of img/writing
 
 @use '../../styles/paper' as *;
 
@@ -86,6 +86,52 @@ $text-dim: rgba(232, 224, 208, 0.6);
     &--wide {
       width: min(720px, 88%);
       min-height: 60%;
+    }
+
+    // The vanilla note: text inside the torn edges, buttons on the paper; padding follows the height since percentages would follow the screen
+    &--note {
+      --note-h: min(calc(100vh - 80px), 860px);
+      position: relative;
+      isolation: isolate;
+      width: calc(var(--note-h) * 0.7275);
+      height: var(--note-h);
+      max-height: none;
+      padding: calc(var(--note-h) * 0.075) calc(var(--note-h) * 0.08) calc(var(--note-h) * 0.055);
+      background: none;
+      border: none;
+      box-shadow: none;
+    }
+  }
+
+  &__read--note &__read-text {
+    @include paper-scrollbar;
+    font-family: 'Writing Hand', Georgia, serif;
+    font-size: clamp(14px, 2vh, 19px);
+  }
+
+  // Paper art as JPEG under an alpha mask, behind the content of its box
+  &__art {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: center / 100% 100% no-repeat;
+    -webkit-mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    pointer-events: none;
+
+    &--note {
+      background-image: url('../../img/writing/note.jpg');
+      -webkit-mask-image: url('../../img/writing/note-mask.png');
+    }
+
+    &--journal {
+      background-image: url('../../img/writing/journal.jpg');
+      -webkit-mask-image: url('../../img/writing/journal-mask.png');
+    }
+
+    &--sealed {
+      background-image: url('../../img/writing/sealed.jpg');
+      -webkit-mask-image: url('../../img/writing/sealed-mask.png');
     }
   }
 

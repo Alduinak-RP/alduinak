@@ -41,9 +41,13 @@ export const useEscapeLayer = (open: boolean, back: () => void): void => {
 interface PaperReaderProps {
   heading?: string;
   text: string;
+  // Rendered in place of the plain text, such as a writing's markup
+  body?: React.ReactNode;
   byline?: string;
   meta?: string[];
   wide?: boolean;
+  // The vanilla note texture in place of the plain paper
+  note?: boolean;
   // A click beside the paper
   onBack?: () => void;
   // A seal pressed under the heading
@@ -53,12 +57,13 @@ interface PaperReaderProps {
   children?: React.ReactNode;
 }
 
-export const PaperReader = ({ heading, text, byline, meta, wide, onBack, stamp, mark, children }: PaperReaderProps) => (
+export const PaperReader = ({ heading, text, body, byline, meta, wide, note, onBack, stamp, mark, children }: PaperReaderProps) => (
   <div className="parchment__shade" onClick={onBack}>
-    <div className={'parchment__read' + (wide ? ' parchment__read--wide' : '')} onClick={(e) => e.stopPropagation()}>
+    <div className={'parchment__read' + (note ? ' parchment__read--note' : wide ? ' parchment__read--wide' : '')} onClick={(e) => e.stopPropagation()}>
+      {note ? <div className="parchment__art parchment__art--note" /> : null}
       {heading ? <h3 className="parchment__read-heading">{heading}</h3> : null}
       {stamp}
-      <p className="parchment__read-text">{text}</p>
+      <p className="parchment__read-text">{body ?? text}</p>
       {byline || mark ? <p className="parchment__read-author">{byline}{mark}</p> : null}
       {(meta || []).map((line, i) => (
         <p key={i} className="parchment__read-meta">{line}</p>
