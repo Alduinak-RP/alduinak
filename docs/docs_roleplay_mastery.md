@@ -511,9 +511,16 @@ while sneaking. Its block state uses `NPC_Blocking_ShieldCharge_MT` (run 370),
 which also replaces the sneak movement type (run 222), so a Block Runner ran
 crouched and blocking faster than crouched alone; without the perk a sneak
 block runs at `NPC_Blocking_MT`'s 81. The client checks on every sneak change
-and once a second. A sneak block with movement logs
+and once a second. This covers a crouch first and a block after it. Not yet
+proven in game: `1hm_behavior.hkx` uses `bPerkShieldCharge` in no transition
+condition, so the graph most likely picks the block state once, when the
+block starts; a block raised standing and kept up through the crouch may then
+keep the 370, and a block raised crouched and kept up after standing may stay
+at 81, until the block is raised again. A sneak block with movement logs
 `SneakBlockSpeedService: sneak block top speed <n> at SpeedMult <m>,
-bPerkShieldCharge false (...)` when it ends, and a change of the perk
+bPerkShieldCharge false, block raised before the crouch true|false (...)`
+when it ends; a top speed above 222 x SpeedMult / 100 with `true` there shows
+the block-first case is still open. A change of the perk logs
 `SneakBlockSpeedService: bPerkShieldCharge true|false: Block Runner held|not
 held, sneaking <bool>`.
 

@@ -12,6 +12,8 @@ export class SneakBlockSpeedService extends ClientListener {
   private hadPerk: boolean | undefined;
   private nextCheckMs = 0;
   private topSpeed = -1;
+  private wasBlocking = false;
+  private raisedStanding = false;
 
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -39,14 +41,19 @@ export class SneakBlockSpeedService extends ClientListener {
   }
 
   // One line per sneak block with movement: its top speed against the movement types' run speeds
+  // this.sneaking still holds the last frame's value here, so a block up on a standing frame was raised before the crouch
   private trackSneakBlock(player: Actor, sneaking: boolean): void {
-    if (sneaking && player.getAnimationVariableBool("IsBlocking")) {
+    const blocking = player.getAnimationVariableBool("IsBlocking");
+    const wasBlocking = this.wasBlocking;
+    this.wasBlocking = blocking;
+    if (sneaking && blocking) {
+      if (this.topSpeed < 0) this.raisedStanding = wasBlocking && this.sneaking === false;
       this.topSpeed = Math.max(this.topSpeed, player.getAnimationVariableFloat("SpeedSampled"));
       return;
     }
     if (this.topSpeed > 0) {
       const speedMult = player.getActorValue("SpeedMult").toFixed(0);
-      logToPlatformLog(this, `sneak block top speed ${this.topSpeed.toFixed(0)} at SpeedMult ${speedMult}, ${SHIELD_CHARGE_VAR} ${player.getAnimationVariableBool(SHIELD_CHARGE_VAR)} (run at SpeedMult 100: sneak 222, block 81, Block Runner block 370)`);
+      logToPlatformLog(this, `sneak block top speed ${this.topSpeed.toFixed(0)} at SpeedMult ${speedMult}, ${SHIELD_CHARGE_VAR} ${player.getAnimationVariableBool(SHIELD_CHARGE_VAR)}, block raised before the crouch ${this.raisedStanding} (run at SpeedMult 100: sneak 222, block 81, Block Runner block 370)`);
     }
     this.topSpeed = -1;
   }
