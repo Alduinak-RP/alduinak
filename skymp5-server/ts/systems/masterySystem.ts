@@ -54,7 +54,10 @@ const KIT_PROP = "private.professionKit";
 // Plugin recipes any character makes (instruments, broom, war horns) are no one's work
 const COMMON_RECIPE_PREFIX = "AldRecipeCommon_";
 // Recipes whose rank bonus belongs to several professions, by editor id prefix
-const SHARED_RECIPES: Array<[string, string[]]> = [["AldRecipeKiln_Charcoal", ["woodworker", "blacksmith", "miner"]]];
+const SHARED_RECIPES: Array<[string, string[]]> = [
+  ["AldRecipeKiln_Charcoal", ["woodworker", "blacksmith", "miner"]],
+  ["AldRecipeWriting_SealingWax", ["blacksmith", "alchemist"]]
+];
 // Crafting at their benches costs half: cooking, alchemy, and refining at the smelter (miner) and the tanning rack (hunter)
 const HALF_COST_BENCHES_OF = ["cook", "alchemist", "miner", "hunter"];
 // Refining made at another bench, by the editor id of what the recipe makes

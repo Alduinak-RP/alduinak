@@ -45,7 +45,8 @@ never by form id.
 Recipes: anyone makes the blanks (tier `Anyone`), at the tanning rack or at
 the woodcrafting bench, from Roll of Paper (the vanilla `PaperRoll`), a
 journal or book with leather and one Leather Strips; a Novice woodworker makes
-the paper from firewood; the Sealing Wax is Novice blacksmith work:
+the paper from firewood; the Sealing Wax is Novice blacksmith or alchemist
+work:
 
 | Output | Bench | Ingredients |
 |---|---|---|
@@ -56,7 +57,7 @@ the paper from firewood; the Sealing Wax is Novice blacksmith work:
 | Blank Journal | woodcrafting bench | 2 Roll of Paper, 1 Leather, 1 Leather Strips |
 | Blank Book | tanning rack | 4 Roll of Paper, 2 Leather, 1 Leather Strips |
 | Blank Book | woodcrafting bench | 4 Roll of Paper, 1 Leather, 1 Leather Strips |
-| Sealing Wax | smelter | 1 Beehive Husk, 1 Charcoal |
+| Sealing Wax | smelter | 1 Beehive Husk, 1 Charcoal (blacksmith or alchemist Novice) |
 
 No quill or inkwell is needed. Only the server creates the written items
 (Letter, Sealed Letter, Journal, Book). A written item without a name, for

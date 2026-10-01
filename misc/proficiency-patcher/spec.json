@@ -9069,7 +9069,10 @@
     "items": {
      "BeeHiveHusk": 1,
      "Charcoal": 1
-    }
+    },
+    "also": [
+     "alchemist"
+    ]
    }
   ]
  },

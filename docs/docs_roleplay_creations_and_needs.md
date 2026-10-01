@@ -271,8 +271,8 @@ takes real effort costs more of it (0.9.6 values; actions per full bar in bracke
 
 Half cost: flora (plants that are not crops), refining (the smelter, the tanning rack and thread), cooking, alchemy and
 skinning. Rabbits, pheasants and salmon hanging on racks cost nothing. Spells cost nothing. A shared recipe (smelting,
-tanning, charcoal) gives every profession that shares it both its rank discount and its hours. An alchemist pays a
-farmer's price for flora at the same rank and the Free price for crops. `gatheringAlchemistFloraDiscount` (default 0,
+tanning, charcoal, the sealing wax) gives every profession that shares it both its rank discount and its hours. An
+alchemist pays a farmer's price for flora at the same rank and the Free price for crops. `gatheringAlchemistFloraDiscount` (default 0,
 off) takes that share off again for an alchemist of Novice or better on alchemy flora, flora that hands over an
 ingredient (flowers, mushrooms, herbs, berries, eggs, nirnroot).
 
@@ -294,7 +294,8 @@ until <hh:mm>` (the server's local time); `drinkUntil` rides `private.needs`, so
   (`[gathering] <id> harvest of <plant> <ref> handed over nothing, no fatigue taken`).
 - Crafting is every recipe the server accepts at any station, and every temper at the workbench or grindstone, by the
   rank of a character whose profession works that bench keyword (MasterySystem `craftCost`). Smiths and miners both get
-  their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal.
+  their rank at the smelter, hunters and tailors at the tanning rack, and woodworkers, smiths and miners at charcoal;
+  smiths and alchemists both get their rank for the sealing wax at the smelter.
   Crafts whose inputs the crafter does not hold are left to the native side uncharged.
 - Skinning (hunter rank) costs half a kill. Only a hunter's skinning takes an animal's pelt and meat; a search of the
   body never shows its meat.
