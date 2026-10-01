@@ -337,7 +337,12 @@ behaviour-graph events — no ESP required.**
   the pack, and from the start of the skinning until the respawn nobody can
   search the body ("A hunter is skinning this body.", "This body has been
   skinned. Nothing can be taken from it."). A downed player is alive and is
-  neither searched as a body nor skinned.
+  neither searched as a body nor skinned. A search prompt still open when
+  either side dies is void: the next search request drops it, so it no longer
+  blocks the body, and an answer after the death is ignored (the searcher reads
+  "<name> can no longer answer.", logged `[search] <target> answered
+  <searcher>'s prompt after a death, ignored`); the body opens only through a
+  fresh request, which applies the body refusals.
 - **No kill cams** (`disableKillCamService.ts`): the engine's kill camera
   (the slow motion arrow or spell follow cam, and the cinematic cut on a
   melee killmove) glitched players who got one with a bow, so every client

@@ -245,12 +245,21 @@ export class SearchSystem implements System {
     if (asTarget) {
       this.endSession(ctx, asTarget, "They disconnected.");
     }
+    this.dropPending((pend) => pend.searcherActorId === actorId || pend.targetActorId === actorId);
+  }
+
+  private dropPending(match: (pend: PendingConsent) => boolean): void {
     for (const [id, pend] of Array.from(this.pending)) {
-      if (pend.searcherActorId === actorId || pend.targetActorId === actorId) {
+      if (match(pend)) {
         clearTimeout(pend.timer);
         this.pending.delete(id);
       }
     }
+  }
+
+  // A death voids a prompt: the body opens through a fresh request with its own checks, and the dead do not search
+  private promptVoid(ctx: SystemContext, pend: PendingConsent): boolean {
+    return this.isDead(ctx, pend.targetActorId) || this.isDead(ctx, pend.searcherActorId);
   }
 
   // ── Incoming requests ───────────────────────────────────────────────────────
@@ -292,6 +301,7 @@ export class SearchSystem implements System {
       this.notice(ctx, userId, "You are already searching someone.");
       return;
     }
+    this.dropPending((pend) => this.promptVoid(ctx, pend));
     for (const pend of this.pending.values()) {
       if (pend.targetActorId === targetActorId || pend.searcherActorId === searcherActorId) {
         this.notice(ctx, userId, "A search request is already pending.");
@@ -368,6 +378,11 @@ export class SearchSystem implements System {
     clearTimeout(pend.timer);
 
     const searcherUser = this.userOf(ctx, pend.searcherActorId);
+    if (this.promptVoid(ctx, pend)) {
+      this.log(`[search] ${pend.targetActorId.toString(16)} answered ${pend.searcherActorId.toString(16)}'s prompt after a death, ignored`);
+      this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} can no longer answer.`);
+      return;
+    }
     if (content.accepted !== true) {
       this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} refused the search.`);
       return;
