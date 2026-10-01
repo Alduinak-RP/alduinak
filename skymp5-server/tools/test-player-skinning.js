@@ -133,9 +133,11 @@ async function setup (settings = {}, missing = []) {
   const skin = (actorId, bodyId = VICTIM) => sys.trySkin(ctx, actorId, bodyId)
   // The interact menu's Skin: the search request with skin set
   const choose = (actorId, bodyId = VICTIM) => sys.trySkin(ctx, actorId, bodyId, true, true)
+  // The interact menu's Search: the search request with skin false
+  const search = (actorId, bodyId = VICTIM) => sys.trySkin(ctx, actorId, bodyId, true, false)
   const notices = (actorId) => s.packets.filter((p) => p.u === s.users.get(actorId) && p.customPacketType === 'notification').map((p) => p.text)
   const locks = (actorId) => s.packets.filter((p) => p.u === s.users.get(actorId) && p.customPacketType === 'actionLock').map((p) => p.seconds)
-  return { ...s, sys, ctx, lines, paid, credited, tired, skin, choose, notices, locks }
+  return { ...s, sys, ctx, lines, paid, credited, tired, skin, choose, search, notices, locks }
 }
 
 ;(async () => {
@@ -166,6 +168,8 @@ async function setup (settings = {}, missing = []) {
     t.forms.get(HUNTER).inventory = { entries: [{ baseId: KNIFE, count: 1 }] }
     assert.deepEqual(t.notices(HUNTER), [], 'no refusal is written to the chat')
     assert.equal(t.sys.searchRefusal(VICTIM), '')
+    assert.equal(t.search(HUNTER), false, 'crouched with the knife, Search in the menu still searches')
+    assert.deepEqual(t.locks(HUNTER), [], 'and starts no kneel')
     assert.equal(t.skin(HUNTER), true, 'crouched with the knife, the hunter skins')
     assert.deepEqual(t.locks(HUNTER), [5])
     assert.equal(t.sys.searchRefusal(VICTIM), 'A hunter is skinning this body.')
@@ -343,6 +347,7 @@ async function setup (settings = {}, missing = []) {
     assert.deepEqual(t.sys.menuFlags(OTHER_HUNTER, CLONE), {}, 'and their menu has no Skin row')
     t.forms.get(OTHER_HUNTER).profileId = 2
     assert.deepEqual(t.sys.menuFlags(HUNTER, CLONE), { skin: true, skinTired: false }, 'a PK body offers Skin to another hunter')
+    assert.equal(t.search(HUNTER, CLONE), false, 'Search in the menu opens the PK body for a crouched hunter')
     assert.equal(t.skin(HUNTER, CLONE), true, 'a hunter skins the PK body')
     assert.match(t.lines.join('\n'), /ff000a01 skins the PK body ff000c01 of player ff000b01 \(profile 4\)/)
     assert.equal(t.sys.searchRefusal(CLONE), 'A hunter is skinning this body.')

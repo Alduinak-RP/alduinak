@@ -66,6 +66,8 @@ const LOCK_EXIT_MAX_SENDS = 5;
 const LOCK_EXIT_REST_TICKS = 3;
 // A bleedout kneel every exit left standing is ended this long after the last one by the engine's knock-down
 const LOCK_EXIT_KNOCKDOWN_MS = 2500;
+// Longer than the bleedout's fall or get-up clip: a kneel still held this long after an exit is stuck whatever bAnimationDriven reads
+const LOCK_EXIT_STUCK_MS = 4000;
 const FIRST_PERSON_CAMERA = 0;
 
 const CARRIER_COLLISION_REFRESH_MS = 1000;
@@ -131,6 +133,8 @@ interface LockExit {
   sends: number;
   restTicks: number;
   clearTicks: number;
+  // The one exit sent to a stuck bleedout kneel has gone out, the knock-down is next
+  stuckSent: boolean;
   // Another event the graph took since, which ends the watch of a pose read from bAnimationDriven
   otherEvent: string;
 }
@@ -235,8 +239,10 @@ const describeAttempt = (lock: ActionLock): string => {
  *     graph still holds the pose the exit goes out again 1 s after the last
  *     one, 5 exits at most (the bleedout kneel only while it rests, since its
  *     fall and get-up are clips), and a bleedout kneel that outlasts them all
- *     is ended by the engine's knock-down and get-up. The first-person camera
- *     comes back only once the pose is left.
+ *     is ended by the engine's knock-down and get-up. A bleedout kneel still
+ *     held 4 s after an exit gets one more whatever the graph reads, and the
+ *     knock-down 4 s after that, so the watch always ends. The first-person
+ *     camera comes back only once the pose is left.
  *   - stagger: plays staggerStart with the magnitude on the player, whose
  *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a
@@ -772,7 +778,7 @@ export class RestraintService extends ClientListener {
     this.sp.Debug.sendAnimationEvent(player, exit);
     if (desired === OFFSET_STOP_ANIM) {
       const now = Date.now();
-      if (previousByLock) this.lockExit = { anim: previous, exit, sinceMs: now, lastSendMs: now, checkedMs: now, sends: 1, restTicks: 0, clearTicks: 0, otherEvent: "" };
+      if (previousByLock) this.lockExit = { anim: previous, exit, sinceMs: now, lastSendMs: now, checkedMs: now, sends: 1, restTicks: 0, clearTicks: 0, stuckSent: false, otherEvent: "" };
       return;
     }
     this.sp.Utility.wait(POSE_SWAP_DELAY_S).then(() => {
@@ -880,19 +886,22 @@ export class RestraintService extends ClientListener {
     }
     x.clearTicks = 0;
     // The bleedout's fall to the knees and its get-up are animation-driven clips, the kneel between them is not
-    const resting = !bleedout || !player.getAnimationVariableBool(ANIM_DRIVEN_VAR);
-    x.restTicks = resting ? x.restTicks + 1 : 0;
-    if (x.restTicks < LOCK_EXIT_REST_TICKS || now - x.lastSendMs < LOCK_EXIT_RESEND_MS) return;
-    const state = `${x.anim} still held ${now - x.sinceMs} ms after the lock (${playingVar} true) after ${x.sends} exit(s)`;
-    if (x.sends < LOCK_EXIT_MAX_SENDS) {
+    const animDriven = bleedout && player.getAnimationVariableBool(ANIM_DRIVEN_VAR);
+    x.restTicks = animDriven ? 0 : x.restTicks + 1;
+    const sinceSendMs = now - x.lastSendMs;
+    const stuck = bleedout && sinceSendMs >= LOCK_EXIT_STUCK_MS;
+    if (!stuck && (x.restTicks < LOCK_EXIT_REST_TICKS || sinceSendMs < LOCK_EXIT_RESEND_MS)) return;
+    const state = `${x.anim} still held ${now - x.sinceMs} ms after the lock (${playingVar} true${bleedout ? `, ${ANIM_DRIVEN_VAR} ${animDriven}` : ""}) after ${x.sends} exit(s)`;
+    if (x.sends < LOCK_EXIT_MAX_SENDS && !(stuck && x.stuckSent)) {
       x.sends++;
       x.lastSendMs = now;
       x.restTicks = 0;
+      x.stuckSent = x.stuckSent || stuck;
       this.sp.Debug.sendAnimationEvent(player, x.exit);
       logToPlatformLog(this, `action lock exit: ${state}, ${x.exit} sent again; ${this.describePlayer(player)}`);
     } else if (!bleedout) {
       this.endLockExit(`${state}, not sent again`);
-    } else if (now - x.lastSendMs >= LOCK_EXIT_KNOCKDOWN_MS) {
+    } else if (stuck || sinceSendMs >= LOCK_EXIT_KNOCKDOWN_MS) {
       // The knock-down's get-up returns the root graph to its default state
       player.pushActorAway(player, 0);
       this.endLockExit(`${state}, the player is knocked down so the get-up ends the kneel`);

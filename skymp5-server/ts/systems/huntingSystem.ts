@@ -19,7 +19,7 @@ type Mp = any;
 // gamemode's death hook gives the rest a 1e9 s delay). A pet's body stays and gives only its meat. Skinning costs half a kill of fatigue by hunter rank and credits hunter hours.
 // A player character's own body, which lies dead until its respawn (respawnSeconds), or the body a PK leaves instead (BodySystem) is skinned the same way,
 // only through bodyAction, once per death for Human Flesh, a chance of a Human Heart and, on a body that looks Khajiit, a chance of a Khajiit Pelt.
-// The interact menu offers it as Skin next to Search (menuFlags, the player menu's skin and skinTired flags); crouch and interact still skins without the menu.
+// The interact menu offers it as Skin next to Search (menuFlags, the player menu's skin and skinTired flags) and its Search never skins; a request without the choice skins for a crouched hunter.
 // Only the butcher's eye line is written to the chat; a refused skinning falls through to the search and the Skin row is greyed out while the hunter is too tired.
 // Every skinning ends with an actionLock of 0 s, so the skinner stands up whether it gave anything or not.
 // SearchSystem refuses every search of the body during the skinning. An own body then goes like a looted one: the victim respawns at once with their
@@ -32,7 +32,7 @@ type Mp = any;
 //                                editor id is tried first, then its race, then its templates (lower-cased), and the first
 //                                fragment found in the earliest name that holds one wins
 //   huntingMeatMap               { "<editor id fragment>": ["<meat editor id>", count] } replacing DEFAULT_MEAT_MAP, matched the same way
-//   huntingSkinPlayers           "crouch" (default: Skin in the interact menu or crouch and interact skins a player's body, a plain interact searches it),
+//   huntingSkinPlayers           "crouch" (default: Skin in the interact menu skins a player's body, as does crouch and interact from a client without the menu; its Search and a plain interact search it),
 //                                "interact" (every interact skins, as on an animal) or "off"
 //   huntingHumanFlesh            item a skinned player's body gives, editor id or desc, default HumanFlesh (Skyrim.esm 001016B3)
 //   huntingHumanHeart            item it may add, default HumanHeart (Skyrim.esm 000B18CD); "" gives none
@@ -203,11 +203,11 @@ export class HuntingSystem implements System {
   }
 
   // True when the interaction became a skinning, so the body is not opened this time; decided from reads, everything else runs after the hook
-  // players is false for the native activation, which skips SearchSystem's checks of who is searching the body; chosen is the interact menu's Skin
-  trySkin(ctx: SystemContext, actorId: number, bodyId: number, players = true, chosen = false): boolean {
+  // players is false for the native activation, which skips SearchSystem's checks of who is searching the body; chosen is the interact menu's Skin (true) or Search (false) on a player's body
+  trySkin(ctx: SystemContext, actorId: number, bodyId: number, players = true, chosen?: boolean): boolean {
     const mp = ctx.svr as Mp;
     if (!isPlayerActor(mp, actorId) || !this.isBody(mp, bodyId)) return false;
-    if (isPlayerActor(mp, bodyId)) return players && this.trySkinPlayer(ctx, actorId, bodyId, chosen);
+    if (isPlayerActor(mp, bodyId)) return players && chosen !== false && this.trySkinPlayer(ctx, actorId, bodyId, !!chosen);
     const rank = this.mastery.rankOf(ctx, actorId, "hunter");
     if (!rank || this.skinning.has(bodyId) || !this.isAnimal(ctx, bodyId) || this.isSkinned(mp, bodyId)) return false;
     const names = this.namesOf(ctx, bodyId);

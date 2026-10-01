@@ -216,8 +216,9 @@ export class PlayerActionService extends ClientListener {
     if (!claimHeldMenu(() => this.sp.Ui.isMenuOpen(Menu.Container), close)) close();
   }
 
-  private requestSearch(remoteId: number): void {
-    sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId });
+  // skin false is the body menu's Search, which never skins; without it a crouched hunter's request skins
+  private requestSearch(remoteId: number, skin?: false): void {
+    sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: remoteId, skin });
     this.containerAsked = true;
   }
 
@@ -326,9 +327,9 @@ export class PlayerActionService extends ClientListener {
       }
       const packetType = PACKET_ACTIONS[actionId];
       if (this.bodyTarget && this.playerTarget) {
-        // The search opens the engine's container menu; the server takes the same request with skin set as the skinning
+        // The search opens the engine's container menu; the server takes the same request with skin true as the skinning
         if (actionId === BODY_SKIN.id) sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: this.playerTarget, skin: true });
-        else if (actionId === BODY_SEARCH.id) this.requestSearch(this.playerTarget);
+        else if (actionId === BODY_SEARCH.id) this.requestSearch(this.playerTarget, false);
       } else if (packetType && this.playerTarget) {
         sendCustomPacket(this.controller, { customPacketType: packetType, target: this.playerTarget });
       } else if (packetType) {

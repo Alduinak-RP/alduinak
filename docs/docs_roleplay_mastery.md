@@ -766,17 +766,24 @@ at most. The bleedout kneel gets it only while it rests (`IsBleedingOut` true,
 and its get-up (`BleedOut_TransOut.hkx`, 2.03 s) are animation-driven clips,
 and a bleedout kneel that outlasts all five exits is ended 2.5 s later by the
 engine's knock-down (`PushActorAway` on the player), whose get-up returns the
-root graph to its default state. The kneel's watch stops at the first other
+root graph to its default state. A bleedout kneel still held 4 s after an
+exit, longer than either clip, counts as stuck whatever `bAnimationDriven`
+reads: it gets one more exit, and the knock-down 4 s after that, so the watch
+always ends and writes its line, 8 s after the lock for a kneel that never rests. The kneel's watch stops at the first other
 event the graph takes. The first-person camera waits until the pose is left.
 Before this the lock sent `bleedOutStop` once and never looked again: in the
 test of 2026-10-01 a skinner who had crouched with a dagger out in first
 person had both kneels refused, got the bleedout kneel 2.5 s into the lock,
 and the single stop went out 0.15 s after the 2.37 s fall clip had ended,
 inside its 0.2 s blend into the kneel (`bleedOut_TransInEnd`,
-`DefaultBlend_FromAnimDriven`); the graph stayed in `BleedOut_Main_State` and
-the skinner knelt until a teleport reloaded their 3D. Platform log:
+`DefaultBlend_FromAnimDriven`); the graph kept the kneel and
+the skinner knelt until a teleport reloaded their 3D. Which state the graph
+was left in is not in that log (the resting `BleedOut_Main_State`, or the
+transition state with `bAnimationDriven` still true), so the resend covers
+both and its line now says which. Platform log:
 `action lock exit: <pose> still held <ms> ms after the lock (<variable> true)
-after <n> exit(s), <exit> sent again; ...`, `action lock exit: <pose> left
+after <n> exit(s), <exit> sent again; ...` (the bleedout kneel adds
+`, bAnimationDriven <bool>` after `IsBleedingOut true`), `action lock exit: <pose> left
 <ms> ms after the lock, <n> exit(s) sent` (always for the bleedout kneel, for
 another pose only after a second exit), `..., not sent again` and `..., the
 player is knocked down so the get-up ends the kneel`. A
@@ -840,8 +847,10 @@ skinned or being skinned and not the PK body of the asker's own account) and
 body opens at once as before. Skin sends the search request with `skin:
 true`, which reaches `HuntingSystem.trySkin` through
 `SearchSystem.bodyAction` as for an animal, behind the same search checks.
-Crouch and interact still skins without the menu, which is all a client
-older than this can send; `interact` makes every press skin, as on an
+The menu's Search sends `skin: false` and never skins, so a crouched hunter
+who picks it loots the body. A request without the field skins for a
+crouched hunter as before: that is all a client older than the menu can
+send, and what this one sends when no answer came within 0.5 s. `interact` makes every press skin, as on an
 animal, with no menu, and `off` turns it off. Nothing of it is written to
 the chat: a skinning that cannot start just opens the search. The skinning
 is the animal one: the same 5 s kneel (`actionLock` `IdleKneelingEnter`) and
