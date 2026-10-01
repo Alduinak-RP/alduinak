@@ -325,10 +325,13 @@ const extractExtraData = (
   });
 };
 
-const squash = (inv: Inventory): Inventory => {
+// Copies the same test passes share one entry under the first one's name
+export type SameCopy = (a: Entry, b: Entry) => boolean;
+
+const squash = (inv: Inventory, sameCopy: SameCopy = extrasEqual): Inventory => {
   const res = new Array<Entry>();
   inv.entries.forEach((e) => {
-    const same = res.find((x) => e.baseId === x.baseId && extrasEqual(x, e));
+    const same = res.find((x) => e.baseId === x.baseId && sameCopy(x, e));
     if (same) {
       same.count += e.count;
     } else {
@@ -373,7 +376,7 @@ export const getRawEntries = (refr: ObjectReference): Entry[] => {
   return entries;
 };
 
-const getExtraContainerChangesAsInventory = (refr: ObjectReference): Inventory => squash({ entries: getRawEntries(refr) });
+const getExtraContainerChangesAsInventory = (refr: ObjectReference, sameCopy?: SameCopy): Inventory => squash({ entries: getRawEntries(refr) }, sameCopy);
 
 const getBaseContainerAsInventory = (refr: ObjectReference): Inventory => {
   return {
@@ -479,12 +482,13 @@ export const getDiff = (
   return { entries: lhsCopy.entries.filter((x) => x.count !== 0) };
 };
 
-export const getInventory = (refr: ObjectReference): Inventory => {
+export const getInventory = (refr: ObjectReference, sameCopy?: SameCopy): Inventory => {
   return squash(
     sumInventories(
       getBaseContainerAsInventory(refr),
-      getExtraContainerChangesAsInventory(refr)
-    )
+      getExtraContainerChangesAsInventory(refr, sameCopy)
+    ),
+    sameCopy
   );
 };
 

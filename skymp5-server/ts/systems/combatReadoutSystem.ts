@@ -29,7 +29,7 @@ export interface DurableCopy {
   baseId: number;
   // Share from 0 to 1, 1 for a copy that never wore
   condition: number;
-  // HP of the copy at full condition, null when the native sends none
+  // HP of the copy at full condition (the native's maxHp; its hp is the points left), null when the native sends none
   maxHp: number | null;
   worn: boolean;
   // Worn in the left hand: a second weapon or a shield
@@ -42,9 +42,8 @@ const copyOf = (entry: unknown): DurableCopy | null => {
   const baseId = Number(e["baseId"]);
   if (!Number.isFinite(baseId) || baseId <= 0) return null;
   const condition = typeof e["condition"] === "number" && Number.isFinite(e["condition"]) ? Math.min(1, Math.max(0, e["condition"])) : 1;
-  // hp is the full HP of the row unless the native also sends maxHp
-  const maxHp = [e["maxHp"], e["hp"]].find((v) => typeof v === "number" && Number.isFinite(v) && v > 0) as number | undefined;
-  return { baseId: baseId >>> 0, condition, maxHp: maxHp ?? null, worn: e["worn"] === true || e["wornLeft"] === true, left: e["wornLeft"] === true };
+  const maxHp = typeof e["maxHp"] === "number" && Number.isFinite(e["maxHp"]) && e["maxHp"] > 0 ? e["maxHp"] : null;
+  return { baseId: baseId >>> 0, condition, maxHp, worn: e["worn"] === true || e["wornLeft"] === true, left: e["wornLeft"] === true };
 };
 
 // Every durable copy the actor holds, null when the native has none to give or the call fails
@@ -88,7 +87,7 @@ export const readoutConfig = (block: unknown): ReadoutConfig => {
   return {
     formula: b["enabled"] === true,
     durability: b["durability"]?.["enabled"] === true,
-    brokenLabel: typeof label === "string" && label.trim() ? label.trim() : DEFAULT_BROKEN_LABEL,
+    brokenLabel: typeof label === "string" && label ? label : DEFAULT_BROKEN_LABEL,
   };
 };
 
@@ -115,10 +114,10 @@ export const armorReport = (mp: Mp, actorId: number, o: ReadoutSources): string[
     const i = inHand < 0 ? free.findIndex((c) => c.baseId === baseId) : inHand;
     return i < 0 ? null : free.splice(i, 1)[0];
   };
-  // Temper and condition of a piece; the condition needs durability on and a value from either native
+  // Temper and condition of a piece; the stats give 1 for what never wears too (a staff), so without a durable copy only a condition below 1 shows
   const tail = (gear: GearStats, left?: boolean): string[] => {
     const copy = takeCopy(gear.baseId, left);
-    const condition = gear.condition ?? copy?.condition ?? null;
+    const condition = copy ? gear.condition ?? copy.condition : gear.condition !== null && gear.condition < 1 ? gear.condition : null;
     return [
       gear.temperStep > 0 ? qualityName(FINE_STEP - 1 + gear.temperStep) : "",
       o.wear && condition !== null ? conditionText(condition, copy?.maxHp ?? null, o.brokenLabel) : "",
@@ -139,7 +138,7 @@ export const armorReport = (mp: Mp, actorId: number, o: ReadoutSources): string[
     if (!pieces.length) lines.push("No armor worn: DT 0, every weapon hit lands in full.");
     else lines.push(`Armor: DT ${num(total ?? 0)} (taken off each weapon hit)${weight !== null ? `, weight ${num(weight)}` : ""}`);
     for (const p of pieces) {
-      const dt = p.dt === null ? "" : `DT ${num(p.dt)}${p.fullDt !== null && p.fullDt > p.dt + 0.005 ? ` of ${num(p.fullDt)}` : ""}`;
+      const dt = p.dt === null ? "" : `DT ${num(p.dt)}`;
       lines.push(line(p.baseId, [dt, uncounted(p), ...tail(p)], "no DT"));
     }
     for (const w of weaponsOf(stats)) {

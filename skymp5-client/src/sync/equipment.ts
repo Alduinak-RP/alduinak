@@ -12,6 +12,7 @@ import {
 } from 'skyrimPlatform';
 
 import { Entry, Inventory, getInventory, getPlayerEnchantment, healthStep, isBoundItem, sameItem } from './inventory';
+import { sameTaggedCopy } from './durabilityNames';
 
 export const enum SpellType {
   Left,
@@ -180,7 +181,7 @@ const removeUnnecessaryExtra = (inv: Inventory, isPlayer: boolean): Inventory =>
 
 export const getEquipment = (ac: Actor, numChanges: number): Equipment => {
   // Removed base container items read as negative counts the server's uint32 count refuses
-  const inv = getInventory(ac);
+  const inv = getInventory(ac, sameTaggedCopy);
   return {
     inv: { entries: inv.entries.filter((e) => e.count > 0) },
     leftSpell: getEquipedSpell(ac, SpellType.Left),

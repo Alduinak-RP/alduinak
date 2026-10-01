@@ -14,7 +14,8 @@ The numbers live in three places, and nowhere else:
 - **`racialPassives`** in `server-settings.json`: every race number a server system reads (fatigue, hunger, cold,
   warmth, raw meat, start items, power cooldowns). See the configuration reference, section `racialPassives`.
 - **Two `damageMultConditionalFormulaSettings` entries** for the Breton's and the Orc's magic resistance on server
-  spell damage, until the native magic pass (plan task NV7) replaces them.
+  spell damage under the vanilla formula. Under the rebalance formula the native reads the abilities itself once the
+  two entries are removed (see Magic resistance below).
 
 Code:
 
@@ -97,8 +98,15 @@ target with its vampire race (staged in `Desktop/alduinak-r13/live/r27-RC4/`; th
 reference). They wrap every server spell hit, not poisons, multiplied with the element resistance; an effect that
 names MagicResist itself counts the Breton's twice (accepted). On the client the ability resists hostile non-damage
 effects as in vanilla. RacialSystem's boot report lists the entries and warns about a race whose ability resists magic
-with no entry, or an entry that names a race but not its vampire race. Plan task NV7 moves magic resistance into the
-native formula; the two entries are removed in the same settings change.
+with no entry, or an entry that names a race but not its vampire race.
+
+The native has its own rule since `feb6f390` (plan task NV7), only while `alduinakDamageFormulaSettings.enabled` is
+true: the MagicResist of the target's Ability and Disease spells counts on every damaging spell effect, before the
+worn DT, not on spells that ignore resistance and not a second time on effects that name MagicResist. With
+`magic.resistance` not set it waits while the two entries are in the settings, so nothing counts twice, and takes
+over once they are removed; the vampire races and any other magic resistance ability are then covered without an
+entry. Under the vanilla formula the entries stay the only source. `docs_onhit_and_damage.md` has the numbers and
+the boot lines; RacialSystem drops the "no entry" warning while the settings switch the native rule on.
 
 ### Health, magicka and stamina
 

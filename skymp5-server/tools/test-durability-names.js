@@ -158,6 +158,8 @@ const stubs = {
   reset([], true)
   inv.applyInventory(player, { entries: [{ baseId: SWORD, count: 1, condition: 0.5 }] }, false, true)
   assert.deepEqual(engine.calls, [[1, 'Steel Sword']], 'and an added copy gets the form name as before')
+  reset([{ baseId: SWORD, name: 'Steel Sword (50%)' }, { baseId: SWORD, name: 'Steel Sword (93%)' }], true)
+  assert.deepEqual(inv.getInventory(player, d.sameTaggedCopy), inv.getInventory(player), 'and an equipment report merges copies as before')
 
   assert.equal(d.setDurabilityConfig({ showAtFull: true, brokenLabel: 'Broken' }), true)
   assert.equal(d.setDurabilityConfig({ showAtFull: true, brokenLabel: 'Broken' }), false, 'the same config again changes nothing')
@@ -207,6 +209,14 @@ const stubs = {
   reset([{ baseId: SWORD, name: 'Steel Sword (97%) (Fine)', health: 1.1, worn: true }], true)
   pass([{ baseId: SWORD, count: 1, health: 1.1, condition: 0.5 }])
   assert.deepEqual(engine.renames, [[SWORD, 'Steel Sword (97%) (Fine)', 'Steel Sword (50%)', true, false]])
+
+  // An equipment report keeps unworn copies of different tags apart, which is how the server tells the worn copy from its spares (Inventory::FindWornCopy)
+  reset([{ baseId: SWORD, name: 'Steel Sword (50%)', worn: true }, { baseId: SWORD, name: 'Steel Sword (100%)' }, { baseId: SWORD, name: 'Steel Sword (93%)' },
+    { baseId: SWORD, name: 'Steel Sword (93%)' }, { baseId: SWORD, name: 'Steel Sword (93%) (Fine)', health: 1.1 }], true)
+  const shown = (entries) => entries.filter((e) => e.baseId === SWORD).map((e) => `${e.name}${e.worn ? ' worn' : ''} x${e.count}`)
+  assert.deepEqual(shown(inv.getInventory(player).entries), ['Steel Sword (50%) worn x1', 'Steel Sword (93%) (Fine) x1', 'Steel Sword (100%) x3'], 'the inventory merges them under the first name')
+  assert.deepEqual(shown(inv.getInventory(player, d.sameTaggedCopy).entries),
+    ['Steel Sword (50%) worn x1', 'Steel Sword (93%) (Fine) x1', 'Steel Sword (100%) x1', 'Steel Sword (93%) x2'])
 
   // A dll without the export: a copy in an extra list keeps its old tag, worn or not, because a copy put in again would lose its favorite mark and hotkey
   reset([{ baseId: SWORD, name: 'Steel Sword (97%)', worn: true }], false)

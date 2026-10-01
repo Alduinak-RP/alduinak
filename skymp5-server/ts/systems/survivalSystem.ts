@@ -83,7 +83,7 @@ type Mp = any;
 // warmBonus, warmUntil, afflictions: { <key>: { until, spell: desc } }, lastRoll: { <key>: epoch ms },
 // diseases: [{ id, stage, nextAt, since, from, spell: desc }] } on the character's actor form; ids are catalog ids and spells "id:Plugin"
 // descs, never raw form ids. Written at stage changes, events, logout and every SAVE_MS while cold moves.
-// private.healthScale (1 - the penalty) only with survivalColdHealthScale.
+// private.healthScale (1 - the penalty) only with survivalColdHealthScale: the native counts health damage and healing against the base maximum times it.
 //
 // server-settings.json keys (all optional):
 //   survivalEnabled               true runs survival, default false; one of the manager's PROTECTED_SETTINGS, so Migrate settings leaves it
@@ -125,7 +125,7 @@ type Mp = any;
 //   survivalColdStageAbilities    false grants no Survival_ColdStage abilities, default true
 //   survivalColdHealthPenalty     false sends no maximum health penalty, default true
 //   survivalColdMaxHealthPenalty  largest share of maximum health cold takes, default 0.8
-//   survivalColdHealthScale       true also writes private.healthScale for the native health scale, default false
+//   survivalColdHealthScale       true also writes private.healthScale, so the native counts damage and healing against the shrunk maximum, default false
 //   survivalFreezingWaterWorlds   worldspace editor ids whose water always freezes, default ["DLC1HunterHQWorld"]
 //   survivalAfflictions           { weakened, addled, frostbitten: { chance, tickMinutes } | false } over the defaults, or false for none, default
 //                                 { weakened: { 0.2, 15 }, addled: { 0.3, 30 }, frostbitten: { 0.16, 5 } }
@@ -863,9 +863,9 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   }
 
   // The health share a respawn wakes with and how the log names it: the points of the race's base health, else the share; 1 when off
-  private respawnRule(actorId: number): { share: number; text: string } {
+  private respawnRule(actorId: number, scale = 1): { share: number; text: string } {
     if (!this.enabled || this.respawnHealth >= 1) return { share: 1, text: "100%" };
-    const max = this.respawnPoints > 0 ? this.racial.maxHealth(actorId) : 0;
+    const max = this.respawnPoints > 0 ? this.racial.maxHealth(actorId) * scale : 0;
     if (max > 0) return { share: Math.min(1, this.respawnPoints / max), text: `${this.respawnPoints} of ${round(max)}` };
     return { share: this.respawnHealth, text: pct(this.respawnHealth) };
   }
@@ -877,13 +877,13 @@ export class SurvivalSystem implements System, NeedsModifierSource {
 
   // The native respawn tells the client full health and sends only a changed value, so full is written first and then the respawn health
   private wake(mp: Mp, actorId: number, why: string): void {
-    const { share, text } = this.respawnRule(actorId);
+    const { share, text } = this.respawnRule(actorId, this.healthScaleOf(actorId));
     if (share >= 1 || !this.online.has(actorId) || !isAlive(mp, actorId)) return;
     try {
       const held = mp.get(actorId, "percentages");
       mp.set(actorId, "percentages", { ...held, health: 1 });
       mp.set(actorId, "percentages", { ...held, health: share });
-      this.setRespawn(mp, actorId, share);
+      this.setRespawn(mp, actorId, this.respawnRule(actorId).share);
       const was = Number(held?.health);
       this.log(`[survival] ${hex(actorId)} ${why}: health ${text} sent to the client${Math.abs(was - share) > EPSILON ? ` (was ${pct(was)})` : ""}`);
     } catch (e) {
@@ -1736,6 +1736,12 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     }
     entry.healthScale = value;
     try { mp.set(entry.actorId, HEALTH_SCALE_PROP, value); } catch (e) { this.log(`[survival] health scale for ${hex(entry.actorId)} failed: ${e}`); }
+  }
+
+  // The scale this session wrote, within the bounds the native keeps it in (HealthScale::FromDump); 1 with the switch off
+  private healthScaleOf(actorId: number): number {
+    const scale = this.cold.healthScale ? this.online.get(actorId)?.healthScale ?? 1 : 1;
+    return scale < 0 ? 1 : Math.min(100, Math.max(0.01, scale));
   }
 
   private scaled(mp: Mp, actorId: number): boolean {

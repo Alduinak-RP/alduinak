@@ -88,14 +88,46 @@ shock (x1.25), Argonian poison 75 and Redguard poison 50. Only the resist value 
 resistance or armor rating abilities count for the few effects that name them (Vampiric Drain, some dragon and
 Wabbajack effects).
 
-Magic resistance on every other spell, the Breton's 50 and the Orc's 25, comes from two
-`damageMultConditionalFormulaSettings` entries of the Test settings, `racialMagicResistBreton` (`magicDamageMultiplier`
-0.5) and `racialMagicResistOrc` (0.75), each keyed on `GetIsRace` of the target with its vampire race (the JSON is
-under `racialPassives` in the configuration reference). They multiply every server spell hit on such a target, not
-poisons, on top of the element resistance, as vanilla stacks the two; an effect that names MagicResist itself counts
-the Breton's resistance twice (accepted). Without them only the client engine applies the magic resistance, to
-non-damage effects. `RacialSystem` lists them at boot (`[racial] magic damage entries: ...`) and warns about a race
-whose ability resists magic with no entry. The native magic pass (plan task NV7) will replace both entries.
+Magic resistance on every other spell, the Breton's 50 and the Orc's 25, has two sources, and the server uses one of
+them at a time:
+
+- **The two entries** (in the Test settings today): `racialMagicResistBreton` (`magicDamageMultiplier` 0.5) and
+  `racialMagicResistOrc` (0.75) of `damageMultConditionalFormulaSettings`, each keyed on `GetIsRace` of the target
+  with its vampire race (the JSON is under `racialPassives` in the configuration reference). They multiply every
+  server spell hit on such a target, not poisons, on top of the element resistance, as vanilla stacks the two, and
+  being a wrapper they come after everything the formula did; an effect that names MagicResist itself counts the
+  Breton's resistance twice. Under the vanilla formula (no `alduinakDamageFormulaSettings`, or its `enabled` false)
+  they are the only source: without them only the client engine applies the magic resistance, to non-damage effects.
+- **The native rule** (`scam_native.node` from `feb6f390`, only while `alduinakDamageFormulaSettings.enabled` is
+  true): the summed MagicResist of the target's Ability and Disease spells, capped at 85, multiplies every damaging
+  effect beside the effect's own resistance. A spell with the Ignore Resistance flag (10 of the 462 damage spells of
+  the Test load order, the dragon and soul drains) is left alone, and an effect whose own resist value is MagicResist
+  already (58 spells) is not multiplied a second time. The rule is on when `magic.resistance` is true, or when that
+  key is not set and `damageMultConditionalFormulaSettings` holds no entry with a `magicDamageMultiplier` and a
+  `GetIsRace` condition; `false` turns it off.
+
+So with `magic.resistance` not set nothing counts twice: while the two entries are in the settings they do the work,
+and once they are removed the native rule takes over at the next start. Only `magic.resistance: true` beside the
+entries counts both, and the native warns at boot (`... magic.resistance is true while
+damageMultConditionalFormulaSettings still holds racialMagicResistBreton, racialMagicResistOrc: the races those
+entries name resist spells twice, remove the entries`). The two sources give different numbers, because the native
+rule comes before the worn DT below and the entries after it: Firebolt (25) on a Breton in a Steel set lands (25 -
+4.875) x 0.5 = 10.06 with the entries and 25 x 0.5 - 4.875 = 7.625 with the native rule.
+
+`RacialSystem` lists the entries at boot (`[racial] magic damage entries: ...`, ending `; the native counts magic
+resistance abilities on spell damage itself (alduinakDamageFormulaSettings.magic)` when the settings switch the
+native rule on). It warns about a race whose ability resists magic while neither source covers it, and about an
+entry that is left beside `magic.resistance: true`.
+
+Spells against armor (rebalance): while `alduinakDamageFormulaSettings.enabled` is true a spell is priced as above
+and then loses `magic.dtShare` (0.5) of the target's worn DT, but never more than 1 - `magic.floor` (0.5) of its
+damage. Firebolt (25) lands 20.125 on a Steel set (DT 9.75) and 17.5 on a Daedric one (DT 15), Fireball (40) lands
+35.125 on Steel, and one hit of Flames (8) lands 4 on either. The worn DT is the one weapon hits meet (temper,
+condition and the shield included); a creature's natural DT takes nothing from a spell. The
+`damageMultConditionalFormulaSettings` wrappers and the 45 cap still come last. `magic.dtShare: 0` leaves spells as
+the vanilla formula prices them. A spell hit that a resistance or the DT changed logs `AlduinakDamageFormula - spell
+<s> of <a> on <t>: <u> before resistances, <r> after (magic resistance x<m>), worn DT <dt> x <share> takes <n>, <d>
+lands`.
 
 Weapon poison:
 ```
@@ -213,7 +245,8 @@ hits, chat and `pvp.log` are as before, and `/armor` is an unknown command.
 `aggressor, target, source, damage, blocked, power, bash, critical, preDT` while its formula prices hits (`enabled`
 true and the block accepted at boot); an older one, and this one with the formula off, stops after `damage`. The
 flags are the ones the hit was priced with. A spell hit carries `blocked` for a ward, `power`, `bash` and `critical`
-false, and its damage before the ward as `preDT`.
+false, and its damage before the ward as `preDT`: for a spell that is the damage after the resistances, the worn DT
+of the magic rules, the wrappers and the cap, so it is not a number before DT.
 The gamemode part `62_mastery.js` passes every argument on to `60_admin_modes.js`, which reads the
 five new ones in one place (`hitExtras`) and only while `enabled` is true. A hit without them is logged once per
 gamemode load (`[combat] a hit arrived without the arguments blocked, power, bash, critical, preDT ...`) and
@@ -239,16 +272,18 @@ unarmored player reads about `for 33 ... power=1 ... preDT=16.5`: the damage is 
 what the player wears and holds, one System tab line each:
 
 ```
-Armor: DT 14.31 (taken off each weapon hit), weight 52
+Armor: DT 10.93 (taken off each weapon hit), weight 48
 Steel Armor: DT 8.34, Superior, 97% (262/270)
 Steel Helmet: DT 2.03, 100% (68/68)
-Steel Cuffed Boots: DT 1.69, Broken (0/56)
+Steel Cuffed Boots: DT 0, Broken (0/56)
 Steel Shield: DT 0.56, 50% (180/360)
 Steel Sword: damage 16.75, Fine, 88% (308/350)
 ```
 
 - The DT, the temper and the weapon lines come from the native `getCombatStats(actorId)` and exist while `enabled`
-  is true. A piece below full condition reads `DT 6.4 of 8`. The temper is the quality name of its step (Fine to
+  is true. The DT and the damage are what the piece or weapon gives now, at its temper and condition (full down to
+  `durability.effect.kneeCondition`, less below it, `brokenArmorDT` and `brokenWeaponMult` when broken); the native
+  sends no separate full value. The temper is the quality name of its step (Fine to
   Legendary). The total is the native's `wornDT` (pieces and shield), the weight its `armorWeight`: the worn light
   and heavy pieces without the shield, which is the weight the block stamina rule charges.
 - A hit meets only the best piece of each slot group, so a second piece on the same slots adds nothing to the
@@ -261,8 +296,11 @@ Steel Sword: damage 16.75, Fine, 88% (308/350)
   formula prices no attack for (`kind` `none`) reads `no weapon damage`; fists give no line.
 - The condition comes from the native `getDurability(actorId)` and exists while `durability.enabled` is true: the
   percent of the name tag (rounded down, never 0 above broken), the word of `durability.nameTag.brokenLabel` at 0,
-  and the HP of the copy out of its full HP. With durability alone (TES5 damage) the command lists the worn
-  durable copies with their condition only.
+  and the HP of the copy out of its full HP (the native's `maxHp`; its `hp` is the points left). With durability
+  alone (TES5 damage) the command lists the worn durable copies with their condition only. `getCombatStats` gives a
+  condition of 1 for a held thing that never wears (a staff), so a line without a durable copy shows a condition
+  only below 100%. The numbers are the ones last written: wear of the last seconds of a fight shows after the
+  native's next write (`durability.flush`).
 - A weapon line takes the condition of the copy in its own hand (`wornLeft` of `getDurability`), so two swords of
   one base keep their own percent. Worn copies the stats do not name follow as condition lines. An unarmored
   player reads `No armor worn: DT 0, every weapon hit lands in full.`

@@ -337,7 +337,7 @@ test('the durability switch and the name tag are read from alduinakDamageFormula
   assert.deepEqual(native.durabilityTags({ alduinakDamageFormulaSettings: { enabled: true } }), { enabled: false, showAtFull: true, brokenLabel: 'Broken' })
   assert.deepEqual(native.durabilityTags(DURABILITY), { enabled: true, showAtFull: true, brokenLabel: 'Broken' })
   assert.deepEqual(native.durabilityTags({ alduinakDamageFormulaSettings: { durability: { enabled: true, nameTag: { showAtFull: false, brokenLabel: ' Ruined ' } } } }),
-    { enabled: true, showAtFull: false, brokenLabel: 'Ruined' })
+    { enabled: true, showAtFull: false, brokenLabel: ' Ruined ' }, 'the label as the native holds it, spaces included')
   assert.equal(native.durabilityTags({ alduinakDamageFormulaSettings: { durability: { enabled: 'yes' } } }).enabled, false)
 })
 

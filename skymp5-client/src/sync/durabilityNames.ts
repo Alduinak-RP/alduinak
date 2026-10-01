@@ -44,7 +44,7 @@ export const getDurabilityConfig = (): DurabilityConfig => config;
 
 // True when the names to show changed
 export const setDurabilityConfig = (next: Partial<DurabilityConfig> | null): boolean => {
-  const label = next && typeof next.brokenLabel === "string" && next.brokenLabel.trim() ? next.brokenLabel.trim() : DEFAULT_BROKEN_LABEL;
+  const label = next && typeof next.brokenLabel === "string" && next.brokenLabel ? next.brokenLabel : DEFAULT_BROKEN_LABEL;
   const updated: DurabilityConfig = { enabled: !!next && next.enabled !== false, showAtFull: !next || next.showAtFull !== false, brokenLabel: label };
   const changed = updated.enabled !== config.enabled || updated.showAtFull !== config.showAtFull || updated.brokenLabel !== config.brokenLabel;
   if (brokenLabels.indexOf(label) < 0) {
@@ -78,6 +78,9 @@ export const splitTag = (name: string): TaggedName => {
   const m = config.enabled || tagsWritten ? pattern().exec(name) : null;
   return m ? { base: m[1], tag: `(${m[2]})`, suffix: m[3] || "" } : { base: name, tag: "", suffix: "" };
 };
+
+// Copies that also show the same condition tag; the server reads the tags of the unworn copies in an equipment report to tell the worn copy from its spares
+export const sameTaggedCopy = (a: Entry, b: Entry): boolean => extrasEqual(a, b) && splitTag(a.name || "").tag === splitTag(b.name || "").tag;
 
 // "Steel Sword (97%) (Fine)" => "Steel Sword (Fine)"
 export const stripTag = (name: string): string => {

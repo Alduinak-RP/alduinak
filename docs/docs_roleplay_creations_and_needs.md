@@ -646,8 +646,11 @@ they weigh nothing again.
   `survivalColdMaxHealthPenalty` 0.8 so a Numb character keeps a fifth of the bar (critique A.3). `SurvivalService`
   applies it like hunger and fatigue (`Variable04`), writes it to `Survival_ColdAttributePenaltyPercent` (0x2EDE, the red
   end of the health bar) and the thermometer level to `Survival_TemperatureLevel` (0x2EDD: 1 near heat, 2 warming, 3
-  cooling, 4 freezing). It shrinks the bar, not the server's damage math, until the native health scale (NV4,
-  `survivalColdHealthScale`). Cold never kills unless `survivalColdKills` is true.
+  cooling, 4 freezing). By default it shrinks the bar only: the server counts damage and healing against the full
+  base maximum, so a hit takes the same share of the bar warm or cold. With `survivalColdHealthScale` true the server
+  also writes `private.healthScale` (1 - the penalty) and the native (from `feb6f390`) counts damage, potions, food
+  and restoration against the shrunk maximum: a Numb character of base 100 has 20 health points. Cold never kills
+  unless `survivalColdKills` is true.
 - **Saved** at stage changes, events, logout and every 5 minutes while cold moves.
 
 ### Afflictions

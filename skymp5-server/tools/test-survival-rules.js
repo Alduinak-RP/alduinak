@@ -939,6 +939,39 @@ async function main() {
     assert.ok(t.rec(a).cold <= 300)
   })
 
+  await test('survivalColdHealthScale: the scale follows the cold penalty, a revive counts its health point against the scaled maximum, a respawn against the full one', async () => {
+    const t = setup({ survivalEnabled: true, survivalColdHealthScale: true, survivalNightHours: [24, 0] }, true)
+    const off = setup({ survivalEnabled: true, survivalNightHours: [24, 0] }, true)
+    const [a, b] = [actor(), actor()]
+    t.join(a, REDGUARD_RACE, coldRecord(900))
+    off.join(b, REDGUARD_RACE, coldRecord(900))
+    t.put(a, INN, [5000, 5000, 0])
+    off.put(b, INN, [5000, 5000, 0])
+    later()
+    await t.update()
+    await off.update()
+    assert.equal(t.states(a).pop().coldPenalty, 0.8)
+    assert.ok(Math.abs(t.mp.get(a, 'private.healthScale') - 0.2) < 1e-9)
+    assert.equal(off.mp.get(b, 'private.healthScale'), undefined, 'nothing is written with the switch off')
+    for (const [w, id] of [[t, a], [off, b]]) {
+      w.mp.set(id, 'percentages', { health: 0.5, magicka: 1, stamina: 1 })
+      w.mp.healthSent.length = 0
+      w.logs.length = 0
+      w.sys.wake(w.mp, id, 'revived')
+    }
+    // The native counts health against base x scale: 1 point of 100 x 0.2
+    assert.equal(t.mp.healthSent.length, 2)
+    assert.ok(Math.abs(t.mp.healthSent[1][1] - 0.05) < 1e-9)
+    assert.deepEqual(t.logs, [`[survival] ${a.toString(16)} revived: health 1 of 20 sent to the client (was 50%)`])
+    assert.equal(t.mp.get(a, 'respawnPercentages').health, 0.01, 'the stored respawn share is the unscaled one, a respawn resets the cold first')
+    assert.deepEqual(off.mp.healthSent, [[b, 1], [b, 0.01]])
+    t.mp.healthSent.length = 0
+    t.mp.onRespawn(a)
+    await tick()
+    assert.equal(t.mp.get(a, 'private.healthScale'), 1)
+    assert.deepEqual(t.mp.healthSent, [[a, 1], [a, 0.01]])
+  })
+
   await test('cold: offline time warms to the start value, a respawn starts over, a request resends the state, a warmth mismatch is logged once', async () => {
     const t = setup({ survivalEnabled: true, survivalNightHours: [24, 0] }, true)
     const [a, b] = [actor(), actor()]

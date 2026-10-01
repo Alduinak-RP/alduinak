@@ -100,7 +100,7 @@ const durability = (repair = {}, more = {}) => ({
 const KINDS = { [SWORD]: ['weapon', 'Steel', '', 350], [BOW]: ['bow', 'Hunting', '', 350], [RELIC]: ['weapon', 'Iron', '', 250], [ODDITY]: ['weapon', 'Ghost', '', 250],
   [CUIRASS]: ['armor', 'Steel', 'cuirass', 270], [HELMET]: ['armor', 'Steel', 'helmet', 68], [SHIELD]: ['shield', 'Steel', 'shield', 360] }
 
-// shape "design" is the list the design names, without index, maxHp and fallbackMaterial
+// shape "bare" is the list without index and fallbackMaterial
 function world (settings, { natives = ['getDurability', 'settleWear'], inventory = [], equipment = [], shape = 'native' } = {}) {
   globalThis.__repairSettings = settings
   delete globalThis.__alduinakRepairOpen
@@ -152,7 +152,7 @@ function world (settings, { natives = ['getDurability', 'settleWear'], inventory
         const condition = e.condition ?? 1
         const at = worn.find((x) => x.baseId === e.baseId && Math.abs((x.condition ?? 1) - condition) < 5e-5)
         const copy = { baseId: e.baseId, count: e.count, condition, row, kind, slot, worn: !!at, wornLeft: !!at && !!at.wornLeft, health: e.health ?? 1 }
-        if (shape === 'design') return { ...copy, hp: maxHp }
+        if (shape === 'bare') return { ...copy, maxHp }
         // Durability::GetDurability of the native
         return { index, ...copy, percent: Math.floor(condition * 100), broken: condition <= 0, hp: Math.round(condition * maxHp * 10) / 10, maxHp, exempt: false,
           fallbackMaterial: row === 'Iron' ? IRON : 0 }
@@ -213,11 +213,11 @@ test('settings: defaults without the block, both shapes of fallbackMaterial, an 
   assert.equal(native.repairSettings({ alduinakDamageFormulaSettings: { durability: { repair: { chatCommand: '' } } } }).chatCommand, '')
 })
 
-test('getDurability is read as a list or as { items }, with slot or slots and hp or maxHp', () => {
+test('getDurability is read as a list or as { items }, with slot or slots; hp is the points left and never the full HP', () => {
   const mp = { getDurability: () => ({ items: [
-    { baseId: CUIRASS, condition: 0.5, hp: 270, row: 'Steel', kind: 'Armor', slots: ['cuirass'], worn: true },
+    { baseId: CUIRASS, condition: 0.5, hp: 135, maxHp: 270, row: 'Steel', kind: 'Armor', slots: ['cuirass'], worn: true },
     { index: 4, baseId: HELMET, condition: 2, maxHp: 68, hp: 30, slot: 'helmet', wornLeft: true, fallbackMaterial: IRON },
-    { baseId: SWORD }, { baseId: 0 }, null,
+    { baseId: SWORD, hp: 175 }, { baseId: 0 }, null,
   ] }) }
   assert.deepEqual(native.durableCopies(mp, PLAYER), [
     { index: -1, baseId: CUIRASS, kind: 'armor', row: 'Steel', maxHp: 270, cuirass: true, condition: 0.5, worn: true, wornLeft: false, fallbackMaterial: 0 },
@@ -299,7 +299,7 @@ test('a native that answers null, as after a settings block it rejected, gets no
 test('login sends durabilityConfig with the name tag settings', async () => {
   const w = await world(durability({}, { nameTag: { showAtFull: false, brokenLabel: ' Ruined ' } })).boot()
   w.ctx.gm.emit('userAssignActor', USER, PLAYER)
-  assert.deepEqual(w.take(), [{ userId: USER, customPacketType: 'durabilityConfig', enabled: true, showAtFull: false, brokenLabel: 'Ruined' }])
+  assert.deepEqual(w.take(), [{ userId: USER, customPacketType: 'durabilityConfig', enabled: true, showAtFull: false, brokenLabel: ' Ruined ' }], 'the label as the native holds it, spaces included')
   assert.match(w.lines.join('\n'), /\[durability\] repairs on: workbench armor and shields, grindstone weapons, one set of temper materials per 50% of a weapon, 50% of a cuirass, 100% of another piece, 1 fallback materials \(1 not in the load order: weapon Ghost ffffff:Missing.esm\), anyone repairs, fatigue 0, menu on activation, \/repair, low notice below 25%/)
 })
 
@@ -345,8 +345,8 @@ test('the grindstone lists weapons and bows: recipe inputs per set, a stack pric
   assert.equal(w.lines.filter((l) => /repaired for free/.test(l)).length, 1, 'logged once per base')
 })
 
-test('a native that lists the copies as the design names them gives the same menu: worn by the equipment, materials by the settings', async () => {
-  const w = await world(durability(), { inventory: PACK, equipment: WORN, shape: 'design' }).boot()
+test('a copy list without index and fallbackMaterial gives the same menu: worn by the equipment, materials by the settings', async () => {
+  const w = await world(durability(), { inventory: PACK, equipment: WORN, shape: 'bare' }).boot()
   const now = await world(durability(), { inventory: PACK, equipment: WORN }).boot()
   for (const bench of [WORKBENCH, GRINDSTONE]) {
     assert.equal(w.mp.onActivate(bench, PLAYER), false)

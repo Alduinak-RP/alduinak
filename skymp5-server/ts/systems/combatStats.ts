@@ -40,8 +40,7 @@ const HAND_FIELD = "hand";
 const LEFT_HAND = "left";
 // Kind of a weapon the formula prices no attack for: a staff, a dummy row
 export const NO_ATTACK_KIND = "none";
-const PIECE_DT_NOW_FIELDS = ["effectiveDT", "dt"];
-const PIECE_DT_FULL_FIELDS = ["dt"];
+const PIECE_DT_FIELDS = ["dt"];
 const PIECE_DT_COUNTED_FIELDS = ["countedDT"];
 const TEMPER_FIELDS = ["temperStep", "temper"];
 const DAMAGE_FIELDS = ["damage"];
@@ -54,13 +53,11 @@ export interface GearStats {
   kind: string | null;
   // Held in the left hand; false for armor and for stats without a hand
   left: boolean;
-  // DT the piece gives now, null for a weapon
+  // DT the piece gives now, at its temper and condition; null for a weapon
   dt: number | null;
-  // DT at full condition, null when the stats carry no separate value
-  fullDt: number | null;
   // Part of the DT in the total: less when a better piece covers the same slots, null when the stats carry none
   countedDt: number | null;
-  // Damage of the weapon's row, null for armor
+  // Damage of the weapon at its temper and condition, null for armor
   damage: number | null;
   // Temper steps above the plain item, 0 to 6
   temperStep: number;
@@ -86,8 +83,7 @@ const gearOf = (entry: unknown): GearStats | null => {
     baseId: baseId >>> 0,
     kind: typeof e[KIND_FIELD] === "string" ? e[KIND_FIELD] as string : null,
     left: e[HAND_FIELD] === LEFT_HAND,
-    dt: numberIn(e, PIECE_DT_NOW_FIELDS),
-    fullDt: numberIn(e, PIECE_DT_FULL_FIELDS),
+    dt: numberIn(e, PIECE_DT_FIELDS),
     countedDt: numberIn(e, PIECE_DT_COUNTED_FIELDS),
     damage: numberIn(e, DAMAGE_FIELDS),
     temperStep: Math.max(0, Math.floor(numberIn(e, TEMPER_FIELDS) ?? 0)),

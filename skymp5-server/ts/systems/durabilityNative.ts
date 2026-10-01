@@ -17,6 +17,7 @@ export interface DurabilityTags {
 }
 
 // durability.enabled stands on its own: the wear rules also run with the rebalance formula off
+// The broken label is kept as written, since the native reads it back from item names character by character
 export const durabilityTags = (allSettings: Record<string, unknown> | null | undefined): DurabilityTags => {
   const block = allSettings?.[SETTINGS_BLOCK] as { durability?: { enabled?: unknown; nameTag?: { showAtFull?: unknown; brokenLabel?: unknown } } } | undefined;
   const durability = block && typeof block === "object" ? block.durability : undefined;
@@ -24,7 +25,7 @@ export const durabilityTags = (allSettings: Record<string, unknown> | null | und
   return {
     enabled: durability?.enabled === true,
     showAtFull: durability?.nameTag?.showAtFull !== false,
-    brokenLabel: typeof label === "string" && label.trim() ? label.trim() : DEFAULT_BROKEN_LABEL,
+    brokenLabel: typeof label === "string" && label ? label : DEFAULT_BROKEN_LABEL,
   };
 };
 
@@ -77,7 +78,7 @@ export interface DurableCopy {
   kind: string;
   // Settings row of the item, "" when the native names none
   row: string;
-  // HP of the copy at full condition, 0 when the native sends none
+  // HP of the copy at full condition (the native's maxHp; its hp is the points left), 0 when the native sends none
   maxHp: number;
   // Covers the body slot; null when the native names no slot
   cuirass: boolean | null;
@@ -97,8 +98,7 @@ const copyOf = (entry: unknown): DurableCopy | null => {
   const baseId = Number(e["baseId"]);
   if (!Number.isFinite(baseId) || baseId <= 0) return null;
   const text = (v: unknown): string => (typeof v === "string" ? v : "");
-  // maxHp is the full HP of the copy; hp alone is read as it
-  const maxHp = [e["maxHp"], e["hp"]].find((v) => typeof v === "number" && Number.isFinite(v) && v > 0) as number | undefined;
+  const maxHp = e["maxHp"];
   const slots = [e["slot"], e["slots"]].flatMap((v) => (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v])).map((v) => String(v).toLowerCase());
   const condition = e["condition"];
   const whole = (v: unknown): number => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : -1);
@@ -107,7 +107,7 @@ const copyOf = (entry: unknown): DurableCopy | null => {
     baseId: baseId >>> 0,
     kind: text(e["kind"]).toLowerCase(),
     row: text(e["row"]),
-    maxHp: maxHp ?? 0,
+    maxHp: typeof maxHp === "number" && Number.isFinite(maxHp) && maxHp > 0 ? maxHp : 0,
     cuirass: slots.length ? slots.some((s) => CUIRASS_SLOTS.indexOf(s) !== -1) : null,
     condition: typeof condition === "number" && Number.isFinite(condition) ? Math.min(1, Math.max(0, condition)) : 1,
     worn: e["worn"] === true,

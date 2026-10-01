@@ -601,8 +601,10 @@ cooldown`.
 
 Breton and Orc magic resistance is not in this block. The plugin's abilities resist magic in the client engine, and
 server spell damage needs two `damageMultConditionalFormulaSettings` entries, x0.5 for a Breton target and x0.75 for
-an Orc, vampire forms included. They wrap every server spell hit, not poisons, and stand in until the native magic
-pass (plan task NV7), which replaces them:
+an Orc, vampire forms included. They wrap every server spell hit, not poisons. Under the vanilla formula they are
+the only magic resistance on spell damage. Under the rebalance formula (`alduinakDamageFormulaSettings.enabled` true)
+the native counts the abilities itself, but with `magic.resistance` not set only once these two entries are removed,
+so nothing counts twice while they stay (`docs_onhit_and_damage.md`):
 
 ```json5
 {
@@ -1355,7 +1357,7 @@ Switches:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `enabled` | `false` | `true`: the rebalance formula prices every weapon hit (row damage against worn DT, crits rolled by the server) in place of the vanilla formula, inside the same wrappers (`damageMultFormulaSettings`, `damageMultConditionalFormulaSettings`); the hit rules below, the block stamina rule, the crit notice and the DT lines of `/armor` follow it. Spells stay vanilla with the same `playerHitCap`. `false` leaves weapon damage to the vanilla formula |
+| `enabled` | `false` | `true`: the rebalance formula prices every weapon hit (row damage against worn DT, crits rolled by the server) in place of the vanilla formula, inside the same wrappers (`damageMultFormulaSettings`, `damageMultConditionalFormulaSettings`); the hit rules below, the block stamina rule, the crit notice and the DT lines of `/armor` follow it. Spells are priced by the vanilla formula, then by the `magic` rules below, with the same `playerHitCap`. `false` leaves weapon and spell damage to the vanilla formula |
 | `durability.enabled` | `false` | `true`: worn weapons, bows, crossbows, armor pieces and shields of players wear on accepted weapon hits, show their condition in their name and are repaired at the benches. Independent of `enabled`: with the formula off the vanilla formula takes the same condition shares off the weapon's damage, each piece's armor rating and the block |
 | `effectModifiers` | `true` | The summed `OneHandedMod`, `TwoHandedMod`, `MarksmanMod` and `BlockMod` of a character's Ability and Disease spells scale weapon damage and the blocked part of a hit by clamp(1 + sum / 100, 0.25, 2), under either formula. Counts only while `enabled` or `durability.enabled` is true. The Survival hunger stage abilities carry `BlockMod` -30, -50, -70 and -90 from stage 2 to 5, so a hungry player's block leaks while this is on. `false` leaves damage and blocks alone; a value that is not true or false counts as false and logs `Unexpected value of alduinakDamageFormulaSettings.effectModifiers, should be true or false, effect modifiers stay off` |
 | `source` | generated | A text naming the generator run (plugin hash, plugin count, options). Not read |
@@ -1371,6 +1373,7 @@ The formula's numbers, read while `enabled` is true:
 | `npcNaturalPowerMult` | `1.25` | Power attack multiplier of a creature's own attack |
 | `bashMult` | `0.3` | Share of the weapon's damage a bash deals; a bash never crits |
 | `playerHitCap` | `45` | The most one weapon hit (poison included) or one spell takes from a player, applied last, after `damageMultConditionalFormulaSettings`; NPC targets have no cap. Logs `... damage capped at 45` |
+| `magic` | `{ "dtShare": 0.5, "floor": 0.5 }` | Spells (`scam_native.node` from `feb6f390`). A hostile spell loses `dtShare` of the target's worn DT and keeps at least `floor` of its damage (Firebolt 25 lands 20.125 on a Steel set, Flames 8 lands 4); `dtShare: 0` leaves spell damage alone. 0 to 1 each. `resistance` (true or false, not set by default): whether the magic resistance of the target's Ability and Disease spells (Breton 50, Orc 25, at most 85) multiplies every damaging spell effect, except on spells that ignore resistance. Not set, it is on only when `damageMultConditionalFormulaSettings` holds no entry with a `magicDamageMultiplier` and a `GetIsRace` condition (the two `racialMagicResist` entries), so nothing counts twice; `true` beside those entries counts both and warns at boot; `false` leaves magic resistance to the entries. The generator writes no `magic` key |
 | `healthSnap` | `0.00011` | A health share at or under this after a hit counts as 0, so nine hits of 11.11 down 100 health. 0 to 1 |
 | `tempering` | `{ "weaponPerStep": 0.015, "armorPerStep": 0.015 }` | Share of damage or DT one temper step (Fine is 1) adds to a player's worn copy. 0 to 1 each |
 | `arrow` | `{ "scale": 0.25, "zero": 8, "max": 4 }` | Damage an arrow or bolt adds to its bow's row: clamp(`scale` x (AMMO damage - `zero`), 0, `max`) |
@@ -1426,7 +1429,7 @@ Durability, under `durability`, in force while `durability.enabled` is true:
 | `npcGearWears` | `false` | `true` lets the gear NPCs wear and hold wear too |
 | `exempt` | `[]` | `["<hex id>:<plugin>"]`: bases that never wear. Staffs, clothing, jewelry, ammunition and dummy weapons never do |
 | `deathWear` | `0` | Share of its HP every worn copy loses when its wearer dies. 0 to 1 |
-| `nameTag` | `{ "showAtFull": true, "brokenLabel": "Broken" }` | Sent to clients at login as `durabilityConfig`. `showAtFull: false` shows no "(100%)" on pristine gear. `brokenLabel` is the word a broken copy shows in brackets; the server reads it back from the names clients describe items with, so an empty text rejects the block |
+| `nameTag` | `{ "showAtFull": true, "brokenLabel": "Broken" }` | Sent to clients at login as `durabilityConfig`. `showAtFull: false` shows no "(100%)" on pristine gear. `brokenLabel` is the word a broken copy shows in brackets, used exactly as written (outer spaces included); the server reads it back from the names clients describe items with, so an empty text rejects the block |
 
 Repairs, under `durability.repair`, read by DurabilitySystem (server TS) while `durability.enabled` is true and the
 native has `getDurability`:
@@ -1452,8 +1455,15 @@ Boot lines in `gameserver.log`, in order:
 - `alduinakDamageFormulaSettings: effect modifiers are on|off (effectModifiers true, enabled true, durability.enabled
   true)`.
 - `alduinakDamageFormulaSettings: the rebalance formula prices weapon hits (row damage against worn DT, crits rolled
-  by the server, player hits capped at 45, health snap at 0.00011); spells stay TES5 with the same cap` and `...
-  hit rules: ...`, or `... enabled is false, weapon hits are priced by TES5 as without the block`.
+  by the server, player hits capped at 45, health snap at 0.00011); spells are priced by TES5, then by the magic
+  rules, with the same cap`, then `... magic: a hostile spell loses 0.5 of the target's worn DT and keeps at least
+  0.5 of its damage (magic.dtShare, magic.floor)`, one line for magic resistance (`... magic: magic resistance stays
+  with the damageMultConditionalFormulaSettings entries racialMagicResistBreton, racialMagicResistOrc
+  (magic.resistance is not set): once they are removed the magic resistance of abilities and diseases counts
+  natively`, or `... magic: magic resistance of abilities and diseases reduces hostile spell damage, at most by 85%,
+  spells that ignore resistance excepted (magic.resistance not set, no racial magic entry in
+  damageMultConditionalFormulaSettings)`) and `... hit rules: ...`; or `... enabled is false, weapon hits are priced
+  by TES5 as without the block`.
 - Server TS: `[needs] block stamina by armor weight: a block costs x (1 + 0.006 x worn armor weight, counted up to
   115)`, `[durability] repairs on: workbench armor and shields, grindstone weapons, one set of temper materials per
   50% of a weapon, ...`, and the `[crafted]` line of `craftedExtrasTemperRules`.
@@ -1633,7 +1643,7 @@ Cold and warmth:
 | `survivalColdStageAbilities` | `true` | The `Survival_ColdStage0..5` ability of the current stage (speed, lockpicking, the frost shader at Freezing and Numb) |
 | `survivalColdHealthPenalty` | `true` | Clients shrink maximum health by the cold share `(cold - 119) / 881`, as hunger and fatigue shrink stamina and magicka |
 | `survivalColdMaxHealthPenalty` | `0.8` | The largest share of maximum health cold takes, 0 to 1, so a Numb character keeps a fifth of the bar (critique A.3) |
-| `survivalColdHealthScale` | `false` | `true` also writes `private.healthScale` for the native health scale (plan task NV4), which this build does not read |
+| `survivalColdHealthScale` | `false` | `false`: the cold penalty only shrinks the client's health bar, and the server counts damage and healing against the full base maximum, so a hit takes the same share of the bar warm or cold. `true` also writes `private.healthScale` (1 - the penalty) on the character, and the native (`scam_native.node` from `feb6f390`, no other setting needed) counts weapon, spell and poison damage, potions, food, restoration and Papyrus health changes against the base maximum times it: a Numb character of base 100 (penalty 0.8) has 20 health points, so 20 damage takes the whole bar and a 30 point potion fills it; the 45 cap stays in points. The value is kept between 0.01 and 100, anything that is not a number counts as 1, and a respawn or a login with the switch off writes 1 again. A revive counts its `survivalRespawnHealthPoints` against the scaled maximum. Logs `CalculateCurrentHealthPercentage - <id> takes 20 damage against 20 health (100 base x private.healthScale 0.2)`. Untested in game |
 | `survivalFreezingWaterWorlds` | `["DLC1HunterHQWorld"]` | Worldspaces whose water always freezes, besides freezing areas and cold interiors |
 
 Afflictions (Weakened at Starving, Addled at Debilitated, Frostbitten at Numb):
