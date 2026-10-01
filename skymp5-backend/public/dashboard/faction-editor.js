@@ -10,7 +10,7 @@
     ['leader', 'Leader (every permission)', false],
     ['remove', 'Removes members', false],
     ['craft', 'Crafts faction gear', false],
-    ['housing', 'Manages hold property', true],
+    ['housing', 'Manages property (faction claims, a court rank also the hold\'s)', false],
     ['arrest', 'Arrests (cuffs and cells)', false],
     ['execute', 'Executes players', false],
     ['factionAccess', 'Opens faction doors and chests', false],

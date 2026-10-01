@@ -5,7 +5,7 @@ import { AccessPayload, FactionBackend, RosterRow, factionBackendOf, filterAcces
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { isNear, isPlayerActor, nameShownTo, userOf, userSlotCount } from "./actorUtil";
 import { formIdFromConfig } from "./formIdUtil";
-import { HousingSystem } from "./housingSystem";
+import { FactionRight, HousingSystem } from "./housingSystem";
 import { holdName, holdOfActor } from "./holdOf";
 import { RELEASED_PROP, isFallen } from "./afterlifeSystem";
 import * as rules from "./factionRules";
@@ -17,10 +17,10 @@ type Mp = any;
 // Factions: hold courts, armies and guilds whose ranks live in the backend (skymp5-backend data/faction-whitelist.json, one row per
 // character and slot). A character joins at most one faction of each type, leads at most one faction anywhere, and shows at most one
 // faction title. This system runs the rules in game: the Personal Menu Faction tabs, recruiting with consent, rank changes, removals,
-// regency, faction-only doors and containers, and releasing a deleted or perma-dead character's ranks. Hold uniforms are crafted
-// by the ranks carrying craft (FactionCraftSystem), never issued here. A hold court's powers reach only inside its own hold
-// (territoryRefusal): rank changes, regency, its doors and chests, hold property and executions; recruiting, removing and crafting
-// work anywhere, and admins are exempt.
+// regency, faction-only doors and containers, the ranks' rights on faction claims (HousingSystem), and releasing a deleted or
+// perma-dead character's ranks. Hold uniforms are crafted by the ranks carrying craft (FactionCraftSystem), never issued here.
+// A hold court's powers reach only inside its own hold (territoryRefusal): rank changes, regency, its doors and chests, hold
+// property, its faction claims and executions; recruiting, removing and crafting work anywhere, and admins are exempt.
 // Docs: docs/docs_roleplay_property_factions.md section 6.
 //
 // Client -> server:
@@ -154,6 +154,7 @@ export class FactionSystem implements System {
     this.housing.factionGate = (actorId, refrId, action) => this.gate(actorId, refrId, action);
     this.housing.factionDef = (factionId) => (this.definitionsLoaded ? this.defs.get(factionId) ?? null : undefined);
     this.housing.territoryRefusal = (actorId, factionId, action) => this.territoryRefusal(actorId, factionId, action);
+    this.housing.factionRights = (actorId) => this.propertyRights(actorId);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => { void this.onAssign(userId, actorId >>> 0); });
     ctx.gm.on(CHARACTER_LIST_EVENT, (profileId: number, entries: CharacterListEntry[]) => this.onCharacterList(profileId, entries));
@@ -1007,6 +1008,21 @@ export class FactionSystem implements System {
       })
       .map((m) => m.factionId)
       .filter((id) => !here || !this.territoryRefusal(actorId, id));
+  }
+
+  // Faction claims follow the character's own rank: housing manages them, factionAccess uses them, a leader or acting regent does both
+  propertyRights(actorId: number): FactionRight[] {
+    const access = this.cachedAccess(actorId);
+    const out: FactionRight[] = [];
+    for (const m of rules.membershipsOf(access)) {
+      const faction = this.defs.get(m.factionId);
+      if (!faction || out.some((f) => f.id === faction.id)) continue;
+      const auth = { ...this.authorityOf(actorId, faction, access), staff: false };
+      if (!auth.rank) continue;
+      const manage = rules.hasPermission(auth, "housing");
+      out.push({ id: faction.id, name: faction.name, use: manage || rules.hasFullAuthority(auth) || auth.rank.factionAccess, manage });
+    }
+    return out;
   }
 
   // "" when a rank carrying the permission reaches where the actor stands (or none carries it), else the first one's border notice

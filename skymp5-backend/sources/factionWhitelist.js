@@ -25,7 +25,7 @@ const PROVINCE_DEFAULTS = [
   ['Summerset', /thalmor|psijic|aldmeri|dominion/],
 ]
 const HOLDS = ['haafingar', 'reach', 'falkreath', 'hjaalmarch', 'eastmarch', 'winterhold', 'rift', 'pale', 'whiterun']
-// Hold ranks that manage property when the rank carries no housing flag
+// Hold ranks that manage property when the rank carries no housing flag; housing on any rank manages its faction's claims, on a court rank also the hold's property
 const HOLD_MANAGER_RANKS = ['jarl', 'steward']
 // recruit: the ranks a holder may bring outsiders in at; promote: the ranks it may move a lower member to
 const RANK_LISTS = ['recruit', 'promote']
@@ -501,7 +501,6 @@ function applyRank(req, input, faction, ranks) {
   for (const key of RANK_FLAGS) {
     if (input[key] === undefined) continue
     if (typeof input[key] !== 'boolean') throw fail(400, `${key} must be true or false`)
-    if (key === 'housing' && input[key] && faction.scope !== 'hold') throw fail(400, 'only hold court ranks manage hold property')
     req[key] = input[key]
   }
   if (input.title !== undefined) req.title = cleanText(input.title) || undefined

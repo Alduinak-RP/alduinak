@@ -7,6 +7,7 @@ import './styles.scss';
 
 interface HousingEvents {
   claim: string;
+  claimFaction?: string;
   abandon: string;
   breakLock: string;
   lock: string;
@@ -45,6 +46,18 @@ interface PinnableLetter {
   title: string;
 }
 
+// The faction owning a faction claim; role is the viewer's standing in it
+interface OwningFaction {
+  id: string;
+  name: string;
+  role: 'manager' | 'member' | '';
+}
+
+interface FactionChoice {
+  id: string;
+  name: string;
+}
+
 // The widget object the client pushes through window.skyrimPlatform.widgets.
 export interface HousingData {
   targetLabel: string;
@@ -64,6 +77,8 @@ export interface HousingData {
   note?: DoorNote | null;
   letters?: PinnableLetter[]; // Letters this viewer may pin here now
   canKnock?: boolean; // A door anyone may knock on
+  faction?: OwningFaction | null; // Set on a faction claim
+  claimFactions?: FactionChoice[]; // Factions this viewer may claim this for, or hand their own claim to
   events: HousingEvents;
 }
 
@@ -71,7 +86,7 @@ export interface HousingData {
 const NAME_CHARS = /^[A-Za-z0-9 '_-]+$/;
 
 // Actions that ask before they go to the server
-type Pending = 'voidKeys' | 'giveUp' | 'breakLock' | 'pinNote';
+type Pending = 'voidKeys' | 'giveUp' | 'breakLock' | 'pinNote' | 'giveFaction';
 
 const send = (key: string, ...args: unknown[]): void => {
   try {
@@ -96,11 +111,15 @@ const Housing = ({ data }: { data: HousingData }) => {
 
   const note = data.note || null;
   const letters = data.letters || [];
+  const faction = data.faction || null;
+  const claimFactions = ev.claimFaction ? data.claimFactions || [] : [];
+  const canClaim = view === 'claimable' || (isManager && !data.owned);
 
   const [rename, setRename] = useState(data.name || '');
   const [pending, setPending] = useState<Pending | null>(null);
   const [reading, setReading] = useState(false);
   const [pick, setPick] = useState('');
+  const [giveTo, setGiveTo] = useState<FactionChoice | null>(null);
 
   const confirms: Record<Pending, { title: string; body: React.ReactNode; label: string; event: string; args?: unknown[] }> = {
     voidKeys: {
@@ -136,6 +155,13 @@ const Housing = ({ data }: { data: HousingData }) => {
       event: ev.pinNote,
       args: [pick],
     },
+    giveFaction: {
+      title: `Give ${displayName} to ${giveTo ? giveTo.name : 'the faction'}?`,
+      body: 'It stops being yours and stays with the faction whoever leads it. Its ranks that open faction doors use it, its property managers run it, and every key cut so far stops working.',
+      label: 'Give',
+      event: ev.claimFaction || '',
+      args: [giveTo ? giveTo.id : ''],
+    },
   };
   const dialog = pending ? confirms[pending] : null;
 
@@ -166,9 +192,8 @@ const Housing = ({ data }: { data: HousingData }) => {
   const lockState = data.sides
     ? ` · entrance ${data.lockedEntrance ? 'locked' : 'open'} · exit ${data.lockedExit ? 'locked' : 'open'}`
     : (data.locked ? ' · locked' : ' · unlocked');
-  const status = hasAccess
-    ? (isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder') + lockState
-    : (data.owned ? 'Owned by another' : 'Unclaimed');
+  const holder = faction && faction.role ? "Your faction's" : isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder';
+  const status = hasAccess ? holder + lockState : (data.owned ? 'Owned by another' : 'Unclaimed');
 
   return (
     <div className="housing">
@@ -179,7 +204,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           <span className={'housing__status' + (data.locked ? ' housing__status--locked' : '')}>{status}</span>
         </div>
 
-        {data.ownerName && !isOwner ? (
+        {data.ownerName && (!isOwner || faction) ? (
           <p className="housing__owner">Owner: {data.ownerName}</p>
         ) : null}
 
@@ -199,12 +224,28 @@ const Housing = ({ data }: { data: HousingData }) => {
           </p>
         ) : null}
 
+        {canClaim && claimFactions.length > 0 ? (
+          <p className="housing__hint">A faction claim belongs to the faction, not to you, and stays with it whoever leads it.</p>
+        ) : null}
+
         <div className="housing__actions">
-          {view === 'claimable' || (isManager && !data.owned) ? (
+          {canClaim ? (
             <button className="housing__button housing__button--primary" onClick={() => send(ev.claim)}>
               Claim
             </button>
           ) : null}
+
+          {canClaim
+            ? claimFactions.map((f) => (
+                <button
+                  key={f.id}
+                  className="housing__button housing__button--primary"
+                  onClick={() => send(ev.claimFaction || '', f.id)}
+                >
+                  Claim for {f.name}
+                </button>
+              ))
+            : null}
 
           {canLock && data.owned && data.sides ? (
             <>
@@ -245,6 +286,21 @@ const Housing = ({ data }: { data: HousingData }) => {
               {isOwner ? 'Transfer' : 'Grant ownership'}
             </button>
           ) : null}
+
+          {isOwner && !faction && data.owned
+            ? claimFactions.map((f) => (
+                <button
+                  key={f.id}
+                  className="housing__button"
+                  onClick={() => {
+                    setGiveTo(f);
+                    setPending('giveFaction');
+                  }}
+                >
+                  Give to {f.name}
+                </button>
+              ))
+            : null}
 
           {isOwner ? (
             <button className="housing__button housing__button--danger" onClick={() => setPending('giveUp')}>
@@ -287,6 +343,14 @@ const Housing = ({ data }: { data: HousingData }) => {
 
         {isOwner && !data.sides ? (
           <p className="housing__hint">A locked door stops everyone, you included, until it is unlocked here. A key lets its holder lock and unlock it too: trade it or leave it in a chest. Void all keys cancels every copy.</p>
+        ) : null}
+
+        {faction && faction.role ? (
+          <p className="housing__hint">
+            {faction.role === 'manager'
+              ? `Every rank of ${faction.name} that opens faction doors locks and unlocks this too. Its property managers rename it, cut and void keys, transfer it or give it up.`
+              : `Your rank in ${faction.name} lets you lock and unlock this from here.`}
+          </p>
         ) : null}
 
         {manages ? (

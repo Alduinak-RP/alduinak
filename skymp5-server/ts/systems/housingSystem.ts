@@ -5,8 +5,8 @@ import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
 import { addItemTo, holdsItem, takeItemFrom, userSlotCount } from "./actorUtil";
-import { FactionDef, holdRanksOf, managesHold } from "./factionRules";
-import { Hold, holdOfRefs, isOutdoors, loadHolds } from "./holdOf";
+import { FactionDef, factionHold, holdRanksOf, managesHold } from "./factionRules";
+import { Hold, holdName, holdOfRefs, isOutdoors, loadHolds } from "./holdOf";
 import { describeActor, profileIdOf, realNameOf } from "./playerText";
 import { adminAudit } from "./discordAlerts";
 import { WRITING_ID } from "./writingStore";
@@ -29,15 +29,16 @@ type Mp = any;
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
 //     { customPacketType: "propertyInfoRequest", target: <refrId> }
-//     { customPacketType: "propertyRequest", action, target, recipient?, name?, id? }
-//       action: claim | abandon | lock | unlock (both locks) | lockentrance | unlockentrance
+//     { customPacketType: "propertyRequest", action, target, recipient?, name?, id?, faction? }
+//       action: claim | claimfaction (faction: the id) | abandon | lock | unlock (both locks) | lockentrance | unlockentrance
 //             | lockexit | unlockexit | rename | transfer
 //             | breaklock (revoke from older clients) | createkey | revokekeys | grantcontainer
 //             | pinnote (id: the letter) | takenote | knock
 //   Server -> Client:
 //     { customPacketType: "propertyMenu", target, view, owned, name, locked (either lock),
 //       lockedEntrance, lockedExit, sides, canLock, hasKeys, canGrantContainers, ownerName, pets, hold,
-//       note: null | { title, text, byline, signFaction, brokenSeals, mine, canTakeDown }, letters: [{ id, title }], canKnock }
+//       note: null | { title, text, byline, signFaction, brokenSeals, mine, canTakeDown }, letters: [{ id, title }], canKnock,
+//       faction: null | { id, name, role: "manager" | "member" | "" }, claimFactions: [{ id, name }] }
 //     { customPacketType: "propertyNotice", text }
 //     { customPacketType: "refDecor", full?, refs: [{refId,name,locked}] }
 //
@@ -66,6 +67,13 @@ type Mp = any;
 // Knocking. Every viewer of a door, strangers and faction outsiders included, may knock once per KNOCK_COOLDOWN_MS; the
 // gamemode's chat delivers "<name> knocks on the door." ("Someone" to listeners the knocker is not introduced to) at
 // say range around the door's other half, or around the door itself when it has none.
+//
+// Faction claims. A member whose rank manages property (the rank's housing flag, a leader or an acting regent) claims an
+// unclaimed door or container for the faction with a lock, or hands their own claim to it. The record keeps owner
+// FACTION_OWNER and the faction id in `faction`, so it stays the faction's whoever leads or leaves. Ranks with the door
+// flag (factionAccess) lock and unlock it and take notes down as a key holder does; managing ranks also rename it, cut and
+// void keys, transfer it to a player and give it up. A court claims only inside its own hold and its ranks act on the
+// claim only while standing in that hold. Hold officials and admins manage faction claims like any other.
 
 const HOUSING_PROP = "private.housing";
 const NOTE_PROP = "private.doorNote";
@@ -93,6 +101,10 @@ const REQUEST_COOLDOWN_MS = 500;
 const KNOCK_COOLDOWN_MS = 10000;
 // What a hold official may do to someone else's claim
 const MANAGER_ACTIONS = new Set(["abandon", "breaklock", "revoke", "rename", "revokekeys", "transfer", "grantcontainer"]);
+// What only the owner, or a faction claim's managing ranks, may do
+const OWNER_ACTIONS = new Set(["abandon", "rename", "revokekeys", "transfer", "grantcontainer", "createkey"]);
+// The owner of a faction claim; the faction id is in the record's `faction`
+const FACTION_OWNER = -1;
 const CHANGE_FAILED = "That cannot be changed right now.";
 const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ and - only.";
 
@@ -112,7 +124,25 @@ interface PropertyRecord {
   cut: number;
   partner: number;
   containers: number[];
+  // The owning faction's id when owner is FACTION_OWNER, "" on a personal claim
+  faction: string;
 }
+
+// One of an actor's factions, and whether its rank uses (door access) and manages (property) the faction's claims
+export interface FactionRight {
+  id: string;
+  name: string;
+  use: boolean;
+  manage: boolean;
+}
+
+// An actor's standing on a faction claim; refusal is the border notice of a court rank outside its hold
+interface FactionStanding {
+  role: "manager" | "member" | "";
+  refusal: string;
+}
+
+const NO_STANDING: FactionStanding = { role: "", refusal: "" };
 
 // As stored: "locked" is either lock, the one flag builds before the entrance and exit read
 type StoredRecord = PropertyRecord & { locked: boolean };
@@ -153,7 +183,7 @@ export interface DoorNoteWritings {
 
 const emptyRecord = (): PropertyRecord => ({
   owner: 0, ownerName: "", name: null, lockedEntrance: false, lockedExit: false,
-  serial: 1, cut: 0, partner: 0, containers: [],
+  serial: 1, cut: 0, partner: 0, containers: [], faction: "",
 });
 
 const keyCredentialIn = (name: unknown): string => {
@@ -304,7 +334,8 @@ export class HousingSystem implements System {
       return;
     }
     const rec = this.read(ctx, primary) || emptyRecord();
-    const isOwner = rec.owner !== 0 && rec.owner === this.profileOf(ctx, actorId);
+    const standing = this.factionStanding(ctx, actorId, rec, OWNER_ACTIONS.has(action) ? `faction property ${action}` : "");
+    const isOwner = this.ownsClaim(ctx, actorId, rec, standing);
     const asManager = !isOwner && MANAGER_ACTIONS.has(action);
     const managing = this.managerRefusal(ctx, actorId, primary, asManager ? action : "");
     if (managing && asManager) {
@@ -312,9 +343,14 @@ export class HousingSystem implements System {
       return;
     }
     const isManager = managing === "";
+    if (standing.refusal && !isOwner && !isManager && OWNER_ACTIONS.has(action)) {
+      this.refuse(ctx, userId, actorId, action, primary, standing.refusal);
+      return;
+    }
 
     switch (action) {
-      case "claim": this.doClaim(ctx, userId, actorId, primary, rec); break;
+      case "claim": this.doClaim(ctx, userId, actorId, primary, rec, ""); break;
+      case "claimfaction": this.doClaim(ctx, userId, actorId, primary, rec, String(content["faction"] ?? "").slice(0, 64) || "?"); break;
       case "abandon": this.doAbandon(ctx, userId, actorId, primary, rec, isOwner, isManager); break;
       case "breaklock":
       case "revoke": this.doBreakLock(ctx, userId, actorId, primary, rec, isManager); break;
@@ -324,11 +360,11 @@ export class HousingSystem implements System {
       case "unlockentrance": this.doLock(ctx, userId, actorId, primary, rec, "outside", false); break;
       case "lockexit": this.doLock(ctx, userId, actorId, primary, rec, "inside", true); break;
       case "unlockexit": this.doLock(ctx, userId, actorId, primary, rec, "inside", false); break;
-      case "rename": this.doRename(ctx, userId, primary, rec, isOwner, isManager, content["name"]); break;
+      case "rename": this.doRename(ctx, userId, actorId, primary, rec, isOwner, isManager, content["name"]); break;
       case "createkey": this.doCreateKey(ctx, userId, actorId, primary, rec, isOwner, content["name"]); break;
-      case "revokekeys": this.doRevokeKeys(ctx, userId, primary, rec, isOwner, isManager); break;
-      case "transfer": this.doTransfer(ctx, userId, primary, rec, isOwner, isManager, content["recipient"]); break;
-      case "grantcontainer": this.doGrantContainer(ctx, userId, primary, rec, isOwner, isManager, content["recipient"]); break;
+      case "revokekeys": this.doRevokeKeys(ctx, userId, actorId, primary, rec, isOwner, isManager); break;
+      case "transfer": this.doTransfer(ctx, userId, actorId, primary, rec, isOwner, isManager, content["recipient"]); break;
+      case "grantcontainer": this.doGrantContainer(ctx, userId, actorId, primary, rec, isOwner, isManager, content["recipient"]); break;
       case "pinnote": this.doPinNote(ctx, userId, actorId, primary, rec, content["id"]); break;
       case "takenote": this.doTakeNote(ctx, userId, actorId, primary, rec); break;
       case "knock": this.doKnock(ctx, userId, actorId, primary, rec); break;
@@ -336,11 +372,25 @@ export class HousingSystem implements System {
     }
   }
 
-  private doClaim(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord): void {
+  // A personal claim, or with a faction id one for that faction; the owner of a personal claim hands it to the faction without a lock
+  private doClaim(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, factionId: string): void {
     const faction = this.factionGate ? this.factionGate(actorId, primary) : null;
     if (faction) {
       this.notice(ctx, userId, `This belongs to ${faction.name}.`);
       return;
+    }
+    let right: FactionRight | null = null;
+    if (factionId) {
+      right = this.factionRightsOf(actorId).find((f) => f.id === factionId) || null;
+      const refusal = right ? this.factionClaimRefusal(ctx, actorId, primary, right, "faction claim") : "You do not belong to that faction.";
+      if (refusal) {
+        this.refuse(ctx, userId, actorId, "claimfaction", primary, refusal);
+        return;
+      }
+      if (rec.owner !== 0 && !rec.faction && rec.owner === this.profileOf(ctx, actorId)) {
+        this.handToFaction(ctx, userId, actorId, primary, rec, right!);
+        return;
+      }
     }
     if (rec.owner !== 0) {
       this.notice(ctx, userId, "Somebody already owns this.");
@@ -362,15 +412,29 @@ export class HousingSystem implements System {
       this.log(`[housing] claim ${primary.toString(16)} by ${this.who(ctx, actorId)} refused: the lock could not be taken`);
       return;
     }
-    rec.owner = profileId;
-    rec.ownerName = this.nameOf(ctx, actorId);
+    rec.owner = right ? FACTION_OWNER : profileId;
+    rec.faction = right ? right.id : "";
+    rec.ownerName = right ? right.name : this.nameOf(ctx, actorId);
     rec.partner = this.partnerOf(ctx, primary);
     if (!this.commit(ctx, userId, primary, rec)) {
       try { addItemTo(mp, actorId, this.lockBaseId, 1); } catch (e) { this.log(`[housing] could not hand the lock back to ${this.who(ctx, actorId)}: ${e}`); }
       return;
     }
-    this.log(`[housing] lock spent by ${this.who(ctx, actorId)} on ${this.claimLabel(primary, rec)}`);
-    this.notice(ctx, userId, "This is yours now. The lock is fitted.");
+    this.log(`[housing] lock spent by ${this.who(ctx, actorId)} on ${this.claimLabel(primary, rec)}${right ? ` (${right.name}), claimed as faction manager` : ""}`);
+    this.notice(ctx, userId, right ? `This belongs to ${right.name} now. The lock is fitted.` : "This is yours now. The lock is fitted.");
+    this.sendMenu(ctx, userId, actorId, primary);
+  }
+
+  // Old keys stop fitting, as on any change of owner
+  private handToFaction(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, right: FactionRight): void {
+    this.reKey(ctx, primary, rec);
+    rec.owner = FACTION_OWNER;
+    rec.faction = right.id;
+    rec.ownerName = right.name;
+    rec.partner = this.partnerOf(ctx, primary);
+    if (!this.commit(ctx, userId, primary, rec)) return;
+    this.log(`[housing] ${this.claimLabel(primary, rec)} (${right.name}) handed to the faction by its owner ${this.who(ctx, actorId)}`);
+    this.notice(ctx, userId, `${rec.name || "This"} belongs to ${right.name} now. Old keys no longer fit.`);
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -379,10 +443,13 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "This is not yours to give up.");
       return;
     }
+    const claim = this.claimLabel(primary, rec);
+    const role = this.managedAs(rec, isOwner);
     if (!this.release(ctx, primary, rec)) {
       this.notice(ctx, userId, CHANGE_FAILED);
       return;
     }
+    this.log(`[housing] ${claim} given up by ${this.who(ctx, actorId)} as ${role}`);
     this.notice(ctx, userId, "Given up.");
     this.sendMenu(ctx, userId, actorId, primary);
   }
@@ -397,8 +464,8 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "Nobody owns this.");
       return;
     }
-    const formerOwner = rec.owner;
-    const formerName = rec.name;
+    const former = { ...rec };
+    const ownerName = this.ownerNameOf(rec);
     const claim = this.claimLabel(primary, rec);
     if (!this.release(ctx, primary, rec)) {
       this.notice(ctx, userId, CHANGE_FAILED);
@@ -406,7 +473,9 @@ export class HousingSystem implements System {
     }
     this.log(`[housing] lock broken by ${this.who(ctx, actorId)} on ${claim} (${this.holdOf(ctx, primary)?.name ?? "no hold"})`);
     this.notice(ctx, userId, "The lock is broken. Anyone may claim it now.");
-    this.noticeProfile(ctx, formerOwner, `The lock on ${formerName || "one of your properties"} was broken. It is no longer yours.`);
+    this.noticeOwners(ctx, former, former.faction
+      ? `The lock on ${former.name || `a property of ${ownerName}`} was broken. It no longer belongs to ${ownerName}.`
+      : `The lock on ${former.name || "one of your properties"} was broken. It is no longer yours.`);
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -419,7 +488,7 @@ export class HousingSystem implements System {
     }
     const role = this.accessRole(ctx, primary, rec, actorId);
     if (!role) {
-      this.refuse(ctx, userId, actorId, action, primary, "You have no key to this.");
+      this.refuse(ctx, userId, actorId, action, primary, this.factionStanding(ctx, actorId, rec, `faction property ${action}`).refusal || "You have no key to this.");
       return;
     }
     const sided = this.hasSides(ctx, primary, rec);
@@ -434,7 +503,7 @@ export class HousingSystem implements System {
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
-  private doRename(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, raw: unknown): void {
+  private doRename(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, raw: unknown): void {
     if (!isOwner && !isManager) {
       this.notice(ctx, userId, "This is not yours to name.");
       return;
@@ -444,11 +513,12 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, NAME_REFUSED);
       return;
     }
+    const claim = this.claimLabel(primary, rec);
     rec.name = name;
     if (!this.commit(ctx, userId, primary, rec)) return;
+    this.log(`[housing] ${claim} renamed "${name}" by ${this.who(ctx, actorId)} as ${this.managedAs(rec, isOwner)}`);
     this.notice(ctx, userId, `Now called ${name}.`);
-    const actorId = this.actorOf(ctx, userId);
-    if (actorId) this.sendMenu(ctx, userId, actorId, primary);
+    this.sendMenu(ctx, userId, actorId, primary);
   }
 
   // Keys are real inventory items; the name extra is the credential, so a key
@@ -471,23 +541,24 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "You are carrying too many keys.");
       return;
     }
+    if (rec.faction) this.log(`[housing] ${keyName} cut for ${this.claimLabel(primary, rec)} by ${this.who(ctx, actorId)} as faction manager`);
     this.notice(ctx, userId, `${keyName} is in your pack.`);
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
-  private doRevokeKeys(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean): void {
+  private doRevokeKeys(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean): void {
     if (!isOwner && !isManager) {
       this.notice(ctx, userId, "This is not yours to re-key.");
       return;
     }
     this.reKey(ctx, primary, rec);
     if (!this.commit(ctx, userId, primary, rec)) return;
+    this.log(`[housing] keys of ${this.claimLabel(primary, rec)} voided by ${this.who(ctx, actorId)} as ${this.managedAs(rec, isOwner)}`);
     this.notice(ctx, userId, "Every key turned to scrap.");
-    const actorId = this.actorOf(ctx, userId);
-    if (actorId) this.sendMenu(ctx, userId, actorId, primary);
+    this.sendMenu(ctx, userId, actorId, primary);
   }
 
-  private doTransfer(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, rawRecipient: unknown): void {
+  private doTransfer(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, rawRecipient: unknown): void {
     if (!isOwner && !isManager) {
       this.notice(ctx, userId, "This is not yours to hand over.");
       return;
@@ -498,16 +569,20 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, "That is nobody.");
       return;
     }
-    if (recipientProfile === rec.owner) {
+    if (!rec.faction && recipientProfile === rec.owner) {
       this.notice(ctx, userId, "They already own it.");
       return;
     }
+    const claim = this.claimLabel(primary, rec);
+    const role = this.managedAs(rec, isOwner);
     // Old keys must not open a new owner's door.
     this.reKey(ctx, primary, rec);
     rec.owner = recipientProfile;
+    rec.faction = "";
     rec.ownerName = this.nameOf(ctx, recipientActor);
     rec.partner = this.partnerOf(ctx, primary);
     if (!this.commit(ctx, userId, primary, rec)) return;
+    this.log(`[housing] ${claim} transferred to ${this.who(ctx, recipientActor)} by ${this.who(ctx, actorId)} as ${role}`);
     this.notice(ctx, userId, `Handed to ${rec.ownerName}.`);
     const recipientUser = this.userOf(ctx, recipientActor);
     this.notice(ctx, recipientUser, rec.name ? `${rec.name} is yours now.` : "You have been given a property.");
@@ -515,12 +590,12 @@ export class HousingSystem implements System {
 
   // The menu only offers this on a container, and a container's claim is just
   // its own record, so handing one over is exactly a transfer.
-  private doGrantContainer(ctx: SystemContext, userId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, rawRecipient: unknown): void {
+  private doGrantContainer(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, rawRecipient: unknown): void {
     if (this.baseTypeOf(ctx, primary) !== "CONT") {
       this.notice(ctx, userId, "That is not a container.");
       return;
     }
-    this.doTransfer(ctx, userId, primary, rec, isOwner, isManager, rawRecipient);
+    this.doTransfer(ctx, userId, actorId, primary, rec, isOwner, isManager, rawRecipient);
   }
 
   // ── Menu ────────────────────────────────────────────────────────────────────
@@ -539,8 +614,11 @@ export class HousingSystem implements System {
     }
     const rec = primary ? this.read(ctx, primary) : null;
     const owned = !!rec && rec.owner !== 0;
-    const profileId = this.profileOf(ctx, actorId);
-    const isOwner = owned && rec!.owner === profileId;
+    const standing = owned ? this.factionStanding(ctx, actorId, rec!) : NO_STANDING;
+    const isOwner = owned && this.ownsClaim(ctx, actorId, rec!, standing);
+    // Claimable for a faction while unclaimed, and the owner of a personal claim may hand it to one
+    const offersFactions = !!primary && (!owned || (!rec!.faction && isOwner));
+    const claimFactions = offersFactions ? this.claimFactionsAt(ctx, actorId, primary).map((f) => ({ id: f.id, name: f.name })) : [];
     // An official outside the hold still gets the manager view, and each action tells them why it is refused
     const isManager = !!primary && this.managerRefusal(ctx, actorId, primary) !== null;
     const canLock = owned && this.hasAccess(ctx, primary, rec!, actorId);
@@ -568,12 +646,14 @@ export class HousingSystem implements System {
       canLock,
       hasKeys: owned,
       canGrantContainers: (isOwner || isManager) && owned && this.baseTypeOf(ctx, primary) === "CONT",
-      ownerName: owned ? (rec!.ownerName || "Someone") : null,
+      ownerName: owned ? this.ownerNameOf(rec!) : null,
       pets: this.petCategoryOf ? this.petCategoryOf(actorId, primary || target) : "",
       hold: primary ? (this.holdOf(ctx, primary)?.name ?? "") : "",
       note: primary ? this.noteFor(ctx, actorId, door, primary, rec || emptyRecord()) : null,
       letters: owned && this.canPinAt(ctx, actorId, door) ? this.writings!.lettersOf(ctx.svr, actorId) : [],
       canKnock,
+      faction: owned && rec!.faction ? { id: rec!.faction, name: this.ownerNameOf(rec!), role: standing.role } : null,
+      claimFactions,
     });
   }
 
@@ -704,7 +784,7 @@ export class HousingSystem implements System {
       this.notice(ctx, userId, CHANGE_FAILED);
       return;
     }
-    this.writings.logDoorNote(`${describeActor(ctx.svr, actorId)} pinned letter ${id} ${JSON.stringify(taken.title)} to ${where}, owner profile ${rec.owner}`);
+    this.writings.logDoorNote(`${describeActor(ctx.svr, actorId)} pinned letter ${id} ${JSON.stringify(taken.title)} to ${where}, owner ${rec.faction || `profile ${rec.owner}`}`);
     this.log(`[housing] note ${id} pinned to ${where} by ${this.who(ctx, actorId)}`);
     this.notice(ctx, userId, "You pin the note to the door.");
     this.sendMenu(ctx, userId, actorId, primary);
@@ -810,6 +890,9 @@ export class HousingSystem implements System {
   // Set by FactionSystem: the border notice of a court rank used outside its hold, "" inside it; with an action it is logged
   territoryRefusal: ((actorId: number, factionId: string, action?: string) => string) | null = null;
 
+  // Set by FactionSystem: the actor's own factions and what each rank allows on faction claims, staff powers left out
+  factionRights: ((actorId: number) => FactionRight[]) | null = null;
+
   // Both halves of a teleport door, just the ref for anything else
   doorSides(ctx: SystemContext, refrId: number): number[] {
     const partner = refrId ? this.partnerOf(ctx, refrId) : 0;
@@ -840,13 +923,62 @@ export class HousingSystem implements System {
     return this.accessRole(ctx, primary, rec, actorId) !== "";
   }
 
-  // What lets an actor lock or unlock this: owner, admin or key; hold officials only manage the claim
+  // What lets an actor lock or unlock this: owner, admin, a faction claim's rank or key; hold officials only manage the claim
   private accessRole(ctx: SystemContext, primary: number, rec: PropertyRecord, actorId: number): string {
     if (rec.owner === 0) return "unclaimed";
     const v = this.viewerAccess(ctx, actorId);
-    if (v.profileId && v.profileId === rec.owner) return "owner";
+    if (!rec.faction && v.profileId && v.profileId === rec.owner) return "owner";
     if (v.admin) return "admin";
+    const standing = this.factionStanding(ctx, actorId, rec);
+    if (standing.role) return `faction ${standing.role}`;
     return v.keys.has(this.credentialOf(primary, rec)) ? "key" : "";
+  }
+
+  // The personal owner, or a managing rank of the faction that owns the claim
+  private ownsClaim(ctx: SystemContext, actorId: number, rec: PropertyRecord, standing: FactionStanding): boolean {
+    if (rec.owner === 0) return false;
+    return rec.faction ? standing.role === "manager" : rec.owner === this.profileOf(ctx, actorId);
+  }
+
+  // A managing rank also uses the claim; a court rank counts only inside its own hold, with an action the border refusal is logged
+  private factionStanding(ctx: SystemContext, actorId: number, rec: PropertyRecord, action = ""): FactionStanding {
+    const right = rec.faction ? this.factionRightsOf(actorId).find((f) => f.id === rec.faction) : undefined;
+    if (!right || (!right.use && !right.manage)) return NO_STANDING;
+    const refusal = this.territoryRefusal ? this.territoryRefusal(actorId, right.id, action) : "";
+    return refusal ? { role: "", refusal } : { role: right.manage ? "manager" : "member", refusal: "" };
+  }
+
+  private factionRightsOf(actorId: number): FactionRight[] {
+    try {
+      return this.factionRights ? this.factionRights(actorId) : [];
+    } catch (e) {
+      this.log(`[housing] faction rights unavailable: ${e}`);
+      return [];
+    }
+  }
+
+  // The factions this actor may claim this property for
+  private claimFactionsAt(ctx: SystemContext, actorId: number, primary: number): FactionRight[] {
+    return this.factionRightsOf(actorId).filter((f) => f.manage && !this.factionClaimRefusal(ctx, actorId, primary, f));
+  }
+
+  // "" when the rank may claim for its faction here: it manages property, and a court claims only inside its own hold while standing in it
+  private factionClaimRefusal(ctx: SystemContext, actorId: number, primary: number, right: FactionRight, action = ""): string {
+    if (!right.manage) return `Your rank in ${right.name} does not manage its property.`;
+    const court = factionHold(right.id);
+    if (court && this.holdOf(ctx, primary)?.key !== court) return `${right.name} may only claim property inside ${holdName(court)}.`;
+    return this.territoryRefusal ? this.territoryRefusal(actorId, right.id, action) : "";
+  }
+
+  // The faction's current name on a faction claim, else the owner's name at the claim
+  private ownerNameOf(rec: PropertyRecord): string {
+    if (rec.faction) return this.factionDef?.(rec.faction)?.name || rec.ownerName || rec.faction;
+    return rec.ownerName || "Someone";
+  }
+
+  // How an owner or manager acted on a claim, for the log
+  private managedAs(rec: PropertyRecord, isOwner: boolean): string {
+    return isOwner ? (rec.faction ? "faction manager" : "owner") : "manager";
   }
 
   // One inventory read and one access read per actor, not per claimed ref.
@@ -1183,8 +1315,11 @@ export class HousingSystem implements System {
       const r = raw as Partial<StoredRecord>;
       // A record from before the entrance and exit keeps its one lock on both
       const legacy = r.locked === true;
+      const owner = Number(r.owner) || 0;
       return {
-        owner: Number(r.owner) || 0,
+        owner,
+        // A record from before faction claims is personal
+        faction: owner === FACTION_OWNER && typeof r.faction === "string" && r.faction.includes(":") ? r.faction : "",
         ownerName: String(r.ownerName || ""),
         name: typeof r.name === "string" && r.name ? r.name : null,
         lockedEntrance: typeof r.lockedEntrance === "boolean" ? r.lockedEntrance : legacy,
@@ -1209,7 +1344,7 @@ export class HousingSystem implements System {
       return false;
     }
     // The index and the pointer are best-effort; the record itself is stored.
-    try { mp.set(primary, OWNER_INDEX_PROP, String(rec.owner)); } catch { }
+    try { mp.set(primary, OWNER_INDEX_PROP, rec.faction || String(rec.owner)); } catch { }
     if (rec.partner) {
       try {
         const pointer: PrimaryPointer = { primary };
@@ -1235,6 +1370,7 @@ export class HousingSystem implements System {
   private release(ctx: SystemContext, primary: number, rec: PropertyRecord): boolean {
     this.reKey(ctx, primary, rec);
     rec.owner = 0;
+    rec.faction = "";
     rec.ownerName = "";
     rec.name = null;
     rec.lockedEntrance = false;
@@ -1329,11 +1465,15 @@ export class HousingSystem implements System {
     this.send(ctx, userId, { customPacketType: "propertyNotice", text });
   }
 
-  // Every online character of the profile
-  private noticeProfile(ctx: SystemContext, profileId: number, text: string): void {
+  // Every online character of the owner's profile, or of the owning faction whose rank uses or manages the claim
+  private noticeOwners(ctx: SystemContext, rec: PropertyRecord, text: string): void {
     for (const userId of this.onlineUsers(ctx)) {
       const actorId = this.actorOf(ctx, userId);
-      if (actorId && this.profileOf(ctx, actorId) === profileId) this.notice(ctx, userId, text);
+      if (!actorId) continue;
+      const owner = rec.faction
+        ? this.factionRightsOf(actorId).some((f) => f.id === rec.faction && (f.use || f.manage))
+        : this.profileOf(ctx, actorId) === rec.owner;
+      if (owner) this.notice(ctx, userId, text);
     }
   }
 
@@ -1348,7 +1488,7 @@ export class HousingSystem implements System {
   }
 
   private claimLabel(primary: number, rec: PropertyRecord): string {
-    return `claim ${primary.toString(16)}${rec.name ? ` "${rec.name}"` : ""}`;
+    return `claim ${primary.toString(16)}${rec.name ? ` "${rec.name}"` : ""}${rec.faction ? ` of ${rec.faction}` : ""}`;
   }
 
   private claimed: number[] = [];
