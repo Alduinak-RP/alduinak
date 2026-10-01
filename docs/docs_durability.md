@@ -131,6 +131,26 @@ changed one lands on the worn copy; the others take the nearest percent.
 The quality the engine appends ("(Fine)") comes after the tag and is never part of a name the client writes.
 In the trade window a name on something that never wears is left alone, percent sign or not.
 
+## Front: the repair menu
+
+`skymp5-front/src/features/repairMenu` draws the `repairMenu` widget (id 42) in the red panel look of the
+housing and trade menus; `constructor.js` maps the type and `App.js` keys it by id, so a refresh keeps the
+open menu and its scroll position.
+
+- The title is the server's (`Workbench: repair armor`, `Grindstone: repair weapons`), with the number of
+  damaged items under it.
+- One row per damaged copy in the server's order: the name with an `equipped` mark on a worn copy, a condition
+  bar (bright under 25%), `43% (150/350)` (the percent alone when the row has no hit points, `Broken` at 0),
+  and the cost as `2 Steel Ingot (have 5)`, red for a material the player is short of, `No materials needed`
+  for a free repair.
+- Repair sends `repairMenu:repair` with the row's key as it came and is off while any material is short.
+- The footer: Repair all (`repairMenu:repairAll`, off when no row can be paid), Improve items
+  (`repairMenu:improve`) and Close (`repairMenu:close`). With no rows left it reads "Nothing left to repair"
+  and keeps the footer.
+- After a Repair or Repair all the repair buttons stay off until the server's refresh arrives, at most 1.5 s
+  (a refusal for distance sends no refresh), so a double click never asks for the same copy twice.
+- Escape and losing the browser focus close the menu, as in the other menus.
+
 ## Tests
 
 `node skymp5-server/tools/test-inventory-condition.js` runs the rules above over stub servers: identity and
@@ -140,3 +160,7 @@ the skinning hand-off, a search and the PK body.
 `node skymp5-server/tools/test-durability-names.js` runs the client side against a stub of the engine's
 inventory: the tags, the names of added and removed copies, the rename pass with and without the in-place
 rename, drops and container moves, the craft report, the trade rows and offer, and the repair service.
+
+`node skymp5-server/tools/test-repair-menu.js` renders the front's repair menu: the rows, the condition and
+cost readouts, which buttons are off, the messages a click sends, the empty menu, and that the widget type and
+event keys match `repairService.ts`.

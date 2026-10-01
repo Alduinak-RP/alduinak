@@ -28,6 +28,7 @@ import PetPrompt from './features/petPrompt';
 import PetList from './features/petList';
 import SurvivalReadout from './features/survivalReadout';
 import CreationHint from './features/creationHint';
+import RepairMenu from './features/repairMenu';
 
 const styles = [
   'BUTTON_STYLE_GITHUB',
@@ -254,6 +255,8 @@ const Constructor = props => {
       return <SurvivalReadout data={rend} />;
     case 'creationHint':
       return <CreationHint data={rend} />;
+    case 'repairMenu':
+      return <RepairMenu data={rend} />;
     case 'death':
       return (
         <DeathScreen seconds={rend.seconds} onChoice={rend.onChoice} />
