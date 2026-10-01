@@ -59,6 +59,13 @@ const ANIM_DRIVEN_VAR = "bAnimationDriven";
 const BLEEDING_OUT_VAR = "IsBleedingOut";
 // The first-person camera a lock left comes back this long after its exit
 const LOCK_CAMERA_RESTORE_S = 1;
+// A lock pose the graph still holds gets its exit again this long after the last one, this many exits at most
+const LOCK_EXIT_RESEND_MS = 1000;
+const LOCK_EXIT_MAX_SENDS = 5;
+// Checks in a row that find the bleedout kneel at rest, no fall or get-up clip moving it, before its exit is sent again
+const LOCK_EXIT_REST_TICKS = 3;
+// A bleedout kneel every exit left standing is ended this long after the last one by the engine's knock-down
+const LOCK_EXIT_KNOCKDOWN_MS = 2500;
 const FIRST_PERSON_CAMERA = 0;
 
 const CARRIER_COLLISION_REFRESH_MS = 1000;
@@ -112,6 +119,20 @@ interface ActionLock {
   restarts: number;
   // The last other event the player's graph took during the lock, named when a playing pose stops
   lastEvent: string;
+}
+
+// The exit of an action lock's pose, watched until the graph has left the pose
+interface LockExit {
+  anim: string;
+  exit: string;
+  sinceMs: number;
+  lastSendMs: number;
+  checkedMs: number;
+  sends: number;
+  restTicks: number;
+  clearTicks: number;
+  // Another event the graph took since, which ends the watch of a pose read from bAnimationDriven
+  otherEvent: string;
 }
 
 const isStateIdle = (anim: string): boolean => anim.toLowerCase().startsWith("idle");
@@ -209,6 +230,12 @@ const describeAttempt = (lock: ActionLock): string => {
  *     most. Going down or dying ends it early, every other pose wins over it,
  *     and a mounted or swimming player or one another pose already holds
  *     ignores it. Every attempt, wait and stop is logged to the Platform log.
+ *     After the exit the pose's graph variable is read every 0.1 s: while the
+ *     graph still holds the pose the exit goes out again 1 s after the last
+ *     one, 5 exits at most (the bleedout kneel only while it rests, since its
+ *     fall and get-up are clips), and a bleedout kneel that outlasts them all
+ *     is ended by the engine's knock-down and get-up. The first-person camera
+ *     comes back only once the pose is left.
  *   - stagger: plays staggerStart with the magnitude on the player, whose
  *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a
@@ -236,6 +263,7 @@ export class RestraintService extends ClientListener {
       },
       leave: (ctx) => {
         if (ctx.animationSucceeded && isStateIdle(ctx.animEventName)) this.lastStateIdle = ctx.animEventName.toLowerCase();
+        if (this.lockExit && ctx.animationSucceeded && ctx.animEventName.toLowerCase() !== this.lockExit.exit.toLowerCase()) this.lockExit.otherEvent = ctx.animEventName;
         if (!this.lock) return;
         if (ctx.animEventName.toLowerCase() === this.lockPose.toLowerCase()) this.lock.accepted = ctx.animationSucceeded;
         else if (ctx.animationSucceeded) this.lock.lastEvent = ctx.animEventName;
@@ -464,6 +492,7 @@ export class RestraintService extends ClientListener {
   // The carry holds run every frame; landing detection (event-name independent), locks and pose checks are throttled
   private onUpdate(): void {
     this.trackCarry();
+    this.watchLockExit();
     if (!this.isPoseLocked) {
       this.wasInJump = false;
       this.poseDirty = false;
@@ -715,8 +744,11 @@ export class RestraintService extends ClientListener {
   private setPose(player: Actor, desired: string): void {
     const previous = this.appliedPose;
     const previousExit = this.appliedExit;
+    const previousByLock = this.appliedByLock;
     const lockPose = !!this.lock && desired === this.lockPose;
     if (lockPose) this.logLockWaits(desired);
+    this.appliedByLock = lockPose;
+    this.lockExit = null;
     this.appliedPose = desired;
     this.appliedExit = lockPose && this.lock ? this.lock.attempts[this.lock.attempt].exit
       : desired === this.executionPose && this.executionExit ? this.executionExit : exitOf(desired);
@@ -729,8 +761,11 @@ export class RestraintService extends ClientListener {
       this.sendPose(player, desired);
       return;
     }
-    this.sp.Debug.sendAnimationEvent(player, previousExit || exitOf(previous));
+    const exit = previousExit || exitOf(previous);
+    this.sp.Debug.sendAnimationEvent(player, exit);
     if (desired === OFFSET_STOP_ANIM) {
+      const now = Date.now();
+      if (previousByLock) this.lockExit = { anim: previous, exit, sinceMs: now, lastSendMs: now, checkedMs: now, sends: 1, restTicks: 0, clearTicks: 0, otherEvent: "" };
       return;
     }
     this.sp.Utility.wait(POSE_SWAP_DELAY_S).then(() => {
@@ -817,6 +852,52 @@ export class RestraintService extends ClientListener {
     this.applyStateNow();
   }
 
+  // An exit the graph swallowed would leave the player in the lock's pose for good, so it is sent again while the pose holds
+  private watchLockExit(): void {
+    const x = this.lockExit;
+    const now = Date.now();
+    if (!x || now - x.checkedMs < TICK_MS) return;
+    x.checkedMs = now;
+    const player = this.sp.Game.getPlayer();
+    const bleedout = x.anim === BLEEDOUT_ANIM_START;
+    // Another pose, a death, or for the kneel any other event the graph took owns the animation now
+    if (!player || player.isDead() || this.isPoseLocked || this.appliedPose !== OFFSET_STOP_ANIM || (!bleedout && x.otherEvent)) {
+      this.endLockExit("");
+      return;
+    }
+    const playingVar = playingVarOf(x.anim);
+    if (!player.getAnimationVariableBool(playingVar)) {
+      if (++x.clearTicks < 2) return;
+      this.endLockExit(bleedout || x.sends > 1 ? `${x.anim} left ${now - x.sinceMs} ms after the lock, ${x.sends} exit(s) sent` : "");
+      return;
+    }
+    x.clearTicks = 0;
+    // The bleedout's fall to the knees and its get-up are animation-driven clips, the kneel between them is not
+    const resting = !bleedout || !player.getAnimationVariableBool(ANIM_DRIVEN_VAR);
+    x.restTicks = resting ? x.restTicks + 1 : 0;
+    if (x.restTicks < LOCK_EXIT_REST_TICKS || now - x.lastSendMs < LOCK_EXIT_RESEND_MS) return;
+    const state = `${x.anim} still held ${now - x.sinceMs} ms after the lock (${playingVar} true) after ${x.sends} exit(s)`;
+    if (x.sends < LOCK_EXIT_MAX_SENDS) {
+      x.sends++;
+      x.lastSendMs = now;
+      x.restTicks = 0;
+      this.sp.Debug.sendAnimationEvent(player, x.exit);
+      logToPlatformLog(this, `action lock exit: ${state}, ${x.exit} sent again; ${this.describePlayer(player)}`);
+    } else if (!bleedout) {
+      this.endLockExit(`${state}, not sent again`);
+    } else if (now - x.lastSendMs >= LOCK_EXIT_KNOCKDOWN_MS) {
+      // The knock-down's get-up returns the root graph to its default state
+      player.pushActorAway(player, 0);
+      this.endLockExit(`${state}, the player is knocked down so the get-up ends the kneel`);
+    }
+  }
+
+  private endLockExit(line: string): void {
+    this.lockExit = null;
+    if (line) logToPlatformLog(this, `action lock exit: ${line}`);
+    this.restoreLockCamera();
+  }
+
   // One line per lock, so a test says which attempt played and for how long
   private logLockSummary(lock: ActionLock, now: number): void {
     const played = lock.playedAtMs ? `${lock.playedAs} played from ${lock.playedAtMs - lock.since} ms` : `no attempt seen playing (${lock.sends} sent)`;
@@ -860,16 +941,16 @@ export class RestraintService extends ClientListener {
     return !waits.length && now - this.lockBlockedMs >= SHEATHE_SETTLE_MS;
   }
 
-  // Once no pose holds the player, the first-person camera a lock turned away from comes back after the exit has played
+  // Once no pose holds the player and the graph has left the lock's pose, the first-person camera a lock turned away from comes back
   private restoreLockCamera(): void {
     if (this.downed || this.carried) this.lockCameraRestore = false;
-    if (!this.lockCameraRestore || this.isPoseLocked || this.cameraRestoreQueued) return;
+    if (!this.lockCameraRestore || this.isPoseLocked || this.lockExit || this.cameraRestoreQueued) return;
     this.cameraRestoreQueued = true;
     this.sp.Utility.wait(LOCK_CAMERA_RESTORE_S).then(() => {
       this.controller.once("update", () => {
         this.cameraRestoreQueued = false;
         const player = this.sp.Game.getPlayer();
-        if (!player || !this.lockCameraRestore || this.isPoseLocked) return;
+        if (!player || !this.lockCameraRestore || this.isPoseLocked || this.lockExit) return;
         this.lockCameraRestore = false;
         if (!player.isDead() && player.getSitState() === 0 && !player.isOnMount()) this.sp.Game.forceFirstPerson();
       });
@@ -991,6 +1072,9 @@ export class RestraintService extends ClientListener {
   private executionExit = "";
   private pairedUntil = 0;
   private lock: ActionLock | null = null;
+  // Whether the pose last sent was an action lock's, and that pose's exit while the graph may still hold it
+  private appliedByLock = false;
+  private lockExit: LockExit | null = null;
   // Tells a stale attempt check from the current one
   private lockPoseToken = 0;
   // Lowercase name of the last state idle the player's graph took (an emote kneel among them)

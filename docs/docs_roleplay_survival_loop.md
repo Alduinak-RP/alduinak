@@ -453,9 +453,8 @@ behaviour-graph events — no ESP required.**
   Khajiit a 20% chance of a Khajiit Pelt, nothing of the pack. Nobody can
   search the body during the 5 s skinning ("A hunter is skinning this
   body."), and then it goes like a looted body (the owner's rule of
-  2026-10-01): the player respawns at once with everything they carried
-  and reads "A hunter skinned your body, so you return now. Nothing was
-  taken from your pack." If that respawn fails the body lies until
+  2026-10-01): the player respawns at once with everything they carried,
+  with no chat line about the skinning. If that respawn fails the body lies until
   `respawnSeconds`, refused to every search ("This body has been skinned.
   Nothing can be taken from it."). A downed player is alive and is
   neither searched as a body nor skinned. A search prompt still open when
@@ -742,7 +741,7 @@ prisoner can also be carried).
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
 | `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it |
-| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting, skinning); the pose waits up to 3 s for a stand-up from a sneak, a sheathe and third person; a pose not seen playing 0.5 s later falls back to the kneel through `Actor.PlayIdle`, then to the bleedout kneel, and one that stops early is re-sent twice at most; a mounted or swimming player skips it |
+| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting, skinning); the pose waits up to 3 s for a stand-up from a sneak, a sheathe and third person; a pose not seen playing 0.5 s later falls back to the kneel through `Actor.PlayIdle`, then to the bleedout kneel, and one that stops early is re-sent twice at most; after the exit the client sends it again while the graph still holds the pose (5 exits at most, then the engine's knock-down ends a bleedout kneel); 0 s ends the lock, as the server sends when a skinning ends; a mounted or swimming player skips it |
 | `playerMenuState` `{ target, canRelease, givePotion, hasPotion, finishOff, prepareExecution, execute, assassinate }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 

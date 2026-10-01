@@ -24,6 +24,8 @@ declare const window: any;
 const WIDGET_ID = 10;
 const PLAYER_FORM_ID = 0x14;
 const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
+// Skyrim.esm weapBasicKnife01, the knife the server asks of a skinner
+const HUNTING_KNIFE_ID = 0x0001f25a;
 // The menu waits up to this long for the server's answer so no row moves under the cursor; an older server never answers
 const MENU_STATE_WAIT_MS = 500;
 
@@ -78,6 +80,11 @@ const SERVER_FLAGS: Record<string, string> = {
   assassinate: 'assassinate',
 };
 
+// A dead player's body a hunter may skin (the server's playerMenuState skin flag) opens these instead of the search window
+const BODY_SEARCH: PlayerAction = { id: 'search', label: 'Search' };
+const BODY_SKIN: PlayerAction = { id: 'skin', label: 'Skin' };
+const BODY_SKIN_TIRED: PlayerAction = { id: 'skin', label: 'Skin (too tired)', disabled: true };
+
 // While a passive job load is carried: Put down joins the menu, and the interact key on nothing opens this one first
 const PUT_DOWN: PlayerAction = { id: 'putDown', label: 'Put down' };
 const LOAD_ACTIONS: PlayerAction[] = [PUT_DOWN, { id: 'personal', label: 'Personal Menu' }];
@@ -98,7 +105,9 @@ let hideTrade = false;
  * rebind applies at once on any device) and the interact key
  * (altInteractKeyCode, default X, launcher "Interact / Menus") open the
  * player interaction menu on a living player character and search a body (the
- * server refuses others' pets); a living server NPC is only taunted, which does
+ * server refuses others' pets); a dead player's body opens a Search and Skin
+ * menu instead when the player holds a hunting knife and the server's
+ * playerMenuState says they may skin it; a living server NPC is only taunted, which does
  * nothing yet; the InteractionPromptService blocks the clone's engine activation
  * so no dialogue fires underneath. On a living pet or own summon the interact key
  * opens the pet menu and Activate uses it (PetService). In the saddle Activate
@@ -223,13 +232,15 @@ export class PlayerActionService extends ClientListener {
   private interactWithPlayer(ref: ObjectReference, actor: Actor, remoteId: number): void {
     // Belt and braces next to the prompt service's block: no clone dialogue.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-    // Bodies skip the menu and open their inventory through the server search
-    if (actor.isDead()) {
+    // Bodies skip the menu and open their inventory through the server search, unless the server offers the skinning too
+    this.bodyTarget = actor.isDead();
+    if (this.bodyTarget && !this.holdsSkinningKnife(remoteId)) {
       this.requestSearch(remoteId);
       return;
     }
-    targetName = introducedName(ref, remoteId, false);
+    targetName = introducedName(ref, remoteId, this.bodyTarget);
     this.playerTarget = remoteId;
+    this.skin = "";
     // Flagged actions appear only when the server confirms they apply to this target
     this.menuFlags = {};
     this.hasPotion = false;
@@ -245,9 +256,11 @@ export class PlayerActionService extends ClientListener {
     const flags: Record<string, boolean> = {};
     for (const [id, key] of Object.entries(SERVER_FLAGS)) flags[id] = content[key] === true;
     const hasPotion = content["hasPotion"] === true;
-    const changed = hasPotion !== this.hasPotion || Object.keys(flags).some((id) => flags[id] !== !!this.menuFlags[id]);
+    const skin = content["skin"] !== true ? "" : content["skinTired"] === true ? "tired" : "ready";
+    const changed = hasPotion !== this.hasPotion || skin !== this.skin || Object.keys(flags).some((id) => flags[id] !== !!this.menuFlags[id]);
     this.menuFlags = flags;
     this.hasPotion = hasPotion;
+    this.skin = skin;
     const wait = this.menuWait;
     if (wait) {
       // Native calls are unsafe in the packet handler
@@ -261,7 +274,20 @@ export class PlayerActionService extends ClientListener {
   private openWaitingMenu(wait: number): void {
     if (wait !== this.menuWait) return;
     this.menuWait = 0;
-    if (!this.menuOpen && !isMenuHotkeyBlocked(this.sp, this.controller)) this.openMenu();
+    // A body nobody may skin, or an older server's silence, is searched as before
+    if (this.bodyTarget && !this.skin) this.requestSearch(this.playerTarget);
+    else if (!this.menuOpen && !isMenuHotkeyBlocked(this.sp, this.controller)) this.openMenu();
+  }
+
+  // Only a player's body is skinned through the menu, and only with the knife, so every other body opens at once
+  private holdsSkinningKnife(remoteId: number): boolean {
+    if (!isPlayerCharacterId(this.controller, remoteId)) return false;
+    try {
+      const knife = this.sp.Game.getFormEx(HUNTING_KNIFE_ID);
+      return !!knife && (this.sp.Game.getPlayer()?.getItemCount(knife) ?? 0) > 0;
+    } catch {
+      return false;
+    }
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
@@ -299,7 +325,11 @@ export class PlayerActionService extends ClientListener {
         return;
       }
       const packetType = PACKET_ACTIONS[actionId];
-      if (packetType && this.playerTarget) {
+      if (this.bodyTarget && this.playerTarget) {
+        // The search opens the engine's container menu; the server takes the same request with skin set as the skinning
+        if (actionId === BODY_SKIN.id) sendCustomPacket(this.controller, { customPacketType: PACKET_ACTIONS.search, target: this.playerTarget, skin: true });
+        else if (actionId === BODY_SEARCH.id) this.requestSearch(this.playerTarget);
+      } else if (packetType && this.playerTarget) {
         sendCustomPacket(this.controller, { customPacketType: packetType, target: this.playerTarget });
       } else if (packetType) {
         notifyNextUpdate(this.controller, this.sp, "Look at a player first.");
@@ -321,6 +351,9 @@ export class PlayerActionService extends ClientListener {
   }
 
   private menuArgs(): Record<string, unknown> {
+    if (this.bodyTarget) {
+      return { ACTIONS: [BODY_SEARCH, this.skin === "tired" ? BODY_SKIN_TIRED : BODY_SKIN], targetName, hideTrade: true, events, WIDGET_ID };
+    }
     // No carry chains and no bound carriers: a carrying, carried or bound player is never offered Carry
     const noCarry = this.controller.lookupListener(RestraintService).isPoseLocked;
     const canRecruit = this.controller.lookupListener(FactionService).canRecruit;
@@ -355,6 +388,9 @@ export class PlayerActionService extends ClientListener {
   // The last press asked the server for a bounty board's strongbox or a search window
   private containerAsked = false;
   private playerTarget = 0;
+  // The menu's target is a dead player's body, and what the server said about skinning it: "", "ready" or "tired"
+  private bodyTarget = false;
+  private skin = "";
   // Action id -> whether the server's playerMenuState says it applies to the target
   private menuFlags: Record<string, boolean> = {};
   // Whether the server found a healing potion on this player for Give Potion

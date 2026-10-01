@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
-import { HUNTING_KNIFE_ID, addItemTo, chainMpHook, hex, holdsItem, isAlive, isBleedingOut, isNear, isPlayerActor, isSneaking, notifyActor, sendActionLock } from "./actorUtil";
+import { HUNTING_KNIFE_ID, addItemTo, chainMpHook, hex, holdsItem, isAlive, isBleedingOut, isNear, isPlayerActor, isSneaking, sendActionLock } from "./actorUtil";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
 import { MasterySystem } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
@@ -19,6 +19,9 @@ type Mp = any;
 // gamemode's death hook gives the rest a 1e9 s delay). A pet's body stays and gives only its meat. Skinning costs half a kill of fatigue by hunter rank and credits hunter hours.
 // A player character's own body, which lies dead until its respawn (respawnSeconds), or the body a PK leaves instead (BodySystem) is skinned the same way,
 // only through bodyAction, once per death for Human Flesh, a chance of a Human Heart and, on a body that looks Khajiit, a chance of a Khajiit Pelt.
+// The interact menu offers it as Skin next to Search (menuFlags, the player menu's skin and skinTired flags); crouch and interact still skins without the menu.
+// Only the butcher's eye line is written to the chat; a refused skinning falls through to the search and the Skin row is greyed out while the hunter is too tired.
+// Every skinning ends with an actionLock of 0 s, so the skinner stands up whether it gave anything or not.
 // SearchSystem refuses every search of the body during the skinning. An own body then goes like a looted one: the victim respawns at once with their
 // whole pack. A PK body hands the skinner everything it holds, keys and writings under their names, and BodySystem removes it once emptied.
 //
@@ -29,7 +32,7 @@ type Mp = any;
 //                                editor id is tried first, then its race, then its templates (lower-cased), and the first
 //                                fragment found in the earliest name that holds one wins
 //   huntingMeatMap               { "<editor id fragment>": ["<meat editor id>", count] } replacing DEFAULT_MEAT_MAP, matched the same way
-//   huntingSkinPlayers           "crouch" (default: crouch and interact skins a player's body, a plain interact searches it),
+//   huntingSkinPlayers           "crouch" (default: Skin in the interact menu or crouch and interact skins a player's body, a plain interact searches it),
 //                                "interact" (every interact skins, as on an animal) or "off"
 //   huntingHumanFlesh            item a skinned player's body gives, editor id or desc, default HumanFlesh (Skyrim.esm 001016B3)
 //   huntingHumanHeart            item it may add, default HumanHeart (Skyrim.esm 000B18CD); "" gives none
@@ -139,6 +142,7 @@ export class HuntingSystem implements System {
     const mode = PLAYER_SKIN_MODES.find((m) => m === rawMode);
     if (rawMode !== undefined && !mode) this.log(`[hunting] huntingSkinPlayers ${JSON.stringify(rawMode)} is not one of ${PLAYER_SKIN_MODES.join(", ")}, "crouch" is used`);
     this.playerSkinMode = mode ?? "crouch";
+    this.ctx = ctx;
     this.heartChance = chanceOf(all?.["huntingHumanHeartChance"], DEFAULT_HEART_CHANCE);
     this.khajiitPeltChance = chanceOf(all?.["huntingKhajiitPeltChance"], DEFAULT_KHAJIIT_PELT_CHANCE);
     const itemName = (raw: unknown, fallback: string): string => typeof raw === "string" ? raw.trim() : fallback;
@@ -199,11 +203,11 @@ export class HuntingSystem implements System {
   }
 
   // True when the interaction became a skinning, so the body is not opened this time; decided from reads, everything else runs after the hook
-  // players is false for the native activation, which skips SearchSystem's checks of who is searching the body
-  trySkin(ctx: SystemContext, actorId: number, bodyId: number, players = true): boolean {
+  // players is false for the native activation, which skips SearchSystem's checks of who is searching the body; chosen is the interact menu's Skin
+  trySkin(ctx: SystemContext, actorId: number, bodyId: number, players = true, chosen = false): boolean {
     const mp = ctx.svr as Mp;
     if (!isPlayerActor(mp, actorId) || !this.isBody(mp, bodyId)) return false;
-    if (isPlayerActor(mp, bodyId)) return players && this.trySkinPlayer(ctx, actorId, bodyId);
+    if (isPlayerActor(mp, bodyId)) return players && this.trySkinPlayer(ctx, actorId, bodyId, chosen);
     const rank = this.mastery.rankOf(ctx, actorId, "hunter");
     if (!rank || this.skinning.has(bodyId) || !this.isAnimal(ctx, bodyId) || this.isSkinned(mp, bodyId)) return false;
     const names = this.namesOf(ctx, bodyId);
@@ -211,12 +215,7 @@ export class HuntingSystem implements System {
     const peltId = pelt?.rule.peltId || 0;
     const meat = firstRuleFor(names, this.meatRules)?.rule;
     if ((!peltId && !meat && !this.meatOf(mp, bodyId).length) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
-    const refusal = !holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE_ID) ? "A hunting knife would take its pelt."
-      : !this.needs.canPay(actorId, "fight", rank, true) ? "You are too tired to skin it. Rest a while." : "";
-    if (refusal) {
-      setImmediate(() => notifyActor(mp, actorId, refusal));
-      return false;
-    }
+    if (!holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE_ID) || !this.needs.canPay(actorId, "fight", rank, true)) return false;
     this.skinning.add(bodyId);
     setImmediate(() => {
       try { mp.set(bodyId, SKINNED_PROP, actorId); } catch { /* body gone */ }
@@ -228,29 +227,37 @@ export class HuntingSystem implements System {
   }
 
   // A player character's own body until its respawn, or the body a PK left of them, once per death
-  private trySkinPlayer(ctx: SystemContext, actorId: number, bodyId: number): boolean {
+  private trySkinPlayer(ctx: SystemContext, actorId: number, bodyId: number, chosen: boolean): boolean {
     const mp = ctx.svr as Mp;
     const body = this.playerBodyOf(mp, bodyId);
-    if (this.playerSkinMode === "off" || !this.humanFleshId || !body) return false;
-    const rank = this.mastery.rankOf(ctx, actorId, "hunter");
-    if (!rank || this.playerSkins.has(bodyId) || !isNear(mp, actorId, bodyId, SKIN_REACH)) return false;
-    const knife = holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE_ID);
-    const crouched = this.playerSkinMode !== "crouch" || isSneaking(mp, actorId);
-    // The search refusal tells the victim's own account and the skinned own body; a skinned PK body opens for the search
-    if (body.pk && body.profileId >= 0 && this.profileOf(mp, actorId) === body.profileId) return false;
-    const skinned = this.wasSkinned(mp, body);
-    const refusal = skinned ? (body.pk && crouched && knife ? "This body has already been skinned." : "")
-      : !crouched ? (knife ? "Crouch and interact to skin the body instead." : "")
-      : !knife ? "A hunting knife would skin the body."
-      : !this.needs.canPay(actorId, "fight", rank, true) ? "You are too tired to skin it. Rest a while." : "";
-    if (refusal) setImmediate(() => notifyActor(mp, actorId, refusal));
-    if (refusal || skinned || !crouched) return false;
+    const rank = this.playerSkinRank(ctx, actorId, body);
+    if (!body || !rank || !(chosen || this.playerSkinMode !== "crouch" || isSneaking(mp, actorId)) || !this.needs.canPay(actorId, "fight", rank, true)) return false;
     const job: PlayerSkin = { ...body, skinnerId: actorId };
     this.playerSkins.set(bodyId, job);
     setImmediate(() => sendActionLock(mp, actorId, SKIN_ANIM, SKIN_SECONDS));
     this.log(`[hunting] ${hex(actorId)} skins ${bodyName(job)} (profile ${job.profileId})`);
     setTimeout(() => this.finishPlayerSkin(ctx, job), SKIN_SECONDS * 1000);
     return true;
+  }
+
+  // The hunter rank that may skin this player body now, 0 for no hunter, no knife, a body skinned or being skinned, one out of reach, or the PK body of their own account
+  private playerSkinRank(ctx: SystemContext, actorId: number, body?: PlayerBody): number {
+    const mp = ctx.svr as Mp;
+    if (this.playerSkinMode === "off" || !this.humanFleshId || !body) return 0;
+    const rank = this.mastery.rankOf(ctx, actorId, "hunter");
+    if (!rank || this.playerSkins.has(body.bodyId) || !isNear(mp, actorId, body.bodyId, SKIN_REACH)) return 0;
+    // The search refusal tells the victim's own account and the skinned own body; a skinned PK body opens for the search
+    if (body.pk && body.profileId >= 0 && this.profileOf(mp, actorId) === body.profileId) return 0;
+    return this.wasSkinned(mp, body) || !holdsItem(mp, actorId, (baseId) => baseId === HUNTING_KNIFE_ID) ? 0 : rank;
+  }
+
+  // The player menu's flags for a dead player's body: skin while trySkinPlayer would start for a chosen Skin, skinTired while only the fatigue refuses it
+  menuFlags(actorId: number, bodyId: number): Record<string, boolean> {
+    const ctx = this.ctx;
+    const mp = ctx?.svr as Mp;
+    if (!ctx || this.playerSkinMode !== "crouch" || !isPlayerActor(mp, actorId) || !this.isBody(mp, bodyId) || !isPlayerActor(mp, bodyId)) return {};
+    const rank = this.playerSkinRank(ctx, actorId, this.playerBodyOf(mp, bodyId));
+    return rank ? { skin: true, skinTired: !this.needs.canPay(actorId, "fight", rank, true) } : {};
   }
 
   // The fallen character a player body stands for; the stripped actor of a PK victim is passed over, as the PK body holds that death
@@ -272,6 +279,7 @@ export class HuntingSystem implements System {
     this.playerSkins.delete(job.bodyId);
     const mp = ctx.svr as Mp;
     const { skinnerId, bodyId } = job;
+    sendActionLock(mp, skinnerId, SKIN_ANIM, 0);
     const stop = !this.isBody(mp, bodyId) ? "the body is gone" : !job.pk && this.leftBody?.(bodyId) ? "a PK body took their pack"
       : this.interruption(ctx, skinnerId, bodyId);
     if (stop) {
@@ -298,9 +306,6 @@ export class HuntingSystem implements System {
       }
       this.needs.pay(ctx, skinnerId, "fight", this.mastery.rankOf(ctx, skinnerId, "hunter"), "skin", true);
       this.mastery.creditWork(skinnerId, "hunter");
-      if (moved) notifyActor(mp, skinnerId, "You also take everything the body held.");
-      notifyActor(mp, job.victimId, !job.pk ? "A hunter skinned your body, so you return now. Nothing was taken from your pack."
-        : moved ? "A hunter skinned the body you left behind and took everything it held." : "The body you left behind was skinned by a hunter.");
       const peltPart = khajiit ? `, ${pelt ? `Khajiit pelt ${hex(this.khajiitPeltId)}` : "no Khajiit pelt"} (${pct(this.khajiitPeltChance)} chance)` : "";
       this.log(`[hunting] ${hex(skinnerId)} skinned ${bodyName(job)} (profile ${job.profileId}): ${hex(this.humanFleshId)} x1, ${heart ? `heart ${hex(this.humanHeartId)}` : "no heart"}${this.humanHeartId ? ` (${pct(this.heartChance)} chance)` : ""}${peltPart}, ${packPart}`);
       if (!job.pk) this.respawnSkinned(mp, job.victimId);
@@ -331,7 +336,6 @@ export class HuntingSystem implements System {
     this.playerSkins.delete(actorId);
     const mp = ctx.svr as Mp;
     sendActionLock(mp, job.skinnerId, SKIN_ANIM, 0);
-    notifyActor(mp, job.skinnerId, "The body is gone before you could finish.");
     this.log(`[hunting] ${hex(job.skinnerId)} stopped skinning the body of player ${hex(actorId)}: they respawned`);
   }
 
@@ -352,6 +356,7 @@ export class HuntingSystem implements System {
   private finishSkin(ctx: SystemContext, actorId: number, bodyId: number, peltId: number, meat?: MeatRule): void {
     const mp = ctx.svr as Mp;
     this.skinning.delete(bodyId);
+    sendActionLock(mp, actorId, SKIN_ANIM, 0);
     try {
       if (this.interruption(ctx, actorId, bodyId)) {
         mp.set(bodyId, SKINNED_PROP, 0);
@@ -459,6 +464,8 @@ export class HuntingSystem implements System {
     try { (ctx.svr as Mp).sendCustomPacket(userId, JSON.stringify({ customPacketType: NOTICE_PACKET, text })); } catch { /* user gone */ }
   }
 
+  // Kept from initAsync for menuFlags, which CaptureSystem calls without one
+  private ctx?: SystemContext;
   private butcherChance = DEFAULT_BUTCHER_CHANCE;
   private meats = new Set<number>();
   // Ordered editor id fragment -> pelt rules

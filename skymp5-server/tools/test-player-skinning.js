@@ -1,6 +1,6 @@
 'use strict'
 
-// huntingSystem.ts skinning a dead player's own body or a PK body against a stub mp: modes, refusals, the search lock, the heart and Khajiit pelt rolls, the own body's respawn, the PK body's pack and interruptions: node tools/test-player-skinning.js
+// huntingSystem.ts skinning a dead player's own body or a PK body against a stub mp: modes, the interact menu's Skin and its flags, silent refusals, the stand-up, the search lock, the heart and Khajiit pelt rolls, the own body's respawn, the PK body's pack and interruptions: node tools/test-player-skinning.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -124,15 +124,18 @@ async function setup (settings = {}, missing = []) {
     creditWork: (id, prof) => credited.push([id, prof]),
     actorHasKeyword: (_ctx, id) => id === WOLF,
   }
-  const needs = { canPay: () => true, pay: (_ctx, id, effort, rank, what, half) => paid.push([id, effort, what, half]) }
+  const tired = new Set()
+  const needs = { canPay: (id) => !tired.has(id), pay: (_ctx, id, effort, rank, what, half) => paid.push([id, effort, what, half]) }
   const sys = new HuntingSystem((line) => lines.push(line), mastery, needs)
   const ctx = { svr: s.mp, gm: new EventEmitter() }
   await sys.initAsync(ctx)
   timers.length = 0
   const skin = (actorId, bodyId = VICTIM) => sys.trySkin(ctx, actorId, bodyId)
+  // The interact menu's Skin: the search request with skin set
+  const choose = (actorId, bodyId = VICTIM) => sys.trySkin(ctx, actorId, bodyId, true, true)
   const notices = (actorId) => s.packets.filter((p) => p.u === s.users.get(actorId) && p.customPacketType === 'notification').map((p) => p.text)
   const locks = (actorId) => s.packets.filter((p) => p.u === s.users.get(actorId) && p.customPacketType === 'actionLock').map((p) => p.seconds)
-  return { ...s, sys, ctx, lines, paid, credited, skin, notices, locks }
+  return { ...s, sys, ctx, lines, paid, credited, tired, skin, choose, notices, locks }
 }
 
 ;(async () => {
@@ -147,28 +150,39 @@ async function setup (settings = {}, missing = []) {
     assert.equal(t.skin(LOOTER), false, 'a non-hunter only searches')
     assert.deepEqual(t.notices(LOOTER), [])
     assert.equal(t.skin(HUNTER), false, 'standing, the hunter searches')
-    assert.deepEqual(t.notices(HUNTER), ['Crouch and interact to skin the body instead.'])
+    assert.deepEqual(t.sys.menuFlags(HUNTER, VICTIM), { skin: true, skinTired: false }, 'the menu offers Skin to a standing hunter')
+    assert.deepEqual(t.sys.menuFlags(LOOTER, VICTIM), {}, 'not to a non-hunter')
+    assert.deepEqual(t.sys.menuFlags(HUNTER, WOLF), {}, 'an animal has no menu')
+    assert.deepEqual(t.sys.menuFlags(HUNTER, OTHER_HUNTER), {}, 'nor has a living player')
+    t.tired.add(HUNTER)
+    assert.deepEqual(t.sys.menuFlags(HUNTER, VICTIM), { skin: true, skinTired: true }, 'the row is greyed out for a tired hunter')
+    assert.equal(t.choose(HUNTER), false, 'too tired, the chosen Skin searches')
+    t.tired.clear()
     t.forms.get(HUNTER).inventory = { entries: [] }
+    assert.deepEqual(t.sys.menuFlags(HUNTER, VICTIM), {}, 'no knife, no Skin row')
+    assert.equal(t.choose(HUNTER), false, 'and no skinning for a forged request')
     t.state.sneaking.add(HUNTER)
     assert.equal(t.skin(HUNTER), false, 'no knife')
-    assert.equal(t.notices(HUNTER).at(-1), 'A hunting knife would skin the body.')
     t.forms.get(HUNTER).inventory = { entries: [{ baseId: KNIFE, count: 1 }] }
+    assert.deepEqual(t.notices(HUNTER), [], 'no refusal is written to the chat')
     assert.equal(t.sys.searchRefusal(VICTIM), '')
     assert.equal(t.skin(HUNTER), true, 'crouched with the knife, the hunter skins')
     assert.deepEqual(t.locks(HUNTER), [5])
     assert.equal(t.sys.searchRefusal(VICTIM), 'A hunter is skinning this body.')
     t.state.sneaking.add(OTHER_HUNTER)
     assert.equal(t.skin(OTHER_HUNTER), false, 'one hunter at a time')
+    assert.deepEqual(t.sys.menuFlags(OTHER_HUNTER, VICTIM), {}, 'no Skin row while another hunter skins')
     assert.equal(t.sys.searchRefusal(VICTIM), 'A hunter is skinning this body.')
     roll = 0.05
     runTimers()
+    assert.deepEqual(t.locks(HUNTER), [5, 0], 'the finished skinning stands the skinner up')
     assert.deepEqual(t.added, [{ to: HUNTER, item: FLESH, count: 1 }, { to: HUNTER, item: HEART, count: 1 }])
     assert.deepEqual(t.respawned, [VICTIM], 'the skinned body goes like a looted one: the victim respawns at once')
     assert.equal(t.forms.get(VICTIM).isDead, false)
     assert.deepEqual(t.forms.get(VICTIM).inventory.entries.map((e) => [e.baseId, e.count]), [[0xf, 300], [0x12eb7, 1]], 'the victim keeps the whole pack')
     assert.equal(t.forms.get(VICTIM).isDisabled, undefined, 'the actor is never hidden')
-    assert.deepEqual(t.notices(VICTIM), ['A hunter skinned your body, so you return now. Nothing was taken from your pack.'])
-    assert.equal(t.notices(HUNTER).at(-1), 'A hunting knife would skin the body.', 'the skinner of an own body gets no pack notice')
+    assert.deepEqual(t.notices(VICTIM), [], 'the victim reads nothing in the chat')
+    assert.deepEqual(t.notices(HUNTER), [], 'nor does the skinner')
     assert.deepEqual(t.paid, [[HUNTER, 'fight', 'skin', true]])
     assert.deepEqual(t.credited, [[HUNTER, 'hunter']])
     assert.match(t.lines.join('\n'), /ff000a01 skinned the body of player ff000b01 \(profile 4\): 1016b3 x1, heart b18cd \(10% chance\), nothing of the pack taken, the victim respawns now/)
@@ -177,7 +191,7 @@ async function setup (settings = {}, missing = []) {
     assert.deepEqual(t.notices(OTHER_HUNTER), [])
     t.forms.get(VICTIM).isDead = true
     roll = 0.5
-    assert.equal(t.skin(OTHER_HUNTER), true, 'the next death is a fresh body')
+    assert.equal(t.choose(OTHER_HUNTER), true, 'the next death is a fresh body, skinned standing through the menu')
     runTimers()
     assert.deepEqual(t.added.slice(2), [{ to: OTHER_HUNTER, item: FLESH, count: 1 }], 'no heart above the chance')
     assert.match(t.lines.join('\n'), /no heart \(10% chance\)/)
@@ -190,8 +204,9 @@ async function setup (settings = {}, missing = []) {
     t.forms.get(VICTIM).isDead = false
     t.mp.onRespawn(VICTIM)
     assert.deepEqual(t.locks(HUNTER), [5, 0], 'the skinner is stood up')
-    assert.equal(t.notices(HUNTER).at(-1), 'The body is gone before you could finish.')
+    assert.deepEqual(t.notices(HUNTER), [])
     runTimers()
+    assert.deepEqual(t.locks(HUNTER), [5, 0], 'and not a second time by the timer')
     assert.deepEqual(t.added, [], 'a respawn mid-skin gives nothing')
     assert.match(t.lines.join('\n'), /stopped skinning the body of player ff000b01: they respawned/)
     assert.equal(t.skin(HUNTER), false, 'a living player is no body')
@@ -219,6 +234,7 @@ async function setup (settings = {}, missing = []) {
     assert.equal(t.skin(HUNTER), true)
     t.forms.get(HUNTER).pos = [5000, 0, 0]
     runTimers()
+    assert.deepEqual(t.locks(HUNTER), [5, 0], 'an interrupted skinning stands the skinner up too')
     assert.deepEqual(t.added, [])
     assert.match(t.lines.join('\n'), /stopped skinning the body of player ff000b01: out of reach/)
     assert.equal(t.sys.searchRefusal(VICTIM), '', 'an interrupted skinning leaves the body open')
@@ -249,6 +265,9 @@ async function setup (settings = {}, missing = []) {
     t.sys.leftBody = undefined
     assert.equal(t.skin(HUNTER, WOLF), true, 'animals are still skinned')
     assert.equal(t.sys.searchRefusal(WOLF), '', 'an animal body keeps its search rules')
+    runTimers()
+    assert.deepEqual(t.locks(HUNTER), [5, 0], 'an animal\'s skinner is stood up as well')
+    assert.deepEqual(t.notices(HUNTER), [])
   }
 
   {
@@ -264,6 +283,7 @@ async function setup (settings = {}, missing = []) {
   {
     const t = await setup({ huntingSkinPlayers: 'interact', huntingHumanHeart: '', huntingHumanHeartChance: 0.5 })
     assert.match(t.lines.join('\n'), /players skinned on interact for 1016b3, no heart/)
+    assert.deepEqual(t.sys.menuFlags(HUNTER, VICTIM), {}, 'every interact skins, so no menu')
     assert.equal(t.mp.onActivate(VICTIM, HUNTER), true, 'only the search request skins a player body')
     assert.equal(t.skin(HUNTER), true, 'interact skins standing')
     roll = 0
@@ -277,6 +297,8 @@ async function setup (settings = {}, missing = []) {
     t.state.sneaking.add(HUNTER)
     assert.match(t.lines.join('\n'), /players not skinned/)
     assert.equal(t.skin(HUNTER), false)
+    assert.equal(t.choose(HUNTER), false)
+    assert.deepEqual(t.sys.menuFlags(HUNTER, VICTIM), {})
     assert.deepEqual(t.notices(HUNTER), [])
   }
 
@@ -318,7 +340,9 @@ async function setup (settings = {}, missing = []) {
     t.forms.get(OTHER_HUNTER).profileId = 4
     assert.equal(t.skin(OTHER_HUNTER, CLONE), false, 'the victim\'s own account never skins their PK body')
     assert.deepEqual(t.notices(OTHER_HUNTER), [], 'the search refusal tells them')
+    assert.deepEqual(t.sys.menuFlags(OTHER_HUNTER, CLONE), {}, 'and their menu has no Skin row')
     t.forms.get(OTHER_HUNTER).profileId = 2
+    assert.deepEqual(t.sys.menuFlags(HUNTER, CLONE), { skin: true, skinTired: false }, 'a PK body offers Skin to another hunter')
     assert.equal(t.skin(HUNTER, CLONE), true, 'a hunter skins the PK body')
     assert.match(t.lines.join('\n'), /ff000a01 skins the PK body ff000c01 of player ff000b01 \(profile 4\)/)
     assert.equal(t.sys.searchRefusal(CLONE), 'A hunter is skinning this body.')
@@ -332,12 +356,14 @@ async function setup (settings = {}, missing = []) {
     assert.deepEqual(t.respawned, [], 'a PK body respawns nobody')
     assert.equal(t.forms.get(CLONE)['private.skinned'], HUNTER)
     assert.equal(t.sys.searchRefusal(CLONE), '', 'the emptied PK body opens again until BodySystem removes it')
-    assert.deepEqual(t.notices(VICTIM), ['A hunter skinned the body you left behind and took everything it held.'])
-    assert.deepEqual(t.notices(HUNTER), ['You also take everything the body held.'])
+    assert.deepEqual(t.notices(VICTIM), [], 'the hand-over is not written to the chat')
+    assert.deepEqual(t.notices(HUNTER), [])
+    assert.deepEqual(t.locks(HUNTER), [5, 0])
     assert.deepEqual(t.paid, [[HUNTER, 'fight', 'skin', true]])
     assert.match(t.lines.join('\n'), /ff000a01 skinned the PK body ff000c01 of player ff000b01 \(profile 4\): 1016b3 x1, no heart \(10% chance\), Khajiit pelt 4013e0 \(20% chance\), the pack went to the skinner: 50 item\(s\) in 1 stack\(s\)$/m)
     assert.equal(t.skin(OTHER_HUNTER, CLONE), false, 'a PK body is skinned once')
-    assert.equal(t.notices(OTHER_HUNTER).at(-1), 'This body has already been skinned.', 'and the search goes on into the loot window')
+    assert.deepEqual(t.notices(OTHER_HUNTER), [], 'and the search goes on into the loot window')
+    assert.deepEqual(t.sys.menuFlags(OTHER_HUNTER, CLONE), {}, 'a skinned PK body has no Skin row')
     assert.equal(t.lines.filter((l) => /ff000a02 skins the PK body/.test(l)).length, 0)
     assert.equal(t.skin(OTHER_HUNTER), false, 'and the own body of that death is passed over')
     t.forms.get(VICTIM).isDead = false
@@ -359,7 +385,7 @@ async function setup (settings = {}, missing = []) {
     assert.deepEqual(t.added, [{ to: HUNTER, item: FLESH, count: 1 }], 'a failed hand-off still gives the flesh')
     assert.deepEqual(t.forms.get(CLONE).inventory.entries, [{ baseId: 0xf, count: 50 }], 'and the body keeps its pack')
     assert.equal(t.forms.get(CLONE)['private.skinned'], HUNTER)
-    assert.deepEqual(t.notices(VICTIM), ['The body you left behind was skinned by a hunter.'])
+    assert.deepEqual(t.notices(VICTIM), [])
     assert.deepEqual(t.notices(HUNTER), [])
     assert.match(t.lines.at(-1), /skinned the PK body ff000c01 of player ff000b01 \(profile 4\): 1016b3 x1, no heart \(10% chance\), no Khajiit pelt \(20% chance\), the body keeps its pack, the hand-off failed: Error: inventory refused$/)
     const u = await setup()
@@ -369,7 +395,7 @@ async function setup (settings = {}, missing = []) {
     u.state.sneaking.add(HUNTER)
     assert.equal(u.skin(HUNTER, CLONE), true, 'a looted PK body is still skinned')
     runTimers()
-    assert.deepEqual(u.notices(VICTIM), ['The body you left behind was skinned by a hunter.'])
+    assert.deepEqual(u.notices(VICTIM), [])
     assert.deepEqual(u.notices(HUNTER), [])
     assert.match(u.lines.at(-1), /, the body held nothing$/)
   }

@@ -747,7 +747,7 @@ client (`RestraintService`) sends the kneel only
 once the skinner has stood up from a sneak, sheathed a drawn weapon (the knife
 or bow of the kill) and turned to third person, waiting at most 3 s (the emote
 wheel empties the hands and forces third person for the same reason); a
-first-person camera comes back 1 s after the exit. Every attempt is checked
+first-person camera comes back 1 s after the pose is left. Every attempt is checked
 0.5 s after it was sent: the graph's answer and the graph variable the pose
 sets (`bAnimationDriven`, which the vanilla graph sets while its furniture and
 interaction idles play; `bIdlePlaying` is only set by the engine's idle system
@@ -756,7 +756,30 @@ nothing moves on to the same kneel played through the engine's idle path
 (`Actor.PlayIdle` with Skyrim.esm `IdleKneelingEnter` `000E8E52`), then to the
 bleedout kneel (`bleedOutStart`, checked by `IsBleedingOut`, left with
 `bleedOutStop`), a wildcard of the root graph that plays with a weapon out. A
-pose that stops playing before the lock ends is sent again, twice at most. A
+pose that stops playing before the lock ends is sent again, twice at most.
+The exit is checked as well (N1, 2026-10-01). The server ends every skinning
+with an `actionLock` of 0 s, whether it gave anything or not, and after the
+exit the client reads the pose's graph variable every 0.1 s. While the graph
+still holds the pose the exit goes out again 1 s after the last one, 5 exits
+at most. The bleedout kneel gets it only while it rests (`IsBleedingOut` true,
+`bAnimationDriven` false), since its fall (`BlleedOut_TransIn.hkx`, 2.37 s)
+and its get-up (`BleedOut_TransOut.hkx`, 2.03 s) are animation-driven clips,
+and a bleedout kneel that outlasts all five exits is ended 2.5 s later by the
+engine's knock-down (`PushActorAway` on the player), whose get-up returns the
+root graph to its default state. The kneel's watch stops at the first other
+event the graph takes. The first-person camera waits until the pose is left.
+Before this the lock sent `bleedOutStop` once and never looked again: in the
+test of 2026-10-01 a skinner who had crouched with a dagger out in first
+person had both kneels refused, got the bleedout kneel 2.5 s into the lock,
+and the single stop went out 0.15 s after the 2.37 s fall clip had ended,
+inside its 0.2 s blend into the kneel (`bleedOut_TransInEnd`,
+`DefaultBlend_FromAnimDriven`); the graph stayed in `BleedOut_Main_State` and
+the skinner knelt until a teleport reloaded their 3D. Platform log:
+`action lock exit: <pose> still held <ms> ms after the lock (<variable> true)
+after <n> exit(s), <exit> sent again; ...`, `action lock exit: <pose> left
+<ms> ms after the lock, <n> exit(s) sent` (always for the bleedout kneel, for
+another pose only after a second exit), `..., not sent again` and `..., the
+player is knocked down so the get-up ends the kneel`. A
 player who already kneels (the emote wheel's Kneel) when the lock starts keeps
 that kneel: the graph refuses an idle to itself, so a refused kneel with
 `bAnimationDriven` true before and after, and `IdleKneelingEnter` the last
@@ -791,9 +814,10 @@ other killed NPC the same, and plugin-placed NPCs are not loaded while
 `npcEnabled` is false. Only zone animals come back. A pet's body stays
 and gives only its meat; companions are never skinned (no
 `ActorTypeAnimal`), players only as below. A skinner who walks off,
-dies, goes down, is restrained or logs out before the 5 seconds leaves the body skinnable. A hunter without
-the knife is told "A hunting knife would take its pelt." and the body opens.
-Non-hunters just search. The kneel's wait, checks and fallbacks come with the client build.
+dies, goes down, is restrained or logs out before the 5 seconds leaves the body skinnable. For a hunter without
+the knife, or too tired to skin, the body simply opens: the skinning writes nothing to the chat (the owner's
+"hide skin chats" of 2026-10-01); only the butcher's eye line, a mastery notice, still shows.
+Non-hunters just search. The kneel's wait, checks, fallbacks and exit watch come with the client build.
 
 #### Skinning a player's body
 
@@ -802,16 +826,26 @@ them after `respawnSeconds` (15 s; `docs_roleplay_survival_loop.md` section 8,
 "A player's own body"). During that wait a hunter may skin the body instead of
 searching it (`huntingSkinPlayers`, default `crouch`), and the body a PK
 leaves in the victim's place (`BodySystem`, section 8, "The body") is skinned
-the same way for as long as it lies: a hunter of any rank who
-holds the Hunting Knife crouches and presses the interact key on the body. The
-search request the client sends for any body reaches `HuntingSystem.trySkin`
-through `SearchSystem.bodyAction` as for an animal, so no client change is
-involved. A plain press opens the search as before, and a hunter carrying the
-knife is told "Crouch and interact to skin the body instead."; `interact` makes
-every press skin, as on an animal, and `off` turns it off. The skinning is the
-animal one: the same 5 s kneel (`actionLock` `IdleKneelingEnter`), the same
-refusals ("A hunting knife would skin the body.", "You are too tired to skin
-it. Rest a while."), half a kill of fatigue by hunter rank and hunter hours.
+the same way for as long as it lies. A hunter of any rank who holds the
+Hunting Knife gets a small menu on the body instead of the search window
+(the interact key or Activate, the menu a living player opens): Search and
+Skin (N1, 2026-10-01, the owner's "add to interact"). The client
+(`PlayerActionService`) asks only when the player carries the knife and the
+body is a player's: it sends `playerMenuRequest`, and
+`HuntingSystem.menuFlags` adds `skin` to the `playerMenuState` answer while a
+chosen Skin would start (a hunter with the knife, in reach, the body not
+skinned or being skinned and not the PK body of the asker's own account) and
+`skinTired` while only the fatigue refuses it, which greys the row out as
+"Skin (too tired)". Without the flag, or with no answer within 0.5 s, the
+body opens at once as before. Skin sends the search request with `skin:
+true`, which reaches `HuntingSystem.trySkin` through
+`SearchSystem.bodyAction` as for an animal, behind the same search checks.
+Crouch and interact still skins without the menu, which is all a client
+older than this can send; `interact` makes every press skin, as on an
+animal, with no menu, and `off` turns it off. Nothing of it is written to
+the chat: a skinning that cannot start just opens the search. The skinning
+is the animal one: the same 5 s kneel (`actionLock` `IdleKneelingEnter`) and
+stand-up, half a kill of fatigue by hunter rank and hunter hours.
 Then the skinner gets one Human Flesh (`huntingHumanFlesh`, Skyrim.esm
 `HumanFlesh` `001016B3`) and, when the server's roll is under
 `huntingHumanHeartChance` (0.1), one Human Heart (`huntingHumanHeart`, Skyrim.esm
@@ -837,10 +871,9 @@ skinning this body."). What happens next follows the owner's rules of
 way a looted one does: the server respawns the victim at once
 (`mp.respawnActor`, as the take that reaches `searchPlayerBodyTakeLimit`
 does), so the body disappears for everyone and the victim keeps their whole
-pack; the skinner gets only the flesh, heart and pelt rolls. The victim reads
-"A hunter skinned your body, so you return now. Nothing was taken from your
-pack." just before the respawn, which the onRespawn hooks route to a temple
-or a realm as after any death. Should that respawn fail (`[hunting]
+pack; the skinner gets only the flesh, heart and pelt rolls. The onRespawn
+hooks route the respawn to a temple or a realm as after any death, and no
+chat line tells the victim. Should that respawn fail (`[hunting]
 respawning player <victim> after the skinning failed, the body lies until its
 respawn: <error>`), the body lies until `respawnSeconds` and every search of
 it is refused ("This body has been skinned. Nothing can be taken from it."),
@@ -852,11 +885,9 @@ record like the pet system's key rescue; the body is emptied first and the
 skinner filled after, so no stack ever has two owners, and if the skinner
 cannot take it the body gets it back). There is no carry weight or inventory
 size check on the server, so a full pack may leave the skinner
-over-encumbered, as looting it by hand would. The skinner reads "You also
-take everything the body held." (not when the body was already empty) and
-the victim "A hunter skinned the body you left behind and took everything it
-held." ("The body you left behind was skinned by a hunter." when nothing
-moved). The emptied body then goes by the PK body rule (`docs_roleplay_survival_loop.md`
+over-encumbered, as looting it by hand would. Neither the skinner nor the
+victim is told in the chat; the `[hunting]` and `[body]` log lines carry
+it. The emptied body then goes by the PK body rule (`docs_roleplay_survival_loop.md`
 section 8, "The body"): at the next 2 s check it stops showing its worn
 pieces, and it is removed at the first check that comes 60 s or more after
 the death, so within 2 s when it is skinned later than that. Until then it
@@ -876,12 +907,11 @@ already under way when a PK body is left for the same death (a soul trap PK is
 noticed up to 100 ms after the death) gives nothing, as the PK body now holds
 that death: the victim's stripped actor respawns 4 s after the PK body is
 left, before the 5 s skinning ends, so the skinning stops with `... they
-respawned` and "The body is gone before you could finish."; `... a PK body
+respawned` and the skinner stands up; `... a PK body
 took their pack` shows only when that respawn failed. A player's own body is
 gone once skinned, so a second hunter finds nothing to skin (if the respawn
 failed, the search refusal turns them away). On a PK body
-already skinned a crouched hunter with the knife reads "This body has already
-been skinned." and the interact goes on into the search window under the PK
+already skinned the menu has no Skin row, and a crouched interact goes on into the search window under the PK
 body rules (empty unless someone put something in since), with no flesh and
 no `skins the PK body` line. A body someone is searching
 cannot be skinned ("... is already being searched."). Only that search
@@ -889,8 +919,7 @@ request skins a player's body: the native activation the same key press also
 sends (`mp.onActivate`, the path of plugin-placed animals) passes it over
 (`trySkin` with `players` false), so the search session and pending prompt
 checks always come first and every refusal shows once. If the victim respawns
-during the 5 s on their own body, the skinner is stood up (an `actionLock` of 0 s) and told "The
-body is gone before you could finish."; a skinner who goes offline, dies, goes
+during the 5 s on their own body, the skinner is stood up (an `actionLock` of 0 s); a skinner who goes offline, dies, goes
 down, is restrained or ends up out of reach leaves the body skinnable again,
 and a PK body removed meanwhile (emptied) gives nothing (`the body
 is gone`). A downed player is alive, so neither

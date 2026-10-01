@@ -260,7 +260,9 @@ const main = async () => {
   const searchSystem = new SearchSystem(log, hostingSystem);
   const huntingSystem = new HuntingSystem(log, masterySystem, needsSystem);
   // A hunter's interaction with a dead animal, a dead player's own body or a PK body skins it before it is searched
-  searchSystem.bodyAction = (ctx, searcherId, bodyId) => huntingSystem.trySkin(ctx, searcherId, bodyId);
+  searchSystem.bodyAction = (ctx, searcherId, bodyId, chosen) => huntingSystem.trySkin(ctx, searcherId, bodyId, true, chosen);
+  // The interact menu on a dead player's body offers Skin to a hunter holding the knife
+  captureSystem.menuFlagProviders.push((requesterId, bodyId) => huntingSystem.menuFlags(requesterId, bodyId));
   searchSystem.hidesItem = (ctx, _viewerId, bodyId, baseId) => huntingSystem.hidesMeat(ctx, bodyId, baseId);
   // Pets: owned by a character and hosted by their owner; the housing menu offers them at doors and the admin panel grants them
   const petSystem = new PetSystem(log, hostingSystem, companionSystem, housingSystem, searchSystem, captureSystem);

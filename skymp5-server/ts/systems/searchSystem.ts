@@ -23,7 +23,7 @@ type Mp = any;
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
-//     { customPacketType: "searchRequest", target: <actorFormId> }
+//     { customPacketType: "searchRequest", target: <actorFormId> }   // skin: true is the interact menu's Skin on a body (bodyAction's chosen)
 //     { customPacketType: "searchConsentResult", requestId, accepted }
 //     { customPacketType: "searchEnd" }                              // searcher closed the window
 //   Server -> Client:
@@ -76,7 +76,7 @@ export class SearchSystem implements System {
   ownedBy?: (actorId: number) => number;
   isAnimal?: (ctx: SystemContext, actorId: number) => boolean;
   // Set by index.ts: true when the interaction with a body became something else (skinning), so it is not opened
-  bodyAction?: (ctx: SystemContext, searcherActorId: number, bodyActorId: number) => boolean;
+  bodyAction?: (ctx: SystemContext, searcherActorId: number, bodyActorId: number, chosen: boolean) => boolean;
   // Set by index.ts: why a searcher may not open this body, "" when they may
   bodyRefusal?: (searcherActorId: number, bodyActorId: number) => string;
   // Set by index.ts: true for a body whose window lists property keys and writings by name
@@ -337,7 +337,7 @@ export class SearchSystem implements System {
       this.log(`[search] ${searcherActorId.toString(16)} refused living npc ${targetActorId.toString(16)}`);
       return;
     }
-    if (body && this.bodyAction?.(ctx, searcherActorId, targetActorId)) return;
+    if (body && this.bodyAction?.(ctx, searcherActorId, targetActorId, content.skin === true)) return;
     const bodyRefusal = body ? this.bodyRefusal?.(searcherActorId, targetActorId) : "";
     if (bodyRefusal) {
       this.notice(ctx, userId, bodyRefusal);
