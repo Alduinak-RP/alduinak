@@ -129,3 +129,20 @@ closes are the Whiterun wall tower caps, the Riften gate roofs and `WHprison01In
 No server build, plugin run or game service restart is needed.
 
 To roll back, delete the loose NIFs of that script from `build/dist/testclient/Data` and repeat steps 2 to 4.
+
+## freeze_havok.py: object meshes never simulate
+
+Placed and dropped objects keep the pose the server gives them, with no runtime freeze. The script reads the world
+model of every MISC, WEAP, ARMO (ground models), BOOK, INGR, ALCH, KEYM, SLGM, SCRL, LIGH, MSTT, ACTI, FURN and CONT
+record in the `--data` plugins. A mesh any AMMO record uses is left alone, so arrows still fly and fall. In each
+`bhkRigidBody(T)` whose motion system is dynamic, it writes motion system fixed (offset 224 = 5), quality fixed
+(227 = 0) and mass 0 (180). Keyframed and fixed bodies, layers and shapes stay as they are. A loose mesh in `--client`
+wins over the same path in `--data` or its archives, so meshes we already patched are frozen on top of their patch.
+Every written mesh, with its source and result sha256, is listed in `freeze_havok.json` under `--out`.
+
+```bash
+python misc/mesh-patches/freeze_havok.py --out <dir> [--data "C:/GOG Games/Skyrim Anniversary Edition - Test/Data"]
+```
+
+The server places a dropped item at the dropper's feet, raised by the lowest point of the item's OBND
+(`MpActor::DropItem`), since the item no longer falls into place. Rerun the script after any mod list change.

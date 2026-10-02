@@ -25,6 +25,7 @@
 #include "gamemode_events/EatItemEvent.h"
 #include "gamemode_events/ReadBookEvent.h"
 #include "gamemode_events/RespawnEvent.h"
+#include "libespm/RecordHeaderAccess.h"
 #include "libespm/espm.h"
 #include "papyrus-vm/Utils.h"
 #include "script_objects/EspmGameObject.h"
@@ -33,6 +34,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <functional>
 #include <optional>
 #include <random>
@@ -115,6 +117,24 @@ void RestoreActorValuePatched(MpActor* actor, espm::ActorValue actorValue,
 {
   actor->RestoreActorValue(actorValue, value);
   actor->UpdateNextRestorationTime(actorValue, std::chrono::seconds{ 5 });
+}
+
+// Lowest point of a base record's OBND below its origin, 0 without bounds
+int16_t BoundsMinZ(const espm::LookupResult& lookupRes,
+                   espm::CompressedFieldsCache& cache)
+{
+  int16_t minZ = 0;
+  espm::RecordHeaderAccess::IterateFields(
+    lookupRes.rec,
+    [&](const char* type, uint32_t dataSize, const char* data) {
+      if (!std::memcmp(type, "OBND", 4) &&
+          dataSize >= sizeof(espm::ObjectBounds)) {
+        auto bounds = reinterpret_cast<const espm::ObjectBounds*>(data);
+        minZ = std::min(bounds->pos1[2], bounds->pos2[2]);
+      }
+    },
+    cache);
+  return minZ;
 }
 
 }
@@ -2033,6 +2053,11 @@ void MpActor::DropItem(const uint32_t baseId, const Inventory::Entry& entry)
   }
 
   placedObject->SetCount(count);
+
+  // Item meshes have no live physics, so the drop rests on the actor's feet
+  NiPoint3 restPos = GetPos();
+  restPos.z -= BoundsMinZ(lookupRes, worldState->GetEspmCache());
+  placedObject->SetPos(restPos);
 
   Inventory::Entry dropped = entry;
   dropped.SetWorn(Inventory::Worn::None);
