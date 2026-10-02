@@ -134,7 +134,9 @@ To roll back, delete the loose NIFs of that script from `build/dist/testclient/D
 
 Placed and dropped objects keep the pose the server gives them, with no runtime freeze. The script reads the world
 model of every MISC, WEAP, ARMO (ground models), BOOK, INGR, ALCH, KEYM, SLGM, SCRL, LIGH, MSTT, ACTI, FURN and CONT
-record in the `--data` plugins. A mesh any AMMO record uses is left alone, so arrows still fly and fall. In each
+record in the `--data` plugins. A mesh any AMMO record uses is left alone, so arrows still fly and fall. Anchored
+client-only pieces (`ANCHORED`: signs, bone alarms, nooses, chandeliers, meat hooks, hanging lanterns) keep their
+physics, so they still swing when bumped. In each
 `bhkRigidBody(T)` whose motion system is dynamic, it writes motion system fixed (offset 224 = 5), quality fixed
 (227 = 0) and mass 0 (180). Keyframed and fixed bodies, layers and shapes stay as they are. A loose mesh in `--client`
 wins over the same path in `--data` or its archives, so meshes we already patched are frozen on top of their patch.

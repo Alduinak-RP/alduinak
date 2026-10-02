@@ -7,6 +7,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import struct
 import sys
 from collections import Counter, defaultdict
@@ -24,6 +25,8 @@ MODEL_FIELDS = {'MISC': ['MODL'], 'WEAP': ['MODL'], 'ARMO': ['MOD2', 'MOD4'], 'B
                 'ALCH': ['MODL'], 'KEYM': ['MODL'], 'SLGM': ['MODL'], 'SCRL': ['MODL'], 'LIGH': ['MODL'],
                 'MSTT': ['MODL'], 'ACTI': ['MODL'], 'FURN': ['MODL'], 'CONT': ['MODL'], 'AMMO': ['MODL']}
 EXCLUDED = {'AMMO'}
+# Anchored client-only pieces that only swing when bumped: signs, bone alarms, nooses, chandeliers, meat hooks, hanging lanterns
+ANCHORED = re.compile(r'signage\\|\\mrksign|bonealarm|noose|chandelier|meathook|\\hook01\.nif|lanterns\\.*hanging')
 # bhkRigidBody(T) of a version 100 NIF: 250 bytes plus 4 per constraint ref
 BODY_SIZE = 250
 MASS, MOTION, QUALITY, CONSTRAINTS = 180, 224, 227, 244
@@ -90,6 +93,9 @@ def main():
     for mesh, types in sorted(model_users(args.data).items()):
         if types & EXCLUDED:
             stats['arrow'] += 1
+            continue
+        if ANCHORED.search(mesh):
+            stats['anchored'] += 1
             continue
         source = read(mesh)
         if source is None:
