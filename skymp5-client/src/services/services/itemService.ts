@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import * as sp from "skyrimPlatform";
-import { ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
+import { ButtonEvent, DxScanCode, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
@@ -9,6 +9,7 @@ import { localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { FormTypeEx } from "../../extensions/formTypeEx";
 import { RemoteServer } from "./remoteServer";
 import { ActivationService } from "./activationService";
+import { logToPlatformLog } from "../../logging";
 
 // Set by the server's PlacedItemSystem on a nailed item
 export const NAILED_PROP = "ff_nailed";
@@ -39,6 +40,7 @@ export class ItemService extends ClientListener {
     super();
     this.controller.on("update", () => this.onUpdate());
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
+    this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
   }
 
@@ -71,7 +73,14 @@ export class ItemService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "itemGrab", target: remoteId });
   }
 
+  // Drops from this inventory land on the surface the crosshair found just before it opened
+  private onMenuOpen(e: MenuOpenEvent): void {
+    if (e.name === "InventoryMenu") sendCustomPacket(this.controller, { customPacketType: "itemDropPoint", pos: this.lastSurface });
+  }
+
   private onUpdate(): void {
+    const player = this.sp.Game.getPlayer();
+    if (player && !this.sp.Ui.isMenuOpen("InventoryMenu")) this.lastSurface = this.surfacePoint(player);
     const pending = this.pending;
     if (pending && !this.activateHeld()) {
       this.pending = null;
@@ -83,7 +92,6 @@ export class ItemService extends ClientListener {
     const carry = this.carry;
     if (!carry) return;
     const ref = ObjectReference.from(this.sp.Game.getFormEx(carry.localId));
-    const player = this.sp.Game.getPlayer();
     if (!ref || !player) {
       this.drop(null, false);
       return;
@@ -137,6 +145,10 @@ export class ItemService extends ClientListener {
     const point = typeof pick === "function" ? pick() : null;
     if (!point) return null;
     const far = Math.hypot(point[0] - player.getPositionX(), point[1] - player.getPositionY(), point[2] - player.getPositionZ());
+    if (!this.pickLogged) {
+      this.pickLogged = true;
+      logToPlatformLog(this, `first crosshair pick ${point.map((v) => v.toFixed(1)).join(",")}, ${far.toFixed(1)} units from the player`);
+    }
     return far <= PLACE_REACH ? point : null;
   }
 
@@ -179,5 +191,7 @@ export class ItemService extends ClientListener {
   }
 
   private pending: { localId: number; remoteId: number; at: number } | null = null;
+  private lastSurface: number[] | null = null;
+  private pickLogged = false;
   private carry: Carry | null = null;
 }

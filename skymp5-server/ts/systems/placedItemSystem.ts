@@ -1,7 +1,7 @@
 import { MongoClient } from "mongodb";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, isNear, notifyActor, sendActionLock, takeItemFrom, userOf, userSlotCount } from "./actorUtil";
+import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, notifyActor, sendActionLock, takeItemFrom, userOf, userSlotCount } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { AdminRoleConfig, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 import { formIdFromConfig, toFormId } from "./formIdUtil";
@@ -12,7 +12,8 @@ type Mp = any;
 // World items: carried by one player at a time, nailed down with a hammer and a nail; player drops are removed two hours after
 // their last placement unless nailed. Packets: itemMenuRequest {target} -> itemMenuState {target, nailed, canPry, canNail};
 // itemGrab {target} -> itemGrabState {target, ok}, itemGrabbed {target} to the cell; itemMove {target, pos (the surface point
-// under the item), rot} or itemRelease {target} -> itemMoved {target, pos, rot} to the cell; itemNail {target}; itemPry {target}.
+// under the item), rot} or itemRelease {target} -> itemMoved {target, pos, rot} to the cell; itemNail {target}; itemPry {target};
+// itemDropPoint {pos | null}: the surface under the crosshair as the inventory opened, where the next drops land instead of the feet.
 // State lives on each item's changeForm; the sweep finds old ones in the changeForms collection and checks them against the live world.
 const PLACED_AT_PROP = "private.placedAt";
 const NAILED_BY_PROP = "private.nailedBy";
@@ -27,6 +28,9 @@ const NAIL_ANIM = "IdleHammerTableEnter";
 const NAIL_SECONDS = 2;
 // A carry the client never ends is given back after this long
 const GRAB_TTL_MS = 2 * 60 * 1000;
+// Degrees a dropped shield is tilted on X, since its model stands upright
+const SHIELD_TILT_X = 45;
+const SHIELD_SLOT = 1 << 9;
 const ITEM_TYPES = new Set(["MISC", "WEAP", "ARMO", "BOOK", "INGR", "ALCH", "KEYM", "SLGM", "SCRL", "LIGH", "AMMO"]);
 
 const field = (name: string) => ({ $getField: { field: name, input: "$dynamicFields" } });
@@ -44,6 +48,7 @@ export class PlacedItemSystem implements System {
   // item -> who carries it and since when
   private grabs = new Map<number, { by: number; at: number }>();
   private minZ = new Map<number, number>();
+  private dropPoints = new Map<number, number[]>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
@@ -54,7 +59,7 @@ export class PlacedItemSystem implements System {
     if (all?.["databaseDriver"] === "mongodb" && typeof all["databaseUri"] === "string" && typeof all["databaseName"] === "string") {
       this.db = { uri: all["databaseUri"], name: all["databaseName"] };
     }
-    chainMpHook(mp, "onItemPlaced", (_actorId: number, refId: number) => this.setPlacedAt(mp, Number(refId) >>> 0));
+    chainMpHook(mp, "onItemPlaced", (actorId: number, refId: number) => this.onPlaced(mp, Number(actorId) >>> 0, Number(refId) >>> 0));
     chainMpHook(mp, "onActivate", (targetId: number, casterId: number) => this.onActivate(mp, Number(targetId) >>> 0, Number(casterId) >>> 0));
     this.log(`[placed] nail ${hex(this.nailId)}, hammer ${hex(this.hammerId)}; ${this.db ? "old drops are swept every 30 min" : "no mongodb, old drops are never swept"}`);
   }
@@ -75,12 +80,18 @@ export class PlacedItemSystem implements System {
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
-    if (!["itemMenuRequest", "itemGrab", "itemMove", "itemRelease", "itemNail", "itemPry"].includes(type)) return;
+    if (!["itemMenuRequest", "itemGrab", "itemMove", "itemRelease", "itemNail", "itemPry", "itemDropPoint"].includes(type)) return;
     const mp = ctx.svr as Mp;
     let actorId = 0;
     try { actorId = Number(mp.getUserActor(userId)) >>> 0; } catch { return; }
+    if (type === "itemDropPoint") {
+      const pos = content["pos"];
+      if (actorId && this.isVector(pos) && this.inReach(mp, actorId, pos)) this.dropPoints.set(actorId, pos);
+      else this.dropPoints.delete(actorId);
+      return;
+    }
     const target = toFormId(content["target"]);
-    if (!actorId || !this.isItem(mp, target) || !isNear(mp, actorId, target, REACH)) return;
+    if (!actorId || !this.isItem(mp, target) || !this.isNear(mp, actorId, target)) return;
     const nailedBy = this.nailedBy(mp, target);
     const grab = this.grabs.get(target);
     const mine = grab?.by === actorId;
@@ -115,8 +126,7 @@ export class PlacedItemSystem implements System {
   private move(mp: Mp, actorId: number, target: number, content: Content): void {
     const surface = content["pos"], rot = content["rot"];
     if (!this.isVector(surface) || !this.isVector(rot)) return this.release(mp, target);
-    const me = mp.get(actorId, "pos") as number[];
-    if (Math.hypot(surface[0] - me[0], surface[1] - me[1], surface[2] - me[2]) > REACH) return this.release(mp, target);
+    if (!this.inReach(mp, actorId, surface)) return this.release(mp, target);
     // The item's bottom rests on the surface point
     const pos = [surface[0], surface[1], surface[2] - this.boundsMinZ(mp, target)];
     const loc = mp.get(target, "locationalData");
@@ -196,6 +206,54 @@ export class PlacedItemSystem implements System {
       }
     }
     this.log(`[placed] sweep removed ${removed} of ${docs.length} old drops`);
+  }
+
+  // A drop lands on the inventory's crosshair surface when there was one, and a shield lies down
+  private onPlaced(mp: Mp, actorId: number, refId: number): void {
+    this.setPlacedAt(mp, refId);
+    const point = this.dropPoints.get(actorId);
+    const shield = this.isShield(mp, refId);
+    if (!point && !shield) return;
+    try {
+      const loc = mp.get(refId, "locationalData");
+      const pos = point ? [point[0], point[1], point[2] - this.boundsMinZ(mp, refId)] : loc.pos;
+      const rot = [shield ? SHIELD_TILT_X : loc.rot[0], loc.rot[1], loc.rot[2]];
+      mp.set(refId, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos, rot });
+      this.toCell(mp, refId, { customPacketType: "itemMoved", target: refId, pos, rot });
+    } catch (e) {
+      this.log(`[placed] could not place drop ${hex(refId)}: ${e}`);
+    }
+  }
+
+  // ARMO whose biped slots hold the shield slot (BOD2, or BODT in older plugins)
+  private isShield(mp: Mp, refId: number): boolean {
+    try {
+      const record = mp.lookupEspmRecordById(baseIdOf(mp, refId))?.record;
+      if (record?.type !== "ARMO") return false;
+      const body = (record.fields ?? []).find((f: any) => f?.type === "BOD2" || f?.type === "BODT")?.data as Uint8Array | undefined;
+      return !!body && body.byteLength >= 4 && (new DataView(body.buffer, body.byteOffset, 4).getUint32(0, true) & SHIELD_SLOT) !== 0;
+    } catch {
+      return false;
+    }
+  }
+
+  // isNear reads actors only; items are compared by their locational data
+  private isNear(mp: Mp, actorId: number, target: number): boolean {
+    try {
+      const a = mp.get(actorId, "locationalData"), b = mp.get(target, "locationalData");
+      return a.cellOrWorldDesc === b.cellOrWorldDesc && Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1], a.pos[2] - b.pos[2]) <= REACH;
+    } catch {
+      return false;
+    }
+  }
+
+  private inReach(mp: Mp, actorId: number, point: number[]): boolean {
+    try {
+      const me = mp.get(actorId, "pos") as number[];
+      return Math.hypot(point[0] - me[0], point[1] - me[1], point[2] - me[2]) <= REACH;
+    } catch {
+      return false;
+    }
   }
 
   // Placing, moving or prying starts the two hours again
