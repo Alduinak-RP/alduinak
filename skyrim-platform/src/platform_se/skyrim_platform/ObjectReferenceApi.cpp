@@ -4,7 +4,6 @@
 #include "CarryHold.h"
 #include "NullPointerException.h"
 #include "SkyrimPlatform.h"
-#include "StaticFreeze.h"
 
 extern CallNativeApi::NativeCallRequirements g_nativeCallRequirements;
 
@@ -314,14 +313,6 @@ Napi::Value ObjectReferenceApi::SetCollision(const Napi::CallbackInfo& info)
 {
   auto refr = GetArgObjectReference(info[0]);
   refr->SetCollision(NapiHelper::ExtractBoolean(info[1], "collision"));
-  return info.Env().Undefined();
-}
-
-Napi::Value ObjectReferenceApi::MarkServerCopy(const Napi::CallbackInfo& info)
-{
-  StaticFreeze::MarkServerCopy(
-    NapiHelper::ExtractUInt32(info[0], "refrFormId"),
-    NapiHelper::ExtractBoolean(info[1], "serverCopy"));
   return info.Env().Undefined();
 }
 

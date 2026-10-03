@@ -1,4 +1,4 @@
-import { ObjectReference, Game, Actor, MotionType, FormType } from "skyrimPlatform";
+import { ObjectReference, Game, Actor } from "skyrimPlatform";
 import { Appearance, applyTints } from "../sync/appearance";
 import { NiPoint3 } from "../sync/movement";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
@@ -51,11 +51,6 @@ export class SpawnProcess {
 
     const base = refr.getBaseObject()!;
     ObjectReferenceEx.dealWithRef(refr, base);
-
-    // Arrows and bolts keep their physics, like every ammo ref
-    if (base.getType() === FormType.Ammo) {
-      return this.callback();
-    }
-    return refr.setMotionType(MotionType.Keyframed, true).then(this.callback);
+    return this.callback();
   }
 }

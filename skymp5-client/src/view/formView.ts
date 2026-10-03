@@ -255,7 +255,6 @@ export class FormView {
 
         if (refr !== null) {
           SpApiInteractor.getControllerInstance().lookupListener(WorldCleanerService).modWcProtection(refr.getFormID(), 1);
-          if (FormTypeEx.isItem(base.getType())) ObjectReferenceEx.markServerCopy(refr.getFormID(), true);
         }
 
         // TODO: reset all states?
@@ -330,8 +329,6 @@ export class FormView {
     this.loaded3DMoment = 0;
     this.dealtWithRef = false;
     const refrId = this.refrId;
-    // Unmarked at once, since a copy spawned right after a game load can reuse the id
-    if (refrId >= 0xff000000) ObjectReferenceEx.markServerCopy(refrId, false);
     this.mountState = makeMountState();
     // Before the id can go to another copy
     releaseHold(this.carriedState.hold);

@@ -7,7 +7,7 @@ import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { FormTypeEx } from "../../extensions/formTypeEx";
 import { logError } from "../../logging";
 
-// Placed havok objects are keyframed natively (SkyrimPlatform StaticFreeze.cpp); this service blocks engine activation the server must handle
+// Blocks engine activation the server must handle
 // Every type a placed item or an untouchable base has
 const BLOCKED_TYPES = [FormType.Flora, FormType.Activator, FormType.Furniture, FormType.Container, ...FormTypeEx.itemTypes];
 

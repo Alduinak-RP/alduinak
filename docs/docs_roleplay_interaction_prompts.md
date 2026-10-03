@@ -90,43 +90,21 @@ keeps its display name with a verb picked from its base form type.
 
 ## Frozen clutter
 
-Placed objects must not move when a player bumps into them: only actors
-(ragdolls), arrows and bolts keep their physics. SkyrimPlatform does it
-natively (`StaticFreeze.cpp`, built into `SkyrimPlatformImpl.dll`): every
-`objectLoaded` and `cellAttach` event queues its reference, a
-`cellFullyLoaded` queues every ref of that cell and a game load every ref of
-the attached interior or grid cells (read straight from `TES`; the worldspace
-sky cell is skipped), and inside the Papyrus update native, on an engine job
-thread (once per Papyrus update, up to 1024 refs), a ref whose parent cell is
-attached and whose 3D holds a havok body of a dynamic motion type (dynamic,
-sphere, box or thin box inertia) gets the engine's `SetMotionType` Keyframed,
-the call the Papyrus function makes. Fixed and already keyframed bodies
-(statics, doors, animated objects) are never touched, so no model folder list
-is needed. Kept dynamic: actors, projectiles (arrows, bolts and spells, in
-flight or stuck), every ref of an AMMO base (arrows and bolts lying in the
-world), and runtime (`ff`) item refs that are engine drops such as a disarmed
-weapon (they must stay pickable). The client's copies of server items are
-runtime refs too: `FormView` marks each item copy through SkyrimPlatform's
-`markServerCopy` as it spawns it and unmarks it as it deletes it, so the
-native pass freezes a marked copy like a placed ref every time its 3D loads,
-follow-ups included even when `SpawnProcess` keyframed it first as it enabled
-it (ammo copies stay dynamic); non-item copies need no mark. A ref whose 3D
-is not in yet is looked at again every 200 ms (up to 50 times; a disabled one
-waits for its next `objectLoaded`; an event ref in a cell that is not
-attached yet waits the same way), and a frozen ref is looked at again one
-and three seconds later in case its havok was rebuilt, a schedule that every
-later `objectLoaded` or `cellAttach` of it starts over until its 3D unloads.
-Every look checks the kept classes again, since `ff` ids are reused.
-`skyrim-platform.log` carries one line per cell and game load at most, written
-once the cell's refs have been quiet for 5 s: `StaticFreeze: cell X froze N
-refs (S only by a cell sweep, L only by the post-load sweep, R frozen again on
-a follow-up); kept H without dynamic havok, A actors, P projectiles, M ammo, I
-runtime items, D without 3D, O other`. S counts refs only a `cellFullyLoaded`
-sweep reported, L refs that neither an event nor a cell sweep reported before
-the game load's sweep, and R refs whose first keyframing did not hold; all
-three should stay near zero, and an L that stays 0 across logins means the
-post-load sweep can go. An object that still
-moves: its console id and base tell whether it is one of the kept classes.
+Placed objects never simulate: their meshes carry no dynamic havok body, so
+nothing runs at load and nothing can drift first. `misc/mesh-patches/freeze_havok.py`
+writes loose copies of every object world model of the load order with each
+dynamic `bhkRigidBody` made fixed and massless, and puts the bodies of item
+meshes (MISC, WEAP, ARMO ground models, BOOK, INGR, ALCH, KEYM, SLGM, SCRL,
+LIGH) on `L_NONCOLLIDABLE`, which the crosshair's item picker hits and
+characters, cameras and projectiles pass through. Furniture, containers,
+activators and moveable statics stay solid. Kept dynamic: actors, arrows and
+bolts (every mesh an AMMO record uses) and the anchored client-only pieces the
+script's `ANCHORED` list names (signs, bone alarms, nooses, chandeliers, meat
+hooks, hanging lanterns). Traps that move by havok are Initially Disabled in
+the plugin (`disableTraps`). A dropped item does not fall into place, so the
+server sets it at the dropper's feet raised by the lowest point of its OBND.
+An object that still moves: its mesh is missing from `freeze_havok.json` or
+a later mod ships it; rerun the script after any mod list change.
 
 `staticRefsService.ts` (client) no longer freezes anything. It blocks engine
 activation on plugin-placed items and untouchable decor as their cell

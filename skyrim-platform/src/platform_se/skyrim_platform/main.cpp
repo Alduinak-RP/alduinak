@@ -16,7 +16,6 @@
 #include "PapyrusTESModPlatform.h"
 #include "Settings.h"
 #include "SkyrimPlatform.h"
-#include "StaticFreeze.h"
 #include "TPOverlayService.h"
 #include "TPRenderSystemD3D11.h"
 #include "TextApi.h"
@@ -80,7 +79,6 @@ void UpdateDumpFunctions()
 void OnUpdate(IVM* vm, StackID stackId)
 {
   UpdateDumpFunctions();
-  StaticFreeze::Update();
 
   g_nativeCallRequirements.stackId = stackId;
   g_nativeCallRequirements.vm = vm;
@@ -190,7 +188,6 @@ DLLEXPORT bool SKSEAPI SKSEPlugin_Load_Impl(const SKSE::LoadInterface* skse)
     [](SKSE::MessagingInterface::Message* a_msg) {
       EventHandler::HandleSKSEMessage(a_msg);
       BrowserApiNirnLab::GetInstance().HandleSkseMessage(a_msg);
-      StaticFreeze::HandleSkseMessage(a_msg);
     });
 
   Hooks::Install();
