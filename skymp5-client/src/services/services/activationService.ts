@@ -13,6 +13,7 @@ import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { LastInvService } from "./lastInvService";
 import { logError, logToPlatformLog, logTrace } from "../../logging";
 import { takeSyntheticActivation } from "../../sync/mountApply";
+import { ItemService } from "./itemService";
 
 // A press on a door mid-swing is dropped, but a door stuck between states would never take one, so it goes through after this long
 const STUCK_PRESS_MS = 1500;
@@ -117,6 +118,7 @@ export class ActivationService extends ClientListener {
         }
 
         if (e.caster.getFormID() === 0x14) {
+          if (this.controller.lookupListener(ItemService).onActivatePress(e.target, target)) return;
           this.releaseStaleSeat(e, target);
         }
 
@@ -247,7 +249,7 @@ export class ActivationService extends ClientListener {
         }
     }
 
-    private sendActivation(caster: number, target: number) {
+    sendActivation(caster: number, target: number) {
         this.firstIgnoredMs.delete(target);
         this.pendingLoadDoorPress.delete(target);
 

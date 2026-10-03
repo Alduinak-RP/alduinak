@@ -17,6 +17,8 @@ import { PetService } from "./petService";
 import { MountService } from "./mountService";
 import { JobService } from "./jobService";
 import { InteractionPromptService } from "./interactionPromptService";
+import { ActivationService } from "./activationService";
+import { ItemService } from "./itemService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -54,6 +56,12 @@ const ACTIONS: PlayerAction[] = [
   { id: 'assassinate', label: 'Assassinate', danger: true },
   { id: 'factionRecruit', label: 'Recruit' },
 ];
+
+// A player-placed item; the server's itemMenuState says which apply
+const ITEM_PICKUP: PlayerAction = { id: 'itemPickup', label: 'Pick Up' };
+const ITEM_MOVE: PlayerAction = { id: 'itemMove', label: 'Move' };
+const ITEM_NAIL: PlayerAction = { id: 'itemNail', label: 'Nail Down' };
+const ITEM_PRY: PlayerAction = { id: 'itemPry', label: 'Pry Free' };
 
 // Every action goes to the server systems as a custom packet (by server form id).
 const PACKET_ACTIONS: Record<string, string> = {
@@ -200,6 +208,10 @@ export class PlayerActionService extends ClientListener {
       housing.requestMenuFor(ref);
       return;
     }
+    if (ref && this.controller.lookupListener(ItemService).isPlacedItem(ref)) {
+      this.interactWithItem(ref);
+      return;
+    }
     const load = this.controller.lookupListener(JobService).load;
     if (load) {
       this.openLoadMenu(load);
@@ -225,12 +237,26 @@ export class PlayerActionService extends ClientListener {
   private openLoadMenu(title: string): void {
     targetName = title;
     this.playerTarget = 0;
+    this.itemTarget = 0;
     if (!this.claimHeld()) return;
     this.menuOpen = true;
     openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS: LOAD_ACTIONS, targetName, hideTrade: true, events, WIDGET_ID }, this.controller);
   }
 
+  private interactWithItem(ref: ObjectReference): void {
+    targetName = ref.getDisplayName() || "Item";
+    this.playerTarget = 0;
+    this.bodyTarget = false;
+    this.itemTarget = localIdToRemoteId(ref.getFormID());
+    this.itemLocalId = ref.getFormID();
+    this.itemState = null;
+    sendCustomPacket(this.controller, { customPacketType: "itemMenuRequest", target: this.itemTarget });
+    const wait = this.menuWait = ++this.menuWaitSeq;
+    this.controller.lookupListener(TimersService).setTimeout(() => this.openWaitingMenu(wait), MENU_STATE_WAIT_MS);
+  }
+
   private interactWithPlayer(ref: ObjectReference, actor: Actor, remoteId: number): void {
+    this.itemTarget = 0;
     // Belt and braces next to the prompt service's block: no clone dialogue.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
     // Bodies skip the menu and open their inventory through the server search, unless the server offers the skinning too
@@ -253,6 +279,12 @@ export class PlayerActionService extends ClientListener {
 
   private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
     const content = parseCustomPacket(event);
+    if (content?.["customPacketType"] === "itemMenuState" && content["target"] === this.itemTarget) {
+      this.itemState = { nailed: content["nailed"] === true, canPry: content["canPry"] === true, canNail: content["canNail"] === true };
+      const wait = this.menuWait;
+      if (wait) this.controller.once("update", () => this.openWaitingMenu(wait));
+      return;
+    }
     if (content?.["customPacketType"] !== "playerMenuState" || content["target"] !== this.playerTarget) return;
     const flags: Record<string, boolean> = {};
     for (const [id, key] of Object.entries(SERVER_FLAGS)) flags[id] = content[key] === true;
@@ -277,6 +309,8 @@ export class PlayerActionService extends ClientListener {
     this.menuWait = 0;
     // A body nobody may skin, or an older server's silence, is searched as before
     if (this.bodyTarget && !this.skin) this.requestSearch(this.playerTarget);
+    // A nailed item its viewer may not pry offers nothing, and an unanswered request opens nothing
+    else if (this.itemTarget && !(this.menuArgs().ACTIONS as PlayerAction[]).length) return;
     else if (!this.menuOpen && !isMenuHotkeyBlocked(this.sp, this.controller)) this.openMenu();
   }
 
@@ -325,6 +359,11 @@ export class PlayerActionService extends ClientListener {
         this.controller.once("update", () => this.controller.lookupListener(AdminMenuService).open());
         return;
       }
+      if (this.itemTarget) {
+        this.itemAction(actionId);
+        this.closeMenu();
+        return;
+      }
       const packetType = PACKET_ACTIONS[actionId];
       if (this.bodyTarget && this.playerTarget) {
         // The search opens the engine's container menu; the server takes the same request with skin true as the skinning
@@ -340,6 +379,18 @@ export class PlayerActionService extends ClientListener {
     }
   }
 
+  private itemAction(actionId: string): void {
+    const target = this.itemTarget;
+    if (actionId === ITEM_PICKUP.id) {
+      this.controller.lookupListener(ActivationService).sendActivation(PLAYER_FORM_ID, target);
+    } else if (actionId === ITEM_MOVE.id) {
+      const ref = ObjectReference.from(this.sp.Game.getFormEx(this.itemLocalId));
+      if (ref) this.controller.lookupListener(ItemService).startMove(ref);
+    } else if (actionId === ITEM_NAIL.id || actionId === ITEM_PRY.id) {
+      sendCustomPacket(this.controller, { customPacketType: actionId === ITEM_NAIL.id ? "itemNail" : "itemPry", target });
+    }
+  }
+
   private openMenu(): void {
     if (!this.claimHeld()) return;
     this.menuOpen = true;
@@ -352,6 +403,11 @@ export class PlayerActionService extends ClientListener {
   }
 
   private menuArgs(): Record<string, unknown> {
+    if (this.itemTarget) {
+      const st = this.itemState;
+      const actions = !st ? [] : st.nailed ? (st.canPry ? [ITEM_PRY] : []) : [ITEM_PICKUP, ITEM_MOVE, st.canNail ? ITEM_NAIL : { ...ITEM_NAIL, disabled: true }];
+      return { ACTIONS: actions, targetName, hideTrade: true, events, WIDGET_ID };
+    }
     if (this.bodyTarget) {
       return { ACTIONS: [BODY_SEARCH, this.skin === "tired" ? BODY_SKIN_TIRED : BODY_SKIN], targetName, hideTrade: true, events, WIDGET_ID };
     }
@@ -389,6 +445,10 @@ export class PlayerActionService extends ClientListener {
   // The last press asked the server for a bounty board's strongbox or a search window
   private containerAsked = false;
   private playerTarget = 0;
+  // The placed item the menu is for, by server and local id, and what the server said about it
+  private itemTarget = 0;
+  private itemLocalId = 0;
+  private itemState: { nailed: boolean; canPry: boolean; canNail: boolean } | null = null;
   // The menu's target is a dead player's body, and what the server said about skinning it: "", "ready" or "tired"
   private bodyTarget = false;
   private skin = "";

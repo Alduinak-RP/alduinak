@@ -10,6 +10,7 @@ import { PetService } from "./petService";
 import { MountService } from "./mountService";
 import { JobService } from "./jobService";
 import { RemoteServer } from "./remoteServer";
+import { NAILED_PROP } from "./itemService";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -167,9 +168,13 @@ export class InteractionPromptService extends ClientListener {
   }
 
   private hasPinnedNote(ref: ObjectReference): boolean {
+    return this.formFlag(ref, DOOR_NOTE_PROP);
+  }
+
+  private formFlag(ref: ObjectReference, prop: string): boolean {
     const remoteId = localIdToRemoteId(ref.getFormID());
     const form = remoteId ? this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === remoteId) : undefined;
-    return (form as Record<string, unknown> | undefined)?.[DOOR_NOTE_PROP] === true;
+    return (form as Record<string, unknown> | undefined)?.[prop] === true;
   }
 
   // Player characters get the interaction menu on the activate key; names
@@ -257,7 +262,7 @@ export class InteractionPromptService extends ClientListener {
       case FormType.Key:
       case FormType.ScrollItem:
       case FormType.Light:
-        return placed ? null : "Take";
+        return placed ? null : this.formFlag(ref, NAILED_PROP) ? "Admire" : "Take";
       default:
         return null;
     }

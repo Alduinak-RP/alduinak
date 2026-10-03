@@ -112,6 +112,24 @@ attaches, plus one pass over each fully loaded cell (128 refs per 200 ms), so
 they only go through the server; `ObjectReferenceEx.dealWithRef` blocks
 activation and unlocks without touching the motion type.
 
+## Placed items
+
+Only items players drop can be taken, moved or nailed; plugin-placed clutter
+stays where it is. A tap of Activate on one takes it, a press held 0.4 s
+carries it 120 units ahead of the player with no physics until the key is let
+go (`ItemService`), and the interact key opens Pick Up, Move, Nail Down and
+Pry Free (`PlayerActionService`, `itemMenuRequest` / `itemMenuState`). Move
+from the menu ends on Escape or Activate. On release the client sends
+`itemMove`; the server (`PlacedItemSystem`) checks the item is within 400
+units, moves it in its cell and sends `itemMoved` to every client, whose copy
+moves too. Nail Down takes one nail (HearthFires `BYOHMaterialNails`) and needs
+a hammer (`BlacksmithHammer01`), plays `IdleHammerTableEnter` for 2 s and sets
+`ff_nailed`, which shows Admire and refuses the pickup; Pry Free is for the
+one who nailed it and for staff. Every drop raises `onItemPlaced`; the server
+keeps `./placed-items.json` and every 30 min removes items placed, moved or
+pried more than 2 hours ago unless nailed. Loose non-clutter items the
+plugins place are disabled in the plugin (`disableLooseItems`).
+
 ## Switches and verification
 
 - `customPrompts: false` in the `skymp5-client` settings block disables the
