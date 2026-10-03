@@ -16,7 +16,7 @@ import { FormTypeEx } from "../extensions/formTypeEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
 import { lastTryHost, tryHost } from "./hostAttempts";
 import { ModelApplyUtils } from "./modelApplyUtils";
-import { isModelHostedByOther, knowsCharacter, localIdToRemoteId } from "./worldViewMisc";
+import { carriedByOther, isModelHostedByOther, knowsCharacter, localIdToRemoteId } from "./worldViewMisc";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
@@ -380,7 +380,12 @@ export class FormView {
     const now = Date.now();
     if (now - this.lastHarvestedApply > 666) {
       this.lastHarvestedApply = now;
-      ModelApplyUtils.applyModelIsHarvested(refr, !!model.isHarvested);
+      // A copy another player carries (PlacedItemSystem's ff_carried) stays hidden, however it was spawned
+      if (carriedByOther((model as Record<string, unknown>)["ff_carried"])) {
+        if (!refr.isDisabled()) refr.disable(false);
+      } else {
+        ModelApplyUtils.applyModelIsHarvested(refr, !!model.isHarvested);
+      }
     }
     if (!this.dealtWithRef) {
       const base = refr.getBaseObject();

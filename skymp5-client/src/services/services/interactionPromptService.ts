@@ -9,8 +9,8 @@ import { isPlayerCharacterId } from "./playerActionService";
 import { PetService } from "./petService";
 import { MountService } from "./mountService";
 import { JobService } from "./jobService";
-import { RemoteServer } from "./remoteServer";
 import { NAILED_PROP } from "./itemService";
+import { formProp } from "../../view/worldViewMisc";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -172,9 +172,7 @@ export class InteractionPromptService extends ClientListener {
   }
 
   private formFlag(ref: ObjectReference, prop: string): boolean {
-    const remoteId = localIdToRemoteId(ref.getFormID());
-    const form = remoteId ? this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === remoteId) : undefined;
-    return (form as Record<string, unknown> | undefined)?.[prop] === true;
+    return formProp(localIdToRemoteId(ref.getFormID()), prop) === true;
   }
 
   // Player characters get the interaction menu on the activate key; names

@@ -2033,7 +2033,8 @@ void MpActor::DropItem(const uint32_t baseId, const Inventory::Entry& entry)
   auto baseForm = VarValue(std::make_shared<EspmGameObject>(lookupRes));
   auto aCount = VarValue(count);
   auto aForcePersist = VarValue(false);
-  auto aInitiallyDisabled = VarValue(false);
+  // Placed disabled, so the only create message clients get carries the final pose
+  auto aInitiallyDisabled = VarValue(true);
 
   VarValue placedObjectWrap = papyrusObjectReference.PlaceAtMe(
     this->ToVarValue(),
@@ -2063,11 +2064,12 @@ void MpActor::DropItem(const uint32_t baseId, const Inventory::Entry& entry)
 
   ++g_numDrops;
 
-  // The gamemode owns the drop's lifetime from here
+  // The gamemode may still move or turn it, and owns its lifetime from here
   CustomEvent placedEvent(GetFormId(), "onItemPlaced",
                           "[" + std::to_string(placedObject->GetFormId()) +
                             "]");
   placedEvent.Fire(worldState);
+  placedObject->Enable();
 }
 
 void MpActor::SetIsBlockActive(bool active)

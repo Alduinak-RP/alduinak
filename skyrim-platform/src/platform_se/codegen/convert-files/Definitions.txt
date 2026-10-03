@@ -1644,7 +1644,7 @@ export declare function reapplyWornEnchantments(actorFormId: number): void;
 
 export declare function setCollision(refrFormId: number, collision: boolean): void;
 
-// Where the crosshair's pick ray last hit collision, or null when it hit nothing
-export declare function getCrosshairPickPoint(): number[] | null;
+// Surface the camera looks at within reach, passing the ignored ref and actors; update handlers only, how says why pos is null
+export declare function getLookSurface(ignoreRefrFormId: number, reach: number): { how: string; pos: number[] | null; refId: number; layer: number };
 
 export declare function mountActor(rider: Actor | number, mount: Actor | number): boolean;

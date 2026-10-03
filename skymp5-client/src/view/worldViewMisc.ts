@@ -111,3 +111,24 @@ export const getObjectReference = (i: number): ObjectReference | null => {
   }
   return null;
 };
+
+// Custom properties (ff_*) of plugin-placed refs, which keep no FormModel
+export const pluginRefProps = new Map<number, Record<string, unknown>>();
+
+// The server's last pose of a plugin-placed ref, applied once its copy loads if it was moved
+export const pluginRefPose = new Map<number, { pos: number[]; rot: number[] }>();
+
+// True when an ff_carried value names a carrier other than this client's character
+export const carriedByOther = (value: unknown): boolean => {
+  const carrier = Number(value) || 0;
+  return carrier !== 0 && carrier !== SpApiInteractor.getControllerInstance().lookupListener(RemoteServer).getMyRemoteRefrId();
+};
+
+// A custom property of a server form, or of a plugin-placed ref without one (doors keep a FormModel)
+export const formProp = (remoteId: number, prop: string): unknown => {
+  if (!remoteId) return undefined;
+  const plugin = pluginRefProps.get(remoteId);
+  if (plugin) return plugin[prop];
+  const form = SpApiInteractor.getControllerInstance().lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === remoteId);
+  return (form as Record<string, unknown> | undefined)?.[prop];
+};

@@ -375,7 +375,11 @@ void PartOne::AttachSaveStorage(
       auto baseId = changeForm.baseDesc.ToFormId(worldState.espmFiles);
       auto lookupRes = GetEspm().GetBrowser().LookupById(baseId);
 
-      if (lookupRes.rec && espm::utils::IsItem(lookupRes.rec->GetType())) {
+      // Drops the gamemode stamped (PlacedItemSystem) persist until it removes them; older ones are skipped
+      bool placed =
+        changeForm.dynamicFields.GetValueDump("private.placedAt") != "null";
+      if (lookupRes.rec && espm::utils::IsItem(lookupRes.rec->GetType()) &&
+          !placed) {
         pImpl->logger->info("Skipping FF item {} (type is {}), will likely "
                             "overwrite at some point",
                             changeForm.formDesc.ToString(),
@@ -895,6 +899,11 @@ void PartOne::Init()
     emitter->VisitProperties(message, mode);
 
     auto isFilteredOut = [&](const CustomPropsEntry& customPropsEntry) {
+      // Private fields are server state, sent to no client
+      if (customPropsEntry.propName.rfind(
+            MpObjectReference::GetPropertyPrefixPrivate(), 0) == 0) {
+        return true;
+      }
       auto it = pImpl->gamemodeApiState.createdProperties.find(
         customPropsEntry.propName);
       if (it != pImpl->gamemodeApiState.createdProperties.end()) {

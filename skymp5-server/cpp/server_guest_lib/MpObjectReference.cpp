@@ -154,6 +154,10 @@ private:
 };
 
 namespace {
+const std::string kPickupExtrasProp = "private.pickupExtras";
+}
+
+namespace {
 std::pair<int16_t, int16_t> GetGridPos(const NiPoint3& pos) noexcept
 {
   return { int16_t(pos.x / 4096), int16_t(pos.y / 4096) };
@@ -1444,6 +1448,17 @@ void MpObjectReference::GivePickupItemsToActivationSource(
     uint32_t resultingCount =
       std::max(kCountDefault, std::max(countRecord, countChangeForm));
 
+    // A drop reloaded after a restart has its extras only in the changeForm
+    if (!pImpl->pickupExtras) {
+      const auto& dump =
+        ChangeForm().dynamicFields.GetValueDump(kPickupExtrasProp);
+      if (dump != "null") {
+        auto saved = Inventory::FromJson(nlohmann::json::parse(dump));
+        if (!saved.entries.empty()) {
+          pImpl->pickupExtras = saved.entries[0];
+        }
+      }
+    }
     if (pImpl->pickupExtras) {
       activationSource.AddItems(
         { Inventory::Entry(resultItem, resultingCount, *pImpl->pickupExtras) });
@@ -1456,6 +1471,10 @@ void MpObjectReference::GivePickupItemsToActivationSource(
 void MpObjectReference::SetPickupExtras(const Inventory::ExtraData& extras)
 {
   pImpl->pickupExtras = extras;
+  // Private: kept in the changeForm so the drop survives a restart
+  Inventory saved;
+  saved.entries.push_back(Inventory::Entry(GetBaseId(), 1, extras));
+  SetPropertyValueDump(kPickupExtrasProp, saved.ToJson().dump(), false, false);
 }
 
 void MpObjectReference::ProcessActivateNormal(

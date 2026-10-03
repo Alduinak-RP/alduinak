@@ -100,8 +100,8 @@ activators and moveable statics stay solid. Kept dynamic: actors, arrows and
 bolts (every mesh an AMMO record uses) and the anchored client-only pieces the
 script's `ANCHORED` list names (signs, bone alarms, nooses, chandeliers, meat
 hooks, hanging lanterns). Traps that move by havok are Initially Disabled in
-the plugin (`disableTraps`). A dropped item does not fall into place, so the
-server sets it at the dropper's feet raised by the lowest point of its OBND.
+the plugin (`disableTraps`). A dropped item does not fall into place; the
+server places it with the rest pose described under Placed items.
 An object that still moves: its mesh is missing from `freeze_havok.json` or
 a later mod ships it; rerun the script after any mod list change.
 
@@ -119,27 +119,49 @@ Any item in the world can be taken, carried or nailed down (`ItemService`,
 `PlayerActionService`, server `PlacedItemSystem`). A tap of Activate takes it.
 A press held 0.4 s, or Move in the interact menu, asks the server for the
 item (`itemGrab`): the server lets one player carry it at a time, answers
-`itemGrabState`, and tells the rest of the cell `itemGrabbed`, which hides
-their copy. While carried the item has no collision and sits on the surface
-under the crosshair (SkyrimPlatform `getCrosshairPickPoint`, within 350
-units), or floats ahead of the player when there is none; the mouse wheel
-turns it 15 degrees a step. Letting go of Activate (Escape or Activate after
-Move) sends one `itemMove` with that surface point, or the player's feet; the
-server raises the item by the lowest point of its OBND so its bottom rests on
-the point, saves the position on its changeForm and sends `itemMoved` to the
-cell, whose copies move and show again. A carry the client never ends is
-given back after 2 minutes or when its carrier leaves. Nail Down takes one
-nail (HearthFires `BYOHMaterialNails`) and needs a hammer
-(`BlacksmithHammer01`), plays `IdleHammerTableEnter` for 2 s and sets
-`ff_nailed`, which shows Admire and refuses pickups and carries; Pry Free is
-for the one who nailed it and for staff. Every drop raises `onItemPlaced` and
-the server writes `private.placedAt` on the item's changeForm (a carry or a
-pry of a dropped item writes it again, nailing writes `private.nailedBy`);
-every 30 min it asks the `changeForms` collection for drops older than 2
-hours that are not nailed, checks each against the live world and removes it.
-Plugin-placed items never expire. Without `databaseDriver` mongodb nothing is
-swept. Loose non-clutter items and coin purses the plugins place are disabled
-in the plugin (`disableLooseItems`).
+`itemGrabState` with the X and Y rotation and the rest height it will give
+the item, and tells the rest of the cell `itemGrabbed`, which hides their
+copy; `ff_carried` on the item holds the carrier's id, so every other client
+keeps its copy hidden however it is spawned until the carry ends (flags a
+restart left behind are cleared at boot, and a carrier who leaves or picks
+another character ends the carry). A refused grab is answered `ok: false`, and
+Escape or Activate always ends a carry started from the menu. While carried the
+item rests on the surface the camera looks at, from SkyrimPlatform's
+`getLookSurface`: one Havok ray on L_LOS from the player's eye along the
+camera, which passes through items (they sit on L_NONCOLLIDABLE), actors and
+the carried item, and takes a floor-like hit within 350 units, else casts
+straight down from a wall or from the end of reach. With no surface the item
+stays where it was last shown, or goes back where it lay once that spot is out
+of reach; the mouse wheel turns it 15 degrees a step. The ray runs on the game
+thread, so it only works from update handlers.
+Letting go of Activate (Escape or Activate after Move) sends one `itemMove`
+with the last surface point, or `itemRelease`, which puts it back. The server
+owns the rest pose: it keeps the item's X and Y (a shield turns 180 on Y,
+since shield models lie face down), takes the yaw, raises the origin so the
+lowest corner of the turned OBND touches the point, saves
+it on the changeForm, sends `itemMoved` to the cell and logs `[placed] <id>
+moved by ...`. A carrier's own release is checked against where it puts the
+item, not where it took it. A carry the client never ends is given back after
+2 minutes or when its carrier leaves, and the carrier's client drops it too.
+Nobody can nail an item while it is carried. A plugin-placed item moved this way gets
+`ff_moved`, so clients loading it later take the server's position. A drop
+from the inventory first sends `itemDropPoint` with the same look ray; the
+drop is placed disabled, set on that point (or the feet) with the same rest
+pose, then enabled, so the only create message carries the final pose
+(`[placed] drop ... on surface | at feet`). Nail Down takes one nail
+(HearthFires `BYOHMaterialNails`) and needs a hammer (`BlacksmithHammer01`),
+plays `IdleHammerTableEnter` for 2 s and sets `ff_nailed` (owner-visible, or
+create messages would drop it), which shows Admire and refuses pickups and
+carries; Pry Free is for the one who nailed it and for staff. Every drop
+raises `onItemPlaced` and the server writes `private.placedAt` on the item's
+changeForm (a carry or a pry of a dropped item writes it again, nailing
+writes `private.nailedBy`); every 30 min it asks the `changeForms` collection
+for drops older than 2 hours that are not nailed, checks each against the
+live world and removes it. Plugin-placed items never expire. Without
+`databaseDriver` mongodb nothing is swept. Loose non-clutter items and coin
+purses the plugins place are disabled in the plugin (`disableLooseItems`).
+The client logs every drop point and release: `drop point: hit ref ... layer
+... at ...`; `missing` there means an old SkyrimPlatform in `Platform/`.
 
 ## Switches and verification
 
@@ -176,5 +198,13 @@ replaces.
 
 ## Deployment
 
-Client + front: manager **Build Client**, players re-download via the
-launcher. No server-side artifacts affected.
+Prompts: client + front, manager **Build Client**, players re-download via
+the launcher.
+
+Placed items: **Build server** for `placedItemSystem.ts`; a native build for
+`MpActor.cpp` DropItem (`scam_native.node`) and for `ObjectReferenceApi.cpp`
+`getLookSurface` (`SkyrimPlatformImpl.dll`, CI flatrim or the Native button;
+an old `Platform/` logs `missing`); `50_properties.js` registers `ff_nailed`,
+`ff_carried` and `ff_moved` (gitignored, regenerated into `gamemode.js` by
+Build server and copied to live by Migrate server); **Build Client** for the
+client services.

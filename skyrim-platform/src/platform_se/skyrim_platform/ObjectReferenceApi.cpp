@@ -316,18 +316,226 @@ Napi::Value ObjectReferenceApi::SetCollision(const Napi::CallbackInfo& info)
   return info.Env().Undefined();
 }
 
-Napi::Value ObjectReferenceApi::GetCrosshairPickPoint(
-  const Napi::CallbackInfo& info)
+namespace {
+// Closest ray hit that is neither the ignored ref nor an actor; terrain has no ref and counts
+struct SkipRefCollector : RE::hkpRayHitCollector
 {
-  auto pick = RE::CrosshairPickData::GetSingleton();
-  if (!pick || !pick->targetCollider) {
-    return info.Env().Null();
+  RE::hkpWorldRayCastOutput rayHit;
+  RE::TESObjectREFR* ignore = nullptr;
+
+  void AddRayHit(const RE::hkpCdBody& a_body,
+                 const RE::hkpShapeRayCastCollectorOutput& a_hit) override
+  {
+    const RE::hkpCdBody* root = &a_body;
+    while (root->parent) {
+      root = root->parent;
+    }
+    auto collidable = static_cast<const RE::hkpCollidable*>(root);
+    auto ref = RE::TESHavokUtilities::FindCollidableRef(*collidable);
+    if (ref && (ref == ignore || ref->Is(RE::FormType::ActorCharacter))) {
+      return;
+    }
+    if (a_hit.hitFraction >= rayHit.hitFraction) {
+      return;
+    }
+    rayHit.normal.quad = a_hit.normal.quad;
+    rayHit.hitFraction = a_hit.hitFraction;
+    rayHit.rootCollidable = collidable;
+    earlyOutHitFraction = a_hit.hitFraction;
   }
-  auto point = Napi::Array::New(info.Env(), 3);
-  point.Set(uint32_t(0), Napi::Number::New(info.Env(), pick->collisionPoint.x));
-  point.Set(uint32_t(1), Napi::Number::New(info.Env(), pick->collisionPoint.y));
-  point.Set(uint32_t(2), Napi::Number::New(info.Env(), pick->collisionPoint.z));
-  return point;
+};
+
+enum class LookHow : uint8_t
+{
+  kNone,
+  kHit,
+  kDown,
+  kMiss,
+  kBudget,
+  kFaulted,
+  kOutsideUpdate
+};
+
+const char* LookHowName(LookHow how)
+{
+  switch (how) {
+    case LookHow::kHit:
+      return "hit";
+    case LookHow::kDown:
+      return "down";
+    case LookHow::kMiss:
+      return "miss";
+    case LookHow::kBudget:
+      return "budget";
+    case LookHow::kFaulted:
+      return "faulted";
+    case LookHow::kOutsideUpdate:
+      return "outside update";
+    default:
+      return "none";
+  }
+}
+
+struct LookOut
+{
+  LookHow how = LookHow::kNone;
+  float pos[3] = { 0, 0, 0 };
+  uint32_t refId = 0;
+  int32_t layer = -1;
+};
+
+struct RayOut
+{
+  bool hit = false;
+  bool budget = false;
+  RE::NiPoint3 pos;
+  float normalZ = 0;
+  uint32_t refId = 0;
+  int32_t layer = -1;
+};
+
+RayOut CastRay(RE::bhkWorld* world, const RE::NiPoint3& from,
+               const RE::NiPoint3& to, uint32_t filterInfo,
+               RE::TESObjectREFR* ignore)
+{
+  RayOut out;
+  const float scale = RE::bhkWorld::GetWorldScale();
+  RE::bhkPickData pick;
+  pick.rayInput.from.quad =
+    _mm_setr_ps(from.x * scale, from.y * scale, from.z * scale, 0.0f);
+  pick.rayInput.to.quad =
+    _mm_setr_ps(to.x * scale, to.y * scale, to.z * scale, 0.0f);
+  pick.rayInput.filterInfo = filterInfo;
+  SkipRefCollector collector;
+  collector.ignore = ignore;
+  pick.rayHitCollectorA8 =
+    reinterpret_cast<RE::hkpClosestRayHitCollector*>(&collector);
+  world->PickObject(pick);
+  auto root = collector.rayHit.rootCollidable;
+  if (!root) {
+    out.budget = pick.unkC0;
+    return out;
+  }
+  float normal[4];
+  _mm_storeu_ps(normal, collector.rayHit.normal.quad);
+  out.hit = true;
+  out.pos = from + (to - from) * collector.rayHit.hitFraction;
+  out.normalZ = normal[2];
+  auto ref = RE::TESHavokUtilities::FindCollidableRef(*root);
+  out.refId = ref ? ref->GetFormID() : 0;
+  out.layer = static_cast<int32_t>(root->GetCollisionLayer());
+  return out;
+}
+
+void SetLook(LookOut& out, LookHow how, const RayOut& ray)
+{
+  out.how = how;
+  out.pos[0] = ray.pos.x;
+  out.pos[1] = ray.pos.y;
+  out.pos[2] = ray.pos.z;
+  out.refId = ray.refId;
+  out.layer = ray.layer;
+}
+
+// Along the camera's view from the player's eye: a floor-like hit, else straight down from the wall or the end of reach
+void Look(uint32_t ignoreId, float reach, LookOut& out)
+{
+  auto player = RE::PlayerCharacter::GetSingleton();
+  auto cell = player ? player->GetParentCell() : nullptr;
+  auto world = cell ? cell->GetbhkWorld() : nullptr;
+  auto camera = RE::Main::WorldRootCamera();
+  if (!world || !camera) {
+    return;
+  }
+  const auto& rotate = camera->world.rotate;
+  const RE::NiPoint3 dir{ rotate.entry[0][0], rotate.entry[1][0],
+                          rotate.entry[2][0] };
+  const RE::NiPoint3 camPos = camera->world.translate;
+  const RE::NiPoint3 feet = player->GetPosition();
+  const RE::NiPoint3 eye{ feet.x, feet.y, feet.z + 100.0f };
+  const RE::NiPoint3 from =
+    camPos + dir * (std::max)(0.0f, (eye - camPos).Dot(dir));
+  const RE::NiPoint3 to = from + dir * (reach + 50.0f);
+  uint32_t info = 0;
+  player->GetCollisionFilterInfo(info);
+  const uint32_t filter =
+    (info & 0xFFFF0000) | static_cast<uint32_t>(RE::COL_LAYER::kLOS);
+  auto ignore =
+    ignoreId ? RE::TESForm::LookupByID<RE::TESObjectREFR>(ignoreId) : nullptr;
+
+  const RayOut ahead = CastRay(world, from, to, filter, ignore);
+  if (ahead.budget) {
+    out.how = LookHow::kBudget;
+    return;
+  }
+  if (ahead.hit && ahead.normalZ >= 0.5f &&
+      ahead.pos.GetDistance(feet) <= reach) {
+    return SetLook(out, LookHow::kHit, ahead);
+  }
+  // Short of the wall, and never further than reach from the feet across the ground
+  float along = ahead.hit ? ahead.pos.GetDistance(from) - 20.0f : reach;
+  const float flat = std::hypot(dir.x, dir.y);
+  if (flat > 0.01f) {
+    const float aside = std::hypot(from.x - feet.x, from.y - feet.y);
+    along = (std::min)(along, (reach - aside) / flat);
+  }
+  const RE::NiPoint3 top = from + dir * (std::max)(0.0f, along);
+  const RE::NiPoint3 bottom{ top.x, top.y, top.z - reach };
+  const RayOut down = CastRay(world, top, bottom, filter, ignore);
+  if (down.budget) {
+    out.how = LookHow::kBudget;
+  } else if (down.hit && down.pos.GetDistance(feet) <= reach) {
+    SetLook(out, LookHow::kDown, down);
+  } else {
+    out.how = LookHow::kMiss;
+  }
+}
+
+// A wrong engine layout gives a reason, not a crash
+bool LookGuarded(uint32_t ignoreId, float reach, LookOut& out) noexcept
+{
+  __try {
+    Look(ignoreId, reach, out);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+}
+}
+
+// Havok keeps per-thread state only on its own threads and the game thread, so the ray runs there
+Napi::Value ObjectReferenceApi::GetLookSurface(const Napi::CallbackInfo& info)
+{
+  const uint32_t ignoreId = NapiHelper::ExtractUInt32(info[0], "ignoreRefrFormId");
+  const float reach = NapiHelper::ExtractFloat(info[1], "reach");
+  LookOut out;
+  // The game thread only pumps the io context while the update loop is running
+  if (!g_nativeCallRequirements.vm) {
+    out.how = LookHow::kOutsideUpdate;
+  } else {
+    bool guarded = false;
+    SkyrimPlatform::GetSingleton()->PushToGameThreadAndWait(
+      [&] { guarded = LookGuarded(ignoreId, reach, out); });
+    if (!guarded) {
+      out = LookOut();
+      out.how = LookHow::kFaulted;
+    }
+  }
+  auto env = info.Env();
+  auto result = Napi::Object::New(env);
+  result.Set("how", Napi::String::New(env, LookHowName(out.how)));
+  if (out.how == LookHow::kHit || out.how == LookHow::kDown) {
+    auto pos = Napi::Array::New(env, 3);
+    for (uint32_t i = 0; i < 3; ++i) {
+      pos.Set(i, Napi::Number::New(env, out.pos[i]));
+    }
+    result.Set("pos", pos);
+  } else {
+    result.Set("pos", env.Null());
+  }
+  result.Set("refId", Napi::Number::New(env, out.refId));
+  result.Set("layer", Napi::Number::New(env, out.layer));
+  return result;
 }
 
 Napi::Value ObjectReferenceApi::SetCarryHold(const Napi::CallbackInfo& info)

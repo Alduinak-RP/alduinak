@@ -70,6 +70,9 @@ import {
   getViewFromStorage,
   isHostedByMe,
   remoteIdToLocalId,
+  pluginRefProps,
+  pluginRefPose,
+  carriedByOther,
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
 import { TimersService } from './timersService';
@@ -867,9 +870,22 @@ export class RemoteServer extends ClientListener {
     const msg = event.message;
     if (this.skipFormViewCreation(msg)) {
       const refrId = msg.refrId!;
+      const custom = this.parseCustomProps(msg);
+      if (Object.keys(custom).length) pluginRefProps.set(refrId, custom);
+      else pluginRefProps.delete(refrId);
+      if (msg.transform) pluginRefPose.set(refrId, { pos: msg.transform.pos, rot: msg.transform.rot });
+      else pluginRefPose.delete(refrId);
       this.onceLoad(refrId, (refr: ObjectReference) => {
         if (refr) {
           ObjectReferenceEx.dealWithRef(refr);
+          // Current values: an UpdateProperty or itemMoved may have come while the ref was loading
+          const props = pluginRefProps.get(refrId) ?? {};
+          const pose = pluginRefPose.get(refrId);
+          // A plugin item the server moved; untouched ones keep the plugin's placement
+          if (props["ff_moved"] === true && pose) {
+            refr.setPosition(pose.pos[0], pose.pos[1], pose.pos[2]);
+            refr.setAngle(pose.rot[0], pose.rot[1], pose.rot[2]);
+          }
           if (msg.props) {
             if (msg.props.inventory) {
               ModelApplyUtils.applyModelInventory(refr, msg.props.inventory);
@@ -884,7 +900,7 @@ export class RemoteServer extends ClientListener {
 
             ModelApplyUtils.applyModelNodeTextureSet(refr, msg.props.setNodeTextureSet);
 
-            ModelApplyUtils.applyModelIsDisabled(refr, !!(msg.props.isDisabled || msg.props['disabled']));
+            ModelApplyUtils.applyModelIsDisabled(refr, !!(msg.props.isDisabled || msg.props['disabled']) || carriedByOther(props["ff_carried"]));
 
             const animation = msg.props.lastAnimation;
             if (typeof animation === "string") {
@@ -974,19 +990,7 @@ export class RemoteServer extends ClientListener {
       }
     }
 
-    msg.customPropsJsonDumps.forEach(element => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(element.propValueJsonDump);
-      } catch (e) {
-        if (e instanceof SyntaxError) {
-          logError(this, "createActor", msg.refrId?.toString(16), "failed to parse custom prop", element.propName, element.propValueJsonDump, e.message);
-        } else {
-          throw e;
-        }
-      }
-      (form as Record<string, unknown>)[element.propName] = parsed;
-    });
+    Object.assign(form as Record<string, unknown>, this.parseCustomProps(msg));
 
     if (msg.isMe) {
       this.worldModel.playerCharacterFormIdx = i;
@@ -1371,12 +1375,31 @@ export class RemoteServer extends ClientListener {
     form.equipment = msg.data;
   }
 
+  private parseCustomProps(msg: CreateActorMessage): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    msg.customPropsJsonDumps.forEach(element => {
+      try {
+        out[element.propName] = JSON.parse(element.propValueJsonDump);
+      } catch (e) {
+        if (e instanceof SyntaxError) {
+          logError(this, "createActor", msg.refrId?.toString(16), "failed to parse custom prop", element.propName, element.propValueJsonDump, e.message);
+        } else {
+          throw e;
+        }
+      }
+    });
+    return out;
+  }
+
   private onUpdatePropertyMessage(event: ConnectionMessage<UpdatePropertyMessage>): void {
     const msg = event.message;
     const msgData = this.extractUpdatePropertyMessageData(msg);
 
     if (this.skipFormViewCreation(msg)) {
       const refrId = msg.refrId;
+      if (msg.propName.startsWith("ff_")) {
+        pluginRefProps.set(refrId, { ...pluginRefProps.get(refrId), [msg.propName]: msgData });
+      }
       once('update', () => {
         const refr = ObjectReference.from(Game.getFormEx(refrId));
         if (!refr) {
@@ -1391,6 +1414,9 @@ export class RemoteServer extends ClientListener {
           ModelApplyUtils.applyModelIsHarvested(refr, !!msgData);
         } else if (msg.propName === 'disabled') {
           ModelApplyUtils.applyModelIsDisabled(refr, !!msgData);
+        } else if (msg.propName === 'ff_carried' && carriedByOther(msgData)) {
+          // The end of a carry comes with itemMoved, which shows the item at its new spot
+          ModelApplyUtils.applyModelIsDisabled(refr, true);
         }
       });
       return;
