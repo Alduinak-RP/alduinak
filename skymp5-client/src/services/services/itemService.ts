@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import * as sp from "skyrimPlatform";
-import { ButtonEvent, DxScanCode, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
+import { ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
@@ -40,7 +40,6 @@ export class ItemService extends ClientListener {
     super();
     this.controller.on("update", () => this.onUpdate());
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
-    this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
   }
 
@@ -73,14 +72,15 @@ export class ItemService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "itemGrab", target: remoteId });
   }
 
-  // Drops from this inventory land on the surface the crosshair found just before it opened
-  private onMenuOpen(e: MenuOpenEvent): void {
-    if (e.name === "InventoryMenu") sendCustomPacket(this.controller, { customPacketType: "itemDropPoint", pos: this.lastSurface });
+  // Sent right before a drop: the surface the crosshair last found, which the menu leaves as it was, else the feet
+  sendDropPoint(): void {
+    const player = this.sp.Game.getPlayer();
+    sendCustomPacket(this.controller, { customPacketType: "itemDropPoint", pos: player ? this.surfacePoint(player) : null });
   }
 
+  // Idle, this reads nothing from the game
   private onUpdate(): void {
-    const player = this.sp.Game.getPlayer();
-    if (player && !this.sp.Ui.isMenuOpen("InventoryMenu")) this.lastSurface = this.surfacePoint(player);
+    if (!this.pending && !this.carry) return;
     const pending = this.pending;
     if (pending && !this.activateHeld()) {
       this.pending = null;
@@ -92,6 +92,7 @@ export class ItemService extends ClientListener {
     const carry = this.carry;
     if (!carry) return;
     const ref = ObjectReference.from(this.sp.Game.getFormEx(carry.localId));
+    const player = this.sp.Game.getPlayer();
     if (!ref || !player) {
       this.drop(null, false);
       return;
@@ -191,7 +192,6 @@ export class ItemService extends ClientListener {
   }
 
   private pending: { localId: number; remoteId: number; at: number } | null = null;
-  private lastSurface: number[] | null = null;
   private pickLogged = false;
   private carry: Carry | null = null;
 }

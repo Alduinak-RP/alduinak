@@ -9,6 +9,7 @@ import { notifyNextUpdate } from "./customPacketUtil";
 import { PROPERTY_KEY_BASE_ID, getDiff, getInventory, hasItemExtras, isNamedItemBase } from "../../sync/inventory";
 import { droppedName, getDurabilityConfig } from "../../sync/durabilityNames";
 import { getPcInventory } from "./remoteServer";
+import { ItemService } from "./itemService";
 
 const DROP_SCAN_RADIUS = 2000;
 // Eating, drinking or poisoning from the inventory takes the item out with no container or world reference, like a drop, and equips it in the same frame
@@ -122,6 +123,7 @@ export class DropItemService extends ClientListener {
             return;
         }
 
+        this.controller.lookupListener(ItemService).sendDropPoint();
         logToPlatformLog(this, `dropped ${baseId.toString(16)} x${count}: world reference ${reference ? reference.toString(16) : "none"}, ${numFound} local copies removed`);
         const t = MsgType.DropItem;
         this.controller.emitter.emit("sendMessage", {

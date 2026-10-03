@@ -13,7 +13,7 @@ type Mp = any;
 // their last placement unless nailed. Packets: itemMenuRequest {target} -> itemMenuState {target, nailed, canPry, canNail};
 // itemGrab {target} -> itemGrabState {target, ok}, itemGrabbed {target} to the cell; itemMove {target, pos (the surface point
 // under the item), rot} or itemRelease {target} -> itemMoved {target, pos, rot} to the cell; itemNail {target}; itemPry {target};
-// itemDropPoint {pos | null}: the surface under the crosshair as the inventory opened, where the next drops land instead of the feet.
+// itemDropPoint {pos | null}, sent right before each drop: the surface under the crosshair, where that drop lands instead of the feet.
 // State lives on each item's changeForm; the sweep finds old ones in the changeForms collection and checks them against the live world.
 const PLACED_AT_PROP = "private.placedAt";
 const NAILED_BY_PROP = "private.nailedBy";
@@ -208,10 +208,11 @@ export class PlacedItemSystem implements System {
     this.log(`[placed] sweep removed ${removed} of ${docs.length} old drops`);
   }
 
-  // A drop lands on the inventory's crosshair surface when there was one, and a shield lies down
+  // A drop lands on the crosshair's surface when its client sent one, and a shield lies down
   private onPlaced(mp: Mp, actorId: number, refId: number): void {
     this.setPlacedAt(mp, refId);
     const point = this.dropPoints.get(actorId);
+    this.dropPoints.delete(actorId);
     const shield = this.isShield(mp, refId);
     if (!point && !shield) return;
     try {
