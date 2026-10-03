@@ -29,8 +29,11 @@ EXCLUDED = {'AMMO'}
 ANCHORED = re.compile(r'signage\\|\\mrksign|bonealarm|noose|chandelier|meathook|\\hook01\.nif|lanterns\\.*hanging')
 # bhkRigidBody(T) of a version 100 NIF: 250 bytes plus 4 per constraint ref
 BODY_SIZE = 250
-MASS, MOTION, QUALITY, CONSTRAINTS = 180, 224, 227, 244
+LAYER, LAYER_COPY, MASS, MOTION, QUALITY, CONSTRAINTS = 4, 36, 180, 224, 227, 244
 MOTION_KEYFRAMED, MOTION_FIXED, QUALITY_FIXED = 4, 5, 0
+# Items go on L_NONCOLLIDABLE: Skyrim.esm's COLL records let the item picker hit it and characters, cameras and projectiles pass
+ITEMS = {'MISC', 'WEAP', 'ARMO', 'BOOK', 'INGR', 'ALCH', 'KEYM', 'SLGM', 'SCRL', 'LIGH'}
+LAYER_NONCOLLIDABLE = 15
 
 
 def model_users(data):
@@ -62,8 +65,8 @@ def reader(data, client):
     return read
 
 
-def freeze(nif):
-    """The NIF with its dynamic bodies fixed and massless, or None when it holds none."""
+def freeze(nif, walkthrough):
+    """The NIF with its dynamic bodies fixed and massless, every body noncollidable when walkthrough, or None when nothing changed."""
     out = bytearray(nif)
     changed = 0
     for kind, off, size in nif_blocks(nif):
@@ -71,6 +74,9 @@ def freeze(nif):
             continue
         if size != BODY_SIZE + 4 * struct.unpack_from('<I', nif, off + CONSTRAINTS)[0]:
             raise ValueError(f'unexpected {kind} layout at {off}')
+        if walkthrough and (nif[off + LAYER], nif[off + LAYER_COPY]) != (LAYER_NONCOLLIDABLE, LAYER_NONCOLLIDABLE):
+            out[off + LAYER] = out[off + LAYER_COPY] = LAYER_NONCOLLIDABLE
+            changed += 1
         if nif[off + MOTION] in (MOTION_KEYFRAMED, MOTION_FIXED):
             continue
         out[off + MOTION] = MOTION_FIXED
@@ -102,13 +108,13 @@ def main():
             stats['missing'] += 1
             continue
         try:
-            patched = freeze(source)
+            patched = freeze(source, types <= ITEMS)
         except ValueError as e:
             stats['unsupported'] += 1
             print(f'skip {mesh}: {e}')
             continue
         if patched is None:
-            stats['no dynamic body'] += 1
+            stats['unchanged'] += 1
             continue
         target = os.path.join(args.out, mesh)
         os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -116,7 +122,7 @@ def main():
             f.write(patched)
         manifest[mesh] = {'types': sorted(types), 'source': hashlib.sha256(source).hexdigest(),
                           'result': hashlib.sha256(patched).hexdigest()}
-        stats['frozen'] += 1
+        stats['patched items' if types <= ITEMS else 'patched objects'] += 1
         stats['bytes'] += len(patched)
     with open(os.path.join(args.out, 'freeze_havok.json'), 'w') as f:
         json.dump(manifest, f, indent=1)

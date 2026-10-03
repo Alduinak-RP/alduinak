@@ -138,7 +138,10 @@ record in the `--data` plugins. A mesh any AMMO record uses is left alone, so ar
 client-only pieces (`ANCHORED`: signs, bone alarms, nooses, chandeliers, meat hooks, hanging lanterns) keep their
 physics, so they still swing when bumped. In each
 `bhkRigidBody(T)` whose motion system is dynamic, it writes motion system fixed (offset 224 = 5), quality fixed
-(227 = 0) and mass 0 (180). Keyframed and fixed bodies, layers and shapes stay as they are. A loose mesh in `--client`
+(227 = 0) and mass 0 (180). A mesh only item records use (`ITEMS`) also gets layer 15, `L_NONCOLLIDABLE`, on
+every body (offsets 4 and 36): Skyrim.esm's COLL records let the item picker (40) hit it while the character
+controller (30), the camera and projectiles pass, so clutter can still be picked up but never blocks or carries anyone.
+Other objects keep their layers. Shapes stay as they are. A loose mesh in `--client`
 wins over the same path in `--data` or its archives, so meshes we already patched are frozen on top of their patch.
 Every written mesh, with its source and result sha256, is listed in `freeze_havok.json` under `--out`.
 
