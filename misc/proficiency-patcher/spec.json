@@ -8548,6 +8548,18 @@
    "DynDOLOD.esm"
   ]
  },
+ "disableTraps": {
+  "comment": "Every placed reference whose base is an activator or moveable static with one of these models is Initially Disabled, with the player as enable parent, opposite, where a parent could enable it. These traps move by client-side havok the server cannot sync. Deadbolts, pressure plates and other activators without a simulating mesh are not listed.",
+  "models": [
+   "Traps/FallingRocks/TrapFallingRockLg01.nif",
+   "Traps/FallingRocks/TrapFallingRockSm01.nif",
+   "Traps/MaceTrap/TrapMace01.nif",
+   "Traps/SkullRam/TrapSkullRam01.nif",
+   "Traps/Tripwire/TrapTripwire01.nif",
+   "Traps/BearTrap/BearTrap01.nif",
+   "DLC01/Traps/HangingSpikeTrap/HangingSpikeTrap01.nif"
+  ]
+ },
  "racial": {
   "benches": [
    "CraftingSmithingForge",

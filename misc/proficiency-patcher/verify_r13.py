@@ -129,6 +129,20 @@ def enable_parent(pl, data):
     return None
 
 
+def base_of(pl, data):
+    for t, v in parse_subs(data):
+        if t == 'NAME':
+            return pl.key(struct.unpack_from('<I', v, 0)[0])
+    return None
+
+
+def model_of(data):
+    for t, v in parse_subs(data):
+        if t == 'MODL':
+            return zstr(v).replace('/', '\\').lower()
+    return ''
+
+
 def spell_of(rec):
     subs = dict(rec.subs())
     return zstr(subs.get('EDID', b'')), struct.unpack_from('<I', subs['SPIT'], 8)[0] if 'SPIT' in subs else -1
@@ -505,6 +519,8 @@ def main():
     listed_refs = disable_refs | enable_refs
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
+    trap_models = {m.replace('/', '\\').lower() for m in spec.get('disableTraps', {}).get('models', [])}
+    trap_bases, traps = set(), {}
     winners, actors, parents, spells, races, weapons, form_lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
     # The stat fields of the listed items as the plugins before this one leave them, and the keywords the stat pass must keep
     listed_now, kept_keywords = {}, {}
@@ -522,6 +538,10 @@ def main():
                 parents[k] = (r.type, r.flags, enable_parent(pl, r.data()))
             if r.type == 'ACHR':
                 actors[k] = (n, r.flags, parents[k][2])
+            if r.type in ('ACTI', 'MSTT') and trap_models and model_of(r.data()) in trap_models:
+                trap_bases.add(k)
+            if r.type == 'REFR' and trap_bases and base_of(pl, r.data()) in trap_bases:
+                traps[k] = (n, r.flags, parents[k][2])
             if r.type == 'SPEL':
                 spells[k] = spell_of(r)
             if r.type == 'WEAP':
@@ -546,6 +566,8 @@ def main():
             parents[k] = (t, r.flags, enable_parent(out, r.data()))
         if t == 'ACHR':
             actors[k] = (name, r.flags, parents[k][2])
+        if t == 'REFR' and (k in traps or base_of(out, r.data()) in trap_bases):
+            traps[k] = (name, r.flags, parents[k][2])
         if t == 'SPEL':
             spells[k] = spell_of(r)
         if t == 'WEAP':
@@ -590,7 +612,7 @@ def main():
         if ref is None and k[0] != me:
             problems.append(f'{label}: overrides a record no plugin before it defines')
             continue
-        if t == 'ACHR' and 'disableActors' in spec:
+        if t == 'ACHR' and 'disableActors' in spec or t == 'REFR' and k in traps:
             src, flags, data, cell = ref
             parent = enable_parent(src, data)
             why = ck.compare(t, src, flags, data, out, q.data(), skip=('XESP',))
@@ -600,10 +622,11 @@ def main():
                 why = f'enable parent {parent} -> {enable_parent(out, q.data())}'
             elif cell != where:
                 why = f'moved from cell {cell} to {where}'
+            what = 'actor' if t == 'ACHR' else 'trap'
             if why:
-                problems.append(f'{label}: not {src.name}\'s actor Initially Disabled ({why})')
+                problems.append(f'{label}: not {src.name}\'s {what} Initially Disabled ({why})')
             switched.add(k)
-            checked[f'actors disabled (from {"the input" if r is not None else "the load order"})'] += 1
+            checked[f'{what}s disabled (from {"the input" if r is not None else "the load order"})'] += 1
         elif t in ('CELL', 'WRLD') and r is None:
             src, flags, data, world = ref
             # The offset table only fits the file it came from
@@ -814,6 +837,12 @@ def main():
                 checked[f'{t} whose enable parent is an actor switched off{", opposite" if parent[1] else ""}'] += 1
                 if parent[1] and t != 'ACHR':
                     problems.append(f'{t} {show(k)} turns on when its enable parent, actor {show(parent[0])}, is disabled')
+    for k, (winner, flags, parent) in traps.items():
+        if flags & DELETED:
+            continue
+        if not flags & DISABLED or parent not in (None, (PLAYER_REF, 1)):
+            problems.append(f'REFR {show(k)} from {winner}, a trap, can still be enabled (flags {flags:#x}, enable parent {parent})')
+        checked['traps covered'] += 1
     # Every listed race ends without the spells the races section removes
     rs = spec.get('races', {})
     types = {SPELL_TYPES[x] for x in rs.get('removeSpellTypes', [])}

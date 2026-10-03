@@ -24,7 +24,7 @@ python misc/proficiency-patcher/patch.py --plugin <copy of the live AlduinakAddi
   names the plugins loaded after it (`after`, which the patcher does not read) for `verify_r13.py`'s load-order win check.
 - `--hotfix` runs only the steps of the hotfix list at the top of `Program.cs`: the items (only those the plugin lacks), the marker abilities, the crafting stations, the alchemy and kiln recipes, cooking, smithing, tempering,
   tailoring, factions, uncraftable, leveled items, writing, racial, the retier, the enchantment magnitudes, the world changes, the item stats (with `--stats`), the races, survival, the head
-  parts, the disabled references, the enabled references, the overrides, the disabled actors, the crafting categories and the marker effects. The live plugin already
+  parts, the disabled references, the enabled references, the overrides, the disabled actors, the disabled traps, the crafting categories and the marker effects. The live plugin already
   holds what the others build. Their sweeps of the load order touch only recipes the plugin does not override yet and
   none a Creation Club plugin defines, so the tiers it ships stay as they are; the factions, uncraftable and racial
   rules still read every recipe, the plugin's own overrides included, and the tailoring `tiers` lists apply to the

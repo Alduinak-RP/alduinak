@@ -71,11 +71,11 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Items, Steps.MarkerAbilities, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
        Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.ItemStats, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
-       Steps.DisableActors, categoriesStep, Steps.MarkerEffects]
+       Steps.DisableActors, Steps.DisableTraps, categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.ItemStats, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.Orphans, categoriesStep,
+       Steps.Racial, Steps.Retier, Steps.ItemStats, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.DisableTraps, Steps.Orphans, categoriesStep,
        Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
@@ -1713,18 +1713,43 @@ static class Steps
     public static void DisableActors(PatchContext c)
     {
         if (c.Spec["disableActors"] is not JsonObject spec) return;
-        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
         var keep = Edids(c, spec["except"]).Select(x => FormKey.Factory(x)).Append(PlayerRef).ToHashSet();
+        var contexts = c.LoadOrder.PriorityOrder.PlacedNpc().WinningContextOverrides(c.Cache).Where(x => !keep.Contains(x.Record.FormKey));
+        DisableWinners(c, contexts, spec["notFrom"], "Disable actors");
+    }
+
+    // ---- traps: a trap's moving parts run on each client alone, so placed traps never show ---------------------------
+    //
+    // Their meshes simulate, which the server cannot sync. The bases are found by model, so a mod's copy of a trap goes too.
+    public static void DisableTraps(PatchContext c)
+    {
+        if (c.Spec["disableTraps"] is not JsonObject spec) return;
+        var models = Edids(c, spec["models"]).Select(m => m.Replace('/', '\\')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        static string Path(IModelGetter? m) => m?.File.GivenPath.Replace('/', '\\') ?? "";
+        var bases = c.LoadOrder.PriorityOrder.Activator().WinningOverrides().Where(a => models.Contains(Path(a.Model))).Select(a => a.FormKey)
+            .Concat(c.LoadOrder.PriorityOrder.MoveableStatic().WinningOverrides().Where(m => models.Contains(Path(m.Model))).Select(m => m.FormKey))
+            .ToHashSet();
+        c.Note($"Disable traps: {bases.Count} bases from {models.Count} models");
+        var contexts = c.LoadOrder.PriorityOrder.PlacedObject().WinningContextOverrides(c.Cache).Where(x => bases.Contains(x.Record.Base.FormKey));
+        DisableWinners(c, contexts, c.Spec["disableActors"]?["notFrom"], "Disable traps");
+    }
+
+    // Initially Disabled on each winner, the player as enable parent, opposite, where a parent could turn it back on
+    static void DisableWinners<T, TGetter>(PatchContext c, IEnumerable<IModContext<ISkyrimMod, ISkyrimModGetter, T, TGetter>> contexts, JsonNode? notFromList, string label)
+        where T : class, IPlaced, TGetter
+        where TGetter : class, IPlacedGetter
+    {
+        var cache = (ILinkCache<ISkyrimMod, ISkyrimModGetter>)c.Cache;
         int already = 0, parents = 0;
         var disabled = new Dictionary<ModKey, int>();
         var worlds = c.Mod.Worldspaces.Select(w => w.FormKey).ToHashSet();
-        foreach (var ctx in c.LoadOrder.PriorityOrder.PlacedNpc().WinningContextOverrides(c.Cache).ToList())
+        foreach (var ctx in contexts.ToList())
         {
             var r = ctx.Record;
-            if (keep.Contains(r.FormKey) || (r.MajorRecordFlagsRaw & Deleted) != 0) continue;
+            if ((r.MajorRecordFlagsRaw & Deleted) != 0) continue;
             var off = !ParentCanEnable(r.EnableParent);
             if ((r.MajorRecordFlagsRaw & InitiallyDisabled) != 0 && off) { already++; continue; }
-            // The cell comes from its own winner, not from the plugin the actor wins in
+            // The cell comes from its own winner, not from the plugin the reference wins in
             if (ctx.Parent?.Record is ICellGetter cell) cache.ResolveContext<ICell, ICellGetter>(cell.FormKey).GetOrAddAsOverride(c.Mod);
             var rec = ctx.GetOrAddAsOverride(c.Mod);
             rec.MajorRecordFlagsRaw |= InitiallyDisabled;
@@ -1736,12 +1761,12 @@ static class Steps
             disabled[ctx.ModKey] = disabled.GetValueOrDefault(ctx.ModKey) + 1;
         }
         // A worldspace added for its cells takes the fields of its last winner the plugin may master; the offset table only fits the file it came from
-        var notFrom = Edids(c, spec["notFrom"]).Select(n => ModKey.FromNameAndExtension(n)).ToHashSet();
+        var notFrom = Edids(c, notFromList).Select(n => ModKey.FromNameAndExtension(n)).ToHashSet();
         var mask = new Worldspace.TranslationMask(defaultOn: true) { TopCell = false, SubCells = false, SubCellsTimestamp = false, SubCellsUnknown = false, OffsetData = false };
         foreach (var w in c.Mod.Worldspaces.Where(w => !worlds.Contains(w.FormKey)))
             w.DeepCopyIn(cache.ResolveAllContexts<IWorldspace, IWorldspaceGetter>(w.FormKey).First(x => !notFrom.Contains(x.ModKey)).Record, mask);
-        c.Note($"Disable actors: {disabled.Values.Sum()} newly disabled, {parents} of them given the player as enable parent, opposite; {already} already disabled");
-        c.Note($"Disable actors by winning plugin: {string.Join(", ", disabled.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key.FileName} {kv.Value}"))}");
+        c.Note($"{label}: {disabled.Values.Sum()} newly disabled, {parents} of them given the player as enable parent, opposite; {already} already disabled");
+        c.Note($"{label} by winning plugin: {string.Join(", ", disabled.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key.FileName} {kv.Value}"))}");
     }
 
     // ---- races: the powers and passives the game hands every character of a race -----------------------------------
