@@ -79,7 +79,7 @@ async function isActive(key) {
   return /^SERVICE_/.test(status) && status !== 'SERVICE_STOPPED'
 }
 
-// The profile's changeForms formDesc index, ensured before its game starts; one line, never a refusal
+// The profile's changeForms indexes, ensured before its game starts; one line, never a refusal
 async function ensureIndex(profile) {
   let settings
   try { ({ settings } = modsync.readSettingsFile(profile.serverSettings)) }

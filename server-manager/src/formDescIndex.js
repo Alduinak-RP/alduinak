@@ -1,30 +1,37 @@
 'use strict'
 
-// The changeForms { formDesc: 1 } index the game server's saves filter on; ensuring it reports one line and never throws
+// The changeForms indexes: formDesc, which the game server's saves filter on, and the zone (worldOrCellDesc) and player
+// (profileId) a form belongs to; ensuring them reports one line and never throws
 
+const FIELDS = ['formDesc', 'worldOrCellDesc', 'profileId']
 const KEY = { formDesc: 1 }
 const NAME = 'formDesc_1'
 const TIMEOUT_MS = 15000
 const NAMESPACE_NOT_FOUND = 26
 const TIMEOUT = Symbol('timeout')
 
-const line = (outcome, db, rest) => `[index] changeForms.formDesc ${outcome} on ${db || '(no databaseName)'}${rest}`
+const line = (outcome, db, rest) => `[index] changeForms ${FIELDS.join(', ')} ${outcome} on ${db || '(no databaseName)'}${rest}`
 const notEnsured = (db, reason) => line('not ensured', db, `: ${reason}`)
 
-// Any index keyed on formDesc alone counts, whatever its name or options
-function isFormDescIndex(index) {
+// Any ascending index on the field alone counts, whatever its name or options
+function isIndexOn(index, field) {
   const key = Object.entries((index && index.key) || {})
-  return key.length === 1 && key[0][0] === 'formDesc' && Number(key[0][1]) === 1
+  return key.length === 1 && key[0][0] === field && Number(key[0][1]) === 1
 }
 
-// 'present' or 'created'; a missing collection is created with the index; abandoned() true skips createIndex
+const isFormDescIndex = index => isIndexOn(index, 'formDesc')
+
+// 'present' when every index exists, else 'created'; a missing collection is created with them; abandoned() true skips createIndex
 async function ensureOn(col, abandoned = () => false) {
   let list
   try { list = await col.indexes() }
   catch (err) { if (err && err.code === NAMESPACE_NOT_FOUND) list = []; else throw err }
-  if (list.some(isFormDescIndex)) return 'present'
-  if (abandoned()) return TIMEOUT
-  await col.createIndex(KEY, { name: NAME })
+  const missing = FIELDS.filter(field => !list.some(index => isIndexOn(index, field)))
+  if (!missing.length) return 'present'
+  for (const field of missing) {
+    if (abandoned()) return TIMEOUT
+    await col.createIndex({ [field]: 1 }, { name: `${field}_1` })
+  }
   return 'created'
 }
 
@@ -61,4 +68,4 @@ async function ensureFormDescIndex(settings, { open, timeoutMs = TIMEOUT_MS } = 
   return { ok: true, outcome, line: line(outcome, db, ` (${Date.now() - started} ms)`) }
 }
 
-module.exports = { KEY, NAME, TIMEOUT_MS, isFormDescIndex, ensureOn, ensureFormDescIndex, notEnsured }
+module.exports = { FIELDS, KEY, NAME, TIMEOUT_MS, isIndexOn, isFormDescIndex, ensureOn, ensureFormDescIndex, notEnsured }
