@@ -208,7 +208,7 @@ export class PlayerActionService extends ClientListener {
       housing.requestMenuFor(ref);
       return;
     }
-    if (ref && this.controller.lookupListener(ItemService).isPlacedItem(ref)) {
+    if (ref && this.controller.lookupListener(ItemService).isItem(ref)) {
       this.interactWithItem(ref);
       return;
     }

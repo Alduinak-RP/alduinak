@@ -1653,6 +1653,9 @@ export declare function hideMenuListEntries(menuName: string, entriesPath: strin
 
 export declare function setCollision(refrFormId: number, collision: boolean): void;
 
+// Where the crosshair's pick ray last hit collision, or null when it hit nothing
+export declare function getCrosshairPickPoint(): number[] | null;
+
 export declare function mountActor(rider: Actor | number, mount: Actor | number): boolean;
 
 export interface CarryHoldStats {

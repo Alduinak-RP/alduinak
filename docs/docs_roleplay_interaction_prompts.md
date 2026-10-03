@@ -71,8 +71,7 @@ keeps its display name with a verb picked from its base form type.
   vanilla rollover shows and carries no marker.
 - **Verbs by base type**: Door Open/Unlock, Container Search/Unlock,
   Activator Activate, Furniture Use, Book Read, Flora/Tree Harvest (skipped
-  when harvested; coin purses, loose salmon and any other `untouchableBaseIds`
-  form get no prompt at all and are activation-blocked), item types Take (Admire
+  when harvested), item types Take (Admire
   when nailed down), books Read. A plugin-placed item of a `forbiddenReloot`
   type is taken once and never comes back. The board base (`12cb:Missives.esp`,
   resolved through `Game.getFormFromFile` so load order cannot break it)
@@ -106,31 +105,41 @@ server sets it at the dropper's feet raised by the lowest point of its OBND.
 An object that still moves: its mesh is missing from `freeze_havok.json` or
 a later mod ships it; rerun the script after any mod list change.
 
-`staticRefsService.ts` (client) no longer freezes anything. It blocks engine
-activation on plugin-placed items and untouchable decor as their cell
-attaches, plus one pass over each fully loaded cell (128 refs per 200 ms), so
-they only go through the server; `ObjectReferenceEx.dealWithRef` blocks
-activation and unlocks without touching the motion type.
+The engine never runs the player's own activation: SkyrimPlatform hooks
+`ActivateHandler::ProcessButton`, and a press on any reference under the
+crosshair is swallowed (its hold and release too, so no vanilla grab starts)
+and raised to JS as the usual `activate` event, which `ActivationService` sends
+to the server. The server's answer comes back as `activate(player, true)` or a
+property, which does not pass through the hook. Coin purses are disabled in
+the plugin (`disableLooseItems`).
 
 ## Placed items
 
-Any item can be taken; only items players drop can be moved or nailed. A tap of Activate on one takes it, a press held 0.4 s
-carries it 120 units ahead of the player with no physics until the key is let
-go (`ItemService`), and the interact key opens Pick Up, Move, Nail Down and
-Pry Free (`PlayerActionService`, `itemMenuRequest` / `itemMenuState`). Move
-from the menu ends on Escape or Activate. On release the client sends
-`itemMove`; the server (`PlacedItemSystem`) checks the item is within 400
-units, moves it in its cell and sends `itemMoved` to every client, whose copy
-moves too. Nail Down takes one nail (HearthFires `BYOHMaterialNails`) and needs
-a hammer (`BlacksmithHammer01`), plays `IdleHammerTableEnter` for 2 s and sets
-`ff_nailed`, which shows Admire and refuses the pickup; Pry Free is for the
-one who nailed it and for staff. Every drop raises `onItemPlaced` and the
-server writes `private.placedAt` on the item's changeForm (moving or prying
-writes it again, nailing writes `private.nailedBy`); every 30 min it asks the
-`changeForms` collection for items older than 2 hours that are not nailed,
-checks each against the live world and removes it. Without `databaseDriver`
-mongodb nothing is swept. Loose non-clutter items the
-plugins place are disabled in the plugin (`disableLooseItems`).
+Any item in the world can be taken, carried or nailed down (`ItemService`,
+`PlayerActionService`, server `PlacedItemSystem`). A tap of Activate takes it.
+A press held 0.4 s, or Move in the interact menu, asks the server for the
+item (`itemGrab`): the server lets one player carry it at a time, answers
+`itemGrabState`, and tells the rest of the cell `itemGrabbed`, which hides
+their copy. While carried the item has no collision and sits on the surface
+under the crosshair (SkyrimPlatform `getCrosshairPickPoint`, within 350
+units), or floats ahead of the player when there is none; the mouse wheel
+turns it 15 degrees a step. Letting go of Activate (Escape or Activate after
+Move) sends one `itemMove` with that surface point, or the player's feet; the
+server raises the item by the lowest point of its OBND so its bottom rests on
+the point, saves the position on its changeForm and sends `itemMoved` to the
+cell, whose copies move and show again. A carry the client never ends is
+given back after 2 minutes or when its carrier leaves. Nail Down takes one
+nail (HearthFires `BYOHMaterialNails`) and needs a hammer
+(`BlacksmithHammer01`), plays `IdleHammerTableEnter` for 2 s and sets
+`ff_nailed`, which shows Admire and refuses pickups and carries; Pry Free is
+for the one who nailed it and for staff. Every drop raises `onItemPlaced` and
+the server writes `private.placedAt` on the item's changeForm (a carry or a
+pry of a dropped item writes it again, nailing writes `private.nailedBy`);
+every 30 min it asks the `changeForms` collection for drops older than 2
+hours that are not nailed, checks each against the live world and removes it.
+Plugin-placed items never expire. Without `databaseDriver` mongodb nothing is
+swept. Loose non-clutter items and coin purses the plugins place are disabled
+in the plugin (`disableLooseItems`).
 
 ## Switches and verification
 

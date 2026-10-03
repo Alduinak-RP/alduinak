@@ -1,7 +1,7 @@
 import { MongoClient } from "mongodb";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { chainMpHook, countItem, destroyRef, hex, isNear, notifyActor, sendActionLock, takeItemFrom, userSlotCount } from "./actorUtil";
+import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, isNear, notifyActor, sendActionLock, takeItemFrom, userOf, userSlotCount } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { AdminRoleConfig, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 import { formIdFromConfig, toFormId } from "./formIdUtil";
@@ -9,9 +9,10 @@ import { formIdFromConfig, toFormId } from "./formIdUtil";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Items players drop: moved by hand, nailed down with a hammer and a nail, and removed two hours after their last placement unless nailed.
-// Packets: itemMenuRequest {target} -> itemMenuState {target, nailed, canPry, canNail}; itemMove {target, pos, rot} -> itemMoved {target, pos, rot} to everyone;
-// itemNail {target}; itemPry {target}.
+// World items: carried by one player at a time, nailed down with a hammer and a nail; player drops are removed two hours after
+// their last placement unless nailed. Packets: itemMenuRequest {target} -> itemMenuState {target, nailed, canPry, canNail};
+// itemGrab {target} -> itemGrabState {target, ok}, itemGrabbed {target} to the cell; itemMove {target, pos (the surface point
+// under the item), rot} or itemRelease {target} -> itemMoved {target, pos, rot} to the cell; itemNail {target}; itemPry {target}.
 // State lives on each item's changeForm; the sweep finds old ones in the changeForms collection and checks them against the live world.
 const PLACED_AT_PROP = "private.placedAt";
 const NAILED_BY_PROP = "private.nailedBy";
@@ -24,6 +25,9 @@ const MAX_AGE_MS = 2 * 60 * 60 * 1000;
 const REACH = 400;
 const NAIL_ANIM = "IdleHammerTableEnter";
 const NAIL_SECONDS = 2;
+// A carry the client never ends is given back after this long
+const GRAB_TTL_MS = 2 * 60 * 1000;
+const ITEM_TYPES = new Set(["MISC", "WEAP", "ARMO", "BOOK", "INGR", "ALCH", "KEYM", "SLGM", "SCRL", "LIGH", "AMMO"]);
 
 const field = (name: string) => ({ $getField: { field: name, input: "$dynamicFields" } });
 
@@ -37,6 +41,9 @@ export class PlacedItemSystem implements System {
   private sweptAt = Date.now();
   private db: { uri: string; name: string } | null = null;
   private client: MongoClient | null = null;
+  // item -> who carries it and since when
+  private grabs = new Map<number, { by: number; at: number }>();
+  private minZ = new Map<number, number>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
@@ -54,6 +61,10 @@ export class PlacedItemSystem implements System {
 
   async updateAsync(ctx: SystemContext): Promise<void> {
     await new Promise((r) => setTimeout(r, 60000));
+    const mp = ctx.svr as Mp;
+    for (const [target, grab] of Array.from(this.grabs)) {
+      if (Date.now() - grab.at > GRAB_TTL_MS || userOf(mp, grab.by) < 0) this.release(mp, target);
+    }
     if (!this.db || Date.now() - this.sweptAt < SWEEP_MS) return;
     this.sweptAt = Date.now();
     try {
@@ -64,18 +75,27 @@ export class PlacedItemSystem implements System {
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
-    if (!["itemMenuRequest", "itemMove", "itemNail", "itemPry"].includes(type)) return;
+    if (!["itemMenuRequest", "itemGrab", "itemMove", "itemRelease", "itemNail", "itemPry"].includes(type)) return;
     const mp = ctx.svr as Mp;
     let actorId = 0;
     try { actorId = Number(mp.getUserActor(userId)) >>> 0; } catch { return; }
     const target = toFormId(content["target"]);
-    if (!actorId || !this.isPlaced(mp, target) || !isNear(mp, actorId, target, REACH)) return;
+    if (!actorId || !this.isItem(mp, target) || !isNear(mp, actorId, target, REACH)) return;
     const nailedBy = this.nailedBy(mp, target);
+    const grab = this.grabs.get(target);
+    const mine = grab?.by === actorId;
     if (type === "itemMenuRequest") {
       sendJson(mp, userId, { customPacketType: "itemMenuState", target, nailed: !!nailedBy, canPry: this.canPry(mp, actorId, nailedBy),
         canNail: !nailedBy && this.hasTools(mp, actorId) });
-    } else if (type === "itemMove" && !nailedBy) {
+    } else if (type === "itemGrab") {
+      const ok = !nailedBy && (!grab || mine);
+      if (ok) this.grabs.set(target, { by: actorId, at: Date.now() });
+      sendJson(mp, userId, { customPacketType: "itemGrabState", target, ok });
+      if (ok) this.toCell(mp, target, { customPacketType: "itemGrabbed", target }, userId);
+    } else if (type === "itemMove" && mine) {
       this.move(mp, actorId, target, content);
+    } else if (type === "itemRelease" && mine) {
+      this.release(mp, target);
     } else if (type === "itemNail" && !nailedBy) {
       this.nail(mp, actorId, target);
     } else if (type === "itemPry" && this.canPry(mp, actorId, nailedBy)) {
@@ -85,23 +105,64 @@ export class PlacedItemSystem implements System {
   }
 
   private onActivate(mp: Mp, targetId: number, casterId: number): boolean {
+    const by = this.grabs.get(targetId)?.by;
+    if (by !== undefined && by !== casterId) return false;
     if (!this.nailedBy(mp, targetId)) return true;
     notifyActor(mp, casterId, "It is nailed down.");
     return false;
   }
 
   private move(mp: Mp, actorId: number, target: number, content: Content): void {
-    const pos = content["pos"], rot = content["rot"];
-    if (!this.isVector(pos) || !this.isVector(rot)) return;
+    const surface = content["pos"], rot = content["rot"];
+    if (!this.isVector(surface) || !this.isVector(rot)) return this.release(mp, target);
     const me = mp.get(actorId, "pos") as number[];
-    if (Math.hypot(pos[0] - me[0], pos[1] - me[1], pos[2] - me[2]) > REACH) return;
+    if (Math.hypot(surface[0] - me[0], surface[1] - me[1], surface[2] - me[2]) > REACH) return this.release(mp, target);
+    // The item's bottom rests on the surface point
+    const pos = [surface[0], surface[1], surface[2] - this.boundsMinZ(mp, target)];
     const loc = mp.get(target, "locationalData");
     mp.set(target, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos, rot });
-    this.setPlacedAt(mp, target);
-    // Copies already spawned never read a refr's position again
+    if (this.isPlaced(mp, target)) this.setPlacedAt(mp, target);
+    this.grabs.delete(target);
+    this.toCell(mp, target, { customPacketType: "itemMoved", target, pos, rot });
+  }
+
+  // Ends a carry where the item already is, so the other clients show it again
+  private release(mp: Mp, target: number): void {
+    this.grabs.delete(target);
+    try {
+      const loc = mp.get(target, "locationalData");
+      this.toCell(mp, target, { customPacketType: "itemMoved", target, pos: loc.pos, rot: loc.rot });
+    } catch { /* the item is gone */ }
+  }
+
+  // Copies already spawned never read a refr's position again, so its cell is told
+  private toCell(mp: Mp, target: number, packet: Record<string, unknown>, exceptUser = -1): void {
+    let cell = 0;
+    try { cell = mp.getIdFromDesc(mp.get(target, "locationalData").cellOrWorldDesc) >>> 0; } catch { return; }
     for (let userId = 0; userId < userSlotCount(); userId++) {
-      if (mp.isConnected(userId)) sendJson(mp, userId, { customPacketType: "itemMoved", target, pos, rot });
+      if (userId === exceptUser || !mp.isConnected(userId)) continue;
+      try {
+        if ((Number(mp.getActorCellOrWorld(mp.getUserActor(userId))) >>> 0) === cell) sendJson(mp, userId, packet);
+      } catch { /* no actor yet */ }
     }
+  }
+
+  // OBND's lowest z below the base's origin, 0 without bounds
+  private boundsMinZ(mp: Mp, target: number): number {
+    const baseId = baseIdOf(mp, target);
+    let z = this.minZ.get(baseId);
+    if (z === undefined) {
+      z = 0;
+      try {
+        const obnd = (mp.lookupEspmRecordById(baseId)?.record?.fields ?? []).find((f: any) => f?.type === "OBND")?.data as Uint8Array | undefined;
+        if (obnd && obnd.byteLength >= 12) {
+          const view = new DataView(obnd.buffer, obnd.byteOffset, obnd.byteLength);
+          z = Math.min(view.getInt16(4, true), view.getInt16(10, true));
+        }
+      } catch { /* unknown base */ }
+      this.minZ.set(baseId, z);
+    }
+    return z;
   }
 
   private nail(mp: Mp, actorId: number, target: number): void {
@@ -159,6 +220,14 @@ export class PlacedItemSystem implements System {
 
   private isPlaced(mp: Mp, id: number): boolean {
     return this.placedAt(mp, id) !== null;
+  }
+
+  private isItem(mp: Mp, id: number): boolean {
+    try {
+      return !mp.get(id, "isDisabled") && ITEM_TYPES.has(baseTypeOf(mp, id));
+    } catch {
+      return false;
+    }
   }
 
   private nailedBy(mp: Mp, id: number): number {

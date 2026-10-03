@@ -316,6 +316,20 @@ Napi::Value ObjectReferenceApi::SetCollision(const Napi::CallbackInfo& info)
   return info.Env().Undefined();
 }
 
+Napi::Value ObjectReferenceApi::GetCrosshairPickPoint(
+  const Napi::CallbackInfo& info)
+{
+  auto pick = RE::CrosshairPickData::GetSingleton();
+  if (!pick || !pick->targetCollider) {
+    return info.Env().Null();
+  }
+  auto point = Napi::Array::New(info.Env(), 3);
+  point.Set(uint32_t(0), Napi::Number::New(info.Env(), pick->collisionPoint.x));
+  point.Set(uint32_t(1), Napi::Number::New(info.Env(), pick->collisionPoint.y));
+  point.Set(uint32_t(2), Napi::Number::New(info.Env(), pick->collisionPoint.z));
+  return point;
+}
+
 Napi::Value ObjectReferenceApi::SetCarryHold(const Napi::CallbackInfo& info)
 {
   return Napi::Boolean::New(
