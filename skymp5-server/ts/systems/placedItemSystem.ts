@@ -29,7 +29,7 @@ const NAIL_SECONDS = 2;
 // A carry the client never ends is given back after this long
 const GRAB_TTL_MS = 2 * 60 * 1000;
 // Degrees a dropped shield is tilted on X, since its model stands upright
-const SHIELD_TILT_X = 45;
+const SHIELD_TILT_X = 90;
 const SHIELD_SLOT = 1 << 9;
 const ITEM_TYPES = new Set(["MISC", "WEAP", "ARMO", "BOOK", "INGR", "ALCH", "KEYM", "SLGM", "SCRL", "LIGH", "AMMO"]);
 
