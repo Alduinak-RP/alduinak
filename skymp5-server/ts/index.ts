@@ -54,7 +54,6 @@ import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { DiscordAlerts } from "./systems/discordAlerts";
 import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
-import { UntouchableSystem } from "./systems/untouchableSystem";
 import { TorchSystem } from "./systems/torchSystem";
 import { PlacedItemSystem } from "./systems/placedItemSystem";
 import { CombatReadoutSystem } from "./systems/combatReadoutSystem";
@@ -369,7 +368,6 @@ const main = async () => {
     new DurabilitySystem(log, masterySystem, needsSystem),
     bountyBoardSystem,
     writingSystem,
-    new UntouchableSystem(log),
     new TorchSystem(log),
     new PlacedItemSystem(log),
     // The lines of the /armor chat command, on only with the rebalance or durability

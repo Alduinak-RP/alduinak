@@ -101,6 +101,8 @@ public:
 
   static void HandleSKSEMessage(SKSE::MessagingInterface::Message* msg);
 
+  static void SendActivateEvent(uint32_t targetId, uint32_t casterId,
+                                bool isCrimeToActivate);
   static void SendSimpleEventOnUpdate(const char* eventName);
   static void SendSimpleEventOnTick(const char* eventName);
   static void SendEventOnUpdate(

@@ -102,7 +102,6 @@ import { KickService } from "./services/services/kickService";
 import { QueueService } from "./services/services/queueService";
 import { MenuMediaService } from "./services/services/menuMediaService";
 import { CharacterProgressService } from "./services/services/characterProgressService";
-import { StaticRefsService } from "./services/services/staticRefsService";
 import { CellAnimationsService } from "./services/services/cellAnimationsService";
 import { ActivatePickService } from "./services/services/activatePickService";
 import { FurnitureAnimationsService } from "./services/services/furnitureAnimationsService";
@@ -193,7 +192,6 @@ const main = () => {
       new SearchService(sp, controller),
       new VoiceService(sp, controller),
       new LipSyncService(sp, controller),
-      new StaticRefsService(sp, controller),
       new CellAnimationsService(sp, controller),
       new ActivatePickService(sp, controller),
       new FurnitureAnimationsService(sp, controller),

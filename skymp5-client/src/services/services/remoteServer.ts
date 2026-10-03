@@ -869,7 +869,7 @@ export class RemoteServer extends ClientListener {
       const refrId = msg.refrId!;
       this.onceLoad(refrId, (refr: ObjectReference) => {
         if (refr) {
-          ObjectReferenceEx.dealWithRef(refr, refr.getBaseObject() as Form);
+          ObjectReferenceEx.dealWithRef(refr);
           if (msg.props) {
             if (msg.props.inventory) {
               ModelApplyUtils.applyModelInventory(refr, msg.props.inventory);

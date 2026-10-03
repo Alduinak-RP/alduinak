@@ -168,7 +168,7 @@ let keyPromptValue = '';
 export function isPropertyRef(ref: ObjectReference): boolean {
   if (Actor.from(ref)) return false;
   const base = ref.getBaseObject();
-  if (!base || ObjectReferenceEx.isUntouchable(base)) return false;
+  if (!base) return false;
   const type = base.getType();
   return type === FormType.Door || type === FormType.Container;
 }

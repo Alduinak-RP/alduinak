@@ -315,6 +315,42 @@ void InstallTextDisplayDataIsNotEqualHook()
     vtbl.write_vfunc(0x2, TextDisplayDataIsNotEqual::thunk);
 }
 
+// The player's Activate key never runs the engine's own activation on a ref: the press reaches JS as an 'activate' event, the
+// client sends it to the server and the server's answer is applied with activate(..., true), which does not pass through here
+struct ActivateButton
+{
+  static void thunk(RE::ActivateHandler* a_this, RE::ButtonEvent* a_event,
+                    RE::PlayerControlsData* a_data)
+  {
+    // The hold and the release of a taken press must not start a grab either
+    static bool taken = false;
+    if (a_event && a_event->IsDown()) {
+      auto pick = RE::CrosshairPickData::GetSingleton();
+      auto target = pick ? pick->target.get() : nullptr;
+      taken = target && !target->IsPlayerRef();
+      if (taken) {
+        EventHandler::SendActivateEvent(target->GetFormID(), 0x14,
+                                        target->IsCrimeToActivate());
+      }
+    }
+    if (taken) {
+      a_this->SetHeldButtonActionSuccess(true);
+      if (a_event && a_event->IsUp()) {
+        taken = false;
+      }
+      return;
+    }
+    func(a_this, a_event, a_data);
+  }
+  static inline REL::Relocation<decltype(&thunk)> func;
+};
+
+void InstallActivateButtonHook()
+{
+  REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_ActivateHandler[0] };
+  ActivateButton::func = vtbl.write_vfunc(0x4, ActivateButton::thunk);
+}
+
 void BindNativeMethod(RE::BSScript::Internal::VirtualMachine* thisArg,
                       RE::BSScript::IFunction* func);
 
@@ -388,6 +424,7 @@ void Hooks::Install()
   InstallShutdownCursorRelease();
   InstallCompoundFrustumStateGuard();
   InstallTextDisplayDataIsNotEqualHook();
+  InstallActivateButtonHook();
   CarryHold::Install();
   HookVirtualMachineBind();
 

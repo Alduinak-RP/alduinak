@@ -100,15 +100,18 @@ EventResult EventHandler::ProcessEvent(
     return EventResult::kContinue;
   }
 
-  uint32_t objectActivatedId = event->objectActivated.get()
-    ? event->objectActivated.get()->GetFormID()
-    : 0;
+  auto objectActivated = event->objectActivated.get();
+  auto actionRef = event->actionRef.get();
+  SendActivateEvent(objectActivated ? objectActivated->GetFormID() : 0,
+                    actionRef ? actionRef->GetFormID() : 0,
+                    objectActivated && objectActivated->IsCrimeToActivate());
+  return EventResult::kContinue;
+}
 
-  uint32_t actionRefId =
-    event->actionRef.get() ? event->actionRef.get()->GetFormID() : 0;
-
-  bool isCrimeToActivate = event->objectActivated.get()->IsCrimeToActivate();
-
+void EventHandler::SendActivateEvent(uint32_t objectActivatedId,
+                                     uint32_t actionRefId,
+                                     bool isCrimeToActivate)
+{
   SkyrimPlatform::GetSingleton()->AddUpdateTask(
     [objectActivatedId, actionRefId, isCrimeToActivate](Napi::Env env) {
       auto obj = Napi::Object::New(env);
@@ -131,8 +134,6 @@ EventResult EventHandler::ProcessEvent(
 
       SendEvent("activate", obj);
     });
-
-  return EventResult::kContinue;
 }
 
 EventResult EventHandler::ProcessEvent(

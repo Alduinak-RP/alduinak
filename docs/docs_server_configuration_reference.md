@@ -226,7 +226,7 @@ Record types (see [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format)) t
 - Item types (`MISC`, `WEAP`, `BOOK`, ...) and `FLOR`/`TREE`: a plugin-placed ref of that type can be taken or harvested once and never comes back.
 - `CONT`: an emptied container never refills. Players can use any container as storage. A container reloot already pending in the database is dropped when the container loads. What a container holds on its first open is set by [`emptyContainers`](#emptycontainers).
 - `KEYM`: plugin-placed keys are never loaded by the server, so they are untouchable either way. Listing it documents that.
-- `LIGH`: a plugin-placed torch, lantern or other carryable light taken once never comes back. Wall sconces are covered by [`untouchableBaseIds`](#untouchablebaseids).
+- `LIGH`: a plugin-placed torch, lantern or other carryable light taken once never comes back.
 
 ```json5
 {
@@ -263,25 +263,6 @@ Container base records that keep their plugin loot while `emptyContainers` is on
 {
   // ...
   "containerLootBaseIds": ["18e991:Warbirds Whiterun Metropolis.esp"]
-  // ...
-}
-```
-
-## untouchableBaseIds
-
-Base forms nobody can activate, as numbers or `"0x..."` strings. Defaults to the
-vanilla coin purses (flora that hands out leveled gold and respawns), the
-loose salmon (`0x000F5ECA`, `0x000F5ECB`), the Stones of Barenziah
-(`0x0007F8E1`, whose script would otherwise hand the stone to the first taker
-and disable it for everyone) and the wall torch sconce with its torch
-(`0x0009151E`, `0x0009151F`). The server sends the list to every
-client on connect, which then blocks engine activation and shows no prompt for
-those forms. `[]` disables the check.
-
-```json5
-{
-  // ...
-  "untouchableBaseIds": ["0x000D790C", "0x000D8E7F", "0x000D8E80"]
   // ...
 }
 ```

@@ -385,7 +385,7 @@ export class FormView {
     if (!this.dealtWithRef) {
       const base = refr.getBaseObject();
       if (base) {
-        ObjectReferenceEx.dealWithRef(refr, base);
+        ObjectReferenceEx.dealWithRef(refr);
         this.dealtWithRef = true;
       }
     }
@@ -394,13 +394,6 @@ export class FormView {
       // A door set before its 3D is in can stick between open and closed, so the server's state waits for the model
       if (refr.is3DLoaded()) {
         ModelApplyUtils.applyModelIsOpen(refr, !!model.isOpen);
-      }
-      // A reloaded cell recreates the ref without its activation block, so doors would open locally again
-      if (!refr.isActivationBlocked()) {
-        const base = refr.getBaseObject();
-        if (base && ObjectReferenceEx.wantsActivationBlock(base)) {
-          refr.blockActivation(true);
-        }
       }
     }
     if (!this.isSetNodeScaleApplied) {

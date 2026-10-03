@@ -49,8 +49,7 @@ export class SpawnProcess {
       });
     }
 
-    const base = refr.getBaseObject()!;
-    ObjectReferenceEx.dealWithRef(refr, base);
+    ObjectReferenceEx.dealWithRef(refr);
     return this.callback();
   }
 }

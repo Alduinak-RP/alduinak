@@ -153,7 +153,7 @@ export class InteractionPromptService extends ClientListener {
     const actor = Actor.from(ref);
     if (actor) return this.actorPromptFor(ref);
     const base = ref.getBaseObject();
-    if (!base || ObjectReferenceEx.isUntouchable(base)) return null;
+    if (!base) return null;
 
     if (this.isBoardBase(base)) {
       return { verb: "Read", label: "Notice Board" };
