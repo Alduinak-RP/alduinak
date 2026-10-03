@@ -58,7 +58,7 @@ missing simply never counts.
 
 ## Where the items come from
 
-Placed instruments and brooms are world decor (`MISC` is in `forbiddenReloot`) and NPCs are off, so the
+A placed instrument or broom can be taken once and never comes back (`MISC` is in `forbiddenReloot`) and NPCs are off, so the
 Alduinak plugin adds common recipes: any character makes them at Novice, whatever their profession, and they
 earn no mastery hours (see `docs_roleplay_mastery.md`).
 

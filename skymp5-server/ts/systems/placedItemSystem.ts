@@ -1,11 +1,10 @@
-import * as fs from "fs";
+import { MongoClient } from "mongodb";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { chainMpHook, countItem, destroyRef, hex, isNear, notifyActor, sendActionLock, takeItemFrom, userSlotCount } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { AdminRoleConfig, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 import { formIdFromConfig, toFormId } from "./formIdUtil";
-import { writeFileAtomic } from "./fileUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -13,8 +12,7 @@ type Mp = any;
 // Items players drop: moved by hand, nailed down with a hammer and a nail, and removed two hours after their last placement unless nailed.
 // Packets: itemMenuRequest {target} -> itemMenuState {target, nailed, canPry, canNail}; itemMove {target, pos, rot} -> itemMoved {target, pos, rot} to everyone;
 // itemNail {target}; itemPry {target}.
-// State: ./placed-items.json { refId: { at, nailedBy? } }, rewritten atomically on every change.
-const STATE_FILE = "./placed-items.json";
+// State lives on each item's changeForm; the sweep finds old ones in the changeForms collection and checks them against the live world.
 const PLACED_AT_PROP = "private.placedAt";
 const NAILED_BY_PROP = "private.nailedBy";
 // Seen by every client, which shows Admire and offers no pickup
@@ -27,41 +25,42 @@ const REACH = 400;
 const NAIL_ANIM = "IdleHammerTableEnter";
 const NAIL_SECONDS = 2;
 
-interface Placed {
-  at: number;
-  nailedBy?: number;
-}
+const field = (name: string) => ({ $getField: { field: name, input: "$dynamicFields" } });
 
 export class PlacedItemSystem implements System {
   systemName = "PlacedItemSystem";
   constructor(private log: Log) { }
 
-  private placed = new Map<number, Placed>();
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private nailId = 0;
   private hammerId = 0;
   private sweptAt = Date.now();
+  private db: { uri: string; name: string } | null = null;
+  private client: MongoClient | null = null;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
-    const s = await Settings.get();
-    this.roleCfg = readAdminRoleConfig(s.allSettings);
+    const all = (await Settings.get()).allSettings as Record<string, unknown> | null;
+    this.roleCfg = readAdminRoleConfig(all);
     this.nailId = formIdFromConfig(mp, NAIL_DESC);
     this.hammerId = formIdFromConfig(mp, HAMMER_DESC);
-    try {
-      const saved = JSON.parse(fs.readFileSync(STATE_FILE, "utf8")) as Record<string, Placed>;
-      for (const [id, p] of Object.entries(saved)) this.placed.set(Number(id) >>> 0, p);
-    } catch { /* first start */ }
-    chainMpHook(mp, "onItemPlaced", (_actorId: number, refId: number) => this.onPlaced(mp, Number(refId) >>> 0));
+    if (all?.["databaseDriver"] === "mongodb" && typeof all["databaseUri"] === "string" && typeof all["databaseName"] === "string") {
+      this.db = { uri: all["databaseUri"], name: all["databaseName"] };
+    }
+    chainMpHook(mp, "onItemPlaced", (_actorId: number, refId: number) => this.setPlacedAt(mp, Number(refId) >>> 0));
     chainMpHook(mp, "onActivate", (targetId: number, casterId: number) => this.onActivate(mp, Number(targetId) >>> 0, Number(casterId) >>> 0));
-    this.log(`[placed] ${this.placed.size} placed items tracked; nail ${hex(this.nailId)}, hammer ${hex(this.hammerId)}`);
+    this.log(`[placed] nail ${hex(this.nailId)}, hammer ${hex(this.hammerId)}; ${this.db ? "old drops are swept every 30 min" : "no mongodb, old drops are never swept"}`);
   }
 
   async updateAsync(ctx: SystemContext): Promise<void> {
     await new Promise((r) => setTimeout(r, 60000));
-    if (Date.now() - this.sweptAt < SWEEP_MS) return;
+    if (!this.db || Date.now() - this.sweptAt < SWEEP_MS) return;
     this.sweptAt = Date.now();
-    this.sweep(ctx.svr as Mp);
+    try {
+      await this.sweep(ctx.svr as Mp);
+    } catch (e) {
+      this.log(`[placed] sweep failed: ${e}`);
+    }
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -70,87 +69,77 @@ export class PlacedItemSystem implements System {
     let actorId = 0;
     try { actorId = Number(mp.getUserActor(userId)) >>> 0; } catch { return; }
     const target = toFormId(content["target"]);
-    const item = this.placed.get(target);
-    if (!actorId || !item || !this.exists(mp, target) || !isNear(mp, actorId, target, REACH)) return;
+    if (!actorId || !this.isPlaced(mp, target) || !isNear(mp, actorId, target, REACH)) return;
+    const nailedBy = this.nailedBy(mp, target);
     if (type === "itemMenuRequest") {
-      sendJson(mp, userId, { customPacketType: "itemMenuState", target, nailed: !!item.nailedBy, canPry: this.canPry(mp, actorId, item),
-        canNail: !item.nailedBy && this.hasTools(mp, actorId) });
-    } else if (type === "itemMove") {
-      this.move(mp, actorId, target, item, content);
-    } else if (type === "itemNail") {
-      this.nail(mp, actorId, target, item);
-    } else {
-      this.pry(mp, actorId, target, item);
+      sendJson(mp, userId, { customPacketType: "itemMenuState", target, nailed: !!nailedBy, canPry: this.canPry(mp, actorId, nailedBy),
+        canNail: !nailedBy && this.hasTools(mp, actorId) });
+    } else if (type === "itemMove" && !nailedBy) {
+      this.move(mp, actorId, target, content);
+    } else if (type === "itemNail" && !nailedBy) {
+      this.nail(mp, actorId, target);
+    } else if (type === "itemPry" && this.canPry(mp, actorId, nailedBy)) {
+      this.setNailed(mp, target, 0);
+      this.setPlacedAt(mp, target);
     }
   }
 
-  private onPlaced(mp: Mp, refId: number): void {
-    const at = Date.now();
-    this.placed.set(refId, { at });
-    try { mp.set(refId, PLACED_AT_PROP, at); } catch { /* the ref is gone already */ }
-    this.save();
-  }
-
   private onActivate(mp: Mp, targetId: number, casterId: number): boolean {
-    if (!this.placed.get(targetId)?.nailedBy) return true;
+    if (!this.nailedBy(mp, targetId)) return true;
     notifyActor(mp, casterId, "It is nailed down.");
     return false;
   }
 
-  private move(mp: Mp, actorId: number, target: number, item: Placed, content: Content): void {
+  private move(mp: Mp, actorId: number, target: number, content: Content): void {
     const pos = content["pos"], rot = content["rot"];
-    if (item.nailedBy || !this.isVector(pos) || !this.isVector(rot)) return;
+    if (!this.isVector(pos) || !this.isVector(rot)) return;
     const me = mp.get(actorId, "pos") as number[];
     if (Math.hypot(pos[0] - me[0], pos[1] - me[1], pos[2] - me[2]) > REACH) return;
     const loc = mp.get(target, "locationalData");
     mp.set(target, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos, rot });
-    this.touch(mp, target, item);
+    this.setPlacedAt(mp, target);
     // Copies already spawned never read a refr's position again
     for (let userId = 0; userId < userSlotCount(); userId++) {
       if (mp.isConnected(userId)) sendJson(mp, userId, { customPacketType: "itemMoved", target, pos, rot });
     }
   }
 
-  private nail(mp: Mp, actorId: number, target: number, item: Placed): void {
-    if (item.nailedBy) return;
+  private nail(mp: Mp, actorId: number, target: number): void {
     if (!this.hasTools(mp, actorId) || !takeItemFrom(mp, actorId, this.nailId, 1)) {
       notifyActor(mp, actorId, "You need a hammer and a nail.");
       return;
     }
-    item.nailedBy = actorId;
     this.setNailed(mp, target, actorId);
     sendActionLock(mp, actorId, NAIL_ANIM, NAIL_SECONDS);
-    this.save();
   }
 
-  private pry(mp: Mp, actorId: number, target: number, item: Placed): void {
-    if (!item.nailedBy || !this.canPry(mp, actorId, item)) return;
-    delete item.nailedBy;
-    this.setNailed(mp, target, 0);
-    this.touch(mp, target, item);
-  }
-
-  private sweep(mp: Mp): void {
-    const now = Date.now();
+  // The changeForms collection lags the world, so each candidate is checked live before it goes
+  private async sweep(mp: Mp): Promise<void> {
+    this.client ??= await new MongoClient(this.db!.uri).connect();
+    const cutoff = Date.now() - MAX_AGE_MS;
+    const docs = await this.client.db(this.db!.name).collection("changeForms").find({
+      isDeleted: { $ne: true },
+      $expr: { $and: [{ $isNumber: field(PLACED_AT_PROP) }, { $lt: [field(PLACED_AT_PROP), cutoff] }, { $not: [{ $gt: [field(NAILED_BY_PROP), 0] }] }] },
+    }, { projection: { formDesc: 1 } }).toArray();
     let removed = 0;
-    for (const [id, item] of Array.from(this.placed)) {
-      if (!this.exists(mp, id)) {
-        this.placed.delete(id);
-      } else if (!item.nailedBy && now - item.at > MAX_AGE_MS) {
-        try { destroyRef(mp, id); } catch (e) { this.log(`[placed] could not remove ${hex(id)}: ${e}`); }
-        this.placed.delete(id);
+    for (const doc of docs) {
+      const desc = String(doc.formDesc ?? "");
+      const id = desc.includes(":") ? 0 : (0xff000000 | parseInt(desc, 16)) >>> 0;
+      const at = this.placedAt(mp, id);
+      if (!id || at === null || at >= cutoff || this.nailedBy(mp, id)) continue;
+      try {
+        destroyRef(mp, id);
         removed++;
+      } catch (e) {
+        this.log(`[placed] could not remove ${hex(id)}: ${e}`);
       }
     }
-    this.log(`[placed] sweep removed ${removed}, ${this.placed.size} left`);
-    this.save();
+    this.log(`[placed] sweep removed ${removed} of ${docs.length} old drops`);
   }
 
-  // Moving or prying restarts the two hours
-  private touch(mp: Mp, target: number, item: Placed): void {
-    item.at = Date.now();
-    try { mp.set(target, PLACED_AT_PROP, item.at); } catch { /* gone */ }
-    this.save();
+  // Placing, moving or prying starts the two hours again
+  private setPlacedAt(mp: Mp, refId: number): void {
+    try { mp.set(refId, PLACED_AT_PROP, Date.now()); } catch { /* the ref is gone already */ }
   }
 
   private setNailed(mp: Mp, target: number, by: number): void {
@@ -158,23 +147,33 @@ export class PlacedItemSystem implements System {
     mp.set(target, NAILED_PROP, by !== 0);
   }
 
-  private canPry(mp: Mp, actorId: number, item: Placed): boolean {
-    return !!item.nailedBy && (item.nailedBy === actorId || adminTierOf(mp, actorId, this.roleCfg) !== null);
+  private placedAt(mp: Mp, id: number): number | null {
+    try {
+      if (mp.get(id, "isDisabled")) return null;
+      const at = mp.get(id, PLACED_AT_PROP);
+      return typeof at === "number" ? at : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private isPlaced(mp: Mp, id: number): boolean {
+    return this.placedAt(mp, id) !== null;
+  }
+
+  private nailedBy(mp: Mp, id: number): number {
+    try { return Number(mp.get(id, NAILED_BY_PROP)) >>> 0; } catch { return 0; }
+  }
+
+  private canPry(mp: Mp, actorId: number, nailedBy: number): boolean {
+    return !!nailedBy && (nailedBy === actorId || adminTierOf(mp, actorId, this.roleCfg) !== null);
   }
 
   private hasTools(mp: Mp, actorId: number): boolean {
     return countItem(mp, actorId, this.nailId) > 0 && countItem(mp, actorId, this.hammerId) > 0;
   }
 
-  private exists(mp: Mp, id: number): boolean {
-    try { return mp.get(id, "type") !== undefined && !mp.get(id, "isDisabled"); } catch { return false; }
-  }
-
   private isVector(v: unknown): v is number[] {
     return Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
-  }
-
-  private save(): void {
-    writeFileAtomic(STATE_FILE, JSON.stringify(Object.fromEntries(this.placed)));
   }
 }

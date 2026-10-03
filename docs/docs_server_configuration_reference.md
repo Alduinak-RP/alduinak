@@ -223,10 +223,10 @@ A time before a game object restores its original state in milliseconds. Unlike 
 ## forbiddenReloot
 Record types (see [UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format)) that never reloot. A listed type wins over its `reloot` timer:
 
-- Item types (`MISC`, `WEAP`, `BOOK`, ...) and `FLOR`/`TREE`: plugin-placed refs of that type can't be picked up or harvested at all. Player-dropped items stay lootable.
+- Item types (`MISC`, `WEAP`, `BOOK`, ...) and `FLOR`/`TREE`: a plugin-placed ref of that type can be taken or harvested once and never comes back.
 - `CONT`: an emptied container never refills. Players can use any container as storage. A container reloot already pending in the database is dropped when the container loads. What a container holds on its first open is set by [`emptyContainers`](#emptycontainers).
 - `KEYM`: plugin-placed keys are never loaded by the server, so they are untouchable either way. Listing it documents that.
-- `LIGH`: plugin-placed torches, lanterns and other carryable lights stay where they are. Wall sconces are covered by [`untouchableBaseIds`](#untouchablebaseids).
+- `LIGH`: a plugin-placed torch, lantern or other carryable light taken once never comes back. Wall sconces are covered by [`untouchableBaseIds`](#untouchablebaseids).
 
 ```json5
 {

@@ -72,9 +72,9 @@ keeps its display name with a verb picked from its base form type.
 - **Verbs by base type**: Door Open/Unlock, Container Search/Unlock,
   Activator Activate, Furniture Use, Book Read, Flora/Tree Harvest (skipped
   when harvested; coin purses, loose salmon and any other `untouchableBaseIds`
-  form get no prompt at all and are activation-blocked), item types Take. Items
-  and books placed by a plugin show no prompt, since the server refuses them
-  (`forbiddenReloot`); only runtime refs such as player drops read Take or Read. The board base (`12cb:Missives.esp`,
+  form get no prompt at all and are activation-blocked), item types Take (Admire
+  when nailed down), books Read. A plugin-placed item of a `forbiddenReloot`
+  type is taken once and never comes back. The board base (`12cb:Missives.esp`,
   resolved through `Game.getFormFromFile` so load order cannot break it)
   gets Read + "Notice Board"; `isBoard` is public, and `PlayerActionService`
   routes X on a board to the server as `bountyBoardManage`, which opens the
@@ -114,8 +114,7 @@ activation and unlocks without touching the motion type.
 
 ## Placed items
 
-Only items players drop can be taken, moved or nailed; plugin-placed clutter
-stays where it is. A tap of Activate on one takes it, a press held 0.4 s
+Any item can be taken; only items players drop can be moved or nailed. A tap of Activate on one takes it, a press held 0.4 s
 carries it 120 units ahead of the player with no physics until the key is let
 go (`ItemService`), and the interact key opens Pick Up, Move, Nail Down and
 Pry Free (`PlayerActionService`, `itemMenuRequest` / `itemMenuState`). Move
@@ -125,9 +124,12 @@ units, moves it in its cell and sends `itemMoved` to every client, whose copy
 moves too. Nail Down takes one nail (HearthFires `BYOHMaterialNails`) and needs
 a hammer (`BlacksmithHammer01`), plays `IdleHammerTableEnter` for 2 s and sets
 `ff_nailed`, which shows Admire and refuses the pickup; Pry Free is for the
-one who nailed it and for staff. Every drop raises `onItemPlaced`; the server
-keeps `./placed-items.json` and every 30 min removes items placed, moved or
-pried more than 2 hours ago unless nailed. Loose non-clutter items the
+one who nailed it and for staff. Every drop raises `onItemPlaced` and the
+server writes `private.placedAt` on the item's changeForm (moving or prying
+writes it again, nailing writes `private.nailedBy`); every 30 min it asks the
+`changeForms` collection for items older than 2 hours that are not nailed,
+checks each against the live world and removes it. Without `databaseDriver`
+mongodb nothing is swept. Loose non-clutter items the
 plugins place are disabled in the plugin (`disableLooseItems`).
 
 ## Switches and verification
