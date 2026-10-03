@@ -71,11 +71,11 @@ Action<PatchContext> categoriesStep = c => categories = Steps.Categories(c);
 Action<PatchContext>[] steps = opts.Hotfix
     ? [Steps.Items, Steps.MarkerAbilities, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes, Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Writing,
        Steps.Racial, Steps.Retier, Steps.EnchantmentMagnitudes, Steps.World, Steps.ItemStats, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides,
-       Steps.DisableActors, Steps.DisableTraps, categoriesStep, Steps.MarkerEffects]
+       Steps.DisableActors, Steps.DisableTraps, Steps.DisableLooseItems, categoriesStep, Steps.MarkerEffects]
     : [Steps.Keywords, Steps.Items, Steps.MarkerAbilities, Steps.WoodcraftingBench, Steps.AlchemyLabs, Steps.CraftingStations, Steps.AlchemyRecipes, Steps.KilnRecipes,
        Steps.Cooking, Steps.Smithing, Steps.Tempering, Steps.Tailoring, Steps.Factions, Steps.Uncraftable, Steps.LeveledItems, Steps.Meadery,
        Steps.BenchKeywordRemovals, Steps.BenchMoves, Steps.EnchantmentMagnitudes, Steps.Placements, Steps.World, Steps.Writing,
-       Steps.Racial, Steps.Retier, Steps.ItemStats, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.DisableTraps, Steps.Orphans, categoriesStep,
+       Steps.Racial, Steps.Retier, Steps.ItemStats, Steps.Races, Steps.Survival, Steps.HeadParts, Steps.DisableReferences, Steps.EnableReferences, Steps.Overrides, Steps.DisableActors, Steps.DisableTraps, Steps.DisableLooseItems, Steps.Orphans, categoriesStep,
        Steps.MarkerEffects];
 foreach (var step in steps) step(ctx);
 
@@ -1732,6 +1732,34 @@ static class Steps
         c.Note($"Disable traps: {bases.Count} bases from {models.Count} models");
         var contexts = c.LoadOrder.PriorityOrder.PlacedObject().WinningContextOverrides(c.Cache).Where(x => bases.Contains(x.Record.Base.FormKey));
         DisableWinners(c, contexts, c.Spec["disableActors"]?["notFrom"], "Disable traps");
+    }
+
+    // ---- loose items: only clutter is left lying in the world --------------------------------------------------------
+    //
+    // Weapons, armour, ammunition, ingredients, food and potions, scrolls, soul gems, leveled loot, spell tomes and materials
+    // placed in the world never show; plates, cups, tools, books and the like stay. Container contents are not references.
+    public static void DisableLooseItems(PatchContext c)
+    {
+        if (c.Spec["disableLooseItems"] is not JsonObject spec) return;
+        var po = c.LoadOrder.PriorityOrder;
+        bool Tagged(IEnumerable<IFormLinkGetter<IKeywordGetter>>? keywords, HashSet<FormKey> tags) => keywords?.Any(k => tags.Contains(k.FormKey)) == true;
+        var bookTags = Edids(c, spec["bookKeywords"]).Select(e => c.KeyOf<IKeywordGetter>(e)).ToHashSet();
+        var miscTags = Edids(c, spec["miscKeywords"]).Select(e => c.KeyOf<IKeywordGetter>(e)).ToHashSet();
+        var bases = po.Weapon().WinningOverrides().Select(r => r.FormKey)
+            .Concat(po.Armor().WinningOverrides().Select(r => r.FormKey))
+            .Concat(po.Ammunition().WinningOverrides().Select(r => r.FormKey))
+            .Concat(po.Ingredient().WinningOverrides().Select(r => r.FormKey))
+            .Concat(po.Ingestible().WinningOverrides().Select(r => r.FormKey))
+            .Concat(po.Scroll().WinningOverrides().Select(r => r.FormKey))
+            .Concat(po.SoulGem().WinningOverrides().Select(r => r.FormKey))
+            .Concat(po.LeveledItem().WinningOverrides().Select(r => r.FormKey))
+            .Concat(po.Book().WinningOverrides().Where(b => Tagged(b.Keywords, bookTags)).Select(r => r.FormKey))
+            .Concat(po.MiscItem().WinningOverrides().Where(m => Tagged(m.Keywords, miscTags)).Select(r => r.FormKey))
+            .Concat(Edids(c, spec["miscItems"]).Select(x => FormKey.Factory(x)))
+            .ToHashSet();
+        c.Note($"Disable loose items: {bases.Count} bases");
+        var contexts = po.PlacedObject().WinningContextOverrides(c.Cache).Where(x => bases.Contains(x.Record.Base.FormKey));
+        DisableWinners(c, contexts, c.Spec["disableActors"]?["notFrom"], "Disable loose items");
     }
 
     // Initially Disabled on each winner, the player as enable parent, opposite, where a parent could turn it back on

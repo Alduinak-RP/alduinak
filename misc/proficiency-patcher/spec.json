@@ -8560,6 +8560,12 @@
    "DLC01/Traps/HangingSpikeTrap/HangingSpikeTrap01.nif"
   ]
  },
+ "disableLooseItems": {
+  "comment": "Every placed reference of a weapon, armour, ammunition, ingredient, potion or food, scroll, soul gem or leveled item, of a book with one of bookKeywords (spell tomes), of a misc item with one of miscKeywords (ore, ingots, hides, animal parts, gems, firewood) or of a listed misc item (gold, lockpicks) is Initially Disabled, with the player as enable parent, opposite, where a parent could enable it. Clutter, keys, lights and other books stay. Container contents are not references and are untouched.",
+  "bookKeywords": ["VendorItemSpellTome"],
+  "miscKeywords": ["VendorItemOreIngot", "VendorItemAnimalHide", "VendorItemAnimalPart", "VendorItemGem", "VendorItemFireword"],
+  "miscItems": ["00000F:Skyrim.esm", "00000A:Skyrim.esm"]
+ },
  "racial": {
   "benches": [
    "CraftingSmithingForge",

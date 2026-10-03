@@ -143,6 +143,13 @@ def model_of(data):
     return ''
 
 
+def keyword_ids(pl, data):
+    for t, v in parse_subs(data):
+        if t == 'KWDA':
+            return {pl.key(x) for x in struct.unpack_from(f'<{len(v) // 4}I', v)}
+    return set()
+
+
 def spell_of(rec):
     subs = dict(rec.subs())
     return zstr(subs.get('EDID', b'')), struct.unpack_from('<I', subs['SPIT'], 8)[0] if 'SPIT' in subs else -1
@@ -520,7 +527,13 @@ def main():
     # A worldspace override takes its fields from the last winner outside these
     not_from = {n.lower() for n in spec.get('disableActors', {}).get('notFrom', [])}
     trap_models = {m.replace('/', '\\').lower() for m in spec.get('disableTraps', {}).get('models', [])}
+    # Bases whose placed references end disabled: the listed trap models and the loose item kinds
     trap_bases, traps = set(), {}
+    loose = spec.get('disableLooseItems')
+    loose_tags = {'BOOK': set(loose.get('bookKeywords', [])), 'MISC': set(loose.get('miscKeywords', []))} if loose else {}
+    keyword_keys = {}
+    listed_items = {form_key(x) for x in loose.get('miscItems', [])} if loose else set()
+    trap_bases |= listed_items
     winners, actors, parents, spells, races, weapons, form_lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
     # The stat fields of the listed items as the plugins before this one leave them, and the keywords the stat pass must keep
     listed_now, kept_keywords = {}, {}
@@ -540,8 +553,17 @@ def main():
                 actors[k] = (n, r.flags, parents[k][2])
             if r.type in ('ACTI', 'MSTT') and trap_models and model_of(r.data()) in trap_models:
                 trap_bases.add(k)
+            if loose and r.type == 'KYWD':
+                keyword_keys[k] = edid(r)
+            if loose and r.type in ('WEAP', 'ARMO', 'AMMO', 'INGR', 'ALCH', 'SCRL', 'SLGM', 'LVLI'):
+                trap_bases.add(k)
+            if loose and r.type in loose_tags:
+                tagged = any(keyword_keys.get(x) in loose_tags[r.type] for x in keyword_ids(pl, r.data()))
+                (trap_bases.add if tagged or k in listed_items else trap_bases.discard)(k)
             if r.type == 'REFR' and trap_bases and base_of(pl, r.data()) in trap_bases:
                 traps[k] = (n, r.flags, parents[k][2])
+            elif r.type == 'REFR':
+                traps.pop(k, None)
             if r.type == 'SPEL':
                 spells[k] = spell_of(r)
             if r.type == 'WEAP':
@@ -561,13 +583,28 @@ def main():
             if ((r.type, k) in ro or r.type in PLACED and k in listed_refs) and not (r.type == 'WRLD' and n.lower() in not_from):
                 winners[(r.type, k)] = (pl, r.flags, r.data(), pl.container(r, CELL_GROUPS if r.type != 'CELL' else WORLD_GROUPS))
         pl.buf = None
+    # The input's own and overriding bases count as the load order's winners do
+    for (t, k), r in ri.items():
+        if t == 'KYWD' and loose:
+            keyword_keys[k] = edid(r)
+    for (t, k), r in ri.items():
+        if t in ('ACTI', 'MSTT') and trap_models and model_of(r.data()) in trap_models:
+            trap_bases.add(k)
+        if loose and t in ('WEAP', 'ARMO', 'AMMO', 'INGR', 'ALCH', 'SCRL', 'SLGM', 'LVLI'):
+            trap_bases.add(k)
+        if loose and t in loose_tags:
+            tagged = any(keyword_keys.get(x) in loose_tags[t] for x in keyword_ids(inp, r.data()))
+            (trap_bases.add if tagged or k in listed_items else trap_bases.discard)(k)
     for (t, k), r in ro.items():
         if t in PLACED:
             parents[k] = (t, r.flags, enable_parent(out, r.data()))
         if t == 'ACHR':
             actors[k] = (name, r.flags, parents[k][2])
-        if t == 'REFR' and (k in traps or base_of(out, r.data()) in trap_bases):
+        # The output's base decides, since the plugin may put back a base a plugin before it changed
+        if t == 'REFR' and base_of(out, r.data()) in trap_bases:
             traps[k] = (name, r.flags, parents[k][2])
+        elif t == 'REFR':
+            traps.pop(k, None)
         if t == 'SPEL':
             spells[k] = spell_of(r)
         if t == 'WEAP':
@@ -622,11 +659,11 @@ def main():
                 why = f'enable parent {parent} -> {enable_parent(out, q.data())}'
             elif cell != where:
                 why = f'moved from cell {cell} to {where}'
-            what = 'actor' if t == 'ACHR' else 'trap'
+            what = 'actor' if t == 'ACHR' else 'trap or loose item'
             if why:
                 problems.append(f'{label}: not {src.name}\'s {what} Initially Disabled ({why})')
             switched.add(k)
-            checked[f'{what}s disabled (from {"the input" if r is not None else "the load order"})'] += 1
+            checked[f'{what} disabled (from {"the input" if r is not None else "the load order"})'] += 1
         elif t in ('CELL', 'WRLD') and r is None:
             src, flags, data, world = ref
             # The offset table only fits the file it came from
@@ -841,8 +878,8 @@ def main():
         if flags & DELETED:
             continue
         if not flags & DISABLED or parent not in (None, (PLAYER_REF, 1)):
-            problems.append(f'REFR {show(k)} from {winner}, a trap, can still be enabled (flags {flags:#x}, enable parent {parent})')
-        checked['traps covered'] += 1
+            problems.append(f'REFR {show(k)} from {winner}, a trap or loose item, can still be enabled (flags {flags:#x}, enable parent {parent})')
+        checked['traps and loose items covered'] += 1
     # Every listed race ends without the spells the races section removes
     rs = spec.get('races', {})
     types = {SPELL_TYPES[x] for x in rs.get('removeSpellTypes', [])}
