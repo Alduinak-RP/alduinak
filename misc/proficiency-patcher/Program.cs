@@ -1736,8 +1736,8 @@ static class Steps
 
     // ---- loose items: only clutter is left lying in the world --------------------------------------------------------
     //
-    // Weapons, armour, ammunition, ingredients, food and potions, scrolls, soul gems, leveled loot, spell tomes and materials
-    // placed in the world never show; plates, cups, tools, books and the like stay. Container contents are not references.
+    // Weapons, armour, ammunition, ingredients, food and potions, scrolls, soul gems, leveled loot, spell tomes, materials and
+    // coin purses (flora that hands out a leveled list) placed in the world never show; plates, cups, tools, books and the like stay. Container contents are not references.
     public static void DisableLooseItems(PatchContext c)
     {
         if (c.Spec["disableLooseItems"] is not JsonObject spec) return;
@@ -1756,6 +1756,9 @@ static class Steps
             .Concat(po.Book().WinningOverrides().Where(b => Tagged(b.Keywords, bookTags)).Select(r => r.FormKey))
             .Concat(po.MiscItem().WinningOverrides().Where(m => Tagged(m.Keywords, miscTags)).Select(r => r.FormKey))
             .Concat(Edids(c, spec["miscItems"]).Select(x => FormKey.Factory(x)))
+            .Concat(spec["leveledFlora"]?.GetValue<bool>() == true
+                ? po.Flora().WinningOverrides().Where(f => c.Cache.TryResolve<ILeveledItemGetter>(f.Ingredient.FormKey, out _)).Select(f => f.FormKey)
+                : Enumerable.Empty<FormKey>())
             .ToHashSet();
         c.Note($"Disable loose items: {bases.Count} bases");
         var contexts = po.PlacedObject().WinningContextOverrides(c.Cache).Where(x => bases.Contains(x.Record.Base.FormKey));

@@ -114,6 +114,9 @@ class Checker:
         for (t, x), (_, y) in zip(sa, sb):
             if t == 'XPRM' and len(x) == len(y) == 32 and x[24:] == y[24:] and patch.floats_close(x[:24], y[:24]):
                 continue
+            # An old one-byte CELL flags field comes back padded to the two bytes Mutagen writes
+            if rtype == 'CELL' and t == 'DATA' and len(x) == 1 and y == x + bytes(1):
+                continue
             why = self.same_bytes(x, y, tab, names, t in FORM_IDS.get(rtype, ANY_IDS))
             if why:
                 return f'{t} {why}'
@@ -148,6 +151,13 @@ def keyword_ids(pl, data):
         if t == 'KWDA':
             return {pl.key(x) for x in struct.unpack_from(f'<{len(v) // 4}I', v)}
     return set()
+
+
+def harvest_of(pl, data):
+    for t, v in parse_subs(data):
+        if t == 'PFIG':
+            return pl.key(struct.unpack_from('<I', v, 0)[0])
+    return None
 
 
 def spell_of(rec):
@@ -533,6 +543,9 @@ def main():
     loose_tags = {'BOOK': set(loose.get('bookKeywords', [])), 'MISC': set(loose.get('miscKeywords', []))} if loose else {}
     keyword_keys = {}
     listed_items = {form_key(x) for x in loose.get('miscItems', [])} if loose else set()
+    # Flora by its harvest, judged once every leveled list is known
+    leveled, flora, flora_refs = set(), {}, {}
+    purses = bool(loose) and loose.get('leveledFlora') is True
     trap_bases |= listed_items
     winners, actors, parents, spells, races, weapons, form_lists, effects, slot = {}, {}, {}, {}, {}, {}, {}, {}, 0
     # The stat fields of the listed items as the plugins before this one leave them, and the keywords the stat pass must keep
@@ -557,13 +570,23 @@ def main():
                 keyword_keys[k] = edid(r)
             if loose and r.type in ('WEAP', 'ARMO', 'AMMO', 'INGR', 'ALCH', 'SCRL', 'SLGM', 'LVLI'):
                 trap_bases.add(k)
+            if r.type == 'LVLI':
+                leveled.add(k)
+            if purses and r.type == 'FLOR':
+                flora[k] = harvest_of(pl, r.data())
             if loose and r.type in loose_tags:
                 tagged = any(keyword_keys.get(x) in loose_tags[r.type] for x in keyword_ids(pl, r.data()))
                 (trap_bases.add if tagged or k in listed_items else trap_bases.discard)(k)
-            if r.type == 'REFR' and trap_bases and base_of(pl, r.data()) in trap_bases:
-                traps[k] = (n, r.flags, parents[k][2])
-            elif r.type == 'REFR':
-                traps.pop(k, None)
+            if r.type == 'REFR':
+                base = base_of(pl, r.data())
+                if base in trap_bases:
+                    traps[k] = (n, r.flags, parents[k][2])
+                else:
+                    traps.pop(k, None)
+                if base in flora:
+                    flora_refs[k] = (n, r.flags, parents[k][2], base)
+                else:
+                    flora_refs.pop(k, None)
             if r.type == 'SPEL':
                 spells[k] = spell_of(r)
             if r.type == 'WEAP':
@@ -592,9 +615,16 @@ def main():
             trap_bases.add(k)
         if loose and t in ('WEAP', 'ARMO', 'AMMO', 'INGR', 'ALCH', 'SCRL', 'SLGM', 'LVLI'):
             trap_bases.add(k)
+        if t == 'LVLI':
+            leveled.add(k)
+        if purses and t == 'FLOR':
+            flora[k] = harvest_of(inp, r.data())
         if loose and t in loose_tags:
             tagged = any(keyword_keys.get(x) in loose_tags[t] for x in keyword_ids(inp, r.data()))
             (trap_bases.add if tagged or k in listed_items else trap_bases.discard)(k)
+    purse_bases = {k for k, harvest in flora.items() if harvest in leveled}
+    trap_bases |= purse_bases
+    traps.update({k: (n, flags, parent) for k, (n, flags, parent, base) in flora_refs.items() if base in purse_bases})
     for (t, k), r in ro.items():
         if t in PLACED:
             parents[k] = (t, r.flags, enable_parent(out, r.data()))
