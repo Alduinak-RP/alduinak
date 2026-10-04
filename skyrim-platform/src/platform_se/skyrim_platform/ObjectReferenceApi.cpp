@@ -322,6 +322,8 @@ struct SkipRefCollector : RE::hkpRayHitCollector
 {
   RE::hkpWorldRayCastOutput rayHit;
   RE::TESObjectREFR* ignore = nullptr;
+  // Only world items count, for the ray that finds a plate or a bowl to set an item on
+  bool itemsOnly = false;
 
   void AddRayHit(const RE::hkpCdBody& a_body,
                  const RE::hkpShapeRayCastCollectorOutput& a_hit) override
@@ -334,6 +336,18 @@ struct SkipRefCollector : RE::hkpRayHitCollector
     auto ref = RE::TESHavokUtilities::FindCollidableRef(*collidable);
     if (ref && (ref == ignore || ref->Is(RE::FormType::ActorCharacter))) {
       return;
+    }
+    if (itemsOnly && !(ref && ref->GetBaseObject() &&
+                       ref->GetBaseObject()->IsInventoryObject())) {
+      return;
+    }
+    // An item's side is passed through, so the ray goes on to a top or to the table behind it
+    if (itemsOnly) {
+      float normal[4];
+      _mm_storeu_ps(normal, a_hit.normal.quad);
+      if (normal[2] < 0.5f) {
+        return;
+      }
     }
     if (a_hit.hitFraction >= rayHit.hitFraction) {
       return;
@@ -396,7 +410,7 @@ struct RayOut
 
 RayOut CastRay(RE::bhkWorld* world, const RE::NiPoint3& from,
                const RE::NiPoint3& to, uint32_t filterInfo,
-               RE::TESObjectREFR* ignore)
+               RE::TESObjectREFR* ignore, bool itemsOnly = false)
 {
   RayOut out;
   const float scale = RE::bhkWorld::GetWorldScale();
@@ -408,6 +422,7 @@ RayOut CastRay(RE::bhkWorld* world, const RE::NiPoint3& from,
   pick.rayInput.filterInfo = filterInfo;
   SkipRefCollector collector;
   collector.ignore = ignore;
+  collector.itemsOnly = itemsOnly;
   pick.rayHitCollectorA8 =
     reinterpret_cast<RE::hkpClosestRayHitCollector*>(&collector);
   world->PickObject(pick);
@@ -425,6 +440,24 @@ RayOut CastRay(RE::bhkWorld* world, const RE::NiPoint3& from,
   out.refId = ref ? ref->GetFormID() : 0;
   out.layer = static_cast<int32_t>(root->GetCollisionLayer());
   return out;
+}
+
+// Items sit on L_NONCOLLIDABLE, which L_LOS passes and the item picker hits, so a second ray finds their tops; the nearer hit wins
+RayOut CastSurface(RE::bhkWorld* world, const RE::NiPoint3& from,
+                   const RE::NiPoint3& to, uint32_t group,
+                   RE::TESObjectREFR* ignore)
+{
+  const RayOut scene = CastRay(world, from, to, group | static_cast<uint32_t>(RE::COL_LAYER::kLOS), ignore);
+  const RayOut item = CastRay(world, from, to, group | static_cast<uint32_t>(RE::COL_LAYER::kItemPicker), ignore, true);
+  if (scene.budget || item.budget) {
+    RayOut out;
+    out.budget = true;
+    return out;
+  }
+  if (item.hit && (!scene.hit || item.pos.GetDistance(from) < scene.pos.GetDistance(from))) {
+    return item;
+  }
+  return scene;
 }
 
 void SetLook(LookOut& out, LookHow how, const RayOut& ray)
@@ -458,12 +491,11 @@ void Look(uint32_t ignoreId, float reach, LookOut& out)
   const RE::NiPoint3 to = from + dir * (reach + 50.0f);
   uint32_t info = 0;
   player->GetCollisionFilterInfo(info);
-  const uint32_t filter =
-    (info & 0xFFFF0000) | static_cast<uint32_t>(RE::COL_LAYER::kLOS);
+  const uint32_t group = info & 0xFFFF0000;
   auto ignore =
     ignoreId ? RE::TESForm::LookupByID<RE::TESObjectREFR>(ignoreId) : nullptr;
 
-  const RayOut ahead = CastRay(world, from, to, filter, ignore);
+  const RayOut ahead = CastSurface(world, from, to, group, ignore);
   if (ahead.budget) {
     out.how = LookHow::kBudget;
     return;
@@ -481,7 +513,7 @@ void Look(uint32_t ignoreId, float reach, LookOut& out)
   }
   const RE::NiPoint3 top = from + dir * (std::max)(0.0f, along);
   const RE::NiPoint3 bottom{ top.x, top.y, top.z - reach };
-  const RayOut down = CastRay(world, top, bottom, filter, ignore);
+  const RayOut down = CastSurface(world, top, bottom, group, ignore);
   if (down.budget) {
     out.how = LookHow::kBudget;
   } else if (down.hit && down.pos.GetDistance(feet) <= reach) {

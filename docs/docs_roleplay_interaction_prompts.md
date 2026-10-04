@@ -127,13 +127,18 @@ restart left behind are cleared at boot, and a carrier who leaves or picks
 another character ends the carry). A refused grab is answered `ok: false`, and
 Escape or Activate always ends a carry started from the menu. While carried the
 item rests on the surface the camera looks at, from SkyrimPlatform's
-`getLookSurface`: one Havok ray on L_LOS from the player's eye along the
-camera, which passes through items (they sit on L_NONCOLLIDABLE), actors and
-the carried item, and takes a floor-like hit within 350 units, else casts
-straight down from a wall or from the end of reach. With no surface the item
-stays where it was last shown, or goes back where it lay once that spot is out
-of reach; the mouse wheel turns it 15 degrees a step. The ray runs on the game
-thread, so it only works from update handlers.
+`getLookSurface`: two Havok rays from the player's eye along the camera, one
+on L_LOS for the world and one on L_ITEMPICKER that only counts the floor-like
+faces of world items (they sit on L_NONCOLLIDABLE, which L_LOS passes), so an
+item can be set on a plate or in a bowl through that item's collision shape; both skip actors and
+the carried item, and the nearer floor-like hit within 350 units wins, else
+both cast straight down from a wall or from the end of reach. With no surface
+the item stays where it was last shown, or goes back where it lay once that
+spot is out of reach; the mouse wheel turns it 15 degrees a step. The carried
+copy, which only its carrier sees, plays GhostEtherealFXShader (a glow over
+the solid item, not real transparency) as a preview until it is let go or the
+connection drops. The rays run on the game thread, so they only work from
+update handlers.
 Letting go of Activate (Escape or Activate after Move) sends one `itemMove`
 with the last surface point, or `itemRelease`, which puts it back. The server
 owns the rest pose: it keeps the item's X and Y (a shield turns 180 on Y,

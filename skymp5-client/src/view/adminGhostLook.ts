@@ -1,19 +1,19 @@
-import { Actor, EffectShader, Game } from "skyrimPlatform";
+import { Actor, EffectShader, Game, ObjectReference } from "skyrimPlatform";
 
 // Skyrim.esm GhostEtherealFXShader, the Become Ethereal look
 const ghostShaderId = 0x64d67;
 
 export const adminGhostAlpha = 0.5;
 
-// Stopping first keeps a replay from stacking a second copy of the shader; the afterlife looks pass their own EFSH and alpha
-export function setAdminGhostShader(actor: Actor, on: boolean, shaderId = ghostShaderId, alpha?: number): void {
+// Stopping first keeps a replay from stacking a second copy of the shader; the afterlife looks pass their own EFSH and alpha (actors only)
+export function setAdminGhostShader(ref: ObjectReference, on: boolean, shaderId = ghostShaderId, alpha?: number): void {
   const shader = EffectShader.from(Game.getFormEx(shaderId));
-  shader?.stop(actor);
+  shader?.stop(ref);
   if (on) {
-    shader?.play(actor, -1);
+    shader?.play(ref, -1);
   }
   if (alpha !== undefined) {
-    actor.setAlpha(alpha, false);
+    Actor.from(ref)?.setAlpha(alpha, false);
   }
 }
 

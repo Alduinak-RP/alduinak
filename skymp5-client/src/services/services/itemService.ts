@@ -10,6 +10,7 @@ import { FormTypeEx } from "../../extensions/formTypeEx";
 import { RemoteServer } from "./remoteServer";
 import { ActivationService } from "./activationService";
 import { logToPlatformLog } from "../../logging";
+import { setAdminGhostShader } from "../../view/adminGhostLook";
 
 // Set by the server's PlacedItemSystem on a nailed item
 export const NAILED_PROP = "ff_nailed";
@@ -43,6 +44,8 @@ interface Carry {
   look: Look | null;
   // Where it lay, shown again when the last surface falls out of reach
   origin: { pos: number[]; rot: number[] };
+  // The carried copy shows translucent, as a preview of where it goes
+  ghosted: boolean;
 }
 
 // Tap Activate to take a world item, hold it (or Move) to carry it on the surface in view; only the release is sent
@@ -52,6 +55,8 @@ export class ItemService extends ClientListener {
     this.controller.on("update", () => this.onUpdate());
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    // The server ends a disconnected carry itself and cannot tell this client
+    this.controller.emitter.on("connectionDisconnect", () => this.controller.once("update", () => this.reset()));
   }
 
   isItem(ref: ObjectReference): boolean {
@@ -78,7 +83,7 @@ export class ItemService extends ClientListener {
 
   // Sent right before a drop: the surface the player looks at; the server drops at the feet without one
   sendDropPoint(): void {
-    const look = this.lookSurface(0);
+    const look = this.lookSurface(this.carry?.localId ?? 0);
     sendCustomPacket(this.controller, { customPacketType: "itemDropPoint", pos: look.pos });
     this.logLook("drop point", look);
   }
@@ -87,7 +92,7 @@ export class ItemService extends ClientListener {
     const ref = ObjectReference.from(this.sp.Game.getFormEx(localId));
     const rot = ref ? [ref.getAngleX(), ref.getAngleY(), ref.getAngleZ()] : [0, 0, 0];
     const pos = ref ? [ref.getPositionX(), ref.getPositionY(), ref.getPositionZ()] : [0, 0, 0];
-    this.carry = { localId, remoteId, fromMenu, granted: false, yaw: rot[2], tilt: [rot[0], rot[1]], lift: 0, surface: null, look: null, origin: { pos, rot } };
+    this.carry = { localId, remoteId, fromMenu, granted: false, yaw: rot[2], tilt: [rot[0], rot[1]], lift: 0, surface: null, look: null, origin: { pos, rot }, ghosted: false };
     sendCustomPacket(this.controller, { customPacketType: "itemGrab", target: remoteId });
   }
 
@@ -113,6 +118,10 @@ export class ItemService extends ClientListener {
       return;
     }
     if (!carry.granted) return;
+    if (!carry.ghosted) {
+      carry.ghosted = true;
+      setAdminGhostShader(ref, true);
+    }
     // Without a surface the item stays where it was last shown, until that spot falls out of reach
     const look = this.lookSurface(carry.localId);
     carry.look = look;
@@ -143,6 +152,7 @@ export class ItemService extends ClientListener {
   private drop(ref: ObjectReference | null, place: boolean): void {
     const carry = this.carry!;
     this.carry = null;
+    if (ref && carry.ghosted) setAdminGhostShader(ref, false);
     const surface = place && carry.granted ? carry.surface : null;
     if (ref && surface) {
       sendCustomPacket(this.controller, { customPacketType: "itemMove", target: carry.remoteId, pos: surface, rot: [carry.tilt[0], carry.tilt[1], carry.yaw] });
@@ -150,6 +160,21 @@ export class ItemService extends ClientListener {
       sendCustomPacket(this.controller, { customPacketType: "itemRelease", target: carry.remoteId });
     }
     if (carry.granted) this.logLook(`release ${carry.remoteId.toString(16)}${surface ? "" : ", put back"}`, carry.look ?? { how: "never looked", pos: null, refId: 0, layer: -1 });
+  }
+
+  // Puts a carried copy back unghosted where the server still has it, sending nothing
+  private reset(): void {
+    this.pending = null;
+    const carry = this.carry;
+    if (!carry) return;
+    this.carry = null;
+    const ref = ObjectReference.from(this.sp.Game.getFormEx(carry.localId));
+    if (!ref) return;
+    if (carry.ghosted) setAdminGhostShader(ref, false);
+    if (carry.granted) {
+      ref.setPosition(carry.origin.pos[0], carry.origin.pos[1], carry.origin.pos[2]);
+      ref.setAngle(carry.origin.rot[0], carry.origin.rot[1], carry.origin.rot[2]);
+    }
   }
 
   private lookSurface(ignoreLocalId: number): Look {
@@ -189,6 +214,7 @@ export class ItemService extends ClientListener {
       const pos = content!["pos"] as number[], rot = content!["rot"] as number[];
       if (!Array.isArray(pos) || !Array.isArray(rot)) return;
       // During a granted carry only the server ending it (time out, refusal) sends this
+      const unghost = own && this.carry!.ghosted;
       if (own) this.carry = null;
       if (target < 0xff000000) pluginRefPose.set(target, { pos: [pos[0], pos[1], pos[2]], rot: [rot[0], rot[1], rot[2]] });
       // The model is what a copy spawns from and what its first movement apply moves it back to
@@ -198,6 +224,7 @@ export class ItemService extends ClientListener {
       this.controller.once("update", () => {
         const ref = ObjectReference.from(this.sp.Game.getFormEx(remoteIdToLocalId(target)));
         if (!ref) return;
+        if (unghost) setAdminGhostShader(ref, false);
         ref.setPosition(pos[0], pos[1], pos[2]);
         ref.setAngle(rot[0], rot[1], rot[2]);
         ref.enable(false);
