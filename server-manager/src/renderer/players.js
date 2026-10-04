@@ -144,12 +144,12 @@ function showStats() {
     const col = (...blocks) => `<div class="stat-col">${blocks.join('')}</div>`
     box.insertAdjacentHTML('beforeend', '<div class="stat-cols">' +
       col(block('Totals', kv('Accounts', s.players) + kv('Living characters', s.characters)),
-        table('Gender', s.genders), table('Race', s.races)) +
+        table('Gender', s.genders),
+        s.materialError ? block('Materials', `<p class="muted">Unavailable: ${esc(s.materialError)}</p>`) : table('Materials (characters and containers)', s.materials, s.materialOrder)) +
       col(table('Hours played', s.hours, s.hourOrder), table('Profession', s.professions)) +
       col(block('Wealth', kv('Total gold', s.totalWealth.toLocaleString()) + kv('Carried by characters', s.carriedWealth.toLocaleString()) +
           kv('In containers', s.storedWealth.toLocaleString()) + kv('Average carried per account', s.averageWealth.toLocaleString())),
-        table('Gold carried per account', s.wealth, s.wealthOrder),
-        s.materialError ? block('Materials', `<p class="muted">Unavailable: ${esc(s.materialError)}</p>`) : table('Materials (characters and containers)', s.materials, s.materialOrder)) +
+        table('Gold carried per account', s.wealth, s.wealthOrder), table('Race', s.races)) +
       '</div>')
   })
   box.appendChild(btn)
