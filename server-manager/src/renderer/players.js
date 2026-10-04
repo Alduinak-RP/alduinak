@@ -141,14 +141,15 @@ function showStats() {
       const keys = order || Object.keys(counts).sort((a, b) => counts[b] - counts[a])
       return block(title, '<div class="stat-grid">' + keys.map(k => `<span>${esc(k)}</span><b>${counts[k] || 0}</b>`).join('') + '</div>')
     }
+    const col = (...blocks) => `<div class="stat-col">${blocks.join('')}</div>`
     box.insertAdjacentHTML('beforeend', '<div class="stat-cols">' +
-      block('Totals', kv('Accounts', s.players) + kv('Living characters', s.characters)) +
-      table('Race', s.races) + table('Gender', s.genders) + table('Profession', s.professions) +
-      table('Hours played', s.hours, s.hourOrder) +
-      block('Wealth', kv('Total gold', s.totalWealth.toLocaleString()) + kv('Carried by characters', s.carriedWealth.toLocaleString()) +
-        kv('In containers', s.storedWealth.toLocaleString()) + kv('Average carried per account', s.averageWealth.toLocaleString())) +
-      table('Gold carried per account', s.wealth, s.wealthOrder) +
-      (s.materialError ? block('Materials', `<p class="muted">Unavailable: ${esc(s.materialError)}</p>`) : table('Materials (characters and containers)', s.materials, s.materialOrder)) +
+      col(block('Totals', kv('Accounts', s.players) + kv('Living characters', s.characters)),
+        table('Gender', s.genders), table('Race', s.races)) +
+      col(table('Hours played', s.hours, s.hourOrder), table('Profession', s.professions)) +
+      col(block('Wealth', kv('Total gold', s.totalWealth.toLocaleString()) + kv('Carried by characters', s.carriedWealth.toLocaleString()) +
+          kv('In containers', s.storedWealth.toLocaleString()) + kv('Average carried per account', s.averageWealth.toLocaleString())),
+        table('Gold carried per account', s.wealth, s.wealthOrder),
+        s.materialError ? block('Materials', `<p class="muted">Unavailable: ${esc(s.materialError)}</p>`) : table('Materials (characters and containers)', s.materials, s.materialOrder)) +
       '</div>')
   })
   box.appendChild(btn)

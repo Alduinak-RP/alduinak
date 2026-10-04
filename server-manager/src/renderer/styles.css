@@ -101,6 +101,7 @@ select {
 .badge.bad { color: #e08b8b; border-color: #7a3a3a; }
 /* General Stats: three columns, two or one when the detail pane is narrower than three 160px columns */
 .stat-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(160px, calc((100% - 24px) / 3)), 1fr)); gap: 12px; align-items: start; margin-top: 12px; }
+.stat-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .stat-block { min-width: 0; background: #120f0b; border: 1px solid #2a221a; border-radius: 6px; padding: 8px 12px; }
 .detail .stat-block h4 { margin: 0 0 6px; font-size: 13px; }
 .stat-grid { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; font-size: 12px; }
