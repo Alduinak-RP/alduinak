@@ -6,7 +6,7 @@ import { notifyNextUpdate, sendCustomPacket, CustomPacketContent, onCustomPacket
 import { RestraintService } from "./restraintService";
 
 // TODO: refactor this out
-import { localIdToRemoteId } from "../../view/worldViewMisc";
+import { isRemoteHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 
 import { LastInvService } from "./lastInvService";
 import { logError, logToPlatformLog, logTrace } from "../../logging";
@@ -82,40 +82,35 @@ export class ActivationService extends ClientListener {
     private lastCarryDoorNotice = 0;
 
     private onActivate(e: ActivateEvent) {
-        const lastInvService = this.controller.lookupListener(LastInvService);
-        lastInvService.lastInv = getInventory(this.sp.Game.getPlayer() as Actor);
+        const casterLocalId = e.caster ? e.caster.getFormID() : 0;
+        const targetLocalId = e.target ? e.target.getFormID() : 0;
 
-        let caster = e.caster ? e.caster.getFormID() : 0;
-        let target = e.target ? e.target.getFormID() : 0;
-
-        if (!target || !caster) {
+        if (!targetLocalId || !casterLocalId) {
           return;
         }
 
         // The observer's own seating of a rider clone on its horse is not the rider's activation
-        if (takeSyntheticActivation(caster, target)) {
-          logTrace(this, "Dropped the synthetic mount activation of", target.toString(16));
+        if (takeSyntheticActivation(casterLocalId, targetLocalId)) {
+          logTrace(this, "Dropped the synthetic mount activation of", targetLocalId.toString(16));
           return;
         }
 
-        // Actors never have non-ff ids locally in skymp
-        if (caster !== 0x14 && caster < 0xff000000) {
+        // The server takes only the player's own and its hosted NPCs' activations; actors never have non-ff ids locally in skymp
+        const caster = casterLocalId === 0x14 ? 0x14 : casterLocalId >= 0xff000000 ? localIdToRemoteId(casterLocalId) : 0;
+        if (caster !== 0x14 && !isRemoteHostedByMe(caster)) {
           return;
         }
 
-        target = localIdToRemoteId(target);
+        const lastInvService = this.controller.lookupListener(LastInvService);
+        lastInvService.lastInv = getInventory(this.sp.Game.getPlayer() as Actor);
+
+        const target = localIdToRemoteId(targetLocalId);
         if (!target) {
             logError(this, 'localIdToRemoteId returned 0 (target) in on(\'activate\')');
             return;
         }
 
-        caster = localIdToRemoteId(caster);
-        if (!caster) {
-            logError(this, 'localIdToRemoteId returned 0 (caster) in on(\'activate\')');
-            return;
-        }
-
-        if (e.caster.getFormID() === 0x14) {
+        if (casterLocalId === 0x14) {
           if (this.controller.lookupListener(ItemService).onActivatePress(e.target, target)) return;
           this.releaseStaleSeat(e, target);
         }
@@ -133,7 +128,7 @@ export class ActivationService extends ClientListener {
 
         const swinging = openState === OpenState.Opening || openState === OpenState.Closing;
 
-        if (e.caster.getFormID() === 0x14 && this.heldForCarry(e, caster, target, !swinging)) {
+        if (casterLocalId === 0x14 && this.heldForCarry(e, caster, target, !swinging)) {
             return;
         }
 
