@@ -1,6 +1,6 @@
 'use strict'
 
-// WeatherSystem's packets: the poll, an admin's force and clear pushed at once without a fade, the weatherRequest answer and the fade settings: node tools/test-weather-push.js
+// WeatherSystem's packets: the poll, an admin's force and clear pushed at once without a fade, the weatherRequest answer, places with their own sky and the fade settings: node tools/test-weather-push.js
 
 const assert  = require('node:assert/strict')
 const fs      = require('fs')
@@ -21,6 +21,18 @@ process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'weather-push-')))
 
 const WORLD = 0x3c
 const REALM = 0x2ee41
+const TEMPLE = 0x165a7
+const HALL = 0x95c44
+const HALL_SKY_REGION = 0x10ff20
+// The hall draws the sky of a region of the realm (CELL XCCM, REGN WNAM)
+const formIdField = (type, id) => ({ type, data: new Uint8Array(new Uint32Array([id]).buffer) })
+const records = new Map([
+  [WORLD, { type: 'WRLD', fields: [] }],
+  [REALM, { type: 'WRLD', fields: [] }],
+  [TEMPLE, { type: 'CELL', fields: [] }],
+  [HALL, { type: 'CELL', fields: [formIdField('XCCM', HALL_SKY_REGION)] }],
+  [HALL_SKY_REGION, { type: 'REGN', fields: [formIdField('WNAM', REALM)] }],
+])
 // Actor -> user, cell and position; the first two stand in region a, the third in b
 const players = new Map([
   [0xff000001, { user: 1, cell: WORLD, pos: [5000, 5000, 0] }],
@@ -36,7 +48,7 @@ const svr = {
   getUserActor: (userId) => [...players].find(([, p]) => p.user === userId)?.[0] ?? 0,
   getActorCellOrWorld: (actorId) => players.get(actorId).cell,
   getActorPos: (actorId) => [...players.get(actorId).pos],
-  lookupEspmRecordById: (id) => ({ record: { type: id === WORLD || id === REALM ? 'WRLD' : 'CELL' } }),
+  lookupEspmRecordById: (id) => ({ record: records.get(id), toGlobalRecordId: (local) => local }),
   sendCustomPacket: (userId, text) => packets.push({ userId, ...JSON.parse(text) }),
 }
 const ctx = { svr }
@@ -51,7 +63,6 @@ ws.regions.set('a', A)
 ws.regions.set('b', B)
 for (const w of [...A.weathers, ...B.weathers, weather('storm', 9)]) ws.byDesc.set(w.desc, w)
 ws.worldAreas.set(WORLD, [{ region: A, poly: [[0, 0], [10000, 0], [10000, 10000], [0, 10000]] }, { region: B, poly: null }])
-ws.worldCache.set(WORLD, true)
 ws.mp = svr
 
 const sentSince = (from) => packets.slice(from).map(p => `${p.userId}:${p.region}:${p.weatherId ?? '-'}:${p.transition}`).sort()
@@ -91,14 +102,42 @@ ws.customPacket(3, 'weatherRequest', {}, ctx)
 assert.deepEqual(sentSince(mark), ['3:b:3:accelerate'])
 mark = packets.length
 
-// A realm without a region releases the override, and the way back gives the region again
-players.get(0xff000003).cell = REALM
-ws.customPacket(3, 'weatherRequest', {}, ctx)
-assert.deepEqual(sentSince(mark), ['3:null:-:accelerate'])
-mark = packets.length
-players.get(0xff000003).cell = WORLD
-ws.customPacket(3, 'weatherRequest', {}, ctx)
-assert.deepEqual(sentSince(mark), ['3:b:3:accelerate'])
+// A realm without a region releases the override and keeps the stored region
+const moveTo = (cell) => {
+  players.get(0xff000003).cell = cell
+  mark = packets.length
+  ws.customPacket(3, 'weatherRequest', {}, ctx)
+  return sentSince(mark)
+}
+assert.deepEqual(moveTo(REALM), ['3:null:-:accelerate'])
+assert.equal(props.get(`${0xff000003}|private.weatherRegion`), 'b')
+// The realm's hall draws the realm's sky, so it has no region either
+assert.deepEqual(moveTo(HALL), ['3:null:-:accelerate'])
+// A revive into a temple gives the last region back at once, for the clear sky indoors
+assert.deepEqual(moveTo(TEMPLE), ['3:b:3:accelerate'])
+assert.deepEqual(moveTo(HALL), ['3:null:-:accelerate'])
+// So does a relog there after the realm
+assert.deepEqual(moveTo(REALM), ['3:null:-:accelerate'])
+ws.disconnect(3, ctx)
+assert.deepEqual(moveTo(TEMPLE), ['3:b:3:accelerate'])
+assert.deepEqual(moveTo(WORLD), ['3:b:3:accelerate'])
+
+// The poll sees the same places; each pass gets a snapshot of its own
+const realNow = Date.now
+let skew = 0
+Date.now = () => realNow() + skew
+const pollAt = (cell) => {
+  players.get(0xff000003).cell = cell
+  mark = packets.length
+  skew += 1000
+  ws.poll(ctx)
+  return sentSince(mark)
+}
+assert.deepEqual(pollAt(REALM), ['3:null:-:accelerate'])
+assert.deepEqual(pollAt(REALM), [], 'standing in the realm keeps the release')
+assert.deepEqual(pollAt(TEMPLE), ['3:b:3:accelerate'])
+assert.deepEqual(pollAt(WORLD), [], 'out of the temple door the region is the one already sent')
+Date.now = realNow
 
 // weatherGameSettings replaces single values of the default fade
 const tuned = new WeatherSystem(() => {})

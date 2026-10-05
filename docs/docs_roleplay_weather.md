@@ -82,7 +82,13 @@ first region whose polygon holds their position is theirs (an area without a
 polygon covers the whole world); inside a cell they keep the last exterior
 region (`private.weatherRegion` on the character, so a relog in an inn keeps
 it), which the client puts up the moment they step outside; in an unlisted
-world they get none. The check reads cell and position from the server's
+world they get none, and none in an interior that draws such a world's sky
+(its CELL `XCCM` names a region of an unlisted worldspace: the Hall of Valor,
+the Black Book realms, the one cave lit by an FX light region). A place
+without a region never erases `private.weatherRegion`: a character revived
+from Sovngarde wakes in the Temple of Kynareth, an interior that shows the
+sky, with the last region back at once, so the client holds the clear sky
+there instead of the realm's. The check reads cell and position from the server's
 shared 500 ms online snapshot and works a player's region out again only
 after a cell change or 1,024 units (about 15 m) of travel across the map
 since the last time; in between the player keeps the last region, which the
