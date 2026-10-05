@@ -47,8 +47,10 @@ Two rules differ from a plain dump:
   Reach. Walking through a city gate never changes the sky.
 - Worlds whose sky is scripted stay out (`WORLD_DENYLIST`): Sovngarde, the
   Soul Cairn, Apocrypha, Skuldafn and the FX light world. A player there gets
-  no region and the vanilla sky runs; back in Tamriel the home region's weather
-  returns.
+  no region and the vanilla sky runs: the client releases its override and the
+  engine fades to the weather of the realm's climate, some 20 s after arrival.
+  Back in Tamriel the home region's weather returns outright, after a summon
+  or teleport straight into the open as well.
 
 The live load order gives 45 regions over 16 worlds (Tamriel, Solstheim, the
 Forgotten Vale, Blackreach and the small quest worlds such as Japhet's Folly
@@ -104,13 +106,19 @@ WTHR form id, `weather` its editor id, `endsAt` the epoch ms the weather runs
 out (0 while forced until cleared), `transition` the fade mode below.
 
 The client stores the packet and applies it on the next update (natives are
-unavailable in the packet handler). Right after a load screen the weather is
-set outright with `forceActive`, so the template save's own sky never fades
-over; later changes fade with `setActive`. Indoors the client holds
-SkyrimClear instead of the packet's weather, and a door between inside and
-outside sets the next sky outright, without a fade; a packet with no region
-releases the override indoors too, so the Sovngarde and Soul Cairn halls keep
-their own sky. Every 10 s, and after each cell load, the client checks that
+unavailable in the packet handler). A weather is set outright with
+`forceActive` while the client holds none (after a load screen, so the
+template save's own sky never fades over, and on the way back from a world
+without a region), within 10 s of a door or of a teleport to another world or
+cell, indoors, and when the packet says `instant`; any other change fades
+with `setActive`. Indoors the client holds SkyrimClear instead of the
+packet's weather; a packet with no region releases the override indoors too,
+so the Sovngarde and Soul Cairn halls keep their own sky. Each packet leaves
+one line in `skyrim-platform.log` saying what the client did with it:
+`WeatherService: tundra d9329 instant: set outright`, `tundra 10a242
+accelerate: fading in`, `no region 0 accelerate: released`, or `kept` when
+the sky already showed it (`, indoors` marks a packet that came in under a
+roof). Every 10 s, and after each cell load, the client checks that
 the sky still shows the applied weather (the region's outside, SkyrimClear
 inside) and forces it again when a door, fast travel or the engine dropped
 it: outside once no fade is running, inside at once, since a fade there is the
