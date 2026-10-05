@@ -5,11 +5,3 @@ export interface CustomPacketMessage {
     contentJsonDump: string
 }
 
-interface InvokeAnimResult {
-    customPacketType: "invokeAnimResult",
-    result: {
-        success: boolean,
-        reason?: string
-    },
-    requestId?: string | number;
-}
