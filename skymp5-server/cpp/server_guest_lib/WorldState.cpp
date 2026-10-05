@@ -865,9 +865,11 @@ void WorldState::SendPapyrusEvent(MpForm* form, const char* eventName,
 }
 
 const std::set<MpObjectReference*>& WorldState::GetNeighborsByPosition(
-  uint32_t cellOrWorld, int16_t cellX, int16_t cellY)
+  uint32_t cellOrWorld, int16_t cellX, int16_t cellY, bool loadChunks)
 {
-  if (espm && !pImpl->chunkLoadingInProgress) {
+  // Forms loaded at boot wait for the first actor pass to load their chunks
+  if (loadChunks && espm && !pImpl->chunkLoadingInProgress &&
+      !pImpl->formLoadingInProgress) {
     Viet::ScopedTask<bool> task([](bool& st) { st = false; },
                                 pImpl->chunkLoadingInProgress);
     pImpl->chunkLoadingInProgress = true;

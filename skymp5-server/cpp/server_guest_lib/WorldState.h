@@ -126,8 +126,10 @@ public:
   void SendPapyrusEvent(MpForm* form, const char* eventName,
                         const VarValue* arguments, size_t argumentsCount);
 
+  // loadChunks loads the plugin refs of the 3x3 chunks not loaded yet
   const std::set<MpObjectReference*>& GetNeighborsByPosition(
-    uint32_t cellOrWorld, int16_t cellX, int16_t cellY);
+    uint32_t cellOrWorld, int16_t cellX, int16_t cellY,
+    bool loadChunks = true);
 
   std::shared_ptr<std::vector<uint32_t>> GetAllForms(uint32_t modIndex);
 

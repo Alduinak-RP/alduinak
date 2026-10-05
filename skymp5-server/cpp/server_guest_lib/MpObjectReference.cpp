@@ -729,8 +729,9 @@ void MpObjectReference::ForceSubscriptionsUpdate()
 
   auto& was = *this->listeners;
   auto pos = GetGridPos(GetPos());
-  auto& now =
-    worldState->GetNeighborsByPosition(worldOrCell, pos.first, pos.second);
+  // Only actors subscribe to plugin refs, so only actors need their chunks
+  auto& now = worldState->GetNeighborsByPosition(worldOrCell, pos.first,
+                                                 pos.second, !!AsActor());
 
   std::vector<MpObjectReference*> toRemove;
   std::set_difference(was.begin(), was.end(), now.begin(), now.end(),
