@@ -50,24 +50,22 @@ const takeLocalActivation = (remoteTarget: number): boolean => {
 const SEAT_ANSWER_MS = 3000;
 
 // Furniture whose seat RemoteServer is still waiting on, by remote target id; that wait sends the closing activation itself
-const seatWaits = new Map<number, number>();
-// The wait notes itself every 0.1 s, so one left hanging by a load stops counting after this long
-const SEAT_WAIT_FRESH_MS = 3000;
+const seatWaits = new Set<number>();
 
-export const noteSeatWait = (remoteTarget: number): void => {
-    seatWaits.set(remoteTarget, Date.now());
+export const startSeatWait = (remoteTarget: number): void => {
+    seatWaits.add(remoteTarget);
 };
 
 export const endSeatWait = (remoteTarget: number): void => {
     seatWaits.delete(remoteTarget);
 };
 
-const isSeatWaiting = (remoteTarget: number): boolean => Date.now() - (seatWaits.get(remoteTarget) ?? 0) < SEAT_WAIT_FRESH_MS;
-
 export class ActivationService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
         this.controller.on("activate", (e) => this.onActivate(e));
+        // A load can leave a wait's closing delay hanging
+        this.controller.on("loadGame", () => seatWaits.clear());
         onCustomPacket(this.controller, "loadDoorAnswer", (content) => this.onCustomPacketMessage(content));
     }
 
@@ -168,7 +166,7 @@ export class ActivationService extends ClientListener {
         const repeated = this.lastFurniturePress.target === target && now - this.lastFurniturePress.at < SEAT_ANSWER_MS;
         this.lastFurniturePress = { target, at: now };
         // A seat granted to an earlier press, still in flight or not shown yet, is not stale
-        if (repeated || isSeatWaiting(target)) {
+        if (repeated || seatWaits.has(target)) {
             return;
         }
         if (this.sp.Game.getPlayer()?.getFurnitureReference()) {

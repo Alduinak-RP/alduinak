@@ -38,7 +38,8 @@ import { MasteryService } from './masteryService';
 import { CharacterSelectService } from './characterSelectService';
 import { CreationLightService } from './creationLightService';
 import { isMenuShown } from './menuStateService';
-import { endSeatWait, markLocalActivation, noteSeatWait } from './activationService';
+import { endSeatWait, markLocalActivation, startSeatWait } from './activationService';
+import { FurnitureSeatService } from './furnitureSeatService';
 import { UpdateMovementMessage } from '../messages/updateMovementMessage';
 import { ChangeValuesMessage } from '../messages/changeValuesMessage';
 import { UpdateAnimationMessage } from '../messages/updateAnimationMessage';
@@ -629,53 +630,36 @@ export class RemoteServer extends ClientListener {
 
       const baseObject = refr.getBaseObject();
       const baseType = baseObject?.getType();
+      const isFurniture = baseType === FormType.Furniture;
 
-      let functionChecker: (() => boolean) | null = null;
-      let factName = "";
-      let delaySeconds = -1.0;
-      if (baseType === FormType.Container) {
-        functionChecker = () => Ui.isMenuOpen("ContainerMenu");
-        factName = "'ContainerMenu open'";
-        delaySeconds = 0.0;
-      } else if (baseType === FormType.Furniture) {
-        // A crafting station opens its menu before the sit is observable, so the menu counts as the seat too; each check marks the wait as running
-        functionChecker = () => {
-          noteSeatWait(remoteId);
-          return !!Game.getPlayer()?.getFurnitureReference() || Ui.isMenuOpen(Menu.Crafting);
-        };
-        factName = "'getFurnitureReference not null or Crafting Menu open'";
-        delaySeconds = 1.0;
-      }
-
-      if (functionChecker === null) {
+      if (baseType !== FormType.Container && !isFurniture) {
         logTrace(this, "onOpenContainerMesage - not a container or furniture", baseType);
         return;
       }
+      if (isFurniture) {
+        startSeatWait(remoteId);
+      }
+      const delaySeconds = isFurniture ? 1.0 : 0.0;
 
       // SkyMP containers have a 2nd, closing activation under the hood, unlike Skyrim's single activation.
 
       (async () => {
-        logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be true");
-        // A seat the engine never takes would hold the server's occupancy for good, so the wait for it is bounded; the seated phase is not
-        const seatDeadline = Date.now() + FURNITURE_SEAT_WAIT_MS;
-        let seated = true;
-        while (!functionChecker()) {
-          if (baseType === FormType.Furniture && Date.now() > seatDeadline) {
-            seated = false;
-            break;
+        if (isFurniture) {
+          logTrace(this, "onOpenContainerMesage - waiting for the seat or the Crafting Menu");
+          const outcome = await this.controller.lookupListener(FurnitureSeatService).waitSeatCycle(FURNITURE_SEAT_WAIT_MS);
+          if (outcome === "timeout") {
+            logToPlatformLog(this, `furniture ${remoteId.toString(16)} never seated the player within ${FURNITURE_SEAT_WAIT_MS} ms, releasing the seat`);
+          } else if (outcome === "load") {
+            logToPlatformLog(this, `furniture ${remoteId.toString(16)} lost its seat wait to a load, releasing the seat`);
           }
-          await Utility.wait(0.1);
-        }
-
-        if (seated) {
-          logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be false");
-          while (functionChecker()) await Utility.wait(0.1);
+          logTrace(this, "onOpenContainerMesage - seat wait ended", outcome);
         } else {
-          logToPlatformLog(this, `furniture ${remoteId.toString(16)} never seated the player within ${FURNITURE_SEAT_WAIT_MS} ms, releasing the seat`);
-        }
-
-        logTrace(this, "onOpenContainerMesage - menu closed", factName);
-        if (baseType === FormType.Container) {
+          const factName = "'ContainerMenu open'";
+          logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be true");
+          while (!Ui.isMenuOpen("ContainerMenu")) await Utility.wait(0.1);
+          logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be false");
+          while (Ui.isMenuOpen("ContainerMenu")) await Utility.wait(0.1);
+          logTrace(this, "onOpenContainerMesage - menu closed", factName);
           // The closing frame's containerChanged events drain after this continuation, so check one tick later
           await Utility.wait(0.1);
           this.traceContainerResidual();
@@ -695,7 +679,7 @@ export class RemoteServer extends ClientListener {
             message: message,
             reliability: "reliable"
           });
-          if (baseType === FormType.Furniture) endSeatWait(remoteId);
+          if (isFurniture) endSeatWait(remoteId);
 
           logTrace(this, "onOpenContainerMesage - sent ActivateMessage", message);
         });

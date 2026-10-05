@@ -1,6 +1,7 @@
 import { HitEvent } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 import { ClientListener, Sp, CombinedController } from "./clientListener";
+import { isPlayerSeated } from "./furnitureSeatService";
 
 // A stagger drops the player out of furniture inside the seat collision and havok launches them upward
 const blockedWhileSeatedAnims = ["staggerStart"];
@@ -13,9 +14,7 @@ export class BlockedAnimationsService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
 
-        // Script functions are unavailable inside hooks, so the seated state is sampled per frame
         this.controller.on("update", () => {
-            this.isPlayerSeated = !!this.sp.Game.getPlayer()?.getFurnitureReference();
             if (this.standUpRequested) {
                 this.standUp();
             }
@@ -27,7 +26,7 @@ export class BlockedAnimationsService extends ClientListener {
         blockedWhileSeatedAnims.forEach(blockedAnim => {
             this.sp.hooks.sendAnimationEvent.add({
                 enter: (ctx) => {
-                    if (!this.isPlayerSeated) {
+                    if (!isPlayerSeated()) {
                         return;
                     }
                     logTrace(this, `blocking animation event while seated`, ctx.animEventName);
@@ -44,7 +43,7 @@ export class BlockedAnimationsService extends ClientListener {
     }
 
     private onHit(e: HitEvent): void {
-        if (!this.isPlayerSeated || e.target?.getFormID() !== 0x14) {
+        if (!isPlayerSeated() || e.target?.getFormID() !== 0x14) {
             return;
         }
         const aggressor = e.aggressor?.getFormID();
@@ -80,7 +79,6 @@ export class BlockedAnimationsService extends ClientListener {
         logTrace(this, `no furniture exit idle accepted, staying seated`);
     }
 
-    private isPlayerSeated = false;
     private standUpRequested = false;
     private nextStandUpMs = 0;
 };

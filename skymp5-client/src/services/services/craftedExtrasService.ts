@@ -6,7 +6,7 @@ import {
   Entry, Inventory, getDiff, getInventory, healthStep, isBoundItem, isNamedItemBase, revertLocalExtras, sameEffects, sameItem,
 } from "../../sync/inventory";
 import { splitTag, stripTag, tagFor } from "../../sync/durabilityNames";
-import { localIdToRemoteId } from "../../view/worldViewMisc";
+import { getRecentSeat } from "./furnitureSeatService";
 import { logTrace } from "../../logging";
 
 // Reports extras the player made locally and the charge and poison hits used up, for craftedExtrasSystem.ts; souls are soul trap's
@@ -141,17 +141,12 @@ export class CraftedExtrasService extends ClientListener {
   }
 
   private onUpdate(): void {
-    const player = this.sp.Game.getPlayer() as Actor | null;
-    if (!player) {
+    const now = Date.now();
+    if (now < this.nextCheckAt || now < this.awaitingUntil) {
       return;
     }
-    const now = Date.now();
-    const furniture = player.getFurnitureReference();
-    if (furniture) {
-      this.workbench = localIdToRemoteId(furniture.getFormID());
-      this.workbenchAt = now;
-    }
-    if (now < this.nextCheckAt || now < this.awaitingUntil) {
+    const player = this.sp.Game.getPlayer() as Actor | null;
+    if (!player) {
       return;
     }
     this.nextCheckAt = now + CHECK_MS;
@@ -169,7 +164,7 @@ export class CraftedExtrasService extends ClientListener {
     if (!report.urgent) {
       this.lastUseReportAt = now;
     }
-    const workbench = now - this.workbenchAt < WORKBENCH_MEMORY_MS ? this.workbench : 0;
+    const workbench = getRecentSeat(WORKBENCH_MEMORY_MS);
     logTrace(this, "Reporting crafted extras", key);
     sendCustomPacket(this.controller, { customPacketType: "craftedExtras", workbench, gained: report.gained, lost: report.lost });
     this.awaitingUntil = now + AWAIT_MS;
@@ -183,6 +178,4 @@ export class CraftedExtrasService extends ClientListener {
   private lastUseReportAt = 0;
   private lastSentAt = 0;
   private lastKey = "";
-  private workbench = 0;
-  private workbenchAt = 0;
 }

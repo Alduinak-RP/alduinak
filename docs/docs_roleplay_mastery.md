@@ -764,10 +764,11 @@ given straight back, and so are a press within 3 s of the last press on the
 same furniture and any press while the client still waits on a seat the server
 granted there, since that seat may not show yet and the wait releases it
 itself), and a bench that never seats the player within 15 s of
-the server's answer is released anyway (the Crafting Menu being open counts as
-seated, the seated phase itself is never capped). Both log to
-`skyrim-platform.log` (`released any seat on furniture`, `never seated the
-player within`). A seat that outlived a logout is dropped server-side at the
+the server's answer, or whose seat a load interrupts before the player sat, is
+released anyway (the Crafting Menu being open counts as seated, the seated phase
+itself is never capped). They log to `skyrim-platform.log` (`released any seat
+on furniture`, `never seated the player within`, `lost its seat wait to a
+load`). A seat that outlived a logout is dropped server-side at the
 next character select.
 
 ### Mining
