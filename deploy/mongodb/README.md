@@ -19,7 +19,8 @@ one-shot migration.
   dry run, `--apply` runs it, `--test` targets the Test Server's database.
   Steps: delete the documents flagged `isDeleted` (deleted characters stay
   flagged), backed up first as canonical EJSON into
-  `<backup root>\rollback-trim-<db>-<stamp>` (`mongoimport --jsonArray` puts them back).
+  `<backup root>\rollback-trim-<db>-<stamp>` (`mongoimport --jsonArray` puts them back);
+  set `equipmentDump.numChanges` to 0 where it is missing.
 - `forbidden-items.py` + `strip-inventories.js` - one-time strip of gear above
   Adept, jewelry, spell tomes, scrolls, staves, enchanted gear and learned spells
   (abilities stay) from characters and claimed containers (personal and

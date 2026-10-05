@@ -46,8 +46,23 @@ const purge = {
   },
 }
 
+// Read as 0 by the server, which then skips a second parse of the equipment
+const NO_NUM_CHANGES = { equipmentDump: { $type: 'object' }, 'equipmentDump.numChanges': { $exists: false } }
+
+const numChanges = {
+  name: 'numChanges',
+  async plan(col) {
+    const count = await col.countDocuments({ ...NO_NUM_CHANGES, ...KEPT })
+    return { count, text: `${C.plural(count, 'equipment dump', 'equipment dumps')} without numChanges` }
+  },
+  async apply(col) {
+    const res = await col.updateMany(NO_NUM_CHANGES, { $set: { 'equipmentDump.numChanges': new (C.requireDriver().BSON.Int32)(0) } })
+    return `set numChanges 0 on ${res.modifiedCount}, ${await col.countDocuments(NO_NUM_CHANGES)} left`
+  },
+}
+
 // Applied in this order; a plan returns { count, text, details?, blocker? }
-const STEPS = [purge]
+const STEPS = [purge, numChanges]
 
 async function main(argv, { open, blocker = gameServerBlocker, out = console.log } = {}) {
   if (argv.includes('--help')) return out(USAGE)
@@ -79,6 +94,6 @@ async function main(argv, { open, blocker = gameServerBlocker, out = console.log
   }, open)
 }
 
-module.exports = { main, STEPS, PURGE, KEPT }
+module.exports = { main, STEPS, PURGE, KEPT, NO_NUM_CHANGES }
 
 if (require.main === module) C.runCli(() => main(process.argv.slice(2)), USAGE)
