@@ -1,6 +1,15 @@
 import { Actor, ActorBase, Game, MagicEffect, Race, Spell, Utility, printConsole } from 'skyrimPlatform';
-import { BLOCKED_POWER_IDS } from '../services/services/magicSyncService';
 import { refreshMovement } from './actorvalues';
+
+// The server's blockedSpells from its last racialState, kept across reconnects
+const blockedPowers = new Set<number>();
+
+export const isBlockedPower = (spellId: number): boolean => blockedPowers.has(spellId);
+
+export const setBlockedPowers = (spellIds: Array<number>) => {
+  blockedPowers.clear();
+  spellIds.forEach((id) => blockedPowers.add(id));
+};
 
 // MagicEffect flags, delivery types and casting types as the engine numbers them
 export const EFFECT_FLAG_HOSTILE = 0x1;
@@ -67,7 +76,7 @@ export const dropUnlistedBaseSpells = (natives: SpellListNatives, actor: Actor, 
     const unlisted = new Array<Spell>();
     for (let i = 0; i < owner.getSpellCount(); i++) {
       const spell = owner.getNthSpell(i);
-      if (spell && !listed.has(spell.getFormID()) && (!ownRace || BLOCKED_POWER_IDS.has(spell.getFormID()))) {
+      if (spell && !listed.has(spell.getFormID()) && (!ownRace || isBlockedPower(spell.getFormID()))) {
         unlisted.push(spell);
       }
     }
@@ -170,7 +179,7 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>, previous: R
 
   learnSpells(
     actor,
-    currentSpells.map((spell) => spell.getFormID()).filter((id) => !BLOCKED_POWER_IDS.has(id)),
+    currentSpells.map((spell) => spell.getFormID()).filter((id) => !isBlockedPower(id)),
   );
 
   // The race speed ability's SpeedMult counts only once its effects have started and the movement speed is re-read
@@ -187,7 +196,7 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>, previous: R
 export const resyncRaceAbilities = (actor: Actor, keep: Array<number>, expected: Array<number>): number[] => {
   const race = ActorBase.from(actor.getBaseObject())?.getRace();
   const onRecord = new Set(race ? raceSpells(race).map((spell) => spell.getFormID()) : []);
-  const lacking = expected.filter((id) => !onRecord.has(id) && !BLOCKED_POWER_IDS.has(id));
+  const lacking = expected.filter((id) => !onRecord.has(id) && !isBlockedPower(id));
   syncRaceAbilities(actor, [...keep, ...expected]);
   learnSpells(actor, lacking);
   return lacking;
@@ -249,7 +258,7 @@ export const describeRaceAbilities = (actor: Actor, listed: Array<number>): Race
       state = on = effects.some((effect) => actor.hasMagicEffect(effect)) ? 'on' : 'off';
       if (state === 'off') problems.push(`${hex(spell)} off`);
     }
-    if (!held && !BLOCKED_POWER_IDS.has(spell.getFormID())) problems.push(`${hex(spell)} not held`);
+    if (!held && !isBlockedPower(spell.getFormID())) problems.push(`${hex(spell)} not held`);
     reported.push({ id: spell.getFormID(), held, state: on });
     return `${hex(spell)} ${spell.getName()} ${state}, ${held ? 'held' : 'not held'}${listed.indexOf(spell.getFormID()) === -1 ? ', unlisted' : ''}`;
   });

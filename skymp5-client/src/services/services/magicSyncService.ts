@@ -8,7 +8,7 @@ import { ClientListener, CombinedController, Sp } from './clientListener';
 import { MountService } from './mountService';
 import { CustomPacketContent, onCustomPacket } from './customPacketUtil';
 import { logTrace, logToPlatformLog } from '../../logging';
-import { DELIVERY_SELF, isConcentration } from '../../sync/spell';
+import { DELIVERY_SELF, isBlockedPower, isConcentration, setBlockedPowers } from '../../sync/spell';
 
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
@@ -18,20 +18,7 @@ const CASTING_RECENT_MS = 500;
 // The player's spell slots, and casting vars while no relayed cast reads them every frame, are read this often
 const CASTING_SAMPLE_MS = 100;
 
-// Racial greater powers are disabled on this server (form ids verified against Skyrim.esm on the reference install)
-export const BLOCKED_POWER_IDS = new Set([
-    0x000E40C3, // PowerNordBattleCry
-    0x000E40C8, // PowerHighElfMagickaRegen (Highborn)
-    0x000E40CA, // PowerImperialPacify (Voice of the Emperor)
-    0x000E40CE, // PowerRedguardStaminaRegen (Adrenaline Rush)
-    0x000E40CF, // PowerWoodElfCommandAnimal
-    0x000E40D4, // PowerDarkElfFlameCloak (Ancestor's Wrath)
-    0x000E40D5, // PowerArgonianHistskin
-    0x000AA022, // PowerBretonAbsorbSpell (Dragonskin)
-    0x000AA026, // RaceOrcBerserk (Berserker Rage)
-]);
-
-// A rationed racial power from the server's racialState: { powers: [{ spellId, name, readyInMs, available }] } (racialSystem.ts)
+// A rationed racial power from the server's racialState: { powers: [{ spellId, name, readyInMs, available, blocked? }] } (racialSystem.ts)
 interface RationedPower {
     name: string;
     // Local clock time the server's relative readyInMs ends at
@@ -171,28 +158,37 @@ export class MagicSyncService extends ClientListener {
         });
     }
 
-    // Each racialState lists every rationed power of the character, so it replaces the last one
+    // Each racialState lists every rationed power of the character and every blocked spell, so it replaces the last one
     private onRacialState(content: CustomPacketContent) {
         if (!Array.isArray(content["powers"])) {
             return;
         }
         const now = Date.now();
         this.rationedPowers.clear();
+        const blocked = new Array<number>();
         const lines = new Array<string>();
         for (const raw of content["powers"] as unknown[]) {
             const p = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
             const spellId = Number(p["spellId"]) >>> 0;
             if (!spellId) continue;
+            const name = typeof p["name"] === "string" ? p["name"] : "";
+            if (p["blocked"] === true) {
+                blocked.push(spellId);
+                lines.push(`${name || "unnamed"} ${spellId.toString(16)} blocked`);
+                continue;
+            }
             const readyInMs = Math.max(0, Number(p["readyInMs"]) || 0);
-            const power = { name: typeof p["name"] === "string" ? p["name"] : "", readyAt: now + readyInMs, available: p["available"] !== false };
+            const power = { name, readyAt: now + readyInMs, available: p["available"] !== false };
             this.rationedPowers.set(spellId, power);
             lines.push(`${power.name || "unnamed"} ${spellId.toString(16)} ${!power.available ? "not available yet" : readyInMs > 0 ? `ready in ${formatWait(readyInMs)}` : "ready"}`);
         }
+        setBlockedPowers(blocked);
         logToPlatformLog(this, `racialState: ${lines.join(", ") || "no rationed powers"}`);
     }
 
-    // The server's refusal text for a rationed power it would refuse now, "" when the cast may go through
+    // The server's refusal text for a blocked or rationed power it would refuse now, "" when the cast may go through
     private powerRefusal(spellId: number, spellName: string): string {
+        if (isBlockedPower(spellId)) return `${spellName || "This power"} is disabled on this server.`;
         const power = this.rationedPowers.get(spellId);
         if (!power) return "";
         const name = power.name || spellName;
@@ -214,13 +210,9 @@ export class MagicSyncService extends ClientListener {
     }
 
     private onSpellCast(event: SpellCastEvent) {
-        // Blocked racial powers, and rationed ones the server would refuse now: dispel locally, tell the player, do not relay
+        // Blocked powers, and rationed ones the server would refuse now: dispel locally, tell the player, do not relay
         if (event.caster && event.caster.getFormID() === this.playerId && event.spell) {
             const spellId = event.spell.getFormID();
-            if (BLOCKED_POWER_IDS.has(spellId)) {
-                this.refuseLocally(spellId, "Racial powers are disabled on this server.");
-                return;
-            }
             const refusal = this.powerRefusal(spellId, event.spell.getName());
             if (refusal) {
                 logToPlatformLog(this, `power ${spellId.toString(16)} refused before the relay: ${refusal}`);

@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, CREATION_FINISHED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
 import { NeedsModifierSource } from "./needsSystem";
 import { resolveEditorIds } from "./espmEditorIds";
-import { espmFieldFormIds, toFormId } from "./formIdUtil";
+import { espmFieldFormIds, formIdFromConfig, toFormId } from "./formIdUtil";
 import { ActorValue, SpellType, actorRaceId, fieldData, raceAbilityResist, spellEffects, spellInfo, view } from "./espmMagic";
 import { GOLD_BASE_ID, addGold, addItemTo, chainMpHook, cleanDisplayName, formatWait, hex, isCreationPending, isPlayerActor, userOf } from "./actorUtil";
 import { claimStarterGrant, parseStartingItems } from "./spawn";
@@ -42,9 +42,11 @@ type Mp = any;
 // wall-clock time from the last use, so it counts offline, across relogs, deaths and restarts. A power with an effect block
 // (commandAnimal) is refused until that effect is built; a used one is stamped only when its effect worked, or on a miss with
 // consumeOnMiss; a power with no effect block is stamped at every cast. NPC casters are never gated.
-// Server -> Client: { customPacketType: "racialState", powers: [{ spellId, name, readyInMs, available }] }  the character's rationed
-//   powers (its race's, or any it used), never sent without one; at login, after each racialReport, use and refusal; readyInMs is
-//   relative, so the PC clock does not matter; available false while the power's effect is not built
+// Server -> Client: { customPacketType: "racialState", powers: [{ spellId, name, readyInMs, available, blocked? }] }  the character's
+//   rationed powers (its race's, or any it used), then every server-settings blockedSpells entry as { name: editor id, readyInMs 0,
+//   available false, blocked true } whatever racialPassives says, since the native refuses those for every caster; never sent
+//   without an entry; at login, after each racialReport, use and refusal; readyInMs is relative, so the PC clock does not matter;
+//   available false while the power's effect is not built
 //
 // server-settings.json (all optional; a missing multiplier is 1, a missing warmth 0 and a missing flag false):
 //   racialPassives.enabled          false makes every trait neutral, grants nothing and refuses no power, default true
@@ -60,6 +62,7 @@ type Mp = any;
 
 const SETTINGS_KEY = "racialPassives";
 const MAGIC_ENTRIES_KEY = "damageMultConditionalFormulaSettings";
+const BLOCKED_KEY = "blockedSpells";
 const RACIAL_PROP = "private.racial";
 // The 1.0 launch, 2026-10-01 16:00 on the server box (UTC-7)
 const DEFAULT_START_ITEMS_SINCE = Date.parse("2026-10-01T16:00:00-07:00");
@@ -332,6 +335,7 @@ export class RacialSystem implements System, NeedsModifierSource {
     this.mp = ctx.svr as Mp;
     const problems = this.configure(all[SETTINGS_KEY]);
     this.magicEntries = magicDamageEntries(all[MAGIC_ENTRIES_KEY]);
+    this.log(`[racial] blocked: ${this.configureBlocked(all[BLOCKED_KEY])}`);
     const forget = (actorId: number) => this.forget(actorId >>> 0);
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       forget(actorId);
@@ -406,6 +410,19 @@ export class RacialSystem implements System, NeedsModifierSource {
     this.config = config;
     this.traitsByRace.clear();
     return problems;
+  }
+
+  // Reads the blockedSpells list the native refuses; returns the boot line
+  configureBlocked(raw: unknown): string {
+    this.blocked.clear();
+    const list = Array.isArray(raw) ? raw : [];
+    for (const v of list) {
+      const id = formIdFromConfig(this.mp, v);
+      if (id) this.blocked.set(id, this.edidOf(id) || hex(id));
+    }
+    const skipped = list.length - this.blocked.size;
+    const names = Array.from(this.blocked, ([id, edid]) => `${edid} ${hex(id)}`).join(", ");
+    return `${names || "none"}${skipped > 0 ? `, ${skipped} ${BLOCKED_KEY} entries unresolved or repeated` : ""}; sent in every racialState`;
   }
 
   traits(actorId: number): RacialTraits {
@@ -584,15 +601,19 @@ export class RacialSystem implements System, NeedsModifierSource {
     return !entry.power.effect || !!this.powerEffects[entry.power.effect];
   }
 
-  // Sent only to a character with a rationed power
+  // Sent only to a character with a rationed power or while blockedSpells lists one
   private sendPowerState(actorId: number): void {
-    if (!this.config.enabled || !this.powerById.size || !this.mp) return;
+    if (!this.mp) return;
     const userId = userOf(this.mp, actorId);
-    const powers = userId < 0 ? [] : this.powersOf(actorId);
-    if (!powers.length) return;
+    if (userId < 0) return;
+    const rationed = this.config.enabled && this.powerById.size ? this.powersOf(actorId).filter((e) => !this.blocked.has(e.spellId)) : [];
+    if (!rationed.length && !this.blocked.size) return;
     sendJson(this.mp, userId, {
       customPacketType: STATE_PACKET,
-      powers: powers.map((e) => ({ spellId: e.spellId, name: e.name, readyInMs: this.readyInMs(actorId, e), available: this.effectReady(e) })),
+      powers: [
+        ...rationed.map((e) => ({ spellId: e.spellId, name: e.name, readyInMs: this.readyInMs(actorId, e), available: this.effectReady(e) })),
+        ...Array.from(this.blocked, ([spellId, name]) => ({ spellId, name, readyInMs: 0, available: false, blocked: true })),
+      ],
     });
   }
 
@@ -925,6 +946,8 @@ export class RacialSystem implements System, NeedsModifierSource {
   // actorId -> the self-check of its current spawn
   private checks = new Map<number, CheckState>();
   private powerById = new Map<number, PowerEntry>();
+  // blockedSpells id -> editor id
+  private blocked = new Map<number, string>();
   // Built power effects by settings key; a power whose effect is missing here is refused
   private powerEffects: Record<string, PowerEffect> = {};
   // "<actorId>:<spellId>" -> when its last refusal was noticed

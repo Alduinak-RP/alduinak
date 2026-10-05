@@ -575,7 +575,10 @@ listed and `enabled: false` are never gated. The cooldown is real time from the 
 
 A power with no effect block is stamped at every cast. The client gets `racialState { powers: [{ spellId, name,
 readyInMs, available }] }` at login, after each race check, use and refusal, and refuses a cast of a power that is
-not ready before relaying it. Khajiit Night Eye is not listed and stays unlimited (owner decision O28); the RC5 quick
+not ready before relaying it. Every `racialState` also carries the top-level `blockedSpells` list as `blocked: true`
+entries (sent even with no rationed power or `enabled: false`), which is the client's only copy of it: the client
+refuses those casts before relaying them and cuts them from the race's spell list, so a settings edit and a restart
+block or unblock a power. Khajiit Night Eye is not listed and stays unlimited (owner decision O28); the RC5 quick
 test that lists it with `cooldownHours: 0.05` must be removed before any Migrate settings, since this block is not
 protected. Boot line: `[racial] powers: AldPowerCommandAnimal 5604133a "Command Animal" on no race (cooldown 20 h of
 real time, counting offline, a miss is free, effect commandAnimal not built yet, so casts are refused)`, or `...

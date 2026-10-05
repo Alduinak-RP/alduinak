@@ -195,6 +195,13 @@ them (O23).
 - The client learns each character's rationed powers from `racialState { powers: [{ spellId, name, readyInMs,
   available }] }` (at login, after each race report, use and refusal; `readyInMs` is relative, so the PC clock does
   not matter) and refuses a cast of a power that is not ready before relaying it, with the server's own text.
+- **Blocked spells**: the server-settings `blockedSpells` list (the vanilla greater powers today) is the only copy.
+  The native refuses those casts for every caster, and RacialSystem appends each one to every `racialState` as
+  `{ spellId, name: <editor id>, readyInMs: 0, available: false, blocked: true }`, also for a character with no
+  rationed power or with `racialPassives.enabled` false. The client refuses them before the relay ("Battle Cry is
+  disabled on this server.") and cuts them from its own race's spell list at spawn and after the race menu, so
+  blocking or unblocking a power is a settings edit and a restart, no client release. Boot line: `[racial] blocked:
+  PowerNordBattleCry e40c3, ...; sent in every racialState`.
 
 ### The race check
 

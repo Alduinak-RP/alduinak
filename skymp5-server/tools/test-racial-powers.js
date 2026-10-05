@@ -20,9 +20,11 @@ const NORD = 0x13746
 const COMMAND = 0x0504133a
 const RATIONED = 0x0504133b
 const STRAY = 0x0504133c
+const BATTLE_CRY = 0xe40c3
+const ARGONIAN = 0x13740
 const HOUR = 3600000
 const PLUGIN = 'AlduinakAdditions.esp'
-const SPELLS = { [COMMAND]: ['AldPowerCommandAnimal', 3, 'Command Animal'], [RATIONED]: ['AldPowerTestRation', 3, ''], [STRAY]: ['AldPowerStray', 3, 'Stray'] }
+const SPELLS = { [COMMAND]: ['AldPowerCommandAnimal', 3, 'Command Animal'], [RATIONED]: ['AldPowerTestRation', 3, ''], [STRAY]: ['AldPowerStray', 3, 'Stray'], [BATTLE_CRY]: ['PowerNordBattleCry', 2, ''] }
 const RACES = { [WOOD]: ['WoodElfRace', [COMMAND]], [WOOD_VAMPIRE]: ['WoodElfRaceVampire', [COMMAND, STRAY]], [NORD]: ['NordRace', [RATIONED]] }
 
 const bytes = (size, write) => { const data = new Uint8Array(size); write(new DataView(data.buffer)); return data }
@@ -199,6 +201,34 @@ async function test(name, fn) {
       'powers.AldPowerCommandAnimal.cooldown is not a known key',
       'powers.AldPowerCommandAnimal.commandAnimal is not an object, the power has no effect',
     ])
+  })
+
+  await test('blockedSpells ride every racialState as blocked entries, with no rationed power or racial passives off too; a blocked rationed power is sent only as blocked', () => {
+    const blockedSpells = ['0x000E40C3', 0xaa026, 'bad', '0x000E40C3', descOf(RATIONED)]
+    const blocked = [
+      { spellId: BATTLE_CRY, name: 'PowerNordBattleCry', readyInMs: 0, available: false, blocked: true },
+      { spellId: 0xaa026, name: 'aa026', readyInMs: 0, available: false, blocked: true },
+      { spellId: RATIONED, name: 'AldPowerTestRation', readyInMs: 0, available: false, blocked: true },
+    ]
+    const t = setup()
+    assert.equal(t.racial.configureBlocked(blockedSpells),
+      'PowerNordBattleCry e40c3, aa026 aa026, AldPowerTestRation 504133b, 2 blockedSpells entries unresolved or repeated; sent in every racialState')
+    const nord = t.player(1, 0xff000001, NORD)
+    t.racial.sendPowerState(nord)
+    assert.deepEqual(t.last('racialState'), { u: 1, customPacketType: 'racialState', powers: blocked })
+    const wood = t.player(2, 0xff000002, WOOD)
+    t.racial.sendPowerState(wood)
+    assert.deepEqual(t.last('racialState').powers, [{ spellId: COMMAND, name: 'Command Animal', readyInMs: 0, available: false }, ...blocked])
+    const argonian = t.player(3, 0xff000003, ARGONIAN)
+    t.racial.sendPowerState(argonian)
+    assert.deepEqual(t.last('racialState'), { u: 3, customPacketType: 'racialState', powers: blocked })
+    const off = setup({ enabled: false, powers: BLOCK.powers })
+    off.racial.configureBlocked(blockedSpells)
+    off.racial.sendPowerState(off.player(1, 0xff000001, WOOD))
+    assert.deepEqual(off.last('racialState').powers, blocked)
+    assert.equal(off.racial.configureBlocked(undefined), 'none; sent in every racialState')
+    off.racial.sendPowerState(0xff000001)
+    assert.equal(off.packets.length, 1)
   })
 
   let failed = 0
