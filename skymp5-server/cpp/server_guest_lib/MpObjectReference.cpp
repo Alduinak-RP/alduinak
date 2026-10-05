@@ -583,6 +583,9 @@ void MpObjectReference::Disable()
 
   if (!IsEspmForm() || AsActor()) {
     LeaveGrid();
+  } else {
+    SendMessageToActorListeners(
+      CreatePropertyMessage_(this, "disabled", "true"), true);
   }
 }
 
@@ -597,6 +600,9 @@ void MpObjectReference::Enable()
 
   if (!IsEspmForm() || AsActor()) {
     ForceSubscriptionsUpdate();
+  } else {
+    SendMessageToActorListeners(
+      CreatePropertyMessage_(this, "disabled", "false"), true);
   }
 }
 

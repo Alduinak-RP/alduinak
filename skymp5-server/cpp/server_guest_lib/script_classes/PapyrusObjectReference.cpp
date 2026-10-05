@@ -448,17 +448,6 @@ VarValue PapyrusObjectReference::Enable(VarValue self,
   if (selfRefr) {
     selfRefr->Enable();
   }
-
-  if (selfRefr && selfRefr->IsEspmForm() && !selfRefr->AsActor()) {
-    auto funcName = "Enable";
-    auto serializedArgs = SpSnippetFunctionGen::SerializeArguments(
-      arguments, selfRefr->GetParent());
-    for (auto listener : selfRefr->GetActorListeners()) {
-      SpSnippet(GetName(), funcName, serializedArgs, selfRefr->GetFormId())
-        .Execute(listener, SpSnippetMode::kNoReturnResult);
-    }
-  }
-
   return VarValue::None();
 }
 
@@ -469,17 +458,6 @@ VarValue PapyrusObjectReference::Disable(
   if (selfRefr) {
     selfRefr->Disable();
   }
-
-  if (selfRefr && selfRefr->IsEspmForm() && !selfRefr->AsActor()) {
-    auto funcName = "Disable";
-    auto serializedArgs = SpSnippetFunctionGen::SerializeArguments(
-      arguments, selfRefr->GetParent());
-    for (auto listener : selfRefr->GetActorListeners()) {
-      SpSnippet(GetName(), funcName, serializedArgs, selfRefr->GetFormId())
-        .Execute(listener, SpSnippetMode::kNoReturnResult);
-    }
-  }
-
   return VarValue::None();
 }
 

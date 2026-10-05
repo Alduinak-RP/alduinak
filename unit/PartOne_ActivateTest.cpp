@@ -191,6 +191,46 @@ TEST_CASE("See open DisplayCaseSmFlat01 in Whiterun", "[PartOne][espm]")
   refr.SetOpen(false);
 }
 
+TEST_CASE("Disable and Enable of a plugin ref reach its listeners",
+          "[PartOne][espm]")
+{
+  auto& partOne = GetPartOne();
+
+  const auto refrId = 0x72080;
+  auto& refr = partOne.worldState.GetFormAt<MpObjectReference>(refrId);
+
+  DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000000, { 25217.0293, -7373.9536, -3317.6880 }, 0,
+                      0x1a26f);
+  partOne.SetUserActor(0, 0xff000000);
+
+  auto countDisabled = [&](const char* dump) {
+    int n = 0;
+    for (auto& msg : partOne.Messages()) {
+      nlohmann::json j = msg.j; // copy: operator[] auto-inserts null
+      if (msg.userId == 0 && j["t"] == MsgType::UpdateProperty &&
+          j["propName"] == "disabled" && j["dataDump"] == dump &&
+          j["refrId"] == refrId) {
+        ++n;
+      }
+    }
+    return n;
+  };
+
+  partOne.Messages().clear();
+  refr.Disable();
+  REQUIRE(refr.IsDisabled());
+  REQUIRE(countDisabled("true") == 1);
+
+  partOne.Messages().clear();
+  refr.Enable();
+  REQUIRE_FALSE(refr.IsDisabled());
+  REQUIRE(countDisabled("false") == 1);
+
+  DoDisconnect(partOne, 0);
+  partOne.DestroyActor(0xff000000);
+}
+
 TEST_CASE("Activate DisplayCaseSmFlat01 in Whiterun", "[PartOne][espm]")
 {
 

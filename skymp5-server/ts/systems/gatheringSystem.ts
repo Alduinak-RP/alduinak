@@ -709,11 +709,9 @@ export class GatheringSystem implements System {
     else this.regrowTimer.set("picks", due, () => this.regrowPicks(ctx));
   }
 
-  // Papyrus Enable/Disable, unlike the isDisabled property, also tells every client that has the ref
   private setShown(ctx: SystemContext, refrId: number, shown: boolean): boolean {
-    const mp = ctx.svr as Mp;
     try {
-      mp.callPapyrusFunction("method", "ObjectReference", shown ? "Enable" : "Disable", { type: "form", desc: mp.getDescFromId(refrId) }, [false]);
+      (ctx.svr as Mp).set(refrId, "isDisabled", !shown);
       return true;
     } catch (e) {
       this.log(`[gathering] could not ${shown ? "show" : "hide"} ${refrId.toString(16)}: ${e}`);
