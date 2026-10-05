@@ -92,7 +92,8 @@ export function sanitize(raw: unknown): string {
   return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function sendJson(mp: Mp, userId: number, payload: Record<string, unknown>): void {
+// A string payload is sent as it is, so a packet for many users is stringified once
+export function sendJson(mp: Mp, userId: number, payload: Record<string, unknown> | string): void {
   if (userId < 0) return;
-  try { mp.sendCustomPacket(userId, JSON.stringify(payload)); } catch { /* user gone */ }
+  try { mp.sendCustomPacket(userId, typeof payload === "string" ? payload : JSON.stringify(payload)); } catch { /* user gone */ }
 }

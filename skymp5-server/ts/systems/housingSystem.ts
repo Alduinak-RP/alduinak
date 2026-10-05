@@ -7,7 +7,7 @@ import { writeFileAtomic } from "./fileUtil";
 import { addItemTo, guardMpHook, holdsItem, isIntroduced, onlineActors, takeItemFrom } from "./actorUtil";
 import { FactionDef, factionLand, holdRanksOf, managesHold } from "./factionRules";
 import { Hold, holdName, holdOfRefs, isHoldLand, isOutdoors, loadHolds } from "./holdOf";
-import { describeActor, profileIdOf, realNameOf, titledName } from "./playerText";
+import { describeActor, profileIdOf, realNameOf, sendJson, titledName } from "./playerText";
 import { adminAudit } from "./discordAlerts";
 import { WRITING_ID } from "./writingStore";
 import { soon } from "./timers";
@@ -1223,13 +1223,38 @@ export class HousingSystem implements System {
 
   // ── refDecor ────────────────────────────────────────────────────────────────
 
-  private pushDecorToAll(ctx: SystemContext): void {
-    const refs = this.decorRefs(ctx);
-    for (const actorId of onlineActors(ctx.svr)) this.sendDecor(ctx, this.userOf(ctx, actorId), refs);
+  // Logins share one full list, rebuilt at the first login after a claim changes
+  private pushDecor(ctx: SystemContext, userId: number): void {
+    if (!this.actorOf(ctx, userId)) return;
+    this.decorFull ??= JSON.stringify({ customPacketType: "refDecor", full: true, refs: this.decorRefs(ctx) });
+    this.send(ctx, userId, this.decorFull);
   }
 
-  private pushDecor(ctx: SystemContext, userId: number): void {
-    this.sendDecor(ctx, userId, this.decorRefs(ctx));
+  // halves are the claim's before the write; one it no longer covers goes out unnamed and unlocked
+  private queueDecorDelta(ctx: SystemContext, primary: number, halves: number[]): void {
+    this.decorFull = null;
+    const pending = this.decorDelta.get(primary) ?? new Set<number>();
+    for (const refId of halves) if (refId) pending.add(refId);
+    this.decorDelta.set(primary, pending);
+    if (this.decorPushQueued) return;
+    this.decorPushQueued = true;
+    soon(() => this.pushDecorDelta(ctx));
+  }
+
+  // Every client gets only the written claims' halves, one packet for all the writes of a turn
+  private pushDecorDelta(ctx: SystemContext): void {
+    this.decorPushQueued = false;
+    const refs: Array<Record<string, unknown>> = [];
+    for (const [primary, before] of this.decorDelta) {
+      const rec = this.read(ctx, primary);
+      const now = rec && rec.owner !== 0 ? this.decorOf(ctx, primary, rec) : [];
+      refs.push(...now);
+      for (const refId of before) if (!now.some((r) => r.refId === refId)) refs.push({ refId, name: null, locked: false });
+    }
+    this.decorDelta.clear();
+    if (!refs.length) return;
+    const json = JSON.stringify({ customPacketType: "refDecor", refs });
+    for (const actorId of onlineActors(ctx.svr)) this.send(ctx, this.userOf(ctx, actorId), json);
   }
 
   // Each half carries its own side's lock, the same for every viewer, so one list serves everyone
@@ -1238,8 +1263,7 @@ export class HousingSystem implements System {
     const count = { sided: 0, entrance: 0, exit: 0, single: 0, locked: 0 };
     for (const { primary, rec } of this.liveClaims(ctx)) {
       const side = this.sideOf(ctx, primary, rec, primary);
-      refs.push({ refId: primary, name: rec.name, locked: this.lockedAt(rec, side) });
-      if (rec.partner) refs.push({ refId: rec.partner, name: rec.name, locked: this.lockedAt(rec, this.sideOf(ctx, primary, rec, rec.partner)) });
+      refs.push(...this.decorOf(ctx, primary, rec));
       if (side) {
         count.sided++;
         if (rec.lockedEntrance) count.entrance++;
@@ -1253,6 +1277,12 @@ export class HousingSystem implements System {
       this.lockSummaryLogged = true;
       this.log(`[housing] lock summary: ${count.sided} doors with an entrance and exit (${count.entrance} entrance locked, ${count.exit} exit locked), ${count.single} with one lock (${count.locked} locked)`);
     }
+    return refs;
+  }
+
+  private decorOf(ctx: SystemContext, primary: number, rec: PropertyRecord): Array<Record<string, unknown>> {
+    const refs: Array<Record<string, unknown>> = [{ refId: primary, name: rec.name, locked: this.lockedAt(rec, this.sideOf(ctx, primary, rec, primary)) }];
+    if (rec.partner) refs.push({ refId: rec.partner, name: rec.name, locked: this.lockedAt(rec, this.sideOf(ctx, primary, rec, rec.partner)) });
     return refs;
   }
 
@@ -1271,11 +1301,6 @@ export class HousingSystem implements System {
       this.log(`[housing] dropped ${dead.length} registry entries without a claim record: ${dead.map((id) => id.toString(16)).join(", ")}`);
     }
     return out;
-  }
-
-  private sendDecor(ctx: SystemContext, userId: number, refs: Array<Record<string, unknown>>): void {
-    if (!this.actorOf(ctx, userId)) return;
-    this.send(ctx, userId, { customPacketType: "refDecor", full: true, refs });
   }
 
   // ── Storage ─────────────────────────────────────────────────────────────────
@@ -1388,6 +1413,7 @@ export class HousingSystem implements System {
 
   private write(ctx: SystemContext, primary: number, rec: PropertyRecord): boolean {
     const mp = ctx.svr as Mp;
+    const before = this.read(ctx, primary);
     try {
       const stored: StoredRecord = { ...rec, locked: rec.lockedEntrance || rec.lockedExit };
       mp.set(primary, HOUSING_PROP, stored);
@@ -1404,14 +1430,7 @@ export class HousingSystem implements System {
       } catch { }
     }
     if (rec.owner !== 0) this.remember(primary); else this.forget(primary);
-    // Lock changes reach every client on the next turn, one push for all the writes before it
-    if (!this.decorPushQueued) {
-      this.decorPushQueued = true;
-      soon(() => {
-        this.decorPushQueued = false;
-        this.pushDecorToAll(ctx);
-      });
-    }
+    this.queueDecorDelta(ctx, primary, before && before.owner !== 0 ? [primary, before.partner] : []);
     return true;
   }
 
@@ -1504,9 +1523,8 @@ export class HousingSystem implements System {
     }
   }
 
-  private send(ctx: SystemContext, userId: number, payload: Record<string, unknown>): void {
-    if (userId < 0) return;
-    try { (ctx.svr as Mp).sendCustomPacket(userId, JSON.stringify(payload)); } catch { /* user gone */ }
+  private send(ctx: SystemContext, userId: number, payload: Record<string, unknown> | string): void {
+    sendJson(ctx.svr as Mp, userId, payload);
   }
 
   private notice(ctx: SystemContext, userId: number, text: string): void {
@@ -1556,4 +1574,7 @@ export class HousingSystem implements System {
   private keySplitOnLogin = false;
   private lockBaseId = LOCK_BASE_ID_FALLBACK;
   private decorPushQueued = false;
+  // Claims written since the last delta, each with the halves it had before
+  private decorDelta = new Map<number, Set<number>>();
+  private decorFull: string | null = null;
 }
