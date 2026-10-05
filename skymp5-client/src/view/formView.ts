@@ -16,7 +16,7 @@ import { FormTypeEx } from "../extensions/formTypeEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
 import { lastTryHost, tryHost } from "./hostAttempts";
 import { ModelApplyUtils } from "./modelApplyUtils";
-import { carriedByOther, isModelHostedByOther, isRemoteHostedByMe, knowsCharacter, shortRemoteId } from "./worldViewMisc";
+import { carriedByOther, disabledByServer, isModelHostedByOther, isRemoteHostedByMe, knowsCharacter, shortRemoteId } from "./worldViewMisc";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
@@ -356,24 +356,30 @@ export class FormView {
   // A loaded game rebuilds every ref, so the next update with the 3D in counts as a 3D load
   forgetLoaded3D(): void {
     this.was3DLoaded = false;
+    // The loaded game brought back the plugin's enabled ref, so the next update disables it again
+    if (this.objectState.disabled) this.objectState.disabled = undefined;
   }
 
   private dealtWithRef = false;
   private isSetNodeTextureSetApplied = false;
   private isSetNodeScaleApplied = false;
 
-  // Actors skip these, whose inventory apply would break a copy's equipment; open, harvested and carried state go to the engine on a model change or a 3D load
+  // Actors skip these, whose inventory apply would break a copy's equipment; open, harvested and carried state go to the engine on a model change or a 3D load, a plugin door's disabled state on a model change or a loaded game
   private applyObjectModel(refr: ObjectReference, model: FormModel, loaded: boolean, loadedNow: boolean): void {
     const o = this.objectState;
     // A copy another player carries (PlacedItemSystem's ff_carried) stays hidden, however it was spawned
     const carriedAway = carriedByOther((model as Record<string, unknown>)["ff_carried"]);
     const harvested = !!model.isHarvested;
-    if (loadedNow || carriedAway !== o.carriedAway || harvested !== o.harvested) {
+    const disabled = disabledByServer(model);
+    const changed = carriedAway !== o.carriedAway || harvested !== o.harvested || disabled !== o.disabled;
+    if (loadedNow || changed) {
       o.carriedAway = carriedAway;
       o.harvested = harvested;
-      if (carriedAway) {
+      o.disabled = disabled;
+      // A disabled door that loads its 3D with no model change was enabled here (a Papyrus snippet) and is left alone
+      if (carriedAway || (disabled && changed)) {
         if (!refr.isDisabled()) refr.disable(false);
-      } else {
+      } else if (!disabled) {
         ModelApplyUtils.applyModelIsHarvested(refr, harvested);
       }
     }
@@ -967,7 +973,7 @@ export class FormView {
 
   // What the engine was last given; undefined until the first apply
   private getDefaultObjectState() {
-    return { open: undefined as boolean | undefined, harvested: undefined as boolean | undefined, carriedAway: undefined as boolean | undefined, openCheck: false, openReapplyAt: 0 };
+    return { open: undefined as boolean | undefined, harvested: undefined as boolean | undefined, carriedAway: undefined as boolean | undefined, disabled: undefined as boolean | undefined, openCheck: false, openReapplyAt: 0 };
   };
 
   private tryHostIfNeed(ac: Actor, remoteId: number) {

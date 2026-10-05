@@ -132,6 +132,9 @@ export const carriedByOther = (value: unknown): boolean => {
   return carrier !== 0 && carrier !== SpApiInteractor.getControllerInstance().lookupListener(RemoteServer).getMyRemoteRefrId();
 };
 
+// UpdateProperty's disabled replaces the isDisabled its CreateActor carried
+export const disabledByServer = (props: CreateActorMessageAdditionalProps): boolean => !!(props.disabled ?? props.isDisabled);
+
 // A custom property of a server form, or of a plugin-placed ref without one (doors keep a FormModel)
 export const formProp = (remoteId: number, prop: string): unknown => {
   if (!remoteId) return undefined;
