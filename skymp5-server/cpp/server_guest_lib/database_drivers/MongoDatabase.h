@@ -21,9 +21,8 @@ private:
     std::vector<std::optional<MpChangeForm>>&& changeForms,
     size_t& outNumUpserted) override;
 
-  int GetDocumentCount(const std::string& filterJson = "{}");
-  std::optional<std::string> GetCombinedErrorOrNull(
-    const std::vector<std::optional<std::string>>& errorList);
+  MpChangeForm ParseDocument(simdjson::dom::parser& parser,
+                             const std::string& json);
 
   std::string BytesToHexString(const uint8_t* bytes, size_t length);
   std::string Sha256(const std::string& str);

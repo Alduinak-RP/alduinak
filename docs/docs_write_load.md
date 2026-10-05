@@ -181,8 +181,9 @@ Largest sources in the 11 hours, after the `isDead` block:
 | 1,530 | `ff_afterlife` context block, one per login: the property is not registered in the live `gamemode_extensions/50_properties.js` (see `docs_roleplay_foundations.md`) | live file |
 | 1,071 | `VarValue::operator> / operator+ - Wrong type` | C++ |
 
-A boot adds about 3,000 lines once (`Skipping deleted form`, `Loaded N
-ChangeForms`), which is not a rate problem.
+A boot used to add about 3,000 lines once (`Skipping deleted form`, `Loaded N
+ChangeForms`); it now writes one summary line (`loaded N ChangeForms
+(Including M player characters), skipped ...`).
 
 Projection after the fix: about 220 lines and 20 KB per player-hour, so about
 30 lines/s and 10 MB/h at 500 players, 60 lines/s and 20 MB/h (about 480 MB a

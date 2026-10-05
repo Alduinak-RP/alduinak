@@ -356,16 +356,11 @@ void PartOne::AttachSaveStorage(
 
   int n = 0;
   int numPlayerCharacters = 0;
-  saveStorage->IterateSync([&](MpChangeForm changeForm) {
-    // Do not let players become NPCs
-    if (changeForm.profileId != -1 && !changeForm.isDisabled) {
-      changeForm.isDisabled = true;
-    }
-
+  int numDeleted = 0;
+  int numUnplacedItems = 0;
+  saveStorage->IterateSync([&](const MpChangeForm& changeForm) {
     if (changeForm.isDeleted) {
-      pImpl->logger->info(
-        "Skipping deleted form {}, will likely overwrite at some point",
-        changeForm.formDesc.ToString());
+      ++numDeleted;
       return;
     }
 
@@ -380,22 +375,22 @@ void PartOne::AttachSaveStorage(
         changeForm.dynamicFields.GetValueDump("private.placedAt") != "null";
       if (lookupRes.rec && espm::utils::IsItem(lookupRes.rec->GetType()) &&
           !placed) {
-        pImpl->logger->info("Skipping FF item {} (type is {}), will likely "
-                            "overwrite at some point",
-                            changeForm.formDesc.ToString(),
-                            lookupRes.rec->GetType().ToString());
+        ++numUnplacedItems;
         return;
       }
     }
 
     n++;
-    worldState.LoadChangeForm(changeForm, CreateFormCallbacks());
+    // Do not let players become NPCs
+    if (changeForm.profileId != -1 && !changeForm.isDisabled) {
+      MpChangeForm disabled = changeForm;
+      disabled.isDisabled = true;
+      worldState.LoadChangeForm(disabled, CreateFormCallbacks());
+    } else {
+      worldState.LoadChangeForm(changeForm, CreateFormCallbacks());
+    }
     if (changeForm.profileId >= 0) {
       ++numPlayerCharacters;
-    }
-
-    if (n % 25 == 0) {
-      pImpl->logger->info("Loaded {} ChangeForms", n);
     }
   });
 
@@ -404,9 +399,10 @@ void PartOne::AttachSaveStorage(
     std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
   pImpl->logger->info("AttachSaveStorage took {} seconds and {} milliseconds, "
-                      "loaded {} ChangeForms (Including {} player characters)",
+                      "loaded {} ChangeForms (Including {} player characters), "
+                      "skipped {} deleted and {} unplaced FF items",
                       duration.count() / 1000, duration.count() % 1000, n,
-                      numPlayerCharacters);
+                      numPlayerCharacters, numDeleted, numUnplacedItems);
 }
 
 espm::Loader& PartOne::GetEspm() const
