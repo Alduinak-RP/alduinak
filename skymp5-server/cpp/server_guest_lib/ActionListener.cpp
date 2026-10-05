@@ -1858,6 +1858,15 @@ void ActionListener::OnUpdateAnimVariables(
     return;
   }
 
+  // Receivers drive the graph of the actor the message names
+  if (msg.data.actorRemoteId != myActor->GetFormId()) {
+    spdlog::debug("ActionListener::OnUpdateAnimVariables - user {} sent "
+                  "variables of {:x}, not of its own actor {:x}",
+                  rawMsgData.userId, msg.data.actorRemoteId,
+                  myActor->GetFormId());
+    return;
+  }
+
   SendToNeighbours(myActor->idx, rawMsgData, false, kSkipSender);
 }
 
