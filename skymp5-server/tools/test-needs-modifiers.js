@@ -296,13 +296,7 @@ async function main() {
     t.sys.pay(t.ctx, NORD, 'gather', 4, 'harvest')
     assert.deepEqual(t.events, [[NEEDS_STAGE_EVENT, NORD, 1, 2], [NEEDS_STAGE_EVENT, NORD, 1, 3]])
     t.events.length = 0
-    const realTimeout = global.setTimeout
-    global.setTimeout = (f) => setImmediate(f)
-    try {
-      await t.sys.updateAsync(t.ctx)
-    } finally {
-      global.setTimeout = realTimeout
-    }
+    t.sys.poll(t.ctx)
     assert.deepEqual(t.events, [[NEEDS_STAGE_EVENT, NORD, 1, 3], [NEEDS_STAGE_EVENT, ALTMER, 1, 1], [NEEDS_STAGE_EVENT, ORC, 1, 1]])
   })
 

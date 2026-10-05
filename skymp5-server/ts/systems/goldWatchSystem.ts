@@ -2,6 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { onlineActors, isCreationPending, hex } from "./actorUtil";
 import { espmContainerEntries } from "./formIdUtil";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -84,6 +85,7 @@ export class GoldWatchSystem implements System {
     this.mp = ctx.svr as Mp;
     // Installed last, so a craft, put, take, drop or eat another system refused is never counted as an explanation
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.installHooks());
+    every("goldWatch", POLL_MS, () => this.poll(ctx));
     this.log(`GoldWatchSystem: ${this.threshold ? `alerting on gains above ${this.threshold} gold` : "gain alert disabled (goldAlertThreshold is 0)"}, logging drops of gold, unexplained drops of salt and every item dropped`);
   }
 
@@ -132,8 +134,7 @@ export class GoldWatchSystem implements System {
     this.packets.set(actorId, seen);
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
     for (const actorId of onlineActors(mp)) {
       if (isCreationPending(mp, actorId)) continue;

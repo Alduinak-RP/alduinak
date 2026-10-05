@@ -122,7 +122,7 @@ const makeWorld = (X, survivalOn = true) => {
     mp.set(actorId, 'isDead', false)
     survival.onActorAssigned(ctx, userId, actorId)
   }
-  const settle = async () => { clock.now += X.LOGIN_SYNC_DELAY_MS; await survival.updateAsync(ctx) }
+  const settle = async () => { clock.now += X.LOGIN_SYNC_DELAY_MS; survival.poll(ctx) }
   // Sends one panel packet and returns the packets the admin's client got for it
   const send = async (userId, type, content = {}) => {
     const from = packets.length

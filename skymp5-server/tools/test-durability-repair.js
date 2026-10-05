@@ -258,7 +258,7 @@ test('without the block, or with durability off, nothing is installed and no pac
     w.packet('durabilityRepair', { bench: WORKBENCH, all: true })
     w.packet('durabilityImprove', { bench: WORKBENCH })
     w.packet('durabilityClose')
-    await w.system.updateAsync(w.ctx)
+    w.system.poll(w.ctx)
     assert.deepEqual(w.packets, [])
     assert.deepEqual(w.lines, [])
     assert.equal(w.sets, 0)
@@ -518,7 +518,7 @@ test('wear notices: a worn item falling below the threshold and a break, each on
     w.props.get(PLAYER).inventory.entries[0].condition = c(condition)
     w.props.get(PLAYER).equipment.inv.entries[0].condition = c(condition)
   }
-  const poll = async () => { w.now += 11000; await w.system.updateAsync(w.ctx) }
+  const poll = async () => { w.now += 11000; w.system.poll(w.ctx) }
   await poll()
   assert.deepEqual(w.packets, [], 'the first look only remembers')
   wear(0.26)
@@ -546,7 +546,7 @@ test('wear notices: a worn item falling below the threshold and a break, each on
 test('wear notices: drawing a more worn or broken copy of the same item says nothing, wear on that copy does', async () => {
   const w = withClock(await world(durability(), { inventory: [item(SWORD, 0.8), item(SWORD, 0.2), item(SWORD, 0)], equipment: [item(SWORD, 0.8, { worn: true })] }).boot())
   const draw = (condition) => { w.props.get(PLAYER).equipment.inv.entries = [item(SWORD, condition, { worn: true })] }
-  const poll = async () => { w.now += 11000; await w.system.updateAsync(w.ctx) }
+  const poll = async () => { w.now += 11000; w.system.poll(w.ctx) }
   await poll()
   draw(0.2)
   await poll()

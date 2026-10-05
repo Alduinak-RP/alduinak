@@ -65,6 +65,7 @@ import { KnowledgeSystem } from "./systems/knowledgeSystem";
 import { FactionSystem } from "./systems/factionSystem";
 import { JobSystem } from "./systems/jobSystem";
 import { trackConnections } from "./systems/actorUtil";
+import { startPolls } from "./systems/timers";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -428,18 +429,8 @@ const main = async () => {
       await system.initAsync(ctx);
     }
     log(`Initialized ${system.systemName}`);
-    if (system.updateAsync)
-      (async () => {
-        while (1) {
-          await new Promise((r) => setTimeout(r, 1));
-          try {
-            await system.updateAsync(ctx);
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      })();
   }
+  startPolls();
 
   server.on("connect", (userId: number) => {
     log("connect", userId);

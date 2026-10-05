@@ -14,6 +14,7 @@ import { NeedsSystem } from "./needsSystem";
 import { sendJson } from "./playerText";
 import { Content, Log, System, SystemContext } from "./system";
 import { ARMOR_TABLE, FINE_STEP, SHARPENING_WHEEL, TemperRecipe, qualityName, recipesAt, temperRecipesOf } from "./temperRecipes";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -186,6 +187,7 @@ export class DurabilitySystem implements System {
     this.settle = wearSettler(mp, all, this.log);
     const unresolved = this.loadFallbackMaterials(mp);
     this.on = true;
+    every("durability", WEAR_POLL_MS, () => this.poll(ctx));
 
     this.installActivationHook(ctx);
     chainMpHook(mp, "onItemBroken", (actorId: number, baseId: number) => { this.onItemBroken(ctx, Number(actorId) >>> 0, Number(baseId) >>> 0); });
@@ -217,11 +219,9 @@ export class DurabilitySystem implements System {
   }
 
   // The wear notices: a worn item that fell below repair.lowNoticeBelow or broke since the last look
-  async updateAsync(ctx: SystemContext): Promise<void> {
+  poll(ctx: SystemContext): void {
     if (!this.on) return;
     const now = Date.now();
-    if (now - this.lastPollMs < WEAR_POLL_MS) return;
-    this.lastPollMs = now;
     const mp = ctx.svr as Mp;
     let players: number[] = [];
     try { players = Array.from(mp.get(0, "onlinePlayers") ?? [], (id) => Number(id) >>> 0); } catch { return; }
@@ -615,7 +615,6 @@ export class DurabilitySystem implements System {
   private bypass = new Map<number, { bench: number; until: number }>();
   private lastOpenMs = new Map<number, number>();
   private lastRepairMs = new Map<number, number>();
-  private lastPollMs = 0;
   // Condition of each worn copy at the last poll, by actor and then by base and hand
   private wornSeen = new Map<number, Map<string, number>>();
   private brokenNoticedMs = new Map<string, number>();

@@ -4,6 +4,7 @@ import { System, Log, SystemContext } from "./system";
 import { WEATHER_REGIONS, WEATHER_CATALOG, WeatherRegionDef, WeatherChance } from "./weatherRegions";
 import { writeFileAtomic } from "./fileUtil";
 import { userOf } from "./actorUtil";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -144,6 +145,7 @@ export class WeatherSystem implements System {
     }
     const { kept, rolled } = this.loadState();
     this.log(`WeatherSystem: ${this.regions.size} regions over ${this.worldAreas.size} worlds, ${this.byDesc.size} catalog weathers, ${this.minMinutes}-${this.maxMinutes} min, transition ${this.transition}; ${STATE_FILE}: ${kept} kept, ${rolled} rolled`);
+    every("weather", POLL_MS, () => this.poll(ctx));
   }
 
   private readSettings(all: Record<string, any> | null): void {
@@ -277,8 +279,7 @@ export class WeatherSystem implements System {
     } catch { }
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(ctx: SystemContext): void {
     if (!this.enabled) return;
     const mp = ctx.svr as Mp;
     const now = Date.now();

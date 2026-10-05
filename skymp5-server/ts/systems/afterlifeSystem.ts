@@ -5,6 +5,7 @@ import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { readInventory, sameExtras, withoutCondition } from "./inventoryExtras";
 import { SettleWear, wearSettler } from "./durabilityNative";
 import { AdminRoleConfig, AdminTier, adminTierOf, readAdminRoleConfig } from "./adminRoles";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -191,6 +192,7 @@ export class AfterlifeSystem implements System {
       const realm = afterlifeOf(mp, actorId >>> 0);
       if (realm) setTimeout(() => this.dress(mp, actorId >>> 0, realm), DRESS_DELAY_MS);
     });
+    every("afterlife", CONFINE_POLL_MS, () => this.poll(ctx));
   }
 
   // Editor ids, descs and hex ids of the look and the outfit per realm, each set field over its default; misses are logged
@@ -245,10 +247,7 @@ export class AfterlifeSystem implements System {
     }
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    const now = Date.now();
-    if (now < this.nextPollAt) return;
-    this.nextPollAt = now + CONFINE_POLL_MS;
+  poll(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
     let players: unknown[] = [];
     try { players = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
@@ -474,7 +473,6 @@ export class AfterlifeSystem implements System {
   }
 
   private ctx: SystemContext | null = null;
-  private nextPollAt = 0;
   private limits = readCharacterLimits(null);
   private settleWear: SettleWear = () => { };
   private looks: Record<RealmId, RealmLook> = { sovngarde: NO_LOOK, soulCairn: NO_LOOK };

@@ -375,7 +375,7 @@ The server's regeneration check knows only base rates, so it may hold a Well Fed
 (+10%) back to the base rate, as it does for regeneration bonuses from gear.
 
 Decisions inside the native `onCraft`, `onActivate` and `onEatItem` hooks are made from memory; property writes, Papyrus
-calls and packets run right after the hook returns (`setImmediate`), and `updateAsync` drains anything left. Online
+calls and packets run right after the hook returns (`setImmediate`), and the one-second poll drains anything left. Online
 characters are brought up to date and saved every minute; a stage change on either need swaps its ability and sends a
 notice from stage 2 up.
 

@@ -3,6 +3,7 @@ import { espmFieldFormIds, readFormIdField } from "./formIdUtil";
 import { hex, notifyActor } from "./actorUtil";
 import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -89,12 +90,12 @@ export class SoulTrapSystem implements System {
       }
       return previousHit ? previousHit.apply(mp, args) : undefined;
     };
+    every("soulTrap", DEATH_POLL_MS, () => this.poll(ctx));
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
+  poll(ctx: SystemContext): void {
+    if (!this.traps.size) return;
     const now = Date.now();
-    if (!this.traps.size || now < this.nextPollAt) return;
-    this.nextPollAt = now + DEATH_POLL_MS;
     const mp = ctx.svr as Mp;
     for (const [targetId, trap] of Array.from(this.traps)) {
       let dead = false;
@@ -350,7 +351,6 @@ export class SoulTrapSystem implements System {
   }
 
   private traps = new Map<number, Trap>();
-  private nextPollAt = 0;
   private trapSecondsCache = new Map<number, number>();
   private effectCache = new Map<number, boolean>();
   private gemCache = new Map<number, Gem | null>();

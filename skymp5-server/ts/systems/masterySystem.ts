@@ -8,6 +8,7 @@ import { parseStartingItems } from "./spawn";
 import { setIntroProfessions } from "./startLocations";
 import { BLANK_BOOK_EDID } from "./writingSystem";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
+import { EVERY_PASS_MS, every } from "./timers";
 import {
   ADEPT, ChooseRefusal, FREE, HeldSlot, LEGENDARY, NOVICE, RANK_NAMES, RecipeGate, SLOT_NAMES, SlotConfig, SlotRecord, bestSlot, chooseRefusal,
   creditsCraft, defaultSlots, describeSlots, duplicateSlots, emptySlotRecord, hoursToNext, isCapped, multiclassOn, nextEmptySlot, parseSlots,
@@ -495,6 +496,7 @@ export class MasterySystem implements System {
       this.enqueue(kind, actorId, detail);
     };
     this.hookNativeEvents(ctx);
+    every("mastery", EVERY_PASS_MS, () => this.poll(ctx));
   }
 
   // Chain onto whatever already owns these `mp` hooks and never change their verdict.
@@ -544,7 +546,7 @@ export class MasterySystem implements System {
     }
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
+  poll(ctx: SystemContext): void {
     this.flushPendingGrants(ctx);
     this.payBanks(ctx);
     if (!this.events.length) return;

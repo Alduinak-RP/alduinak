@@ -9,6 +9,7 @@ import { Hostable } from "./hostingSystem";
 import { destroyLeftovers } from "./actorUtil";
 import { loadNavmeshSpots, randomPointOn, NavmeshTarget, SpotKind, Spots } from "./navmeshSpots";
 import { writeFileAtomic } from "./fileUtil";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -283,6 +284,7 @@ export class NpcSpawnSystem implements System {
     await this.queueLoad("boot");
     this.watchFile();
     this.ready = true;
+    every("npcSpawn", POLL_MS, () => this.poll(ctx));
   }
 
   private queueLoad(reason: string): Promise<void> {
@@ -544,8 +546,7 @@ export class NpcSpawnSystem implements System {
     }
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(ctx: SystemContext): void {
     if (!this.ready) return;
     const mp = ctx.svr as Mp;
     const now = Date.now();

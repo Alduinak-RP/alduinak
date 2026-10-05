@@ -5,6 +5,7 @@ import { placeNpc, placeAtMe, moveNpc, locationNear, locationForFollower, contai
 import { toFormId } from "./formIdUtil";
 import { userOf, isAlive, isNear, isStreamedTo, hex, baseIdOf, destroyLeftovers, destroyRef, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -150,10 +151,10 @@ export class CompanionSystem implements System {
         this.log(`CompanionSystem: assign hook failed: ${e}`);
       }
     });
+    every("companion", UPDATE_MS, () => this.poll());
   }
 
-  async updateAsync(): Promise<void> {
-    await new Promise((r) => setTimeout(r, UPDATE_MS));
+  poll(): void {
     if (!this.mp) return;
     const now = Date.now();
     this.removeCorpses(now);

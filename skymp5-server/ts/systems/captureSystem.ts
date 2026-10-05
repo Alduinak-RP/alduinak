@@ -2,6 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId, espmRefrFieldId } from "./formIdUtil";
 import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, isNear, chainMpHook, isDoorRef } from "./actorUtil";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -179,7 +180,6 @@ export class CaptureSystem implements System {
   onBlock: ((actorId: number) => boolean) | null = null;
   blockRefusal: ((actorId: number) => string) | null = null;
   releaseFromBlock: ((actorId: number) => void) | null = null;
-  private lastFollowMs = 0;
   // actorId -> last refusal log timestamp
   private refusalLogAt = new Map<number, number>();
   // carrierActorId -> when they were last told to set their captive down at a load door
@@ -223,6 +223,7 @@ export class CaptureSystem implements System {
     });
     this.installCarrierFightBlock(ctx.svr as Mp);
     this.installDoorWatch(ctx);
+    every("capture", CARRY_FOLLOW_INTERVAL_MS, () => this.poll(ctx));
   }
 
   // Refused or recorded before the chain: the door override installed earlier vetoes the native teleport after moving the carrier, and a locked door is refused by HousingSystem's later wrapper before this one runs
@@ -282,17 +283,12 @@ export class CaptureSystem implements System {
     }
   }
 
-  // Doors, teleports and lost bodies; runs from the ~1ms update loop, self-throttled to CARRY_FOLLOW_INTERVAL_MS
-  async updateAsync(ctx: SystemContext): Promise<void> {
+  // Doors, teleports and lost bodies
+  poll(ctx: SystemContext): void {
     if (this.carrying.size === 0) {
       return;
     }
     const now = Date.now();
-    if (now - this.lastFollowMs < CARRY_FOLLOW_INTERVAL_MS) {
-      return;
-    }
-    this.lastFollowMs = now;
-
     const mp = ctx.svr as Mp;
     for (const [carrierActorId, carriedActorId] of Array.from(this.carrying)) {
       try {

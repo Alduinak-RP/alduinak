@@ -12,6 +12,7 @@ import { CaptureSystem } from "./captureSystem";
 import { resolveEditorIds } from "./espmEditorIds";
 import { PET_ANCHORS } from "./adminMapMarkers";
 import { Inventory, addEntries, isNamedItem, readInventory, withCount } from "./inventoryExtras";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -210,10 +211,10 @@ export class PetSystem implements System {
     this.installHooks();
     this.capture.onNpcCarryEnd = (npcId) => this.onCarryEnd(npcId);
     await this.resolveRecords(all, settings.dataDir, settings.loadOrder);
+    every("pet", UPDATE_MS, () => this.poll());
   }
 
-  async updateAsync(): Promise<void> {
-    await new Promise((r) => setTimeout(r, UPDATE_MS));
+  poll(): void {
     try {
       this.tick();
     } catch (e) {

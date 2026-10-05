@@ -2,6 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { kickWithReason } from "./kickUtil";
 import { isCreationPending, chainMpHook, userOf, hex, baseTypeOf } from "./actorUtil";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -89,6 +90,7 @@ export class AfkSystem implements System {
     this.mp = ctx.svr as Mp;
     chainMpHook(this.mp, "onCraft", (actorId: number) => this.touchActor(Number(actorId) >>> 0, "craft"));
     chainMpHook(this.mp, "onActivate", (targetId: number, casterId: number) => this.onActivate(Number(targetId) >>> 0, Number(casterId) >>> 0));
+    every("afk", POLL_MS, () => this.poll(ctx));
     this.log(this.kickMs
       ? `AfkSystem: kicking after ${this.kickMs / 60000} min, warning ${this.warnMs / 60000} min before, a move of ${MOVE_UNITS} units or ${TURN_DEGREES} degrees, a click-driven packet, a chat line, a craft or an activation counts${this.debug ? ", afkDebug on" : ""}`
       : "AfkSystem: disabled (afkKickMinutes is 0)");
@@ -143,8 +145,7 @@ export class AfkSystem implements System {
     if (userId >= 0) this.touch(userId, channel);
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
     const now = Date.now();
 

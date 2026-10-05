@@ -4,6 +4,7 @@ import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson, titledName } from "./playerText";
 import { GOLD_BASE_ID, addGold, baseIdOf, baseTypeOf, destroyRef } from "./actorUtil";
 import { containerDesc, moveRefTo, placeAtMe } from "./npcPlacement";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -213,6 +214,7 @@ export class BountyBoardSystem implements System {
     };
     const liftLine = Array.from(this.stashLifts, ([primary, lift]) => `${this.boardNameOf(primary)} ${lift}`).join(", ") || "none";
     this.log(`[bounty] ready, ${BOARDS.length} boards, ${this.costGold} gold a notice, ${this.expiryDays} days on the board, strongbox lifts ${liftLine}`);
+    every("bountyBoard", SWEEP_INTERVAL_MS, () => this.sweep(ctx));
   }
 
   // Activating a board opens the menu instead of the vanilla activation.
@@ -267,11 +269,7 @@ export class BountyBoardSystem implements System {
   }
 
   // Notices expire lazily on read; the sweep only covers boards nobody reads.
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    const now = Date.now();
-    const sinceLast = now - this.lastSweepMs;
-    if (sinceLast >= 0 && sinceLast < SWEEP_INTERVAL_MS) return;
-    this.lastSweepMs = now;
+  sweep(ctx: SystemContext): void {
     for (const primary of this.primaries()) {
       const rec = this.read(ctx, primary);
       if (rec && this.prune(ctx, primary, rec)) this.write(ctx, primary, rec);
@@ -827,5 +825,4 @@ export class BountyBoardSystem implements System {
   private lastPostMs = new Map<number, number>();
   private lastOpenMs = new Map<number, number>();
   private spotCache = new Map<number, { pos: number[]; where: string } | null>();
-  private lastSweepMs = 0;
 }

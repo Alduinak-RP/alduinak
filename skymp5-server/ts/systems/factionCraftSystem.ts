@@ -3,6 +3,7 @@ import { System, Log, SystemContext, ACCESS_REFRESHED_EVENT } from "./system";
 import { resolveEditorIds } from "./espmEditorIds";
 import { addSpellTo, hex, removeSpellFrom } from "./actorUtil";
 import { FactionSystem } from "./factionSystem";
+import { EVERY_PASS_MS, every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -105,9 +106,10 @@ export class FactionCraftSystem implements System {
     ctx.gm.on(ACCESS_REFRESHED_EVENT, () => {
       for (const actorId of this.online.values()) this.sync(ctx, actorId, "after a rank reload");
     });
+    every("factionCraft", EVERY_PASS_MS, () => this.poll(ctx));
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
+  poll(ctx: SystemContext): void {
     if (!this.pending.size) return;
     const now = Date.now();
     for (const [actorId, dueAt] of Array.from(this.pending)) {

@@ -271,7 +271,7 @@ const setup = (settings = { survivalEnabled: true }, cold = false, plugin = true
     sys.onActorAssigned(ctx, userId, actorId)
     return userId
   }
-  const update = () => sys.updateAsync(ctx)
+  const update = () => sys.poll(ctx)
   const notices = (actorId) => mp.packets.filter(([u, p]) => u === mp.users.get(actorId) && p.customPacketType === 'masteryNotice').map(([, p]) => p.text)
   const rec = (actorId) => mp.get(actorId, 'private.survival')
   const states = (actorId) => mp.packets.filter(([u, p]) => u === mp.users.get(actorId) && p.customPacketType === 'survivalState').map(([, p]) => p)

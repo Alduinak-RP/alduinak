@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { isPlayerActor, isAlive, isBleedingOut, hex, userOf } from "./actorUtil";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -96,10 +97,10 @@ export class HostingSystem implements System {
     this.liveness = typeof this.mp.getMovementAgeMs === "function";
     if (this.supported && !this.liveness) this.log("HostingSystem: scam_native has no getMovementAgeMs, a paused player is skipped as host only after another client claims its NPC");
     this.installHooks();
+    every("hosting", AUDIT_MS, () => this.poll());
   }
 
-  async updateAsync(): Promise<void> {
-    await new Promise((r) => setTimeout(r, AUDIT_MS));
+  poll(): void {
     if (!this.supported) return;
     try {
       this.audit();

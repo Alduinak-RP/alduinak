@@ -68,7 +68,7 @@ async function setup (settings, s = stubMp()) {
   const ctx = { svr: s.mp, gm: new EventEmitter() }
   await sys.initAsync(ctx)
   const send = (eq, allowed = true) => s.mp.onUpdateEquipmentAttempt(ACTOR, eq, allowed)
-  const poll = () => sys.updateAsync(ctx)
+  const poll = () => sys.poll(ctx)
   return { ...s, sys, ctx, lines, send, poll }
 }
 
@@ -79,8 +79,6 @@ const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).
   const compiled = new Module(source)
   compiled._compile(outputFiles[0].text, source)
   TorchSystem = compiled.exports.TorchSystem
-  // updateAsync sleeps first; the test runs one poll at a time
-  global.setTimeout = (fn) => { fn(); return 0 }
 
   // 0 switches it off: no hook at all
   let t = await setup({ torchBurnMinutes: 0 })

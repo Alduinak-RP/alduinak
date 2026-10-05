@@ -8,6 +8,7 @@ import { SettleWear, wearSettler } from "./durabilityNative";
 import { destroyRef, hex, isAlive, userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { markDeathAlerted } from "./discordAlerts";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -69,12 +70,12 @@ export class BodySystem implements System {
     this.loadRegistry();
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.adoptLeftovers());
     this.settleWear = wearSettler(this.mp, (await Settings.get()).allSettings as Record<string, unknown> | null, this.log);
+    every("body", CHECK_MS, () => this.poll());
   }
 
-  async updateAsync(): Promise<void> {
+  poll(): void {
+    if (!this.bodies.size) return;
     const now = Date.now();
-    if (!this.bodies.size || now < this.nextCheckAt) return;
-    this.nextCheckAt = now + CHECK_MS;
     for (const body of Array.from(this.bodies.values())) {
       const entries = this.entriesOf(body.id);
       const left = entries && this.lootLeft(entries);
@@ -336,7 +337,6 @@ export class BodySystem implements System {
 
   private mp: Mp = null;
   private settleWear: SettleWear = () => { };
-  private nextCheckAt = 0;
   // baseId -> whether the load order holds it
   private knownBases = new Map<number, boolean>();
   // bodyId -> the body lying in the world

@@ -10,6 +10,7 @@ import { Hold, holdName, holdOfRefs, isHoldLand, isOutdoors, loadHolds } from ".
 import { describeActor, profileIdOf, realNameOf, titledName } from "./playerText";
 import { adminAudit } from "./discordAlerts";
 import { WRITING_ID } from "./writingStore";
+import { soon } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -98,7 +99,6 @@ const MAX_NAME_LEN = 32;
 const MAX_KEYS_CARRIED = 64;
 const MAX_ESPM_CACHE = 4096;
 const DEFAULT_MAX_DISTANCE = 512;
-const DECOR_PUSH_INTERVAL_MS = 4000;
 const REQUEST_COOLDOWN_MS = 500;
 const KNOCK_COOLDOWN_MS = 10000;
 // The chat's say range in game units when server-settings chatRanges.say is not set
@@ -301,15 +301,6 @@ export class HousingSystem implements System {
     const target = toFormId(content["target"]);
     const primary = target ? this.primaryOf(ctx, target) : 0;
     return !!primary && !!this.read(ctx, primary)?.faction;
-  }
-
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastDecorMs < DECOR_PUSH_INTERVAL_MS) return;
-    this.lastDecorMs = now;
-    if (!this.decorDirty) return;
-    this.decorDirty = false;
-    this.pushDecorToAll(ctx);
   }
 
   // A fresh actor needs the full picture: names and locks for every claim.
@@ -1423,9 +1414,14 @@ export class HousingSystem implements System {
       } catch { }
     }
     if (rec.owner !== 0) this.remember(primary); else this.forget(primary);
-    // Lock changes reach every client on the next tick, not the next decor interval
-    this.decorDirty = true;
-    this.lastDecorMs = 0;
+    // Lock changes reach every client on the next turn, one push for all the writes before it
+    if (!this.decorPushQueued) {
+      this.decorPushQueued = true;
+      soon(() => {
+        this.decorPushQueued = false;
+        this.pushDecorToAll(ctx);
+      });
+    }
     return true;
   }
 
@@ -1569,6 +1565,5 @@ export class HousingSystem implements System {
   private sayRange = DEFAULT_SAY_RANGE;
   private keySplitOnLogin = false;
   private lockBaseId = LOCK_BASE_ID_FALLBACK;
-  private decorDirty = false;
-  private lastDecorMs = 0;
+  private decorPushQueued = false;
 }

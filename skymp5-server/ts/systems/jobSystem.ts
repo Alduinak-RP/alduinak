@@ -9,6 +9,7 @@ import { CaptureSystem, isRestrained } from "./captureSystem";
 import { MasterySystem } from "./masterySystem";
 import { pick, pickKey, num, parsePos, parseIdCount } from "./npcSpawnSystem";
 import { ITEM_TYPES, descKey, itemNames } from "./itemCatalog";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -231,6 +232,7 @@ export class JobSystem implements System {
     await this.queueLoad("boot");
     this.watchFile();
     this.ready = true;
+    every("job", POLL_MS, () => this.poll());
   }
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
@@ -667,8 +669,7 @@ export class JobSystem implements System {
 
   // ── Poll ───────────────────────────────────────────────────────────────────
 
-  async updateAsync(): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(): void {
     if (!this.ready) return;
     const now = Date.now();
     for (const actorId of Array.from(this.struck)) {

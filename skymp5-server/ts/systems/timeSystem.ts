@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { connectedUsers } from "./actorUtil";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -41,13 +42,14 @@ export class TimeSystem implements System {
   private tzOffsetMin = new Date().getTimezoneOffset();
   private nextBroadcastAt = 0;
 
-  async initAsync(): Promise<void> {
+  async initAsync(ctx: SystemContext): Promise<void> {
     const all = (await Settings.get()).allSettings as Record<string, any> | null;
     const year = Number(all?.["gameYear"]);
     if (Number.isInteger(year) && year > 0) this.year = year;
     const hours = Number(all?.["gameTimeOffsetHours"]);
     if (Number.isFinite(hours) && Math.abs(hours) <= 24) offsetMs = hours * 60 * 60 * 1000;
     this.log(`TimeSystem: box clock ${new Date().toString()}, game time ${offsetMs / 3600000}h ahead, year ${this.year}, timescale ${TIME_SCALE}`);
+    every("time", POLL_MS, () => this.poll(ctx));
   }
 
   connect(userId: number, ctx: SystemContext): void {
@@ -58,8 +60,7 @@ export class TimeSystem implements System {
     if (type === "gameTimeRequest") this.send(ctx.svr, userId);
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(ctx: SystemContext): void {
     const tz = new Date().getTimezoneOffset();
     const now = Date.now();
     if (tz === this.tzOffsetMin && now < this.nextBroadcastAt) return;

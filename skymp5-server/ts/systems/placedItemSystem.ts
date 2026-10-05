@@ -5,6 +5,7 @@ import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, notifyAc
 import { sendJson } from "./playerText";
 import { AdminRoleConfig, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 import { formIdFromConfig, toFormId } from "./formIdUtil";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -20,6 +21,7 @@ const MOVED_PROP = "ff_moved";
 const CARRIED_PROP = "ff_carried";
 const NAIL_DESC = "0300F:HearthFires.esm";
 const HAMMER_DESC = "5CAE1:Skyrim.esm";
+const POLL_MS = 60000;
 const SWEEP_MS = 30 * 60 * 1000;
 const MAX_AGE_MS = 2 * 60 * 60 * 1000;
 // The client's surface reach (350) plus slack for the server's lagging copy of the player's position
@@ -77,6 +79,7 @@ export class PlacedItemSystem implements System {
       if (this.db) this.clearStaleCarries(mp).catch((e) => this.log(`[placed] stale carry check failed: ${e}`));
     }));
     this.log(`[placed] nail ${hex(this.nailId)}, hammer ${hex(this.hammerId)}; ${this.db ? "old drops are swept every 30 min" : "no mongodb, old drops are never swept"}`);
+    every("placedItem", POLL_MS, () => this.poll(ctx));
   }
 
   disconnect(userId: number, ctx: SystemContext): void {
@@ -88,8 +91,7 @@ export class PlacedItemSystem implements System {
     this.dropPoints.delete(actorId);
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, 60000));
+  async poll(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as Mp;
     for (const [target, grab] of Array.from(this.grabs)) {
       if (Date.now() - grab.at > GRAB_TTL_MS || userOf(mp, grab.by) < 0) this.release(mp, target);

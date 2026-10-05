@@ -7,6 +7,7 @@ import { baseIdOf, isAlive, isBleedingOut, isPlayerActor, nameShownTo } from "./
 import { fieldData, view } from "./espmMagic";
 import { HostingSystem } from "./hostingSystem";
 import { SettleWear, wearSettler } from "./durabilityNative";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -96,7 +97,6 @@ export class SearchSystem implements System {
   // searchers whose inventory resync is already scheduled
   private resyncing = new Set<number>();
   private nextRequestId = 1;
-  private lastWatchMs = 0;
   private warnedNoNative = false;
   private warnedNoRespawn = false;
   private consentTimeoutMs = DEFAULT_CONSENT_TIMEOUT_MS;
@@ -124,6 +124,7 @@ export class SearchSystem implements System {
     this.settleWear = wearSettler(ctx.svr, all, this.log);
     this.installTakeHook(ctx);
     this.installPutHook(ctx);
+    every("search", WATCH_INTERVAL_MS, () => this.poll(ctx));
   }
 
   // A window without names would move the wrong key or letter, so they stay put there, and a stack the window never showed is not there to move
@@ -216,15 +217,10 @@ export class SearchSystem implements System {
   }
 
   // Watch every active pair; end the search when they drift apart.
-  async updateAsync(ctx: SystemContext): Promise<void> {
+  poll(ctx: SystemContext): void {
     if (this.sessions.size === 0 && this.bodyTakes.size === 0) {
       return;
     }
-    const now = Date.now();
-    if (now - this.lastWatchMs < WATCH_INTERVAL_MS) {
-      return;
-    }
-    this.lastWatchMs = now;
     // A respawned player's next death is a fresh body
     for (const id of Array.from(this.bodyTakes.keys())) {
       if (!this.isDead(ctx, id)) this.bodyTakes.delete(id);

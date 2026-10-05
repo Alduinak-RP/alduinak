@@ -6,6 +6,7 @@ import { CastType, SpellType, fieldData, keywordConditionsPass, spellEffects, sp
 import { formatWait, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
 import { FREE, LEGENDARY, MasterySystem } from "./masterySystem";
 import { LOAD_PACKETS, StageAbilityTracker } from "./stageAbilities";
+import { every } from "./timers";
 import { armorWeightOf, combatStats, hasCombatStats } from "./combatStats";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -32,7 +33,7 @@ type Mp = any;
 // maximum like Survival_NeedBase.ApplyAttributePenalty: hunger max stamina, fatigue max magicka, by
 // clamp((value - (stage 2 value - 1)) / (max - (stage 2 value - 1)), 0, 1) of the total. The server sends that share and
 // the client applies it (NeedsService). Every decision is made inside the native hooks from memory; writes, Papyrus calls
-// and packets run right after the hook returns (setImmediate), and updateAsync drains anything left.
+// and packets run right after the hook returns (setImmediate), and the poll drains anything left.
 //
 // Wire protocol - CustomPacket JSON:
 //   Client -> Server: { customPacketType: "needsRequest" }
@@ -320,6 +321,7 @@ export class NeedsSystem implements System {
     ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.startFresh(ctx, actorId >>> 0));
     ctx.gm.on(NEEDS_RESET_EVENT, (actorId: number, by: string, done?: (ok: boolean) => void) => done?.(this.resetBy(ctx, actorId >>> 0, by)));
     this.installHooks(ctx);
+    every("needs", POLL_MS, () => this.poll(ctx));
   }
 
   // Resolves the stage abilities, the animal keyword and food effects; returns the probe effect's record amount, 0 when the records carry none
@@ -797,8 +799,7 @@ export class NeedsSystem implements System {
     this.sendState(ctx, actorId, false);
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(ctx: SystemContext): void {
     if (!this.enabled) return;
     this.drainQueue(ctx);
     const now = Date.now();

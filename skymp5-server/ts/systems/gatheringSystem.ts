@@ -8,6 +8,7 @@ import { FREE, LEGENDARY, MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
 import { FurnitureSeatSystem } from "./furnitureSeatSystem";
 import { writeFileAtomic } from "./fileUtil";
+import { EVERY_PASS_MS, every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -208,6 +209,7 @@ export class GatheringSystem implements System {
     ctx.gm.once(WORLD_LOADED_EVENT, () => { this.worldLoaded = true; });
 
     this.installHooks(ctx);
+    every("gathering", EVERY_PASS_MS, () => this.poll(ctx));
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
     this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop (${CROP_WORDS.join("/")}) and kneels ${FLORA_MS / 1000} s for flora (nirnroot included) except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank, flora priced by the ${PICKERS.join(" or ")} rank and crops by the ${CROP_PRICERS.join(" or ")} rank, ${this.alchemistFloraDiscount > 0 ? `an alchemist pays ${Math.round(this.alchemistFloraDiscount * 100)}% less again for alchemy flora` : "no extra alchemist flora discount"}`);
@@ -320,7 +322,7 @@ export class GatheringSystem implements System {
     this.harvestUntil.delete(actorId);
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
+  poll(ctx: SystemContext): void {
     // Papyrus calls run here, outside the native activation call stack.
     for (const p of this.pendingSeats.splice(0, this.pendingSeats.length)) this.activateFor(ctx, p.markerId, p.actorId);
     this.regrowPicks(ctx);

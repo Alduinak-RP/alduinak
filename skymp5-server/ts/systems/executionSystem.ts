@@ -9,6 +9,7 @@ import { toFormId } from "./formIdUtil";
 import { FurnitureSeatSystem } from "./furnitureSeatSystem";
 import { baseIdOf, hex, isAlive, isBehind, isMounted, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, recordTypeOf, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -208,14 +209,12 @@ export class ExecutionSystem implements System {
       } catch { /* form gone */ }
     });
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.onLeave(actorId >>> 0));
+    every("execution", PRISONER_CHECK_MS, () => this.poll());
   }
 
   // A prisoner who died, left, lost their cuffs or was moved away is off the block; while the axe falls only death or a logout ends it early
-  async updateAsync(): Promise<void> {
+  poll(): void {
     if (this.prisoners.size === 0) return;
-    const now = Date.now();
-    if (now < this.nextCheckAt) return;
-    this.nextCheckAt = now + PRISONER_CHECK_MS;
     const mp = this.mp;
     for (const [prisonerId, prisoner] of Array.from(this.prisoners)) {
       const gone = !isAlive(mp, prisonerId) || userOf(mp, prisonerId) < 0;
@@ -716,7 +715,6 @@ export class ExecutionSystem implements System {
   private standUp = true;
   private finishers = FINISHERS;
   private sneakFinishers = SNEAK_FINISHERS;
-  private nextCheckAt = 0;
   // prisonerId -> the block they kneel at
   private prisoners = new Map<number, Prisoner>();
   // executorId -> the prisoner whose chop they stand in the stance for

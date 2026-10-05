@@ -3,6 +3,7 @@ import { System, Log, SystemContext, LOGIN_VERIFIED_EVENT } from "./system";
 import { readAdminRoleConfig, adminTierFor } from "./adminRoles";
 import { userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -85,11 +86,7 @@ export class QueueSystem implements System {
       this.log(`[queue] off: playerSlots ${raw > 0 ? "equals" : "unset, defaults to"} maxPlayers ${s.maxPlayers}; lower playerSlots, never maxPlayers, to test`);
     }
     if (!this.staffBypass) this.log("[queue] queueStaffBypass false: staff wait like everyone");
-  }
-
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, TICK_MS));
-    this.tick(ctx, Date.now());
+    every("queue", TICK_MS, () => this.tick(ctx, Date.now()));
   }
 
   disconnect(userId: number): void {

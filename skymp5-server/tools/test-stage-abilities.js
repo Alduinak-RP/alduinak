@@ -162,24 +162,24 @@ async function main() {
       sys.fatigueSpells = [0, 0x201, 0x202, 0x203, 0x204, 0x205]
       const ctx = { svr: mp, gm: { on: () => {}, emit: () => {} } }
       sys.onActorAssigned(ctx, 1, A)
-      await sys.updateAsync(ctx)
+      sys.poll(ctx)
       assert.deepEqual(mp.calls, [], 'held back by the login delay')
       clock.now += LOGIN_SYNC_DELAY_MS
-      await sys.updateAsync(ctx)
+      sys.poll(ctx)
       assert.deepEqual(mp.calls, ['-101', '+103'], 'hunger 400 is Hungry')
       mp.calls.length = 0
       sys.customPacket(1, 'weatherRequest', {}, ctx)
       clock.now += RESYNC_DELAY_MS
-      await sys.updateAsync(ctx)
+      sys.poll(ctx)
       assert.deepEqual(mp.calls, ['+100', '-100', '+101', '-101', '+102', '-102', '+104', '-104', '+105', '-105', '-103', '+103',
         '+202', '-202', '+203', '-203', '+204', '-204', '+205', '-205', '-201', '+201'])
       assert.equal(mp.props.get(`${A}:private.needs`).stageSpell, 0x103)
       mp.calls.length = 0
       clock.now += LOGIN_WINDOW_MS
-      await sys.updateAsync(ctx)
+      sys.poll(ctx)
       sys.customPacket(1, 'gameTimeRequest', {}, ctx)
       clock.now += RESYNC_DELAY_MS
-      await sys.updateAsync(ctx)
+      sys.poll(ctx)
       assert.deepEqual(mp.calls, [], 'past the login window a load packet re-sends nothing')
     })
   })

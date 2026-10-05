@@ -7,6 +7,7 @@ import { potionHealing } from "./espmMagic";
 import { readInventory, withCount } from "./inventoryExtras";
 import { appendLog, describeActor, logDirOf, sendJson } from "./playerText";
 import { deathAlert, markDeathAlerted } from "./discordAlerts";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -79,13 +80,12 @@ export class BleedoutSystem implements System {
     }));
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => this.onActorAssigned(actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.onLeave(actorId >>> 0));
+    every("bleedout", TICK_MS, () => this.poll());
   }
 
-  async updateAsync(): Promise<void> {
+  poll(): void {
     if (this.downed.size === 0) return;
     const now = Date.now();
-    if (now < this.nextTickAt) return;
-    this.nextTickAt = now + TICK_MS;
     for (const [actorId, state] of Array.from(this.downed)) {
       try {
         this.tick(actorId, state, now);
@@ -421,7 +421,6 @@ export class BleedoutSystem implements System {
   private bleedoutMs = DEFAULT_BLEEDOUT_SECONDS * 1000;
   private healedHealth = DEFAULT_HEALED_HEALTH;
   private logDir = "";
-  private nextTickAt = 0;
   // actorId -> bleedout in progress
   private downed = new Map<number, Downed>();
 }

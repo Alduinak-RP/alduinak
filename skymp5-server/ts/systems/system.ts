@@ -44,7 +44,6 @@ export const LOGIN_VERIFIED_EVENT = "loginVerified";
 export interface System {
   systemName: string;
   initAsync?: (ctx: SystemContext) => Promise<void>;
-  updateAsync?: (ctx: SystemContext) => Promise<void>;
   connect?: (userId: number, ctx: SystemContext) => void;
   disconnect?: (userId: number, ctx: SystemContext) => void;
   customPacket?: (

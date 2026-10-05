@@ -112,7 +112,7 @@ async function setup (settings = {}, s = stubMp()) {
   const ctx = { svr: s.mp, gm: new EventEmitter() }
   await sys.initAsync(ctx)
   ctx.gm.emit('worldLoaded')
-  const poll = async () => { seconds(3); await sys.updateAsync(ctx) }
+  const poll = async () => { seconds(3); sys.poll() }
   return { ...s, sys, ctx, lines, poll }
 }
 

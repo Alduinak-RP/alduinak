@@ -2,6 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { chainMpHook, countItem, hex, notifyActor, recordTypeOf, takeItemFrom, unequipItemOf, userOf } from "./actorUtil";
 import { describeActor } from "./playerText";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -44,6 +45,7 @@ export class TorchSystem implements System {
     chainMpHook(mp, "onUpdateEquipmentAttempt", (actorId: number, equipment: unknown, isAllowed: boolean) => {
       this.onEquipment(mp, Number(actorId) >>> 0, equipment, isAllowed);
     });
+    every("torch", POLL_MS, () => this.poll(ctx));
     this.log(`[torch] a held torch burns out after ${minutes} min of use`);
   }
 
@@ -71,8 +73,7 @@ export class TorchSystem implements System {
     this.save(ctx.svr as Mp);
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
     const now = Date.now();
     for (const [actorId, lit] of Array.from(this.lit)) {

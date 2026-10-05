@@ -10,6 +10,7 @@ import { holdName, holdOfActor, isHoldLand } from "./holdOf";
 import { RELEASED_PROP, isFallen } from "./afterlifeSystem";
 import * as rules from "./factionRules";
 import { adminAudit } from "./discordAlerts";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -58,6 +59,8 @@ const DEFAULT_INVITE_DISTANCE = 1024;
 // Definition edits from the dashboard or the Server Manager reach the game this often, a 304 when nothing changed
 const DEFINITIONS_TTL_MS = 20000;
 const DEFINITIONS_RETRY_MS = 15000;
+// Due definitions are fetched at most this late
+const DEFINITIONS_POLL_MS = 1000;
 const ROSTER_TTL_MS = 3000;
 const ACCESS_FILE_CHECK_MS = 10000;
 // How often a leader logging out hands the seat to the next regent in line
@@ -170,6 +173,9 @@ export class FactionSystem implements System {
     });
 
     this.loadAccessFile();
+    every("faction.access", ACCESS_FILE_CHECK_MS, () => this.loadAccessFile());
+    every("faction.definitions", DEFINITIONS_POLL_MS, () => this.refreshDefinitions());
+    every("faction.titles", REGENCY_CHECK_MS, () => this.refreshTitles());
     this.log(`[factions] ready, ${this.accessByRef.size} faction-only door(s) and container(s)`);
   }
 
@@ -183,18 +189,9 @@ export class FactionSystem implements System {
     }
   }
 
-  async updateAsync(): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastAccessCheck >= ACCESS_FILE_CHECK_MS) {
-      this.lastAccessCheck = now;
-      this.loadAccessFile();
-    }
-    if (this.backend() && now >= this.definitionsDueAt && !this.definitionsLoading) {
+  private refreshDefinitions(): void {
+    if (this.backend() && Date.now() >= this.definitionsDueAt && !this.definitionsLoading) {
       this.ensureDefinitions().catch(() => undefined);
-    }
-    if (now - this.lastRegencyCheck >= REGENCY_CHECK_MS) {
-      this.lastRegencyCheck = now;
-      this.refreshTitles();
     }
   }
 
@@ -1195,8 +1192,6 @@ export class FactionSystem implements System {
   private rosters = new Map<string, { at: number; rows: RosterRow[] }>();
   private accessByRef = new Map<number, AccessEntry>();
   private accessMtime = -1;
-  private lastAccessCheck = 0;
-  private lastRegencyCheck = 0;
   // factionId -> the regent acting for an absent leader, cleared whenever memberships or logins change
   private acting = new Map<string, OnlineActor | null>();
   private titles = new Map<number, string>();

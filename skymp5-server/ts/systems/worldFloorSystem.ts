@@ -4,6 +4,7 @@ import { BleedoutSystem } from "./bleedoutSystem";
 import { hex, isAlive, isPlayerActor, notifyActor } from "./actorUtil";
 import { DEFAULT_START_LOCATIONS, parseStartLocations } from "./startLocations";
 import { Locational, loadWorldBorders, isOutsideBorder, noteInside, insideSpot } from "./worldBorder";
+import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -31,12 +32,10 @@ export class WorldFloorSystem implements System {
     if (parsed?.length) this.starts = parsed;
     await loadWorldBorders(this.mp, s.dataDir, s.loadOrder, (line) => this.log(line))
       .catch((e) => this.log(`[border] scan failed, no server-side border: ${e}`));
+    every("worldFloor", POLL_MS, () => this.poll());
   }
 
-  async updateAsync(): Promise<void> {
-    const now = Date.now();
-    if (now < this.nextPollAt) return;
-    this.nextPollAt = now + POLL_MS;
+  poll(): void {
     const mp = this.mp;
     let players: unknown[] = [];
     try { players = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
@@ -81,7 +80,6 @@ export class WorldFloorSystem implements System {
   }
 
   private mp: Mp = null;
-  private nextPollAt = 0;
   private outside = new Set<number>();
   private starts = DEFAULT_START_LOCATIONS;
 }

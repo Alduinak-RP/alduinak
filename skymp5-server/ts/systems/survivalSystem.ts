@@ -14,6 +14,7 @@ import { gameHourNow } from "./timeSystem";
 import { AbilityGroup, LOAD_PACKETS, StageAbilityTracker } from "./stageAbilities";
 import { HEAT_INTERIORS, HEAT_SOURCE_INPUTS, HEAT_WORLDS } from "./heatSources";
 import { ARMOR_WARMTH } from "./armorWarmth";
+import { every } from "./timers";
 import {
   AreaClass, COLD_MAX, COLD_STAGE_NAMES, ColdConfig, RATED_SLOTS, WeatherAdd, WornArmor, areaOf, areaRateOf, coldCapOf, coldLevelOf, coldRatePerSec, coldStageOf, gearWarmth,
   isFreezingWater, isNight, nearHeatPoint, parseColdSettings, stepCold, temperatureLevelOf, warmthReduction, weatherAddOf,
@@ -397,6 +398,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.mp = ctx.svr as Mp;
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.onActorAssigned(ctx, userId, actorId >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
+    every("survival", POLL_MS, () => this.poll(ctx));
     if (!this.enabled) {
       this.log(`[survival] off (survivalEnabled false): no survival rule runs; the body abilities, the respawn health, food poisoning and the cold stage ability an earlier session granted are undone at each character's login${problems.length ? `; ignored: ${problems.join("; ")}` : ""}`);
       return;
@@ -776,8 +778,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     }
   }
 
-  async updateAsync(ctx: SystemContext): Promise<void> {
-    await new Promise((r) => setTimeout(r, POLL_MS));
+  poll(ctx: SystemContext): void {
     const now = Date.now();
     const tick = now >= this.nextTickAt;
     if (tick) this.nextTickAt = now + TICK_MS;
