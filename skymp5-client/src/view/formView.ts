@@ -6,7 +6,7 @@ import { Entry } from "../sync/inventory";
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
-import { applyMovement, forgetGroundSample, isCarrierCloneId } from "../sync/movementApply";
+import { applyMovement, forgetGroundSample, isCarrierCloneId, makeAppliedMovement } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseCloneOnEvent, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
 import { Movement } from "../sync/movement";
@@ -42,6 +42,9 @@ const TIER_TAG_COLORS: Record<string, number[]> = {
   developer: [0.3, 0.55, 1, 0.9],
   gm: [0.3, 0.9, 0.3, 0.9],
 };
+
+// Every invisibility effect carries MagicInvisibility, the spell and the potion alike; resolved at the first check
+let magicInvisibility: Keyword | null | undefined;
 
 let _screenResolution: ScreenResolution | undefined;
 export const getScreenResolution = (): ScreenResolution => {
@@ -285,7 +288,12 @@ export class FormView {
 
     const refr = ObjectReference.from(Game.getFormEx(this.refrId));
     if (refr) {
-      const actor = Actor.from(refr);
+      const actor = this.isActor === false ? null : Actor.from(refr);
+      if (this.isActor === undefined) {
+        this.isActor = !!actor;
+        // Blocked once per copy, so a world NPC that PetService unblocks stays talkable
+        actor?.blockActivation(true);
+      }
       if (actor && !this.localImmortal) {
         actor.startDeferredKill();
         actor.setActorValue("health", 1000000);
@@ -307,6 +315,9 @@ export class FormView {
     this.spawnMoment = 0;
     this.loaded3DMoment = 0;
     this.dealtWithRef = false;
+    this.isActor = undefined;
+    this.offsetCleared = false;
+    this.appliedMovement = makeAppliedMovement();
     const refrId = this.refrId;
     forgetGroundSample(refrId);
     if (refrId >= 0xff000000) {
@@ -353,9 +364,8 @@ export class FormView {
   private isSetNodeTextureSetApplied = false;
   private isSetNodeScaleApplied = false;
 
-  private applyAll(refr: ObjectReference, model: FormModel) {
-    let forcedWeapDrawn: boolean | null = null;
-
+  // Actors skip these; an inventory apply would also break a copy's equipment
+  private applyObjectModel(refr: ObjectReference, model: FormModel): void {
     if (PlayerCharacterDataHolder.getCrosshairRefId() === this.refrId) {
       this.lastHarvestedApply = 0;
       this.lastOpenApply = 0;
@@ -398,13 +408,16 @@ export class FormView {
       PlayerCharacterDataHolder.getCrosshairRefId() == this.refrId &&
       !isBadMenuShown()
     ) {
-      // Do not let actors breaking their equipment via inventory apply
-      // However, actually, actors do not have inventory in their models
-      // Except your clone.
-      if (!Actor.from(refr)) {
-        ModelApplyUtils.applyModelInventory(refr, model.inventory);
-        model.inventory = undefined;
-      }
+      ModelApplyUtils.applyModelInventory(refr, model.inventory);
+      model.inventory = undefined;
+    }
+  }
+
+  private applyAll(refr: ObjectReference, model: FormModel) {
+    let forcedWeapDrawn: boolean | null = null;
+
+    if (!this.isActor) {
+      this.applyObjectModel(refr, model);
     }
 
     if (model.animation) {
@@ -418,9 +431,9 @@ export class FormView {
     const alreadyHosted = isRemoteHostedByMe(this.remoteRefrId ?? 0);
     setDefaultAnimsDisabled(this.refrId, alreadyHosted ? false : true);
 
-    // Own companions and steered pets keep the follow offset their service gives them
-    if (alreadyHosted && !keepsOwnOffset(this.remoteRefrId)) {
-      Actor.from(refr)?.clearKeepOffsetFromActor();
+    // The engine runs a copy hosted here, so the next applied packet reads the copy again
+    if (alreadyHosted) {
+      this.appliedMovement.recheckAt = 0;
     }
 
     if (model.animation && model.animation.numChanges !== this.animState.lastNumChanges) releaseCloneOnEvent(this.refrId, model.animation.animEventName);
@@ -432,7 +445,7 @@ export class FormView {
     const movementHeld = mounted || held;
 
     if (model.movement) {
-      let ac = Actor.from(refr);
+      const ac = this.isActor ? Actor.from(refr) : null;
       if (
         this.movState.lastApply &&
         Date.now() - this.movState.lastApply > 1500
@@ -471,7 +484,8 @@ export class FormView {
               : { ...model.movement, runMode: "Standing", isInJumpState: false, pos: [model.movement.pos[0], model.movement.pos[1], refr.getPositionZ()] };
             // The first apply also runs on the host, where a self offset would replace the follow its service just issued
             const ownOffset = !hostedByOther && keepsOwnOffset(this.remoteRefrId);
-            applyMovement(refr, movement, !!model.isMyClone, movementHeld, ownOffset);
+            this.offsetCleared = false;
+            applyMovement(refr, movement, !!model.isMyClone, movementHeld, ownOffset, this.appliedMovement);
             if (!movementHeld) {
               restoreSitCollisionIfMoving(refr, movement);
             }
@@ -495,9 +509,7 @@ export class FormView {
         } else {
           const remoteId = this.remoteRefrId;
           if (ac && remoteId && ac.is3DLoaded()) {
-            if (!keepsOwnOffset(remoteId)) {
-              ac.clearKeepOffsetFromActor();
-            }
+            this.releaseKeepOffset(ac);
 
             if (!alreadyHosted) {
               if (this.tryHostIfNeed(ac, remoteId)) {
@@ -526,6 +538,13 @@ export class FormView {
       }
       // Use them only once, for spawning actors with correct animations
       this.animState.useAnimOverrides = false;
+      if (alreadyHosted) {
+        this.releaseKeepOffset(refr);
+      }
+    } else {
+      // Cleared and read from the engine again once the 3D is back
+      this.offsetCleared = false;
+      this.appliedMovement.recheckAt = 0;
     }
 
     this.applyAdminView(refr, model);
@@ -774,10 +793,22 @@ export class FormView {
     return (tier && TIER_TAG_COLORS[tier]) || DEFAULT_TAG_COLOR;
   }
 
-  // Every invisibility effect carries MagicInvisibility, the spell and the potion alike
   private isInvisible(refr: ObjectReference): boolean {
+    if (magicInvisibility === undefined) {
+      magicInvisibility = Keyword.getKeyword("MagicInvisibility");
+    }
     const actor = Actor.from(refr);
-    return !!actor && actor.hasMagicEffectWithKeyword(Keyword.getKeyword('MagicInvisibility'));
+    return !!actor && !!magicInvisibility && actor.hasMagicEffectWithKeyword(magicInvisibility);
+  }
+
+  // A copy the engine runs here drops the keep-offset of its last applied packet; own companions and steered pets keep the one their service gives them
+  private releaseKeepOffset(refr: ObjectReference): void {
+    if (keepsOwnOffset(this.remoteRefrId)) {
+      this.offsetCleared = false;
+    } else if (!this.offsetCleared) {
+      Actor.from(refr)?.clearKeepOffsetFromActor();
+      this.offsetCleared = true;
+    }
   }
 
   // ff_hostile can arrive in an UpdateProperty after the copy spawned, so a changed flag is checked again
@@ -1048,6 +1079,10 @@ export class FormView {
   private static readonly torchSteadyMs = 30000;
   private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
+  // Known from the first update of a ready copy
+  private isActor: boolean | undefined = undefined;
+  private offsetCleared = false;
+  private appliedMovement = makeAppliedMovement();
   private mountState = makeMountState();
   private carriedState = makeCarriedViewState();
   private localImmortal = false;

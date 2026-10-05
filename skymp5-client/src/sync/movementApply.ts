@@ -19,14 +19,53 @@ export const wrappedAngleDiff = (a: number, b: number): number => Math.abs(norma
 
 // A standing actor this far above or below the reported height sank or floated locally
 const standingMaxDeltaZ = 64;
+// Cached values and a resting copy go back to the engine this often, which corrects drift from the copy's own AI or a push
+const engineRecheckMs = 2000;
+// Smoothed health stops once the copy is this close to the reported value
+const healthConvergedDelta = 0.01;
+
+// What the applies left on one copy, so an unchanged value is neither read nor sent again
+export interface AppliedMovement {
+  // Values the engine already had at the last read; undefined is read again
+  sprinting?: boolean;
+  blocking?: boolean;
+  sneaking?: boolean;
+  weapDrawn?: boolean;
+  // 0 while head tracking is off
+  lookAtId?: number;
+  // The reported health the copy converged to
+  health?: number;
+  // Cached values hold until then; 0 reads the engine at the next apply
+  recheckAt: number;
+  // The packet the copy rests at: standing on its spot, facing its way, with nothing left to apply
+  rest?: Movement;
+}
+
+export const makeAppliedMovement = (): AppliedMovement => ({ recheckAt: 0 });
 
 // A riding clone is carried by its horse, and a horse being mounted is left to the engine: no translation, offset or locomotion events reach either
 // ownOffset leaves the keep-offset to the service that drives this copy (own companions, steered pets)
-export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: boolean, mounted?: boolean, ownOffset?: boolean): void => {
-  if (teleportIfNeed(refr, m)) {
-    return;
+export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: boolean, mounted?: boolean, ownOffset?: boolean, state: AppliedMovement = makeAppliedMovement()): void => {
+  const loaded = refr.is3DLoaded();
+  teleportIfNeed(refr, m, loaded);
+
+  const now = Date.now();
+  const trusted = loaded && !mounted && now < state.recheckAt;
+  if (!trusted) {
+    state.recheckAt = loaded && !mounted ? now + engineRecheckMs : 0;
   }
 
+  // A repeated packet changes nothing on a copy resting at it but its death state
+  if (trusted && state.rest && isSamePacket(state.rest, m) && isNearStandingSpot(ObjectReferenceEx.getPos(refr), m.pos)) {
+    const ac = Actor.from(refr);
+    if (ac) {
+      applyDeathState(ac, m, loaded);
+    }
+    return;
+  }
+  state.rest = undefined;
+
+  let settled = false;
   if (!mounted) {
     // Z axis isn't useful here
     const acX = refr.getPositionX();
@@ -37,7 +76,7 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
       SpApiInteractor.getControllerInstance().emitter.emit("newLocalLagValueCalculated", { lagUnitsNoZ });
     }
 
-    translateTo(refr, m);
+    settled = translateTo(refr, m);
   }
 
   const ac = Actor.from(refr);
@@ -45,30 +84,62 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
     return;
   }
 
-  applyHeadTracking(ac, m);
+  applyHeadTracking(ac, m, state, trusted);
 
+  let faces = false;
   if (!mounted) {
-    // ac.stopCombat();
-    ac.blockActivation(true);
-
     if (!ownOffset) {
-      keepOffsetFromActor(ac, m);
+      faces = keepOffsetFromActor(ac, m);
     }
 
-    applySprinting(ac, m.runMode === "Sprinting");
-    applyBlocking(ac, m);
-    applySneaking(ac, m.isSneaking);
-    applyWeapDrawn(ac, m.isWeapDrawn);
+    const sprinting = m.runMode === "Sprinting";
+    if (!trusted || state.sprinting !== sprinting) {
+      state.sprinting = applySprinting(ac, sprinting) ? sprinting : undefined;
+    }
+    if (!trusted || state.blocking !== m.isBlocking) {
+      state.blocking = applyBlocking(ac, m) ? m.isBlocking : undefined;
+    }
+    if (!trusted || state.sneaking !== m.isSneaking) {
+      state.sneaking = applySneaking(ac, m.isSneaking) ? m.isSneaking : undefined;
+    }
+    if (!trusted || state.weapDrawn !== m.isWeapDrawn) {
+      state.weapDrawn = applyWeapDrawn(ac, m.isWeapDrawn) ? m.isWeapDrawn : undefined;
+    }
   }
-  applyHealthPercentage(ac, m.healthPercentage);
+  if (!trusted || state.health !== m.healthPercentage) {
+    state.health = applyHealthPercentage(ac, m.healthPercentage) ? m.healthPercentage : undefined;
+  }
 
-  // A kill before the 3D and its collision are in starts the ragdoll on nothing; a later apply kills the copy once it is loaded
-  if (!m.isDead || refr.is3DLoaded()) {
+  applyDeathState(ac, m, loaded);
+
+  if (settled && faces && state.sprinting !== undefined && state.blocking !== undefined && state.sneaking !== undefined
+    && state.weapDrawn !== undefined && state.health !== undefined) {
+    state.rest = { ...m, pos: [m.pos[0], m.pos[1], m.pos[2]], rot: [m.rot[0], m.rot[1], m.rot[2]] };
+  }
+};
+
+// deathService ignores a state the engine already has; a kill before the 3D and its collision are in starts the ragdoll on nothing, so a later apply does it
+const applyDeathState = (ac: Actor, m: Movement, loaded: boolean): void => {
+  if ((!m.isDead || loaded) && ac.isDead() !== m.isDead) {
     SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: m.isDead, trigger: "movement", serverPos: m.pos });
   }
 };
 
-const applyHeadTracking = (ac: Actor, m: Movement) => {
+const isSamePoint = (a: NiPoint3 | undefined, b: NiPoint3 | undefined): boolean =>
+  a === b || (!!a && !!b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);
+
+// Within a unit of the same spot, with the same facing, flags, health and look target
+const isSamePacket = (a: Movement, b: Movement): boolean =>
+  a.worldOrCell === b.worldOrCell && ObjectReferenceEx.getDistance(a.pos, b.pos) <= 1 && isSamePoint(a.rot, b.rot)
+  && a.runMode === b.runMode && a.isInJumpState === b.isInJumpState && a.isSneaking === b.isSneaking
+  && a.isBlocking === b.isBlocking && a.isWeapDrawn === b.isWeapDrawn && a.isDead === b.isDead
+  && a.healthPercentage === b.healthPercentage && isSamePoint(a.lookAt, b.lookAt);
+
+// A standing copy this close to the reported spot needs no translation
+const isNearStandingSpot = (pos: NiPoint3, target: NiPoint3): boolean =>
+  ObjectReferenceEx.getDistanceNoZ(pos, target) <= 8 && Math.abs(pos[2] - target[2]) <= standingMaxDeltaZ;
+
+const applyHeadTracking = (ac: Actor, m: Movement, state: AppliedMovement, trusted: boolean) => {
   let lookAt = null;
   if (m.lookAt) {
     try {
@@ -83,6 +154,11 @@ const applyHeadTracking = (ac: Actor, m: Movement) => {
     }
   }
 
+  const lookAtId = lookAt ? lookAt.getFormID() : 0;
+  if (trusted && state.lookAtId === lookAtId) {
+    return;
+  }
+  state.lookAtId = lookAtId;
   if (lookAt) {
     ac.setHeadTracking(true);
     ac.setLookAt(lookAt, false);
@@ -100,7 +176,8 @@ export const setCarrierClone = (localId: number): void => {
 
 export const isCarrierCloneId = (localId: number): boolean => carrierCloneId !== 0 && localId === carrierCloneId;
 
-const keepOffsetFromActor = (ac: Actor, m: Movement) => {
+// True when a standing copy already faces the reported way, so the offset holds it still
+const keepOffsetFromActor = (ac: Actor, m: Movement): boolean => {
   let offsetAngle = m.rot[2] - ac.getAngleZ();
   // Wider deadzone when standing: 130ms-stale idle angle noise makes the offset hunt visibly; the carrier clone turns all the way so the body in its arms does
   const deadzone = isCarrierCloneId(ac.getFormID()) ? 0 : m.runMode === "Standing" ? 12 : 5;
@@ -109,7 +186,8 @@ const keepOffsetFromActor = (ac: Actor, m: Movement) => {
   }
 
   if (m.runMode === "Standing") {
-    return ac.keepOffsetFromActor(ac, 0, 0, 0, 0, 0, offsetAngle, 1, 1);
+    ac.keepOffsetFromActor(ac, 0, 0, 0, 0, 0, offsetAngle, 1, 1);
+    return offsetAngle === 0;
   }
   const offset = [
     3 * Math.sin((m.direction / 180) * Math.PI),
@@ -128,6 +206,7 @@ const keepOffsetFromActor = (ac: Actor, m: Movement) => {
     m.runMode === "Walking" ? 2048 : 1,
     1,
   );
+  return false;
 };
 
 const getOffsetZ = (runMode: RunMode) => {
@@ -140,37 +219,47 @@ const getOffsetZ = (runMode: RunMode) => {
   return 0;
 };
 
-const applySprinting = (ac: Actor, isSprinting: boolean) => {
-  if (ac.isSprinting() != isSprinting) {
-    Debug.sendAnimationEvent(ac, isSprinting ? "SprintStart" : "SprintStop");
+// The flag applies return true when the engine already had the value and nothing was sent
+const applySprinting = (ac: Actor, isSprinting: boolean): boolean => {
+  if (ac.isSprinting() == isSprinting) {
+    return true;
   }
+  Debug.sendAnimationEvent(ac, isSprinting ? "SprintStart" : "SprintStop");
+  return false;
 };
 
-const applyBlocking = (ac: Actor, m: AnimationVariables) => {
-  if (ac.getAnimationVariableBool("IsBlocking") != m.isBlocking) {
-    Debug.sendAnimationEvent(ac, m.isBlocking ? "BlockStart" : "BlockStop");
-    Debug.sendAnimationEvent(ac, m.isSneaking ? "SneakStart" : "SneakStop");
+const applyBlocking = (ac: Actor, m: AnimationVariables): boolean => {
+  if (ac.getAnimationVariableBool("IsBlocking") == m.isBlocking) {
+    return true;
   }
+  Debug.sendAnimationEvent(ac, m.isBlocking ? "BlockStart" : "BlockStop");
+  Debug.sendAnimationEvent(ac, m.isSneaking ? "SneakStart" : "SneakStop");
+  return false;
 };
 
-const applySneaking = (ac: Actor, isSneaking: boolean) => {
+const applySneaking = (ac: Actor, isSneaking: boolean): boolean => {
   const currentIsSneaking =
     ac.isSneaking() || ac.getAnimationVariableBool("IsSneaking");
-  if (currentIsSneaking != isSneaking) {
-    Debug.sendAnimationEvent(ac, isSneaking ? "SneakStart" : "SneakStop");
+  if (currentIsSneaking == isSneaking) {
+    return true;
   }
+  Debug.sendAnimationEvent(ac, isSneaking ? "SneakStart" : "SneakStop");
+  return false;
 };
 
-export const applyWeapDrawn = (ac: Actor, isWeapDrawn: boolean): void => {
-  if (ac.isWeaponDrawn() !== isWeapDrawn) {
-    TESModPlatform.setWeaponDrawnMode(ac, isWeapDrawn ? 1 : 0);
+export const applyWeapDrawn = (ac: Actor, isWeapDrawn: boolean): boolean => {
+  if (ac.isWeaponDrawn() === isWeapDrawn) {
+    return true;
   }
+  TESModPlatform.setWeaponDrawnMode(ac, isWeapDrawn ? 1 : 0);
+  return false;
 };
 
-const applyHealthPercentage = (ac: Actor, healthPercentage: number) => {
+// True once the copy was within healthConvergedDelta of the reported value
+const applyHealthPercentage = (ac: Actor, healthPercentage: number): boolean => {
   const currentPercentage = ac.getActorValuePercentage('health');
   if (currentPercentage === healthPercentage) {
-    return;
+    return true;
   }
 
   const currentMax = ac.getBaseActorValue('health');
@@ -181,6 +270,7 @@ const applyHealthPercentage = (ac: Actor, healthPercentage: number) => {
   } else if (deltaPercentage < 0) {
     ac.damageActorValue('health', deltaPercentage * currentMax * k);
   }
+  return Math.abs(deltaPercentage) < healthConvergedDelta;
 };
 
 // Use global temp var to avoid allocation of an array on each translateTo
@@ -226,7 +316,8 @@ export const forgetGroundSample = (localId: number): void => {
   groundSamples.delete(localId);
 };
 
-const translateTo = (refr: ObjectReference, m: Movement) => {
+// True when the copy already stands at the target
+const translateTo = (refr: ObjectReference, m: Movement): boolean => {
   let time = 0.2;
   if (m.isInJumpState || m.runMode !== "Standing") {
     time = 0.2;
@@ -260,15 +351,14 @@ const translateTo = (refr: ObjectReference, m: Movement) => {
   if (
     m.runMode !== "Standing" ||
     m.isInJumpState ||
-    ObjectReferenceEx.getDistanceNoZ(refrRealPos, gTempTargetPos) > 8 ||
-    Math.abs(refrRealPos[2] - gTempTargetPos[2]) > standingMaxDeltaZ ||
+    !isNearStandingSpot(refrRealPos, gTempTargetPos) ||
     angleDiff > 80 ||
     Actor.from(refr)?.getSitState() === 3 ||
     (isInSitPose(refr.getFormID()) && distance > 1)
   ) {
     const actor = Actor.from(refr);
     if (actor && actor.getActorValue("Variable10") < -999) {
-      return;
+      return false;
     }
 
     if (!actor || !actor.isDead()) {
@@ -287,17 +377,16 @@ const translateTo = (refr: ObjectReference, m: Movement) => {
         0
       );
     }
+    return false;
   }
+  return true;
 };
 
-const teleportIfNeed = (refr: ObjectReference, m: Transform) => {
-  if (
-    isInDifferentWorldOrCell(refr, m.worldOrCell) ||
-    (!refr.is3DLoaded() && isInDifferentExteriorCell(refr, m.pos))
-  ) {
+// A loaded copy is in the player's world or cell, which FormView already matched against the packet
+const teleportIfNeed = (refr: ObjectReference, m: Transform, loaded: boolean): void => {
+  if (!loaded && (isInDifferentWorldOrCell(refr, m.worldOrCell) || isInDifferentExteriorCell(refr, m.pos))) {
     throw new RespawnNeededError("needs to be respawned");
   }
-  return false;
 };
 
 const cellWidth = 4096;
