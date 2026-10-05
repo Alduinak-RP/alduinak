@@ -1,7 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { NiPoint3 } from "../../sync/movement";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
-import { Actor } from "skyrimPlatform";
+import { Actor, ObjectReference } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
 export class WorldCleanerService extends ClientListener {
@@ -9,6 +9,9 @@ export class WorldCleanerService extends ClientListener {
     super();
     this.controller.on("update", () => this.onUpdate());
     this.controller.emitter.on("gameLoad", () => this.onGameLoad());
+    // Summons appear in cells that are already attached
+    this.controller.on("spellCast", () => this.sweepFast());
+    this.controller.emitter.on("spellCastMessage", () => this.sweepFast());
   }
 
   modWcProtection(actorId: number, mod: number): void {
@@ -29,6 +32,22 @@ export class WorldCleanerService extends ClientListener {
     this.burstUntil = Math.max(this.burstUntil, Date.now() + durationMs);
   }
 
+  // Called from RemoteServer's shared cellAttach and moveAttachDetach handler
+  cleanAttached(refr: ObjectReference, cellAttached: boolean): void {
+    // Engine spawns of a new cell may come after its attach
+    if (cellAttached) {
+      this.sweepFast();
+    }
+    const actor = this.sp.Actor.from(refr);
+    if (actor !== null) {
+      this.clean(actor, actor.getFormID());
+    }
+  }
+
+  private sweepFast(): void {
+    this.fastUntil = Date.now() + WorldCleanerService.fastSweepMs;
+  }
+
   private onGameLoad() {
     let player = this.sp.Game.getPlayer();
     if (!player) {
@@ -40,10 +59,20 @@ export class WorldCleanerService extends ClientListener {
   }
 
   private onUpdate() {
-    const count = Date.now() < this.burstUntil ? WorldCleanerService.burstActorsPerUpdate : 1;
-    for (let i = 0; i < count; i++) {
-      this.processOneActor();
+    const now = Date.now();
+    if (now < this.burstUntil) {
+      for (let i = 0; i < WorldCleanerService.burstActorsPerUpdate; i++) {
+        this.processOneActor();
+      }
+      return;
     }
+    if (now >= this.fastUntil && this.idlePicks >= WorldCleanerService.idlePicksBeforeSlow) {
+      if (now < this.nextSlowPickAt) {
+        return;
+      }
+      this.nextSlowPickAt = now + WorldCleanerService.slowPickMs;
+    }
+    this.processOneActor();
   }
 
   private processOneActor() {
@@ -58,32 +87,32 @@ export class WorldCleanerService extends ClientListener {
       pc.getPositionZ(),
       8192
     );
-    if (actor === null) {
-      return;
-    }
+    const found = actor !== null && this.clean(actor, actor.getFormID());
+    this.idlePicks = found ? 0 : this.idlePicks + 1;
+  }
 
-    const actorId = actor.getFormID();
-
+  // True when the actor was a stray and is being removed
+  private clean(actor: Actor, actorId: number): boolean {
     const currentProtection = this.protection.get(actorId) || 0;
     if (currentProtection > 0) {
-      return;
+      return false;
     }
 
     if (actorId === 0x14 || actor.isDisabled() || actor.isDeleted()) {
-      return;
+      return false;
     }
 
     if (this.isActorInDialogue(actor)) {
       // Deleting an actor in dialogue crashes Skyrim: https://github.com/skyrim-multiplayer/issue-tracker/issues/13
       actor.setPosition(0, 0, 0);
       actor.disableNoWait(true); // Seems to not crash
-      return;
+      return true;
     }
 
     // Keep vanila pre-placed bodies, but delete player bodies
     if (actor.isDead() && actorId < 0xff000000) {
       actor.blockActivation(true);
-      return;
+      return false;
     }
 
     const pos = ObjectReferenceEx.getPos(actor);
@@ -96,14 +125,14 @@ export class WorldCleanerService extends ClientListener {
       if (this.initialPos && ObjectReferenceEx.getDistanceNoZ(pos, this.initialPos) < 4096) {
         if (cellOrWorld === this.initialCellOrWorld) {
           if (this.isActorInDialogue(actor)) {
-            return;
+            return false;
           }
           logTrace(this, `Deleting chicken anomaly`, actorId.toString(16));
           actor.killSilent(null);
           actor.blockActivation(true);
           actor.disableNoWait(false);
           actor.setAlpha(0, false);
-          return;
+          return true;
         }
       }
     }
@@ -115,6 +144,7 @@ export class WorldCleanerService extends ClientListener {
       }
       ac.delete();
     });
+    return true;
   }
 
   private isActorInDialogue(ac: Actor) {
@@ -123,7 +153,14 @@ export class WorldCleanerService extends ClientListener {
 
   private protection = new Map<number, number>();
   private burstUntil = 0;
+  private fastUntil = 0;
+  private nextSlowPickAt = 0;
+  // Picks in a row that found no stray
+  private idlePicks = 0;
   private static readonly burstActorsPerUpdate = 8;
+  private static readonly fastSweepMs = 10000;
+  private static readonly idlePicksBeforeSlow = 20;
+  private static readonly slowPickMs = 250;
   private initialPos?: NiPoint3;
   private initialCellOrWorld?: number;
 }

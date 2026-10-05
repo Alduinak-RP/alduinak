@@ -49,6 +49,7 @@ import { RestraintService } from './restraintService';
 import { MountService } from './mountService';
 import { RemoteDamageGuardService } from './remoteDamageGuardService';
 import { CellAnimationsService } from './cellAnimationsService';
+import { WorldCleanerService } from './worldCleanerService';
 import { UpdateAppearanceMessage } from '../messages/updateAppearanceMessage';
 import { TeleportMessage } from '../messages/teleportMessage';
 import { DeathStateContainerMessage } from '../messages/deathStateContainerMessage';
@@ -437,9 +438,9 @@ export class RemoteServer extends ClientListener {
     this.controller.on("update", () => this.checkRaceMenu());
     this.controller.on("update", () => this.checkRaceAbilities());
     this.controller.on("update", () => this.updatePluginRefs());
-    this.controller.on("cellAttach", (e) => this.onPluginRefAttached(e.refr, "cellAttach"));
+    this.controller.on("cellAttach", (e) => this.onRefAttached(e.refr, "cellAttach"));
     this.controller.on("moveAttachDetach", (e) => {
-      if (e.isCellAttached) this.onPluginRefAttached(e.movedRef, "moveAttachDetach");
+      if (e.isCellAttached) this.onRefAttached(e.movedRef, "moveAttachDetach");
     });
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.RaceSex) {
@@ -1836,8 +1837,15 @@ export class RemoteServer extends ClientListener {
     this.pluginRefsPolling = true;
   }
 
-  private onPluginRefAttached(refr: ObjectReference | null | undefined, how: "cellAttach" | "moveAttachDetach"): void {
-    if (!this.pluginRefsWaiting.size || !refr) return;
+  // One subscription per event for the plugin ref records and the world cleaner
+  private onRefAttached(refr: ObjectReference | null | undefined, how: "cellAttach" | "moveAttachDetach"): void {
+    if (!refr) return;
+    this.onPluginRefAttached(refr, how);
+    this.controller.lookupListener(WorldCleanerService).cleanAttached(refr, how === "cellAttach");
+  }
+
+  private onPluginRefAttached(refr: ObjectReference, how: "cellAttach" | "moveAttachDetach"): void {
+    if (!this.pluginRefsWaiting.size) return;
     const refrId = refr.getFormID();
     if (this.pluginRefsWaiting.has(refrId)) this.applyPluginRef(refrId, refr, how);
   }
