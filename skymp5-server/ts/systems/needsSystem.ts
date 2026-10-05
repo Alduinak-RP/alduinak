@@ -411,7 +411,7 @@ export class NeedsSystem implements System {
 
   // OnHit fires before the native hit writes the percentages it copied earlier, so the drain waits a tick.
   // A blocker who cannot pay the cost still blocks that hit but is staggered (staggerMagnitude 0 = off), at most once a second.
-  // With a weight rule the cost grows with the blocker's worn armor weight, read from the native combat stats
+  // With a weight rule the cost grows with the blocker's worn armor weight from the native combat stats, kept for a player until their next equipment report
   private installBlockStamina(ctx: SystemContext, cost: number, warriorCost: number, staggerMagnitude: number, weightRule: BlockWeightRule | null): void {
     const mp = ctx.svr as Mp;
     if (cost <= 0 && warriorCost <= 0) return;
@@ -424,6 +424,29 @@ export class NeedsSystem implements System {
       if (reported.has(reason)) return;
       reported.add(reason);
       this.log(`[needs] ${line}, blocks cost their base share`);
+    };
+    if (byWeight) {
+      chainMpHook(mp, "onUpdateEquipmentAttempt", (actorId: number) => { this.blockWeights.delete(Number(actorId) >>> 0); });
+      ctx.gm.on("userAssignActor", (userId: number) => this.forgetBlockWeights(userId));
+    }
+    // NPCs report no equipment, so theirs is read on every block; a failed read is never kept
+    const armorWeight = (targetId: number): number | null => {
+      const kept = this.blockWeights.get(targetId);
+      if (kept) return kept.weight;
+      let threw = false;
+      const stats = combatStats(mp, targetId, (e) => {
+        threw = true;
+        fellBack("threw", `getCombatStats of ${hex(targetId)} failed: ${e}`);
+      });
+      const weight = stats ? armorWeightOf(stats) : null;
+      if (stats && weight === null) {
+        fellBack("no weight", `getCombatStats of ${hex(targetId)} carries no armor weight (fields ${Object.keys(stats).join(", ") || "none"})`);
+      } else if (!stats && !threw) {
+        fellBack("no stats", `getCombatStats has no stats for ${hex(targetId)} (the native gives none while it prices hits without the rebalance formula, as after it rejected alduinakDamageFormulaSettings at boot)`);
+      }
+      const userId = threw ? -1 : userOf(mp, targetId);
+      if (userId >= 0) this.blockWeights.set(targetId, { userId, weight });
+      return weight;
     };
     const lastStagger = new Map<number, number>();
     chainMpHook(mp, "onPapyrusEvent:OnHit", (...args: unknown[]) => {
@@ -441,19 +464,10 @@ export class NeedsSystem implements System {
           const p = mp.get(targetId, "percentages");
           if (!p || base <= 0) return;
           let drain = base;
-          let threw = false;
-          const stats = byWeight ? combatStats(mp, targetId, (e) => {
-            threw = true;
-            fellBack("threw", `getCombatStats of ${hex(targetId)} failed: ${e}`);
-          }) : null;
-          const weight = stats ? armorWeightOf(stats) : null;
+          const weight = byWeight ? armorWeight(targetId) : null;
           if (byWeight && weight !== null && weight > 0) {
             drain = base * blockWeightMult(byWeight, weight);
             this.log(`[needs] ${hex(targetId)} blocked in ${share(weight)} armor weight: stamina -${tenth(drain)}% (${tenth(base)}% x${share(drain / base)})`);
-          } else if (stats && weight === null) {
-            fellBack("no weight", `getCombatStats of ${hex(targetId)} carries no armor weight (fields ${Object.keys(stats).join(", ") || "none"})`);
-          } else if (byWeight && !stats && !threw) {
-            fellBack("no stats", `getCombatStats has no stats for ${hex(targetId)} (the native gives none while it prices hits without the rebalance formula, as after it rejected alduinakDamageFormulaSettings at boot)`);
           }
           const short = Number(p.stamina) < drain;
           mp.set(targetId, "percentages", { ...p, stamina: Math.max(0, Number(p.stamina) - drain) });
@@ -702,6 +716,13 @@ export class NeedsSystem implements System {
       if (entry.userId === userId) this.goOffline(ctx, actorId);
     }
     this.lastNoticeAt.delete(userId);
+    this.forgetBlockWeights(userId);
+  }
+
+  private forgetBlockWeights(userId: number): void {
+    for (const [actorId, kept] of Array.from(this.blockWeights)) {
+      if (kept.userId === userId) this.blockWeights.delete(actorId);
+    }
   }
 
   private goOffline(ctx: SystemContext, actorId: number): void {
@@ -1066,4 +1087,6 @@ export class NeedsSystem implements System {
   private flushScheduled = false;
   private lastNoticeAt = new Map<number, number>();
   private nextTickAt = 0;
+  // Player actor id -> its user and worn armor weight for block stamina, null when the stats carry none
+  private blockWeights = new Map<number, { userId: number; weight: number | null }>();
 }

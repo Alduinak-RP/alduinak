@@ -1,7 +1,7 @@
 'use strict'
 
 // Block stamina by worn armor weight (rebalance D19): the rule read from alduinakDamageFormulaSettings, the plan's table, the native
-// getCombatStats adapter and the unchanged cost without the block: node tools/test-block-stamina.js
+// getCombatStats adapter, the weight kept per player until an equipment report and the unchanged cost without the block: node tools/test-block-stamina.js
 
 const assert  = require('node:assert/strict')
 const fs      = require('fs')
@@ -30,6 +30,7 @@ const SWORD = 0x13989
 const SHIELD = 0x12eb6
 const WARD = 0x13018
 const USER = 3
+const OTHER_BODY = 0xff000003
 const DEFAULT_RULE = { perWeight: 0.006, cap: 115 }
 const ENABLED = { enabled: true, blockStamina: { perArmorWeight: 0.006, weightCap: 115 } }
 
@@ -72,14 +73,18 @@ const setup = ({ rule = null, native, stamina = 1, warrior = [], cost = 0.1, war
   const mastery = { rankOf: (_ctx, id, p) => (p === 'warrior' && warrior.includes(id) ? 2 : 0) }
   const sys = new NeedsSystem((line) => logs.push(String(line)), mastery)
   const mp = makeMp(native, stamina)
-  const ctx = { svr: mp, gm: { on: () => {}, emit: () => {} } }
+  const listeners = {}
+  const ctx = { svr: mp, gm: { on: (event, fn) => { (listeners[event] ||= []).push(fn) }, emit: () => {} } }
   sys.installBlockStamina(ctx, cost, warriorCost, stagger, rule)
   const hit = async (target = BLOCKER, src = SWORD, blocked = true) => {
     mp['onPapyrusEvent:OnHit'](target, { type: 'form', desc: desc(ATTACKER) }, { type: 'espm', desc: desc(src) }, null, false, false, false, blocked)
     await tick()
   }
+  // The client's equipment report, as the native fires it after applying the change
+  const equip = (id = BLOCKER) => mp.onUpdateEquipmentAttempt(id, { inv: { entries: [] }, numChanges: 1 }, true)
+  const assign = (userId, actorId) => (listeners.userAssignActor || []).forEach((fn) => fn(userId, actorId))
   const staminaOf = (id = BLOCKER) => mp.get(id, 'percentages').stamina
-  return { sys, mp, ctx, logs, hit, staminaOf }
+  return { sys, mp, ctx, logs, hit, equip, assign, staminaOf }
 }
 
 const results = []
@@ -201,6 +206,7 @@ async function main() {
     assert.equal(t.staminaOf(), 1 - 0.1 - 0.1)
     assert.deepEqual(t.mp.calls, [])
     assert.deepEqual(t.logs, [])
+    assert.equal(t.mp.onUpdateEquipmentAttempt, undefined)
     const w = setup({ rule: null, native: () => ({ armorWeight: 81 }), warrior: [BLOCKER] })
     await w.hit()
     assert.equal(w.staminaOf(), 1 - 0.05)
@@ -275,6 +281,8 @@ async function main() {
     assert.equal(t.staminaOf(), 1 - 0.1 - 0.1)
     assert.equal(t.staminaOf(NPC), 1 - 0.1)
     assert.deepEqual(t.logs.slice(1), ['[needs] getCombatStats of ff000001 failed: Error: actorFormId should be a number, blocks cost their base share'])
+    // A failed read is asked again on the next block
+    assert.deepEqual(t.mp.calls, [BLOCKER, BLOCKER, NPC])
   })
 
   await test('a native that has no stats for the blocker leaves the base share and says so once', async () => {
@@ -292,14 +300,16 @@ async function main() {
   await test('each reason is logged once and a later weighted block still logs its own line', async () => {
     let answer = () => null
     const t = setup({ rule: DEFAULT_RULE, native: () => answer() })
+    // Each new answer follows an equipment report, which drops the kept weight
+    const next = (fn) => { answer = fn; t.equip() }
     await t.hit()
-    answer = () => { throw new Error('gone') }
+    next(() => { throw new Error('gone') })
     await t.hit()
-    answer = () => ({ wornDT: 3 })
+    next(() => ({ wornDT: 3 }))
     await t.hit()
-    answer = () => null
+    next(() => null)
     await t.hit()
-    answer = () => ({ armorWeight: 52 })
+    next(() => ({ armorWeight: 52 }))
     await t.hit()
     assert.equal(t.logs.length, 5)
     assert.match(t.logs[1], /has no stats for ff000001/)
@@ -307,6 +317,50 @@ async function main() {
     assert.match(t.logs[3], /carries no armor weight \(fields wornDT\)/)
     assert.match(t.logs[4], /blocked in 52 armor weight/)
     near(t.staminaOf(), 1 - 0.4 - 0.1312, 'four base blocks and a Steel one')
+  })
+
+  await test('a player\'s weight is read once and kept until their next equipment report', async () => {
+    let weight = 52
+    const t = setup({ rule: DEFAULT_RULE, native: () => ({ armorWeight: weight }) })
+    await t.hit()
+    await t.hit()
+    assert.deepEqual(t.mp.calls, [BLOCKER])
+    weight = 81
+    await t.hit()
+    near(t.staminaOf(), 1 - 3 * 0.1312, 'three Steel blocks')
+    // A report for someone else keeps it
+    t.equip(NPC)
+    await t.hit()
+    assert.deepEqual(t.mp.calls, [BLOCKER])
+    t.equip()
+    await t.hit()
+    assert.deepEqual(t.mp.calls, [BLOCKER, BLOCKER])
+    near(t.staminaOf(), 1 - 4 * 0.1312 - 0.1486, 'then a Daedric block')
+    assert.match(t.logs[t.logs.length - 1], /ff000001 blocked in 81 armor weight/)
+  })
+
+  await test('a character switch or a disconnect of the player drops the kept weight, another user\'s keeps it', async () => {
+    const t = setup({ rule: DEFAULT_RULE, native: () => ({ armorWeight: 52 }) })
+    await t.hit()
+    t.assign(USER + 1, OTHER_BODY)
+    t.sys.disconnect(USER + 1, t.ctx)
+    await t.hit()
+    assert.deepEqual(t.mp.calls, [BLOCKER])
+    t.assign(USER, OTHER_BODY)
+    await t.hit()
+    assert.deepEqual(t.mp.calls, [BLOCKER, BLOCKER])
+    t.sys.disconnect(USER, t.ctx)
+    await t.hit()
+    assert.deepEqual(t.mp.calls, [BLOCKER, BLOCKER, BLOCKER])
+    near(t.staminaOf(), 1 - 4 * 0.1312, 'four Steel blocks')
+  })
+
+  await test('an NPC blocker, which sends no equipment reports, is read on every block', async () => {
+    const t = setup({ rule: DEFAULT_RULE, native: () => ({ armorWeight: 85 }) })
+    await t.hit(NPC)
+    await t.hit(NPC)
+    assert.deepEqual(t.mp.calls, [NPC, NPC])
+    near(t.staminaOf(NPC), 1 - 2 * 0.151, 'two Orcish blocks')
   })
 
   await test('stats without a weight field keep the base share and say so once', async () => {
@@ -349,6 +403,7 @@ async function main() {
   await test('blockStaminaCost 0 for both keeps the hook out, rule or not', () => {
     const t = setup({ rule: DEFAULT_RULE, native: () => ({ armorWeight: 81 }), cost: 0, warriorCost: 0 })
     assert.equal(t.mp['onPapyrusEvent:OnHit'], undefined)
+    assert.equal(t.mp.onUpdateEquipmentAttempt, undefined)
     assert.deepEqual(t.logs, [])
   })
 

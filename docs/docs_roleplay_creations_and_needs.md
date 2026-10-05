@@ -390,9 +390,11 @@ blocking still works there, as in vanilla. It applies to every actor and also wi
 
 **Heavy armor tires a guard (rebalance, D19).** While `alduinakDamageFormulaSettings.enabled` is true the cost is
 multiplied by `1 + perArmorWeight x min(worn armor weight, weightCap)`, from `alduinakDamageFormulaSettings.blockStamina`
-(`perArmorWeight` 0.006, `weightCap` 115; `perArmorWeight` 0 turns the rule off). The weight is read per blocked hit
-from the native `getCombatStats(actorId)` through `systems/combatStats.ts`. It is still a share of max stamina, so a
-bigger stamina pool buys no extra blocks.
+(`perArmorWeight` 0.006, `weightCap` 115; `perArmorWeight` 0 turns the rule off). The weight comes from the native
+`getCombatStats(actorId)` through `systems/combatStats.ts`. A player's is read at their first block and kept until
+their client's next equipment report, a character switch or their disconnect, so gear the server changes counts from
+that report on. An NPC sends no equipment reports, so its weight is read on every block, and a read that failed is
+tried again on the next block. It is still a share of max stamina, so a bigger stamina pool buys no extra blocks.
 
 | Set | Worn weight | Cost x | Blocks from full | Warrior blocks |
 |---|---|---|---|---|
