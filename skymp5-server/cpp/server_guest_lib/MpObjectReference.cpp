@@ -830,9 +830,11 @@ void MpObjectReference::SetPropertyValueDump(const std::string& propertyName,
                                              bool isVisibleByNeighbor)
 {
   auto msg = CreatePropertyMessage_(this, propertyName.c_str(), valueDump);
-  EditChangeForm([&](MpChangeFormREFR& changeForm) {
-    changeForm.dynamicFields.SetValueDump(propertyName, valueDump);
-  });
+  if (ChangeForm().dynamicFields.GetValueDump(propertyName) != valueDump) {
+    EditChangeForm([&](MpChangeFormREFR& changeForm) {
+      changeForm.dynamicFields.SetValueDump(propertyName, valueDump);
+    });
+  }
   if (isVisibleByNeighbor) {
     SendMessageToActorListeners(msg, true);
   } else if (isVisibleByOwner) {
@@ -1026,13 +1028,16 @@ void MpObjectReference::RegisterPrivateIndexedProperty(
   }
 
   auto formId = GetFormId();
-  UnindexPrivateProperty(*worldState, formId, propertyName,
-                         ChangeForm().dynamicFields.GetValueDump(propertyName));
-
-  EditChangeForm([&](MpChangeFormREFR& changeForm) {
-    changeForm.dynamicFields.SetValueDump(propertyName,
-                                          propertyValueStringified);
-  });
+  const auto& currentValueStringified =
+    ChangeForm().dynamicFields.GetValueDump(propertyName);
+  if (currentValueStringified != propertyValueStringified) {
+    UnindexPrivateProperty(*worldState, formId, propertyName,
+                           currentValueStringified);
+    EditChangeForm([&](MpChangeFormREFR& changeForm) {
+      changeForm.dynamicFields.SetValueDump(propertyName,
+                                            propertyValueStringified);
+    });
+  }
 
   if (!IsNullDump(propertyValueStringified)) {
     auto key = worldState->MakePrivateIndexedPropertyMapKey(
@@ -1131,9 +1136,10 @@ void MpObjectReference::Unsubscribe(MpObjectReference* emitter,
 
 void MpObjectReference::SetLastAnimation(const std::string& lastAnimation)
 {
-  EditChangeForm([&](MpChangeForm& changeForm) {
-    changeForm.lastAnimation = lastAnimation;
-  });
+  // Never written to the database
+  EditChangeForm(
+    [&](MpChangeForm& changeForm) { changeForm.lastAnimation = lastAnimation; },
+    Mode::NoRequestSave);
 }
 
 void MpObjectReference::SetNodeTextureSet(const std::string& node,
