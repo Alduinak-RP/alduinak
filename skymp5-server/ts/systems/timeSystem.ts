@@ -7,7 +7,7 @@ import { every } from "./timers";
 type Mp = any;
 
 // Game time is this box's local wall clock plus three hours at 1:1; the client applies it to the calendar globals.
-// Pushed on connect, on request, every minute against client clock drift, and within one poll of a UTC offset change.
+// Pushed on connect, on request (the client asks at every load), and to every connected user within a minute of a UTC offset change.
 //
 //   Server -> Client: { customPacketType: "gameTime", serverTime, tzOffsetMin, year, timeScale }  serverTime: epoch ms, tzOffsetMin: Date.getTimezoneOffset()
 //   Client -> Server: { customPacketType: "gameTimeRequest" }
@@ -19,8 +19,7 @@ type Mp = any;
 const DEFAULT_YEAR = 210;
 const TIME_SCALE = 1;
 const DEFAULT_OFFSET_HOURS = 3;
-const POLL_MS = 5000;
-const BROADCAST_MS = 60000;
+const POLL_MS = 60000;
 const DAY_MS = 24 * 3600000;
 
 let offsetMs = DEFAULT_OFFSET_HOURS * 60 * 60 * 1000;
@@ -40,7 +39,6 @@ export class TimeSystem implements System {
 
   private year = DEFAULT_YEAR;
   private tzOffsetMin = new Date().getTimezoneOffset();
-  private nextBroadcastAt = 0;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const all = (await Settings.get()).allSettings as Record<string, any> | null;
@@ -62,15 +60,10 @@ export class TimeSystem implements System {
 
   poll(ctx: SystemContext): void {
     const tz = new Date().getTimezoneOffset();
-    const now = Date.now();
-    if (tz === this.tzOffsetMin && now < this.nextBroadcastAt) return;
-    if (tz !== this.tzOffsetMin) this.log(`TimeSystem: UTC offset changed from ${-this.tzOffsetMin} to ${-tz} min, resyncing clients`);
+    if (tz === this.tzOffsetMin) return;
+    this.log(`TimeSystem: UTC offset changed from ${-this.tzOffsetMin} to ${-tz} min, resyncing clients`);
     this.tzOffsetMin = tz;
-    this.nextBroadcastAt = now + BROADCAST_MS;
-    const mp = ctx.svr as Mp;
-    for (const userId of connectedUsers()) {
-      try { if (mp.isConnected(userId)) this.send(mp, userId); } catch { /* user gone */ }
-    }
+    for (const userId of connectedUsers()) this.send(ctx.svr, userId);
   }
 
   private send(mp: Mp, userId: number): void {
