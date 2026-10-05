@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { kickWithReason } from "./kickUtil";
-import { userSlotCount, isCreationPending, chainMpHook, userOf, hex, baseTypeOf } from "./actorUtil";
+import { isCreationPending, chainMpHook, userOf, hex, baseTypeOf } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -74,6 +74,7 @@ export class AfkSystem implements System {
   private kickMs = 20 * 60 * 1000;
   private warnMs = 1 * 60 * 1000;
   private debug = false;
+  // One per connected user, with or without an actor, from connect to disconnect
   private states = new Map<number, AfkState>();
   private mp: Mp = null;
 
@@ -147,11 +148,7 @@ export class AfkSystem implements System {
     const mp = ctx.svr as Mp;
     const now = Date.now();
 
-    for (let userId = 0; userId < userSlotCount(); userId++) {
-      try { if (!mp.isConnected(userId)) continue; } catch { continue; }
-      const state = this.states.get(userId);
-      if (!state) continue;
-
+    for (const [userId, state] of this.states) {
       let actorId = 0;
       try { actorId = mp.getUserActor(userId); } catch { }
       if (!actorId || isCreationPending(mp, actorId)) {

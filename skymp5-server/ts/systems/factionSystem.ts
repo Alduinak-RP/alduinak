@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, AFTERLIFE_EVENT, CharacterListEntry } from "./system";
 import { AccessPayload, FactionBackend, RosterRow, factionBackendOf, filterAccessForSlot } from "../backendFactionApi";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
-import { isNear, isPlayerActor, nameShownTo, userOf, userSlotCount } from "./actorUtil";
+import { isNear, isPlayerActor, nameShownTo, onlineActors, userOf } from "./actorUtil";
 import { formIdFromConfig } from "./formIdUtil";
 import { FactionRight, HousingSystem } from "./housingSystem";
 import { holdName, holdOfActor, isHoldLand } from "./holdOf";
@@ -1104,10 +1104,9 @@ export class FactionSystem implements System {
 
   private online(): OnlineActor[] {
     const out: OnlineActor[] = [];
-    for (let userId = 0; userId < userSlotCount(); userId++) {
-      try { if (!this.mp.isConnected(userId)) continue; } catch { continue; }
-      const actorId = this.actorOf(userId);
-      if (!actorId) continue;
+    for (const actorId of onlineActors(this.mp)) {
+      const userId = userOf(this.mp, actorId);
+      if (userId < 0) continue;
       let profileId = 0;
       try { profileId = Number(this.mp.get(actorId, "profileId")); } catch { continue; }
       if (profileId > 0) out.push({ userId, actorId, profileId, slot: this.slotOf(actorId) });

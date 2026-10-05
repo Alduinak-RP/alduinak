@@ -4,7 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
-import { addItemTo, holdsItem, isIntroduced, takeItemFrom, userSlotCount } from "./actorUtil";
+import { addItemTo, holdsItem, isIntroduced, onlineActors, takeItemFrom } from "./actorUtil";
 import { FactionDef, factionLand, holdRanksOf, managesHold } from "./factionRules";
 import { Hold, holdName, holdOfRefs, isHoldLand, isOutdoors, loadHolds } from "./holdOf";
 import { describeActor, profileIdOf, realNameOf, titledName } from "./playerText";
@@ -925,9 +925,8 @@ export class HousingSystem implements System {
   private noticeAround(ctx: SystemContext, refrId: number, told: Set<number>, line: (listenerId: number) => string): number {
     const mp = ctx.svr as Mp;
     let reached = 0;
-    for (const userId of this.onlineUsers(ctx)) {
-      const listenerId = this.actorOf(ctx, userId);
-      if (!listenerId || told.has(listenerId)) continue;
+    for (const listenerId of onlineActors(mp)) {
+      if (told.has(listenerId)) continue;
       try {
         if (String(mp.get(listenerId, "worldOrCellDesc")) !== String(mp.get(refrId, "worldOrCellDesc"))) continue;
         const a = mp.get(listenerId, "pos");
@@ -938,7 +937,7 @@ export class HousingSystem implements System {
         continue;
       }
       told.add(listenerId);
-      this.notice(ctx, userId, line(listenerId));
+      this.notice(ctx, this.userOf(ctx, listenerId), line(listenerId));
       reached++;
     }
     return reached;
@@ -1173,9 +1172,7 @@ export class HousingSystem implements System {
   private reKey(ctx: SystemContext, primary: number, rec: PropertyRecord): void {
     const mp = ctx.svr as Mp;
     const credential = this.credentialOf(primary, rec);
-    for (const userId of this.onlineUsers(ctx)) {
-      const actorId = this.actorOf(ctx, userId);
-      if (!actorId) continue;
+    for (const actorId of onlineActors(mp)) {
       try {
         const inv = mp.get(actorId, "inventory");
         const entries = inv && Array.isArray(inv.entries) ? inv.entries : [];
@@ -1247,7 +1244,7 @@ export class HousingSystem implements System {
 
   private pushDecorToAll(ctx: SystemContext): void {
     const refs = this.decorRefs(ctx);
-    for (const userId of this.onlineUsers(ctx)) this.sendDecor(ctx, userId, refs);
+    for (const actorId of onlineActors(ctx.svr)) this.sendDecor(ctx, this.userOf(ctx, actorId), refs);
   }
 
   private pushDecor(ctx: SystemContext, userId: number): void {
@@ -1521,15 +1518,6 @@ export class HousingSystem implements System {
     }
   }
 
-  private onlineUsers(ctx: SystemContext): number[] {
-    const mp = ctx.svr as Mp;
-    const out: number[] = [];
-    for (let userId = 0; userId < userSlotCount(); userId++) {
-      try { if (mp.isConnected(userId)) out.push(userId); } catch { /* slot gone */ }
-    }
-    return out;
-  }
-
   private send(ctx: SystemContext, userId: number, payload: Record<string, unknown>): void {
     if (userId < 0) return;
     try { (ctx.svr as Mp).sendCustomPacket(userId, JSON.stringify(payload)); } catch { /* user gone */ }
@@ -1541,13 +1529,11 @@ export class HousingSystem implements System {
 
   // Every online character of the owner's profile, or of the owning faction whose rank uses or manages the claim
   private noticeOwners(ctx: SystemContext, rec: PropertyRecord, text: string): void {
-    for (const userId of this.onlineUsers(ctx)) {
-      const actorId = this.actorOf(ctx, userId);
-      if (!actorId) continue;
+    for (const actorId of onlineActors(ctx.svr)) {
       const owner = rec.faction
         ? this.factionRightsOf(actorId).some((f) => f.id === rec.faction && (f.use || f.manage))
         : this.profileOf(ctx, actorId) === rec.owner;
-      if (owner) this.notice(ctx, userId, text);
+      if (owner) this.notice(ctx, this.userOf(ctx, actorId), text);
     }
   }
 

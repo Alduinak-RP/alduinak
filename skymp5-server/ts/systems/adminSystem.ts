@@ -12,7 +12,7 @@ import { AfterlifeSystem, REALMS, fallenLabel, fallenOf, livingCount, profileMax
 import { ExecutionSystem } from "./executionSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
-import { addItemTo, userOf, userSlotCount } from "./actorUtil";
+import { addItemTo, onlineActors, userOf } from "./actorUtil";
 import { adminAudit } from "./discordAlerts";
 import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
@@ -302,11 +302,9 @@ export class AdminSystem implements System {
 
   private onlinePlayers(mp: Mp): OnlinePlayer[] {
     const out: OnlinePlayer[] = [];
-    for (let userId = 0; userId < userSlotCount(); userId++) {
-      try { if (!mp.isConnected(userId)) continue; } catch { continue; }
-      let actorId = 0;
-      try { actorId = mp.getUserActor(userId); } catch { continue; }
-      if (!actorId) continue;
+    for (const actorId of onlineActors(mp)) {
+      const userId = userOf(mp, actorId);
+      if (userId < 0) continue;
       let name = "";
       try { name = String(mp.get(actorId, "appearance")?.name ?? ""); } catch { }
       let profileId = 0;

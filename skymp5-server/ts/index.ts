@@ -64,7 +64,7 @@ import { ConjurationSystem } from "./systems/conjurationSystem";
 import { KnowledgeSystem } from "./systems/knowledgeSystem";
 import { FactionSystem } from "./systems/factionSystem";
 import { JobSystem } from "./systems/jobSystem";
-import { setUserSlotCount } from "./systems/actorUtil";
+import { trackConnections } from "./systems/actorUtil";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -240,7 +240,6 @@ const main = async () => {
   const {
     port, master, maxPlayers, name, masterKey, offlineMode, gamemodePath
   } = settingsObject;
-  setUserSlotCount(maxPlayers);
 
   const log = console.log;
   const systems = new Array<System>();
@@ -409,6 +408,7 @@ const main = async () => {
     process.exit(-1);
   }
   const ctx = { svr: server, gm: new EventEmitter() };
+  trackConnections(server);
 
   console.log(`Current process ID is ${pid}`);
 

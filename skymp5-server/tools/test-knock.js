@@ -55,6 +55,7 @@ function setup () {
   const userOf = (actorId) => [...users].find(([, a]) => a === actorId)?.[0] ?? -1
   const mp = {
     get: (id, key) => {
+      if (id === 0 && key === 'onlinePlayers') return [...users.values()]
       if (!props.has(id)) throw new Error('no form')
       return props.get(id)[key]
     },

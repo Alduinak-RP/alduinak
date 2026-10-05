@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
-import { userSlotCount, isCreationPending, hex } from "./actorUtil";
+import { onlineActors, isCreationPending, hex } from "./actorUtil";
 import { espmContainerEntries } from "./formIdUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -135,11 +135,8 @@ export class GoldWatchSystem implements System {
   async updateAsync(ctx: SystemContext): Promise<void> {
     await new Promise((r) => setTimeout(r, POLL_MS));
     const mp = ctx.svr as Mp;
-    for (let userId = 0; userId < userSlotCount(); userId++) {
-      try { if (!mp.isConnected(userId)) continue; } catch { continue; }
-      let actorId = 0;
-      try { actorId = mp.getUserActor(userId); } catch { }
-      if (!actorId || isCreationPending(mp, actorId)) continue;
+    for (const actorId of onlineActors(mp)) {
+      if (isCreationPending(mp, actorId)) continue;
       const counts = this.countsOf(mp, actorId);
       const before = this.lastCounts.get(actorId);
       this.lastCounts.set(actorId, counts);

@@ -68,7 +68,7 @@ const makeWorld = (X, survivalOn = true) => {
   const logs = []
   const known = (id) => { if (!learned.has(id)) learned.set(id, new Set()); return learned.get(id) }
   const mp = {
-    get: (id, key) => props.get(`${id >>> 0}:${key}`),
+    get: (id, key) => (id === 0 && key === 'onlinePlayers' ? [...users.keys()] : props.get(`${id >>> 0}:${key}`)),
     set: (id, key, v) => { props.set(`${id >>> 0}:${key}`, v) },
     lookupEspmRecordById: (id) => records.get(id >>> 0) || null,
     getIdFromDesc: (d) => parseInt(String(d).split(':')[0], 16) >>> 0,
@@ -169,7 +169,6 @@ const session = async (X, survivalOn = true) => {
 
 async function main() {
   const X = await load()
-  X.setUserSlotCount?.(8)
   Date.now = () => clock.now
   global.setTimeout = (f) => setImmediate(f)
   const audit = () => globalThis.__adminAudit

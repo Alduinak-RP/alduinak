@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
-import { userSlotCount } from "./actorUtil";
+import { connectedUsers } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -67,8 +67,8 @@ export class TimeSystem implements System {
     this.tzOffsetMin = tz;
     this.nextBroadcastAt = now + BROADCAST_MS;
     const mp = ctx.svr as Mp;
-    for (let userId = 0; userId < userSlotCount(); userId++) {
-      try { if (mp.isConnected(userId)) this.send(mp, userId); } catch { /* slot gone */ }
+    for (const userId of connectedUsers()) {
+      try { if (mp.isConnected(userId)) this.send(mp, userId); } catch { /* user gone */ }
     }
   }
 

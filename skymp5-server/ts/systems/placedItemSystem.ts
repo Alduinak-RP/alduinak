@@ -1,7 +1,7 @@
 import { MongoClient } from "mongodb";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, WORLD_LOADED_EVENT } from "./system";
-import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, notifyActor, sendActionLock, takeItemFrom, userOf, userSlotCount } from "./actorUtil";
+import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, notifyActor, onlineActors, sendActionLock, takeItemFrom, userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { AdminRoleConfig, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 import { formIdFromConfig, toFormId } from "./formIdUtil";
@@ -209,11 +209,12 @@ export class PlacedItemSystem implements System {
   private toCell(mp: Mp, target: number, packet: Record<string, unknown>, exceptUser = -1): void {
     let cell = 0;
     try { cell = mp.getIdFromDesc(mp.get(target, "locationalData").cellOrWorldDesc) >>> 0; } catch { return; }
-    for (let userId = 0; userId < userSlotCount(); userId++) {
-      if (userId === exceptUser || !mp.isConnected(userId)) continue;
+    for (const actorId of onlineActors(mp)) {
       try {
-        if ((Number(mp.getActorCellOrWorld(mp.getUserActor(userId))) >>> 0) === cell) sendJson(mp, userId, packet);
-      } catch { /* no actor yet */ }
+        if ((Number(mp.getActorCellOrWorld(actorId)) >>> 0) !== cell) continue;
+      } catch { continue; }
+      const userId = userOf(mp, actorId);
+      if (userId !== exceptUser) sendJson(mp, userId, packet);
     }
   }
 

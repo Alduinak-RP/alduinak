@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { resolveEditorIds } from "./espmEditorIds";
-import { hex, isIntroduced, userSlotCount } from "./actorUtil";
+import { hex, isIntroduced, onlineActors } from "./actorUtil";
 import { adminAudit } from "./discordAlerts";
 import { AdminRoleConfig, adminTierOf, missingCap, readAdminRoleConfig } from "./adminRoles";
 import { FactionSystem } from "./factionSystem";
@@ -551,29 +551,17 @@ export class WritingSystem implements System {
 
   // Copies in chests and offline packs catch up when they are next read
   private renameOnline(mp: Mp, doc: WritingDoc): number {
-    return this.onlineActors(mp).filter((actorId) => {
+    return onlineActors(mp).filter((actorId) => {
       const c = this.carried(mp, actorId).find((x) => x.id === doc.id && x.key !== "sealed");
       return !!c && this.rewrite(mp, actorId, [[c.entry, c.entry.count]], [{ ...c.entry, name: this.nameOf(doc, false) }]);
     }).length;
   }
 
   private removeOnline(mp: Mp, id: string): number {
-    return this.onlineActors(mp).filter((actorId) => {
+    return onlineActors(mp).filter((actorId) => {
       const c = this.carried(mp, actorId).find((x) => x.id === id);
       return !!c && this.rewrite(mp, actorId, [[c.entry, c.entry.count]], []);
     }).length;
-  }
-
-  private onlineActors(mp: Mp): number[] {
-    const out: number[] = [];
-    for (let userId = 0; userId < userSlotCount(); userId++) {
-      try {
-        if (!mp.isConnected(userId)) continue;
-        const actorId = mp.getUserActor(userId) >>> 0;
-        if (actorId) out.push(actorId);
-      } catch { /* slot gone */ }
-    }
-    return out;
   }
 
   // ── Door notes (HousingSystem) ──────────────────────────────────────────────
