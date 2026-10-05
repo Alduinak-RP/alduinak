@@ -30,7 +30,6 @@ const KEYWORD_CHECK_MS = 5000;
 const DEFAULT_KEYWORD_COOLDOWN_S = 60;
 // Player links must not unfurl into previews
 const SUPPRESS_EMBEDS = 4;
-const DEATH_ALERTED_MS = 10000;
 const ADMIN_LOG_FILE = "admin.log";
 
 interface Target { rest: REST; channelIds: string[] }
@@ -125,18 +124,7 @@ export function adminAudit(text: string, alert = true): void {
 const actorLabel = (mp: Mp, actorId: number): string =>
   isPlayerActor(mp, actorId) ? describeActor(mp, actorId) : `${JSON.stringify(displayNameOf(mp, actorId))} (${hex(actorId)})`;
 
-const deathAlertedAt = new Map<number, number>();
-
-// A kill that already posted its own line (execute, finish off) skips the [Death] line that follows
-export function markDeathAlerted(actorId: number): void {
-  deathAlertedAt.set(actorId >>> 0, Date.now());
-}
-(globalThis as any).__alduinakMarkDeathAlerted = markDeathAlerted;
-
 export function deathAlert(mp: Mp, actorId: number, killerId: number, how = "died"): void {
-  const markedAt = deathAlertedAt.get(actorId);
-  deathAlertedAt.delete(actorId);
-  if (markedAt !== undefined && Date.now() - markedAt < DEATH_ALERTED_MS) return;
   if (!isPlayerActor(mp, actorId)) return;
   const killer = killerId && killerId !== actorId ? `, killed by ${actorLabel(mp, killerId)}` : "";
   const text = `${describeActor(mp, actorId)} ${how}${killer}, ${whereOf(mp, actorId)}`;
@@ -199,14 +187,13 @@ export function keywordAlert(mp: Mp, actorId: number, channel: string, text: str
   if (hits.length) discordAlert("keyword", `${describeActor(mp, actorId)} in ${channel}: ${JSON.stringify(text)} (matched ${hits.join(", ")})`);
 }
 
-// Registers the hooks the gamemode calls: g.__alduinakDeathAlert from onDeath, g.__alduinakKeywordAlert from chat
+// Registers g.__alduinakKeywordAlert, which the gamemode calls from chat
 export class DiscordAlerts implements System {
   systemName = "DiscordAlerts";
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const mp = ctx.svr as unknown as Mp;
     const g = globalThis as any;
-    g.__alduinakDeathAlert = (actorId: number, killerId: number) => deathAlert(mp, actorId >>> 0, killerId >>> 0);
     g.__alduinakKeywordAlert = (actorId: number, channel: string, text: string) => keywordAlert(mp, actorId >>> 0, String(channel), String(text));
     loadKeywords();
     const all = (await Settings.get()).allSettings;

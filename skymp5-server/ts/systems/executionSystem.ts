@@ -595,8 +595,8 @@ export class ExecutionSystem implements System {
     const rights = this.factions.factionsWith(killerId, "execute", true);
     const line = `${describeActor(mp, killerId)} ${how} ${describeActor(mp, victimId)}, ${whereOf(mp, victimId)}` +
       ` (${rights.length ? `execute right of ${rights.join(", ")}` : "staff"})`;
-    (globalThis as any).__alduinakMarkDeathAlerted?.(victimId);
-    this.bleedout.die(victimId, how, killerId);
+    // The execute alert below is its staff line, so no [Death] line
+    this.bleedout.die(victimId, how, killerId, false);
     // A fallen victim keeps the realm outfit
     if (!isFallen(mp, victimId)) this.bodies.leaveBody(victimId, `${how} by ${hex(killerId)}`);
     // Before the move, since a carried captive is set down at the carrier

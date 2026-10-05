@@ -45,7 +45,7 @@ behaviour-graph events — no ESP required.**
   ghost mode, never go down. Without the native server build the gate never
   fires and players die at once, as before.
 - **Dying**: a further hit from another player kills at once, and the
-  gamemode's `onDeath` writes it to `pvp.log`. Damage over time kills after a
+  server's `onDeath` hook writes it to `pvp.log`. Damage over time kills after a
   3 s grace (the victim's own stale report of 0 right after the downing does
   not count; the client sends its values at most every 2 s, so a late report
   of the downing blow never turns into an outright death). NPC hits on a

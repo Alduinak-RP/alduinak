@@ -7,7 +7,6 @@ import { InventoryEntry, addEntries, isNamedItemBase, readInventory } from "./in
 import { SettleWear, wearSettler } from "./durabilityNative";
 import { destroyRef, hex, isAlive, neighborUsers } from "./actorUtil";
 import { sendJson } from "./playerText";
-import { markDeathAlerted } from "./discordAlerts";
 import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -120,8 +119,6 @@ export class BodySystem implements System {
       try { mp.set(cloneId, "equipment", { inv: { entries: worn }, numChanges: 0 }); } catch { }
       step = `setting ${BODY_PROP} (registered in gamemode.js?)`;
       mp.set(cloneId, BODY_PROP, true);
-      // The clone uses the Player base, so the gamemode's onDeath would post a [Death] line for it
-      markDeathAlerted(cloneId);
       mp.set(cloneId, "isDead", true);
       step = "placing the body";
       this.placeOnGrid(cloneId, loc);

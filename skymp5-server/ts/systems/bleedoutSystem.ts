@@ -5,8 +5,9 @@ import { toFormId } from "./formIdUtil";
 import { BLEEDOUT_PROP, addItemTo, chainMpHook, hex, isAlive, isNear, isPlayerActor, nameShownTo, notifyActor, userOf } from "./actorUtil";
 import { potionHealing } from "./espmMagic";
 import { readInventory, withCount } from "./inventoryExtras";
-import { appendLog, describeActor, logDirOf, sendJson } from "./playerText";
-import { deathAlert, markDeathAlerted } from "./discordAlerts";
+import { appendLog, describeActor, logDirOf, profileIdOf, sendJson } from "./playerText";
+import { deathAlert } from "./discordAlerts";
+import { NEVER_RESPAWN } from "./npcPlacement";
 import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -36,6 +37,14 @@ interface Downed {
   // When a hold paused the timer, 0 while it runs
   pausedAt: number;
   hold?: Hold;
+}
+
+// A kill die() is making, read by the onDeath hook inside that mp.set
+interface Dying {
+  how: string;
+  killerId: number;
+  downerId: number;
+  alert: boolean;
 }
 
 // Someone working on a downed player: the timer waits, and the tick completes or cancels the work
@@ -71,6 +80,7 @@ export class BleedoutSystem implements System {
     chainMpHook(mp, "onEatItem", (actorId: number, baseId: number) => this.onEatItem(actorId >>> 0, baseId >>> 0));
     chainMpHook(mp, "onHitDamageAttempt", (aggressorId: number, targetId: number, _sourceId: number, damage: number) =>
       this.onHitDamageAttempt(aggressorId >>> 0, targetId >>> 0, damage));
+    chainMpHook(mp, "onDeath", (actorId: number, killerId: number) => this.onDeath(actorId >>> 0, killerId >>> 0));
 
     this.capture.rescueDowned = (actorId) => this.end(actorId, "rescued");
     this.capture.rescueRefusal = (actorId) => this.downed.get(actorId)?.hold?.fatal ? "They are being finished off." : "";
@@ -346,26 +356,47 @@ export class BleedoutSystem implements System {
     }
   }
 
-  // A kill the gate never sees, downed or not; SetIsDead carries no killer, so a death caused by a player is written to pvp.log here
-  die(actorId: number, how: string, killerId = 0): void {
+  // A kill the gate never sees, downed or not; SetIsDead carries no killer, so onDeath takes how and the killer from dying; alert false when the caller posts its own line
+  die(actorId: number, how: string, killerId = 0, alert = true): void {
     const state = this.downed.get(actorId);
     const mp = this.mp;
-    // Posted before the kill, so the gamemode's [Death] line for it is skipped
-    deathAlert(mp, actorId, killerId, how);
-    markDeathAlerted(actorId);
+    this.dying.set(actorId, { how, killerId, downerId: state?.downerId ?? 0, alert });
     try {
       mp.set(actorId, "isDead", true);
     } catch (e) {
       this.log(`[bleedout] killing ${hex(actorId)} failed: ${e}`);
+    } finally {
+      this.dying.delete(actorId);
     }
     if (state) this.finish(actorId, true);
-    const downer = state && state.downerId && state.downerId !== actorId && isPlayerActor(mp, state.downerId) ? state.downerId : 0;
-    if (killerId && isPlayerActor(mp, killerId)) {
-      appendLog(this.logDir, "pvp.log", `${describeActor(mp, killerId)} killed ${describeActor(mp, actorId)}`);
+    this.log(`[bleedout] ${hex(actorId)} ${how}`);
+  }
+
+  // Player deaths go to the staff alerts and kills by a player to pvp.log; killed NPCs stay dead unless a script chose a respawn delay (zone spawns set their own)
+  private onDeath(actorId: number, killerId: number): void {
+    const mp = this.mp;
+    if (profileIdOf(mp, actorId) < 0) {
+      this.keepDead(actorId);
+      return;
+    }
+    const dying = this.dying.get(actorId);
+    const how = dying?.how ?? "died";
+    const killer = dying ? dying.killerId : killerId;
+    if (dying?.alert !== false) deathAlert(mp, actorId, killer, how);
+    const downer = dying && dying.downerId && dying.downerId !== actorId && isPlayerActor(mp, dying.downerId) ? dying.downerId : 0;
+    if (killer && isPlayerActor(mp, killer)) {
+      appendLog(this.logDir, "pvp.log", `${describeActor(mp, killer)} killed ${describeActor(mp, actorId)}`);
     } else if (downer) {
       appendLog(this.logDir, "pvp.log", `${describeActor(mp, actorId)} ${how}, downed by ${describeActor(mp, downer)}`);
     }
-    this.log(`[bleedout] ${hex(actorId)} ${how}`);
+  }
+
+  // Written inside the hook, before the native respawn reads it; delays past NEVER_RESPAWN overflow the engine timer, so the old 1e12 is repaired too
+  private keepDead(actorId: number): void {
+    try {
+      const delay = Number(this.mp.get(actorId, "spawnDelay") ?? 0);
+      if (delay <= 60 || delay > NEVER_RESPAWN) this.mp.set(actorId, "spawnDelay", NEVER_RESPAWN);
+    } catch { /* form gone */ }
   }
 
   private finish(actorId: number, died: boolean): void {
@@ -423,4 +454,5 @@ export class BleedoutSystem implements System {
   private logDir = "";
   // actorId -> bleedout in progress
   private downed = new Map<number, Downed>();
+  private dying = new Map<number, Dying>();
 }

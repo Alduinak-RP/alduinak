@@ -215,7 +215,8 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   (about 31 years) so the engine never revives them: a respawn is always a
   fresh copy from this system. Do not use larger values such as `1e12`: they
   overflow the engine's timer arithmetic and the actor respawns on the next
-  tick instead. The live `55_death.js` uses the same `1e9` on NPC death.
+  tick instead. The server's `onDeath` hook (`bleedoutSystem.ts`) uses the
+  same `1e9` on NPC death.
 - Death is polled every 2 seconds through `isDead`; a form that has vanished
   counts as dead. Once the slot's `Respawn` has elapsed and a player is inside,
   a new actor is placed at the slot; the corpse goes when its own timer ends.
