@@ -1,14 +1,12 @@
-import { ActivateEvent, Actor, FormType } from "skyrimPlatform";
+import { ActivateEvent, FormType } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { MsgType } from "../../messages";
-import { getInventory } from "../../sync/inventory";
 import { notifyNextUpdate, sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { RestraintService } from "./restraintService";
 
 // TODO: refactor this out
 import { isRemoteHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 
-import { LastInvService } from "./lastInvService";
 import { logError, logToPlatformLog, logTrace } from "../../logging";
 import { takeSyntheticActivation } from "../../sync/mountApply";
 import { ItemService } from "./itemService";
@@ -98,9 +96,6 @@ export class ActivationService extends ClientListener {
         if (caster !== 0x14 && !isRemoteHostedByMe(caster)) {
           return;
         }
-
-        const lastInvService = this.controller.lookupListener(LastInvService);
-        lastInvService.lastInv = getInventory(this.sp.Game.getPlayer() as Actor);
 
         const target = localIdToRemoteId(targetLocalId);
         if (!target) {

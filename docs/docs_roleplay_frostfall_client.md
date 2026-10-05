@@ -280,8 +280,8 @@ its own inventory apply (the first pass had bumped the counter it compared),
 and the outfit came on only at the settle re-dress (owner's log 2026-09-22:
 both passes 78 ms apart, `3 of 3 saved not worn, worn 0, re-dressing` 2.5 s
 later, 26 entries back only after that). An own
-`createActor` drops the stored inventory of the previous character, so the
-periodic apply cannot add that pack to the new character before its own
+`createActor` drops the stored inventory of the previous character, so no
+inventory apply can add that pack to the new character before its own
 arrives, and a pass of an older spawn does nothing. `applyInventory` no
 longer prints each `TESModPlatform.addItemEx` call to the console and queues
 one 3D rebuild per apply.
@@ -301,6 +301,19 @@ again. `load requested none` is a spawn by an in-game move. The race menu
 close line ends with `open N ms, R race switch(es), F frames, longest L ms,
 K over 250 ms`, frames counted on `tick`, which runs in every menu: one long
 frame per race switch is the engine building the new race's head and body.
+
+**Own inventory** (`remoteServer.ts`). The player's pack goes back to the
+server's last inventory at once when a SetInventory arrives, when a service
+asks for it (a refused craft, a repair, a spawn pass) and after a load. A local
+change (any `containerChanged` with the player on one side) waits until 5 s
+after the last such change, so the server's answer to it lands first; nothing
+re-applies on a timer while the pack is untouched, apart from a safety apply
+60 s after the last one when no other apply is waiting. The craft hold (2 s)
+and the consume hold (10 s) still delay any apply but a spawn's, a SetInventory that comes
+within 5 s of a crossbow shot goes on when that block ends, and no apply runs
+while an inventory, favourites, magic, container or crafting menu is open. The
+applies read the pack through one per-update memo (`getPlayerInventory` in
+`sync/inventory.ts`), so readers in the same update share one read.
 
 ---
 

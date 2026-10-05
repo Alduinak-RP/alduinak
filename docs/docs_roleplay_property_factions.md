@@ -234,18 +234,20 @@ In `server-settings.json` under the client settings (or the client's
 #### Container item sync (client)
 
 Moving an item between the player and a chest fires the engine's
-`containerChanged` event; `ContainersService` diffs the last known inventory
-against the real one and sends one PutItem or TakeItem per changed stack,
-printed to the console as `diff:` plus `Trace in ContainersService: Put|Take
-<base> x<n> target <id>`. SkyrimPlatform runs every event of a tick after one
-`update`, so the first diff of a tick already covers Take All and other
-same-tick moves. If a diff misses the move the event describes, the service
-adds a plain entry for the uncovered remainder (`Trace in ContainersService:
-Diff missed <base> x<n> put|take`), counted per tick so nothing is sent twice.
-One tick after a chest closes (so the closing frame's events have run),
-`Trace in RemoteServer: container residual [...]` lists any stack still out of
-step with the last known inventory, which means the engine never reported that
-move to JS. The server logs every put that arrives
+`containerChanged` event. `ContainersService` queues these events and on the
+next `update` diffs the last known inventory against the real one once, then
+sends one PutItem or TakeItem per changed stack (`Trace in ContainersService:
+Put|Take <base> x<n> target <id>`), so a Take All reads the pack once. The last
+known inventory is read when a container, barter or gift menu opens and
+dropped when it closes; a move outside such a menu is diffed against the
+server's last inventory, limited to the stacks the events named. If the diff
+misses a move an event describes, the service adds a plain entry for the
+uncovered remainder (`Trace in ContainersService: Diff missed <base> x<n>
+put|take`), so nothing is sent twice. When the menu closes, the moves still
+queued go out first (the closing activation of a chest the server opened
+follows 0.1 s later), then `Trace in ContainersService: container residual
+[...]` lists any stack still out of step with the last known inventory, which
+means the engine never reported that move to JS. The server logs every put that arrives
 as `[put] <actor> puts <base> x<n> into <target>` and every take it lets through
 as `[take] <actor> takes <base> x<n> from <source>` (2026-09, B14: container
 withdrawals were the one item movement the log did not show). A key or writing

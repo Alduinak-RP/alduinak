@@ -45,7 +45,7 @@ export class PlayerBowShotService extends ClientListener {
     private onQueryBlockSetInventoryEvent(e: QueryBlockSetInventoryEvent) {
         if (Date.now() < this.inventoryUnblockMoment) {
             logTrace(this, "Blocked inventory operation");
-            e.block();
+            e.block(this.inventoryUnblockMoment);
         } else {
             logTrace(this, "Not blocked inventory operation");
         }

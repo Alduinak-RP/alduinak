@@ -24,7 +24,7 @@ import { nameof } from '../../lib/nameof';
 import { refreshMovement, setActorValuePercentage } from '../../sync/actorvalues';
 import { Appearance, applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '../../sync/equipment';
-import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
+import { Inventory, applyInventory, getDiff, getInventory, getPlayerInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { applyDurabilityNames } from '../../sync/durabilityNames';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
@@ -49,7 +49,6 @@ import { RestraintService } from './restraintService';
 import { MountService } from './mountService';
 import { RemoteDamageGuardService } from './remoteDamageGuardService';
 import { CellAnimationsService } from './cellAnimationsService';
-import { LastInvService } from './lastInvService';
 import { UpdateAppearanceMessage } from '../messages/updateAppearanceMessage';
 import { TeleportMessage } from '../messages/teleportMessage';
 import { DeathStateContainerMessage } from '../messages/deathStateContainerMessage';
@@ -102,18 +101,36 @@ const setPcInventory = (inv: Inventory | undefined): void => {
 };
 
 const CONSUME_APPLY_HOLD_MS = 10000;
+// How long a local change waits for the server's answer before the pack goes back to the server's snapshot
+const PC_INV_SETTLE_MS = 5000;
+// How long after the last apply a safety apply catches a local change no event reported
+const PC_INV_SAFETY_MS = 60000;
 
 let pcInvLastApply = 0;
+// When the next apply is due, 0 while none is asked for
+let pcInvApplyAt = 0;
 let pcInvHoldUntil = 0;
 let encumbranceRefreshPending = false;
 
-// Holds the periodic re-apply while the server has not seen a local change yet
+// Holds the re-apply while the server has not seen a local change yet
 export const holdPcInventoryApply = (ms: number): void => {
   pcInvHoldUntil = Math.max(pcInvHoldUntil, Date.now() + ms);
 };
 
+const schedulePcInventoryApply = (at: number): void => {
+  pcInvApplyAt = pcInvApplyAt ? Math.min(pcInvApplyAt, at) : at;
+};
+
 export const requestPcInventoryApply = (): void => {
-  pcInvLastApply = 0;
+  schedulePcInventoryApply(Date.now());
+};
+
+// An apply already due stays due; a later one waits until the server could answer the change
+const settlePcInventoryApply = (): void => {
+  const now = Date.now();
+  if (!pcInvApplyAt || pcInvApplyAt > now) {
+    pcInvApplyAt = Math.max(pcInvApplyAt, now + PC_INV_SETTLE_MS);
+  }
 };
 
 const WORN_ENCHANTMENT_REAPPLY_DELAY_MS = 1500;
@@ -334,21 +351,25 @@ const reapplyPcInventory = () => {
   const dressing = spawnTopUp === "dressing";
   if (dressing) {
     spawnTopUp = "apply";
+    requestPcInventoryApply();
   }
-  const player = Game.getPlayer()!;
   if (encumbranceRefreshPending) {
     encumbranceRefreshPending = false;
-    refreshMovement(player);
+    refreshMovement(Game.getPlayer()!);
   }
+  const now = Date.now();
   // Snapshots sent before the server saw a quick run of consumes would re-add them; the strip left no local change to protect
-  if (dressing || (Date.now() < pcInvHoldUntil && spawnTopUp !== "apply")) {
+  if (dressing || (now < pcInvHoldUntil && spawnTopUp !== "apply")) {
     return;
   }
-  if (Date.now() - pcInvLastApply > 5000) {
-    pcInvLastApply = Date.now();
+  // A settling change or a block keeps the safety re-apply waiting too
+  if (pcInvApplyAt ? now >= pcInvApplyAt : now - pcInvLastApply >= PC_INV_SAFETY_MS) {
+    pcInvApplyAt = 0;
+    pcInvLastApply = now;
     const pcInv = getPcInventory();
     if (pcInv) {
-      const diff = getDiff(pcInv, getInventory(player), true, "apply").entries;
+      const player = Game.getPlayer()!;
+      const diff = getDiff(pcInv, getPlayerInventory(player), true, "apply").entries;
       // applyInventory keeps summoned bound items, so their pending removal is not a change
       encumbranceRefreshPending = diff.some((e) => {
         const f = e.count < 0 ? Game.getFormEx(e.baseId) : null;
@@ -410,6 +431,7 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on("updateAnimVariablesMessage", (e) => this.onUpdateAnimVariablesMessage(e));
 
     this.controller.on("update", reapplyPcInventory);
+    this.controller.on("loadGame", () => requestPcInventoryApply());
     this.controller.on("update", () => this.sweepCloneCasts());
     this.controller.on("update", () => this.checkPlayerTeleport());
     this.controller.on("update", () => this.checkRaceMenu());
@@ -470,15 +492,20 @@ export class RemoteServer extends ClientListener {
     onCustomPacket(this.controller, "bodyLeft", (content) => this.onBodyLeft(content));
     // The engine loses worn enchantment abilities on scripted equips, inventory changes and stray dispels
     this.controller.on("equip", (e) => this.onPlayerWornChange(e.actor));
-    this.controller.on("containerChanged", (e) => this.onPlayerWornChange(e.oldContainer, e.newContainer));
+    this.controller.on("containerChanged", (e) => {
+      if (this.onPlayerWornChange(e.oldContainer, e.newContainer)) settlePcInventoryApply();
+    });
     this.controller.on("effectFinish", (e) => this.onPlayerWornChange(e.target));
     this.controller.on("update", () => this.reapplyWornEnchantments());
   }
 
-  private onPlayerWornChange(...refs: (ObjectReference | null | undefined)[]): void {
-    if (refs.some((ref) => ref?.getFormID() === 0x14)) {
-      requestWornEnchantmentReapply();
+  // True when the player was one of the refs
+  private onPlayerWornChange(...refs: (ObjectReference | null | undefined)[]): boolean {
+    if (!refs.some((ref) => ref?.getFormID() === 0x14)) {
+      return false;
     }
+    requestWornEnchantmentReapply();
+    return true;
   }
 
   private noteFrameGap(): void {
@@ -543,15 +570,12 @@ export class RemoteServer extends ClientListener {
     once('update', () => {
       setPcInventory(msg.inventory);
 
-      let blocked = false;
-
+      // A blocked snapshot goes on when the last block ends
+      let applyAt = Date.now();
       this.controller.emitter.emit('queryBlockSetInventoryEvent', {
-        block: () => blocked = true
+        block: (until) => { applyAt = Math.max(applyAt, until); }
       });
-
-      if (!blocked) {
-        pcInvLastApply = 0;
-      }
+      schedulePcInventoryApply(applyAt);
     });
   }
 
@@ -660,9 +684,8 @@ export class RemoteServer extends ClientListener {
           logTrace(this, "onOpenContainerMesage - waiting for", factName, "to be false");
           while (Ui.isMenuOpen("ContainerMenu")) await Utility.wait(0.1);
           logTrace(this, "onOpenContainerMesage - menu closed", factName);
-          // The closing frame's containerChanged events drain after this continuation, so check one tick later
+          // The closing frame's containerChanged events drain after this continuation, and their moves reach the server before the closing activation
           await Utility.wait(0.1);
-          this.traceContainerResidual();
         }
 
         const message: ActivateMessage = {
@@ -685,15 +708,6 @@ export class RemoteServer extends ClientListener {
         });
       })();
     });
-  }
-
-  // A move that never reached ContainersService leaves lastInv out of step with the real inventory
-  private traceContainerResidual(): void {
-    const lastInv = this.controller.lookupListener(LastInvService).lastInv;
-    const player = Game.getPlayer();
-    if (!lastInv || !player) return;
-    const residual = getDiff(lastInv, getInventory(player), false).entries;
-    if (residual.length > 0) logTrace(this, "container residual", JSON.stringify(residual));
   }
 
   private onTeleportMessage(event: ConnectionMessage<TeleportMessage> | ConnectionMessage<TeleportMessage2>): void {

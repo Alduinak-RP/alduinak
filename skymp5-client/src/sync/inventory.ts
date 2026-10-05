@@ -492,6 +492,21 @@ export const getInventory = (refr: ObjectReference, sameCopy?: SameCopy): Invent
   );
 };
 
+// The player's inventory read once per update; readers must not change it
+let playerInventoryMemo: Inventory | undefined;
+
+export const getPlayerInventory = (player: ObjectReference): Inventory => {
+  if (!playerInventoryMemo) {
+    playerInventoryMemo = getInventory(player);
+  }
+  return playerInventoryMemo;
+};
+
+// Dropped at the start of every update and by an apply that changes the player
+export const dropPlayerInventoryMemo = (): void => {
+  playerInventoryMemo = undefined;
+};
+
 const basesReset = (): Set<number> => {
   if (storage["basesResetExists"] !== true) {
     storage["basesResetExists"] = true;
@@ -500,15 +515,18 @@ const basesReset = (): Set<number> => {
   return storage["basesReset"] as Set<number>;
 };
 
-const resetBase = (refr: ObjectReference): void => {
+// True when it emptied the reference
+const resetBase = (refr: ObjectReference): boolean => {
   const base = refr.getBaseObject();
   const baseId = base ? base.getFormID() : 0;
-  if (!basesReset().has(baseId)) {
-    basesReset().add(baseId);
-    TESModPlatform.resetContainer(base);
-
-    refr.removeAllItems(null, false, true);
+  if (basesReset().has(baseId)) {
+    return false;
   }
+  basesReset().add(baseId);
+  TESModPlatform.resetContainer(base);
+
+  refr.removeAllItems(null, false, true);
+  return true;
 };
 
 const WORN_AMMO_LOG_GAP_MS = 10000;
@@ -552,13 +570,19 @@ export const applyInventory = (
   enableCrashProtection: boolean,
   ignoreWorn = false
 ): boolean => {
-  resetBase(refr);
+  const isPlayer = refr.getFormID() === 0x14;
+  if (resetBase(refr) && isPlayer) {
+    dropPlayerInventoryMemo();
+  }
   const target = withoutPlayerEnchantments(newInventory);
-  const reverted = refr.getFormID() === 0x14 && revertBaseIds.size ? new Set(revertBaseIds) : undefined;
+  const reverted = isPlayer && revertBaseIds.size ? new Set(revertBaseIds) : undefined;
   if (reverted) {
     revertBaseIds.clear();
   }
-  const diff = getDiff(target, getInventory(refr), ignoreWorn, "apply", reverted).entries;
+  const diff = getDiff(target, isPlayer ? getPlayerInventory(refr) : getInventory(refr), ignoreWorn, "apply", reverted).entries;
+  if (isPlayer && diff.length) {
+    dropPlayerInventoryMemo();
+  }
 
   let res = true;
   let queueNiNodeUpdateNeeded = false;

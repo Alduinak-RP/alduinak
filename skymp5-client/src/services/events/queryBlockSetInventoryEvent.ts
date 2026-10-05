@@ -1,3 +1,4 @@
 export interface QueryBlockSetInventoryEvent {
-    block: () => void
+    // until: the Date.now() time the block ends
+    block: (until: number) => void
 }

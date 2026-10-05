@@ -18,7 +18,6 @@ import { WeatherService } from "./services/services/weatherService";
 import { SpVersionCheckService } from "./services/services/spVersionCheckService";
 import { ConsoleCommandsService } from "./services/services/consoleCommandsService";
 import { ConsoleBlockService } from "./services/services/consoleBlockService";
-import { LastInvService } from "./services/services/lastInvService";
 import { ActivationService } from "./services/services/activationService";
 import { CraftService } from "./services/services/craftService";
 import { CraftedExtrasService } from "./services/services/craftedExtrasService";
@@ -105,6 +104,7 @@ import { FurnitureAnimationsService } from "./services/services/furnitureAnimati
 import { LipSyncService } from "./services/services/lipSyncService";
 import { VanillaMenuService } from "./services/services/vanillaMenuService";
 import { MenuStateService } from "./services/services/menuStateService";
+import { dropPlayerInventoryMemo } from "./sync/inventory";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -115,6 +115,8 @@ once("update", () => {
 const main = () => {
   try {
     const controller = SpApiInteractor.getControllerInstance();
+    // Ahead of every service's update callback
+    controller.on("update", dropPlayerInventoryMemo);
 
     const listeners = [
       new MenuStateService(sp, controller),
@@ -129,7 +131,6 @@ const main = () => {
       new SpVersionCheckService(sp, controller),
       new ConsoleCommandsService(sp, controller),
       new ConsoleBlockService(sp, controller),
-      new LastInvService(sp, controller),
       new ActivationService(sp, controller),
       new CraftService(sp, controller),
       new CraftedExtrasService(sp, controller),
