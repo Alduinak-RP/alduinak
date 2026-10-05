@@ -5,8 +5,8 @@
 //   disconnect()              leave the room
 //   setPtt(bool)              push-to-talk: open/close the mic track; ignored while voice detection opens it
 //   setPttKey(code)           KeyboardEvent.code of the push-to-talk key; the game sees no keys while a menu has focus, so the page reads it then
-//   setMode(key)              Alt+V cycles whisper/talk/shout; the range goes out on the data channel so listeners attenuate by the SPEAKER's loudness
-//   setPeers({ identityHex: distanceUnits })  refresh distances ~every 400ms; peers absent from the map are out of range
+//   setMode(key)              Alt+V cycles whisper/talk/shout; the game sends it to the server, whose ff_voiceRange lets listeners attenuate by the SPEAKER's loudness
+//   setPeers({ identityHex: distanceUnits }, { identityHex: rangeUnits })  refresh distances and speaker ranges ~every 400ms; peers absent from the first map are out of range
 // SkyrimPlatform dispatches 'skymp5-client:windowInactive' when the game loses the foreground; the page then closes the mic itself
 // Events back to the game (window.skyrimPlatform.sendMessage):
 //   'voice::ready', 'voice::micDenied', 'voice::error' <text>, 'voice::ptt' <'1' pressed | '0' released, from the page's own key listeners>,
@@ -57,7 +57,7 @@ class VoiceManager {
     this.modes = DEFAULT_MODES;
     this.mode = 'talk';
     this.distances = {};       // identity -> game units, refreshed by setPeers
-    this.peerRanges = {};      // identity -> that speaker's mode range
+    this.peerRanges = {};      // identity -> that speaker's mode range, refreshed by setPeers
     this.ptt = false;
     this.transmitting = false;   // mic open: push-to-talk held, or voice detected
     this.vadUntil = 0;
@@ -169,12 +169,7 @@ class VoiceManager {
     return null;
   }
 
-  get myRange() {
-    const m = this.modeByKey(this.mode) || this.modes[0];
-    return m ? m.units : 840;
-  }
-
-  // The default range for a speaker whose mode packet hasn't arrived yet
+  // The default range for a speaker whose ff_voiceRange is unset
   get defRange() {
     const m = this.modeByKey('talk') || this.modes[Math.floor(this.modes.length / 2)];
     return m ? m.units : 840;
@@ -209,27 +204,12 @@ class VoiceManager {
       room.on(RoomEvent.ParticipantDisconnected, (participant) => {
         const el = this.audioEls.get(participant.identity);
         if (el) { el.remove(); this.audioEls.delete(participant.identity); }
-        delete this.peerRanges[participant.identity];
         this.stopped(participant.identity);
         this.emitSpeaking();
-      });
-      room.on(RoomEvent.ParticipantConnected, () => {
-        this.publishRange(); // newcomers need to learn my current range
-      });
-      room.on(RoomEvent.DataReceived, (payload, participant) => {
-        if (!participant) return;
-        try {
-          const msg = JSON.parse(new TextDecoder().decode(payload));
-          if (msg && msg.t === 'voiceRange' && msg.r > 0) {
-            this.peerRanges[participant.identity] = Math.round(msg.r);
-            this.applyVolume(participant.identity);
-          }
-        } catch (e) { /* not ours */ }
       });
       room.on(RoomEvent.Disconnected, () => {
         this.audioEls.forEach((el) => el.remove());
         this.audioEls.clear();
-        this.peerRanges = {};
         this.emitSpeaking();
         // Intentional teardowns null this.room first; report only real drops or the game re-requests tokens forever
         if (this.room === room) {
@@ -248,7 +228,6 @@ class VoiceManager {
       try { await room.startAudio(); } catch (e) { /* autoplay policy: unlocked by CEF switch */ }
       // Expose the room only once connected so setPtt cannot hit a not-yet-connected room and mis-report micDenied
       this.room = room;
-      this.publishRange();
       this.sinkId = await this.deviceIdFor('audiooutput', this.audio.output);
       // Opening the mic at connect also keeps Chromium's in-process device start from hitching the first push-to-talk
       try {
@@ -279,7 +258,6 @@ class VoiceManager {
     }
     this.audioEls.forEach((el) => el.remove());
     this.audioEls.clear();
-    this.peerRanges = {};
     this.emitSpeaking();
   }
 
@@ -329,18 +307,7 @@ class VoiceManager {
   setMode(key) {
     if (!this.modeByKey(key)) return;
     this.mode = key;
-    this.publishRange();
     this.showBanner(key);
-  }
-
-  publishRange() {
-    if (!this.room) return;
-    this.lastRangePublishAt = Date.now();
-    try {
-      const payload = new TextEncoder().encode(JSON.stringify({ t: 'voiceRange', r: this.myRange }));
-      const p = this.room.localParticipant.publishData(payload, { reliable: true });
-      if (p && p.catch) p.catch(() => { /* transient; republished on the heartbeat */ });
-    } catch (e) { /* transient; republished on next change/join */ }
   }
 
   rangeFor(identity) {
@@ -371,8 +338,9 @@ class VoiceManager {
     if (identity) sendToGame('voice::stopped', identity);
   }
 
-  setPeers(distances) {
+  setPeers(distances, ranges) {
     this.distances = distances || {};
+    this.peerRanges = ranges || {};
     this.lastPeersAt = Date.now();
     if (!this.room) return;
     this.audioEls.forEach((el, identity) => this.applyVolume(identity));
@@ -426,16 +394,12 @@ window.addEventListener('keyup', (e) => window.__alduinakVoice.onKeyUp(e));
 window.addEventListener('skymp5-client:windowInactive', () => window.__alduinakVoice.release());
 
 // Failsafe: if the game stops feeding distances (main menu, script reload), go silent instead of playing stale volumes.
-// Also heartbeat the range so listeners who missed the data packet eventually heal.
 setInterval(() => {
   const vm = window.__alduinakVoice;
   if (!vm.room) return;
   if (vm.lastPeersAt && Date.now() - vm.lastPeersAt > 5000) {
     vm.distances = {};
     vm.audioEls.forEach((el) => { el.volume = 0; });
-  }
-  if (!vm.lastRangePublishAt || Date.now() - vm.lastRangePublishAt > 20000) {
-    vm.publishRange();
   }
 }, 2000);
 

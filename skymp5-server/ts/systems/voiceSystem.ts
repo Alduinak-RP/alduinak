@@ -14,6 +14,7 @@ type Mp = any;
 //   Client -> Server: { customPacketType: "voiceTokenRequest" }
 //   Server -> Client: { customPacketType: "voiceToken", enabled, url?, token?,
 //                       room?, identity?, rangeUnits? }
+//   Client -> Server: { customPacketType: "voiceMode", key }, answered by the speaker's neighbour-visible ff_voiceRange
 //
 // Settings (server-settings.json "voiceChat" object):
 //   { "enabled": true, "url": "ws://host:7880", "apiKey": "...",
@@ -22,6 +23,8 @@ type Mp = any;
 
 // Short on purpose: LiveKit refreshes tokens over live connections, and a kicked/banned player's credential dies with the TTL (no admin-API revocation)
 const TOKEN_TTL_SECONDS = 60 * 60;
+// Registered in gamemode.js; listeners attenuate each speaker by it
+const VOICE_RANGE_PROP = "ff_voiceRange";
 
 function b64url(input: Buffer | string): string {
   return (typeof input === "string" ? Buffer.from(input) : input).toString("base64url");
@@ -94,7 +97,24 @@ export class VoiceSystem implements System {
     this.log(`VoiceSystem: ${this.enabled ? `enabled, room '${this.room}', modes: ${modeDesc}` : "disabled (missing url/apiKey/apiSecret or enabled=false)"}`);
   }
 
-  customPacket(userId: number, type: string, _content: Content, ctx: SystemContext): void {
+  private rangeWriteFailed = false;
+
+  private onVoiceMode(userId: number, content: Content, mp: Mp): void {
+    const mode = this.modes.find(m => m.key === content.key);
+    if (!this.enabled || !mode) return;
+    let actorId = 0;
+    try { actorId = mp.getUserActor(userId); } catch { }
+    if (!actorId) return;
+    try {
+      if (mp.get(actorId, VOICE_RANGE_PROP) !== mode.units) mp.set(actorId, VOICE_RANGE_PROP, mode.units);
+    } catch (e) {
+      if (!this.rangeWriteFailed) this.log(`VoiceSystem: ${VOICE_RANGE_PROP} write failed (property registered in gamemode.js?): ${e}`);
+      this.rangeWriteFailed = true;
+    }
+  }
+
+  customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
+    if (type === "voiceMode") return this.onVoiceMode(userId, content, ctx.svr as Mp);
     if (type !== "voiceTokenRequest") return;
     const mp = ctx.svr as Mp;
     if (!this.enabled) {

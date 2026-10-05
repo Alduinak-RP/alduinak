@@ -52,8 +52,10 @@ The integration described as "future work" below has been built:
   only) every 400ms.
 - **Talk range**: V + mousewheel picks the speaker's audible range between
   chatRanges.whisper (150u) and chatRanges.shout (10000u), default say (2000u).
-  The range is published to the room over LiveKit's data channel, so LISTENERS
-  attenuate by the speaker's chosen loudness (whisperers audible at ~2m,
+  The client sends the chosen mode to the server (`voiceMode`), which sets the
+  speaker's neighbour-visible `ff_voiceRange`; each listener's game passes it
+  to the page with the distances, so LISTENERS attenuate by the speaker's
+  chosen loudness (whisperers audible at ~2m,
   shouters at ~143m). A bottom-center meter (chat-tier label + log-scale bar)
   shows while PTT is held or the wheel moves; the choice persists across
   relaunches via `voice-settings-no-load`.

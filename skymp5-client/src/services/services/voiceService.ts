@@ -9,7 +9,7 @@ import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logToPlatformLog, logTrace } from "../../logging";
 
 // Proximity voice chat: push-to-talk (default V, launcher-configurable via voicePushToTalkKeyCode) + LiveKit room managed by VoiceManager in the skymp5-front CEF page.
-// This service owns the game side: room token requests, peer distances to the browser, and the PTT key; audibility is distance vs the server-provided range (chat "say" range by default), same-world only.
+// This service owns the game side: room token requests, the chosen mode to the server, peer distances and ranges to the browser, and the PTT key; audibility is distance vs each speaker's ff_voiceRange, same-world only.
 // The game sees no key events while a menu or the chat has focus, so the front reads DOM keys then and reports them as 'voice::ptt' 1/0; the rest are polled here.
 
 const PEERS_INTERVAL_MS = 400;
@@ -21,6 +21,8 @@ const PLAYER_ID_SPACE = 0xff000000;
 
 const MODE_PERSIST_DELAY_MS = 1000;
 const VOICE_SETTINGS_PLUGIN = "voice-settings-no-load";
+// Set by the server's VoiceSystem from each speaker's voiceMode
+const VOICE_RANGE_PROP = "ff_voiceRange";
 
 interface VoiceMode { key: string; label: string; units: number }
 
@@ -151,9 +153,14 @@ export class VoiceService extends ClientListener {
     if (!this.modes.some(m => m.key === key) || key === this.mode) return;
     this.mode = key;
     this.modePersistAt = Date.now() + MODE_PERSIST_DELAY_MS;
+    this.sendMode();
     this.sp.browser.executeJavaScript(
       `window.__alduinakVoice && window.__alduinakVoice.setMode(${JSON.stringify(key)})`
     );
+  }
+
+  private sendMode(): void {
+    sendCustomPacket(this.controller, { customPacketType: "voiceMode", key: this.mode });
   }
 
   private currentRangeUnits(): number {
@@ -278,6 +285,8 @@ export class VoiceService extends ClientListener {
         ? persisted
         : (this.modes.find(m => m.key === "talk") || this.modes[0]).key;
     }
+    // The stored range may be another machine's choice or an older mode list
+    this.sendMode();
 
     const cfg = { modes: this.modes, mode: this.mode, pttCode: domKeyCode(this.voiceKey), audio: this.audioSettings() };
     this.pendingRefrId = this.myRefrId();
@@ -380,7 +389,7 @@ export class VoiceService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "afkPing" });
   }
 
-  // Distances in game units keyed by refrId hex = the LiveKit identity scheme
+  // Distances and speaker ranges in game units keyed by refrId hex = the LiveKit identity scheme
   private pushPeers() {
     const worldModel = this.controller.lookupListener(RemoteServer).getWorldModel();
     if (!worldModel || !Array.isArray(worldModel.forms)) return;
@@ -393,6 +402,7 @@ export class VoiceService extends ClientListener {
     const maxUnits = this.modes.reduce((a, m) => Math.max(a, m.units), 0) || 3150;
     const includeWithin = maxUnits * 1.2;
     const peers: Record<string, number> = {};
+    const ranges: Record<string, number> = {};
     for (let i = 0; i < worldModel.forms.length; i++) {
       if (i === worldModel.playerCharacterFormIdx) continue;
       const form = worldModel.forms[i];
@@ -400,10 +410,14 @@ export class VoiceService extends ClientListener {
       if (!form.appearance || !form.movement || !Array.isArray(form.movement.pos)) continue;
       if (form.movement.worldOrCell !== myWorldOrCell) continue;
       const dist = ObjectReferenceEx.getDistance(form.movement.pos, myPos);
-      if (dist <= includeWithin) peers[form.refrId.toString(16)] = Math.round(dist);
+      if (dist > includeWithin) continue;
+      const id = form.refrId.toString(16);
+      peers[id] = Math.round(dist);
+      const range = (form as Record<string, unknown>)[VOICE_RANGE_PROP];
+      if (typeof range === "number" && range > 0) ranges[id] = range;
     }
     this.sp.browser.executeJavaScript(
-      `window.__alduinakVoice && window.__alduinakVoice.setPeers(${JSON.stringify(peers)})`
+      `window.__alduinakVoice && window.__alduinakVoice.setPeers(${JSON.stringify(peers)}, ${JSON.stringify(ranges)})`
     );
   }
 }
