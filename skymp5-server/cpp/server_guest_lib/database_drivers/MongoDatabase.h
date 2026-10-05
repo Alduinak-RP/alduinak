@@ -21,6 +21,7 @@ private:
     std::vector<std::optional<MpChangeForm>>&& changeForms,
     size_t& outNumUpserted) override;
 
+  void EnsureIndexes();
   MpChangeForm ParseDocument(simdjson::dom::parser& parser,
                              const std::string& json);
 

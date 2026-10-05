@@ -20,7 +20,11 @@ one-shot migration.
   Steps: delete the documents flagged `isDeleted` (deleted characters stay
   flagged), backed up first as canonical EJSON into
   `<backup root>\rollback-trim-<db>-<stamp>` (`mongoimport --jsonArray` puts them back);
-  set `equipmentDump.numChanges` to 0 where it is missing.
+  set `equipmentDump.numChanges` to 0 where it is missing; swap the old
+  `changeForms` indexes (`formDesc_1` non-unique, `worldOrCellDesc_1`,
+  `profileId_1`) for `formDesc_1` (unique) and `profileId_1_formDesc_1`, which
+  the game server also ensures at every start (it refuses while a formDesc is on
+  more than one document). Test: `node deploy/mongodb/test/test-trim-changeforms.js`.
 - `forbidden-items.py` + `strip-inventories.js` - one-time strip of gear above
   Adept, jewelry, spell tomes, scrolls, staves, enchanted gear and learned spells
   (abilities stay) from characters and claimed containers (personal and

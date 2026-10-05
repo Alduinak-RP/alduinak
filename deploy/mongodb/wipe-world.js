@@ -12,7 +12,7 @@ const SM = path.join(__dirname, '..', '..', 'server-manager', 'src')
 const config = require(path.join(SM, 'config'))
 const formIds = require(path.join(SM, 'formIds'))
 const modsync = require(path.join(SM, 'modsync'))
-const formDescIndex = require(path.join(SM, 'formDescIndex'))
+const trim = require('./trim-changeforms')
 const { nativeModuleLocked, serviceStatus, gameServerBlocker } = require(path.join(SM, 'serviceCheck'))
 
 const USAGE = [
@@ -312,15 +312,16 @@ async function collectionNames(db) {
 async function changeFormsState(db) {
   if (!(await collectionNames(db)).includes(CF)) return null
   const col = db.collection(CF)
-  return { docs: await col.countDocuments(), indexed: (await col.indexes()).some(formDescIndex.isFormDescIndex) }
+  return { docs: await col.countDocuments(), indexed: !(await trim.planIndexes(col)).create.length }
 }
 
-// Logged, never thrown: the manager ensures it again before every game start
+// Logged, never thrown: the game server ensures them again at every start
 async function ensureIndex() {
-  console.log(`  ${(await formDescIndex.ensureFormDescIndex(settings)).line}`)
+  try { console.log(`  ${await withDb(db => trim.ensureIndexes(db.collection(CF)))}`) }
+  catch (err) { console.log(`  ${CF} indexes not ensured: ${purge.sanitize(err, settings)}`) }
 }
 
-const indexAction = () => ({ label: `create the ${formDescIndex.NAME} index on ${settings.databaseName}.${CF}`, run: ensureIndex })
+const indexAction = () => ({ label: `create the ${CF} indexes on ${settings.databaseName}.${CF}`, run: ensureIndex })
 
 function byId(docs) {
   return [...docs].sort((a, b) => String(a._id).localeCompare(String(b._id)))
@@ -769,7 +770,7 @@ async function verifyMode(flags) {
         console.log(`  ${name}: ${plural(count, 'document', 'documents')}${backed}`)
       }
       if (!names.includes(CF)) return
-      console.log(`  ${CF} ${formDescIndex.NAME} index: ${(await changeFormsState(db)).indexed ? 'present' : 'missing (the next game start through the manager creates it)'}`)
+      console.log(`  ${CF} indexes: ${(await changeFormsState(db)).indexed ? 'present' : 'missing (the next game start creates them)'}`)
       printStats(await changeFormStats(db), '  ')
       if (!liveSlots) return
       let bad = 0
@@ -858,7 +859,7 @@ async function applyMode(flags) {
     })
     plan.actions.push(indexAction())
   } else {
-    console.log(`  ${CF}: ${live.cf ? 'empty' : 'already dropped'}, ${formDescIndex.NAME} index ${live.cf && live.cf.indexed ? 'present' : 'missing'}`)
+    console.log(`  ${CF}: ${live.cf ? 'empty' : 'already dropped'}, indexes ${live.cf && live.cf.indexed ? 'present' : 'missing'}`)
     if (!(live.cf && live.cf.indexed)) plan.actions.push(indexAction())
     if (live.names.includes(RESTORE_CHECK)) plan.actions.push({ label: `drop the leftover ${RESTORE_CHECK}`, run: () => withDb(db => db.collection(RESTORE_CHECK).drop()) })
   }
@@ -948,7 +949,7 @@ async function applyMode(flags) {
   if (after.factions && arrLen(after.factions.assignments)) problems.push(`${FACTIONS}.${FACTIONS_DOC} still has assignments`)
   if (problems.length) throw new Error(`re-read after the wipe: ${problems.join(', ')}`)
   console.log('\nwipe done and re-read')
-  if (!(cf && cf.indexed)) console.log(`WARNING: ${CF} has no ${formDescIndex.NAME} index; the next game start through the manager creates it`)
+  if (!(cf && cf.indexed)) console.log(`WARNING: ${CF} lacks its indexes; the next game start creates them`)
   console.log('next:')
   console.log(`  1. node deploy/mongodb/wipe-world.js verify --backup "${dir}" and fix every EDIT line`)
   console.log('  2. Build > Client > Update modlist in the manager, with the game server stopped')
@@ -1059,7 +1060,7 @@ async function restoreMode(flags) {
         }
       })
       console.log('  counts match the backup')
-      // A dump taken before the index existed restores changeForms without it
+      // A dump taken before the indexes existed restores changeForms without them
       if (restored.includes(CF)) await ensureIndex()
     },
   })

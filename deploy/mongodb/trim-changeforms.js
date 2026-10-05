@@ -32,7 +32,7 @@ const purge = {
     const count = groups.reduce((sum, g) => sum + g.n, 0)
     const kept = await col.countDocuments({ isDeleted: true, profileId: { $gte: 0 } })
     const parts = groups.map(g => `${g.n} ${g._id.ff ? 'FF' : 'ESP'} ${g._id.actor ? 'actors' : 'refs'}`)
-    return { count, text: `${C.plural(count, 'flagged document', 'flagged documents')} to delete${parts.length ? ` (${parts.join(', ')})` : ''}, ${C.plural(kept, 'deleted character', 'deleted characters')} stay flagged` }
+    return { count, text: `${C.plural(count, 'flagged document', 'flagged documents')} to delete${parts.length ? ` (${parts.join(', ')})` : ''}, ${C.plural(kept, 'deleted character stays', 'deleted characters stay')} flagged` }
   },
   async apply(col, plan, ctx) {
     const docs = await col.find(PURGE, { promoteValues: false }).toArray()
@@ -61,8 +61,68 @@ const numChanges = {
   },
 }
 
+// The game server ensures the same two at every start (MongoDatabase::EnsureIndexes)
+const INDEXES = [
+  { name: 'formDesc_1', key: { formDesc: 1 }, unique: true },
+  { name: 'profileId_1_formDesc_1', key: { profileId: 1, formDesc: 1 }, partialFilterExpression: { profileId: { $gte: 0 } } },
+]
+const OLD_KEYS = [{ worldOrCellDesc: 1 }, { profileId: 1 }].map(k => JSON.stringify(k))
+const NAMESPACE_NOT_FOUND = 26
+const MAX_LISTED = 20
+
+const keyOf = index => JSON.stringify(index.key)
+const optionsOf = index => JSON.stringify([!!index.unique, index.partialFilterExpression || null])
+const matches = (have, want) => have.name === want.name && keyOf(have) === keyOf(want) && optionsOf(have) === optionsOf(want)
+const createOptions = want => ({ name: want.name, ...(want.unique && { unique: true }), ...(want.partialFilterExpression && { partialFilterExpression: want.partialFilterExpression }) })
+const label = index => `${index.name}${index.unique ? ' (unique)' : ''}${index.partialFilterExpression ? ' (partial)' : ''}`
+const labels = list => list.map(label).join(', ')
+
+// drop: old single-field indexes and any holding a wanted name or key with other options; create: wanted ones missing
+async function planIndexes(col) {
+  let have
+  try { have = await col.indexes() }
+  catch (err) { if (err && err.code === NAMESPACE_NOT_FOUND) have = []; else throw err }
+  have = have.filter(i => i.name !== '_id_')
+  const drop = have.filter(i => OLD_KEYS.includes(keyOf(i)) || INDEXES.some(w => (w.name === i.name || keyOf(w) === keyOf(i)) && !matches(i, w)))
+  const create = INDEXES.filter(w => !have.some(i => matches(i, w)))
+  return { drop, create }
+}
+
+// Creates the missing ones whose name and key are free (a fresh or restored collection); one line
+async function ensureIndexes(col) {
+  const { drop, create } = await planIndexes(col)
+  const held = create.filter(w => drop.some(i => i.name === w.name || keyOf(i) === keyOf(w)))
+  const made = create.filter(w => !held.includes(w))
+  for (const w of made) await col.createIndex(w.key, createOptions(w))
+  const head = made.length ? `changeForms indexes created: ${labels(made)}` : `changeForms indexes ${held.length ? 'not created' : 'present'}`
+  return held.length ? `${head}; ${labels(held)} held by an older index, run deploy/mongodb/trim-changeforms.js --apply` : head
+}
+
+const indexes = {
+  name: 'indexes',
+  async plan(col) {
+    const { drop, create } = await planIndexes(col)
+    const dups = create.some(w => w.unique)
+      ? await col.aggregate([{ $match: KEPT }, { $group: { _id: '$formDesc', n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }, { $sort: { _id: 1 } }]).toArray()
+      : []
+    const count = drop.length + create.length
+    const text = count ? `drop ${labels(drop) || 'nothing'}; create ${labels(create) || 'nothing'}` : `${labels(INDEXES)} present`
+    const blocker = dups.length
+      ? `${C.plural(dups.length, 'formDesc is', 'formDescs are')} on more than one document, so the unique index cannot be built: ${dups.slice(0, MAX_LISTED).map(d => `${d._id} (${d.n})`).join(', ')}${dups.length > MAX_LISTED ? ', ...' : ''}`
+      : null
+    return { count, text, blocker, drop, create }
+  },
+  async apply(col, plan) {
+    for (const i of plan.drop) await col.dropIndex(i.name)
+    for (const w of plan.create) await col.createIndex(w.key, createOptions(w))
+    const left = await planIndexes(col)
+    if (left.drop.length || left.create.length) throw new Error(`indexes still differ after the swap: drop ${labels(left.drop) || 'nothing'}, create ${labels(left.create) || 'nothing'}`)
+    return `dropped ${labels(plan.drop) || 'nothing'}, created ${labels(plan.create) || 'nothing'}`
+  },
+}
+
 // Applied in this order; a plan returns { count, text, details?, blocker? }
-const STEPS = [purge, numChanges]
+const STEPS = [purge, numChanges, indexes]
 
 async function main(argv, { open, blocker = gameServerBlocker, out = console.log } = {}) {
   if (argv.includes('--help')) return out(USAGE)
@@ -94,6 +154,6 @@ async function main(argv, { open, blocker = gameServerBlocker, out = console.log
   }, open)
 }
 
-module.exports = { main, STEPS, PURGE, KEPT, NO_NUM_CHANGES }
+module.exports = { main, STEPS, PURGE, KEPT, NO_NUM_CHANGES, INDEXES, planIndexes, ensureIndexes }
 
 if (require.main === module) C.runCli(() => main(process.argv.slice(2)), USAGE)

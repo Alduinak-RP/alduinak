@@ -102,40 +102,26 @@ with the population, so the total grows with both:
 with world state over time, so it gets slower between wipes even at today's
 population.)
 
-Owner decision (2026-09-29): index at the 04:00 restart. Done (C27), with no
-C++ change:
+Owner decision (2026-09-29): index at the 04:00 restart. Done (C27):
 
-- **Every game start through the manager** (Console START, RESTART, Start
-  all, the `start`/`restart` commands, the Schedule tab's restarts and
-  starts, the agent's game jobs; live `skymp` and test `skymp_test`) first
-  ensures the index `formDesc_1` (`{ formDesc: 1 }`) on that profile's
-  `changeForms`, while the game is stopped
-  (`server-manager/src/formDescIndex.js`, called from `act()` in
-  `services.js`). A start that finds any `{ formDesc: 1 }` index only lists
-  the indexes; otherwise it runs `createIndex`, which is idempotent. The 04:00
-  restart is the first such start. It logs one
-  line into the start's steps (Console log, schedule log, job log):
-  `[index] changeForms.formDesc present on skymp (12 ms)`, `created on
-  skymp (N ms)`, or `not ensured on skymp: <reason>`. It never blocks or
-  fails the start: the file driver, a missing `mongodb` module, MongoDB down
-  or no answer within 15 s give the `not ensured` line and the start goes on.
-- **After a wipe**: `wipe-world.js apply` creates it right after the drop
-  (plan step `create the formDesc_1 index on skymp.changeForms`), `restore
-  --apply` ensures it after `mongorestore`, and `verify` prints whether it is
-  there. Both log the same `[index]` line.
+- **Since the syncing Stage 2 build N1 the game server ensures its indexes
+  itself**, at every start however it is started (`MongoDatabase::EnsureIndexes`):
+  `formDesc_1` (`{ formDesc: 1 }`, unique) and `profileId_1_formDesc_1`
+  (`{ profileId: 1, formDesc: 1 }`, partial on `profileId >= 0`). A conflict
+  with an older index is one warning line in the game log, never fatal; until
+  migration M1 has run every boot logs it for the old non-unique `formDesc_1`.
+  The manager's own ensure before a start is gone.
+- **Migration M1** (`node deploy/mongodb/trim-changeforms.js [--test] [--apply]`,
+  game server stopped) reports duplicate formDescs (it refuses while any exist,
+  because the unique index cannot be built), drops `formDesc_1` (non-unique),
+  `worldOrCellDesc_1` and `profileId_1`, and creates the two above. With the
+  unique index a restore or a wipe tool that writes a second document for a
+  formDesc fails with E11000 instead of silently duplicating it.
+- **After a wipe**: `wipe-world.js apply` creates both right after the drop
+  (plan step `create the changeForms indexes`), `restore --apply` ensures them
+  after `mongorestore`, and `verify` prints whether they are there.
 
-The manual way, in `mongosh` as an admin (safe while the server runs; the
-build takes about a second on 10k documents):
-
-```javascript
-db.getSiblingDB("skymp").changeForms.createIndex({ formDesc: 1 })
-db.getSiblingDB("skymp_test").changeForms.createIndex({ formDesc: 1 })
-```
-
-A server started outside the manager (by hand or `nssm start`) gets the index
-at its next start through the manager. A `unique` index would also guard against duplicate documents,
-but it fails if any already exist; check first with
-`db.changeForms.aggregate([{ $group: { _id: "$formDesc", n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }])`.
+Check by hand in `mongosh`: `db.getSiblingDB("skymp").changeForms.getIndexes()`.
 
 ## 4. Other save recommendations (owner decisions)
 
@@ -218,6 +204,5 @@ Recommendations, largest first:
 - Slow saves: `"Slow query"` lines whose command is `"update":"changeForms"`;
   after the index they should disappear, and a per-form line should show
   `IXSCAN { formDesc: 1 }` instead of `COLLSCAN`.
-- The index itself: the Console or the Schedule tab's run line after a game
-  start (`[index] changeForms.formDesc present on skymp`), or
-  `db.getSiblingDB("skymp").changeForms.getIndexes()` in `mongosh`.
+- The indexes themselves: `db.getSiblingDB("skymp").changeForms.getIndexes()` in
+  `mongosh`, or the `MongoDatabase - index ... not ensured` warning in the game log.

@@ -42,16 +42,9 @@ fails it prints a direct download URL - save that zip as
   and is skipped by the group buttons.
   - MongoDB starts first, stops last and refuses to stop while Backend, Game
     or the test Game run.
-  - A game start (START, RESTART, **Start all**, the `start`/`restart`
-    commands, the Schedule tab's restarts and starts, the agent's game jobs;
-    live and test) first ensures the `changeForms` index `formDesc_1`
-    (`{ formDesc: 1 }`) on that server's database while the game is stopped,
-    and logs one line before `Game: started`:
-    `[index] changeForms.formDesc present on skymp (12 ms)`, `created on ...`,
-    or `not ensured on <db>: <reason>` (file driver, MongoDB down, no answer
-    within 15 s). The start goes on either way. Without the index every save
-    scans the whole collection (`docs/docs_write_load.md`). Test the helper
-    (`src/formDescIndex.js`) with `node tools/test-formdesc-index.js`.
+  - The game server ensures its own `changeForms` indexes at every start
+    (`formDesc_1` unique and `profileId_1_formDesc_1`); older indexes are
+    swapped once by `deploy/mongodb/trim-changeforms.js`.
   - The log tail asks nssm where each service writes its stdout/stderr
     (`nssm get <svc> AppStdout`) instead of guessing a fixed folder.
   - The command input first checks for **manager commands** and runs them locally:
@@ -321,11 +314,8 @@ fails it prints a direct download URL - save that zip as
   heartbeat and nobody claimed, without the warnings it missed. Otherwise a
   task whose time passed more than 10 minutes ago (manager closed, box
   asleep) waits for its next time. The runner's last lines show under the table and as
-  `[schedule]` lines in the Console tab. A scheduled restart or start ensures
-  the `formDesc_1` index before the game starts, as the Console does, and its
-  `[index]` line ends the run's line, e.g. `restart on live (daily-restart)
-  done ([index] changeForms.formDesc present on skymp (12 ms))`. `dailyRestartAt` in
-  `server-settings.json` is no longer read.
+  `[schedule]` lines in the Console tab, e.g. `restart on live (daily-restart)
+  done`. `dailyRestartAt` in `server-settings.json` is no longer read.
 - **News** - edit the news entries the launcher shows.
 - **Settings** - structured forms (text / number / on-off radios / drop-downs /
   masked secrets) for the live `server-settings.json`, the test server's
@@ -442,7 +432,7 @@ the same time. Restart the `AlduinakManager` service after changing
 
 The agent also runs the Schedule tab's tasks (`src/restartSchedule.js`); a Main
 Server restart, start or stop runs as a web job, so the Jobs tab and the audit record
-it, the restart archives the logs, and the job log holds its `[index]` line. Test the scheduler with
+it, and the restart archives the logs. Test the scheduler with
 `node tools/test-restart-schedule.js`.
 
 ## Configuration (environment variables)

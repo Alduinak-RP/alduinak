@@ -72,6 +72,37 @@ MongoDatabase::MongoDatabase(const std::string& uri_, const std::string& name_)
   pImpl->jsonSanitizer.reset(
     new JsonSanitizer(kBannedCharactersMongo5,
                       [this](const std::string& str) { return Sha256(str); }));
+
+  EnsureIndexes();
+}
+
+// deploy/mongodb/trim-changeforms.js swaps older indexes for the same two
+void MongoDatabase::EnsureIndexes()
+{
+  static const std::pair<const char*, const char*> kIndexes[] = {
+    { R"({"formDesc":1})", R"({"name":"formDesc_1","unique":true})" },
+    { R"({"profileId":1,"formDesc":1})",
+      R"({"name":"profileId_1_formDesc_1","partialFilterExpression":{"profileId":{"$gte":0}}})" }
+  };
+
+  try {
+    mongocxx::v_noabi::pool::entry poolEntry = pImpl->pool->acquire();
+    mongocxx::v_noabi::collection collection =
+      poolEntry->database(pImpl->name).collection(pImpl->collectionName);
+
+    for (const auto& [keys, options] : kIndexes) {
+      try {
+        collection.create_index(bsoncxx::from_json(keys),
+                                bsoncxx::from_json(options));
+      } catch (const std::exception& e) {
+        spdlog::warn("MongoDatabase - index {} {} not ensured (run "
+                     "deploy/mongodb/trim-changeforms.js): {}",
+                     keys, options, e.what());
+      }
+    }
+  } catch (const std::exception& e) {
+    spdlog::warn("MongoDatabase - indexes not ensured: {}", e.what());
+  }
 }
 
 std::vector<std::optional<MpChangeForm>>&& MongoDatabase::UpsertImpl(
