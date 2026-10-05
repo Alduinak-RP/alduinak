@@ -1,5 +1,5 @@
 // TODO: refactor this out
-import { isHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
+import { formProp, isHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 
 import { FormType, HitEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
@@ -39,6 +39,11 @@ export class HitService extends ClientListener {
         const isScroll = !isWeapon && !isSpell && this.sp.Scroll.from(e.source);
 
         if (!isWeapon && !isSpell && !isScroll) {
+            return;
+        }
+
+        // The model's isDead, not the engine's: a local hit can kill a copy the server still has alive
+        if (isWeapon && formProp(localIdToRemoteId(e.target.getFormID(), true), "isDead") === true) {
             return;
         }
 
