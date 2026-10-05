@@ -85,11 +85,6 @@ public:
   const std::set<uint32_t>& GetActorsByProfileId(ProfileId profileId);
   void SetEnabled(uint32_t actorFormId, bool enabled);
 
-  using OnActorStreamIn = std::function<void(const MpActor& emitter,
-                                             const MpObjectReference& listener,
-                                             CreateActorMessage& message)>;
-  void SetOnActorStreamIn(OnActorStreamIn callback);
-
   void AttachEspm(espm::Loader* espm);
   void AttachSaveStorage(
     std::shared_ptr<

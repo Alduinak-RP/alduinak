@@ -1820,28 +1820,19 @@ void MpActor::RespawnWithDelay(bool shouldTeleport)
                 "MpActor::RespawnWithDelay {:x} - no espm attached",
                 GetFormId());
             } else {
-              Inventory inventory = GetInventory();
-              Inventory inventoryToKeep;
-              for (auto& entry : inventory.entries) {
-                if (worldState->HasKeyword(entry.baseId, "SweetCantDrop")) {
-                  inventoryToKeep.entries.push_back(entry);
-                }
-              }
+              const size_t dropped = GetInventory().entries.size();
               EditChangeForm(
                 [&](MpChangeForm& changeForm) {
-                  changeForm.inv = inventoryToKeep;
+                  changeForm.inv = Inventory();
                   changeForm.baseContainerAdded = false;
                 },
                 Mode::NoRequestSave);
               EnsureBaseContainerAdded(worldState->GetEspm());
               // An empty base container adds nothing, so AddItems never tells the owner
               SendInventoryUpdate();
-              spdlog::info("MpActor::RespawnWithDelay {:x} - {} of {} "
-                           "inventory entries with keyword kept (profileId "
-                           "{}, base {:x})",
-                           GetFormId(), inventoryToKeep.entries.size(),
-                           inventory.entries.size(), GetProfileId(),
-                           GetBaseId());
+              spdlog::info("MpActor::RespawnWithDelay {:x} - {} inventory "
+                           "entries cleared (profileId {}, base {:x})",
+                           GetFormId(), dropped, GetProfileId(), GetBaseId());
             }
           }
 
@@ -2211,7 +2202,7 @@ void MpActor::SetActorValues(const ActorValues& actorValues)
     [&](MpChangeForm& changeForm) { changeForm.actorValues = actorValues; });
 }
 
-void MpActor::ApplyMagicEffect(espm::Effects::Effect& effect, bool hasSweetpie,
+void MpActor::ApplyMagicEffect(espm::Effects::Effect& effect,
                                bool durationOverriden)
 {
   WorldState* worldState = GetParent();
@@ -2245,15 +2236,7 @@ void MpActor::ApplyMagicEffect(espm::Effects::Effect& effect, bool hasSweetpie,
     av == espm::ActorValue::MagickaRateMult_or_CombatHealthRegenMultPowerMod;
 
   if (isValue) { // other types are unsupported
-    if (hasSweetpie) {
-      // this coefficient (workaround) has been added for sake of game
-      // balance and because of disability to restrict players use potions
-      // often on client side
-      constexpr float kMagnitudeCoeff = 100.f;
-      RestoreActorValuePatched(this, av, effect.magnitude * kMagnitudeCoeff);
-    } else {
-      RestoreActorValuePatched(this, av, effect.magnitude);
-    }
+    RestoreActorValuePatched(this, av, effect.magnitude);
   }
 
   if (isRate || isMult) {
@@ -2336,10 +2319,10 @@ void MpActor::ApplyMagicEffect(espm::Effects::Effect& effect, bool hasSweetpie,
 }
 
 void MpActor::ApplyMagicEffects(std::vector<espm::Effects::Effect>& effects,
-                                bool hasSweetpie, bool durationOverriden)
+                                bool durationOverriden)
 {
   for (auto& effect : effects) {
-    ApplyMagicEffect(effect, hasSweetpie, durationOverriden);
+    ApplyMagicEffect(effect, durationOverriden);
   }
 }
 
@@ -2377,11 +2360,7 @@ void MpActor::ReapplyMagicEffects()
   if (activeEffects.empty()) {
     return;
   }
-  const std::vector<std::string>& modFiles = GetParent()->espmFiles;
-  const bool hasSweetpie = std::any_of(
-    modFiles.begin(), modFiles.end(),
-    [](std::string_view fileName) { return fileName == "SweetPie.esp"; });
-  ApplyMagicEffects(activeEffects, hasSweetpie, true);
+  ApplyMagicEffects(activeEffects, true);
 }
 
 std::array<std::optional<Inventory::Entry>, 2> MpActor::GetEquippedWeapon()

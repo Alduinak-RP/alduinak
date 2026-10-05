@@ -98,8 +98,6 @@ struct PartOne::Impl
   std::shared_ptr<OpenSSLSigner> sslSigner; // nullptr if no private key set
   std::string sslSignerKeyAlias;            // empty string
   bool enableGamemodeDataUpdatesBroadcast = false;
-
-  PartOne::OnActorStreamIn onActorStreamIn;
 };
 
 PartOne::PartOne(Networking::ISendTarget* sendTarget)
@@ -340,11 +338,6 @@ void PartOne::SetEnabled(uint32_t actorFormId, bool enabled)
   enabled ? ac.Enable() : ac.Disable();
 }
 
-void PartOne::SetOnActorStreamIn(OnActorStreamIn callback)
-{
-  pImpl->onActorStreamIn = callback;
-}
-
 void PartOne::AttachEspm(espm::Loader* espm)
 {
   pImpl->espm = espm;
@@ -516,9 +509,6 @@ void PartOne::HandlePacket(void* partOneInstance, Networking::UserId userId,
     case Networking::PacketType::ServerSideUserDisconnect: {
       ScopedTask t([userId, this_] {
         if (auto actor = this_->serverState.ActorByUser(userId)) {
-          // TODO: apply dependency inversion here: connection handling code
-          // should not depend on animation system
-          this_->animationSystem.ClearInfo(actor);
           if (this_->pImpl->actionListener) {
             this_->pImpl->actionListener->ForgetActor(actor->GetFormId());
           }
@@ -922,9 +912,6 @@ void PartOne::Init()
       message.appearance = appearance
         ? std::optional<Appearance>(*appearance)
         : std::optional<Appearance>(std::nullopt);
-      if (pImpl->onActorStreamIn) {
-        pImpl->onActorStreamIn(*emitterAsActor, *listener, message);
-      }
     }
 
     if (emitterAsActor) {

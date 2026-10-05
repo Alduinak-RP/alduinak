@@ -84,8 +84,6 @@ ActionListener::ActionListener(PartOne& partOne_)
   , combatEspmCache(std::make_shared<CombatEspmCache>())
 {
   craftService = std::make_shared<CraftService>(partOne_);
-  sweetHidePlayerNamesService =
-    std::make_shared<SweetHidePlayerNamesService>(partOne_);
 }
 
 namespace {
@@ -131,12 +129,6 @@ bool FireGamemodeEvent(WorldState& worldState, uint32_t refrId,
 {
   CustomEvent event(refrId, eventName, args.dump());
   return event.Fire(&worldState);
-}
-
-bool HasSweetPie(const WorldState& worldState)
-{
-  const auto& files = worldState.espmFiles;
-  return std::find(files.begin(), files.end(), "SweetPie.esp") != files.end();
 }
 
 // Non-hostile Health/Magicka/Stamina effects; areaOnly keeps those a self cast spreads to others
@@ -1203,16 +1195,6 @@ void ActionListener::OnPutItem(const RawMessageData& rawMsgData,
 
   auto& ref = partOne.worldState.GetFormAt<MpObjectReference>(msg.target);
 
-  auto worldState = actor->GetParent();
-  if (!worldState) {
-    return spdlog::error("No WorldState attached");
-  }
-
-  if (worldState->HasKeyword(msg.baseId, "SweetCantDrop")) {
-    return spdlog::error("Attempt to put SweetCantDrop item {:x}",
-                         actor->GetFormId());
-  }
-
   Inventory::Entry entry;
   entry.baseId = msg.baseId;
   entry.count = msg.count;
@@ -1240,16 +1222,6 @@ void ActionListener::OnTakeItem(const RawMessageData& rawMsgData,
 
   auto& ref = partOne.worldState.GetFormAt<MpObjectReference>(msg.target);
 
-  auto worldState = actor->GetParent();
-  if (!worldState) {
-    return spdlog::error("No WorldState attached");
-  }
-
-  if (worldState->HasKeyword(msg.baseId, "SweetCantDrop")) {
-    return spdlog::error("Attempt to take SweetCantDrop item {:x}",
-                         actor->GetFormId());
-  }
-
   Inventory::Entry entry;
   entry.baseId = msg.baseId;
   entry.count = msg.count;
@@ -1274,16 +1246,6 @@ void ActionListener::OnDropItem(const RawMessageData& rawMsgData,
   if (!ac) {
     return spdlog::error("Unable to drop an item from user with id: {}.",
                          rawMsgData.userId);
-  }
-
-  auto worldState = ac->GetParent();
-  if (!worldState) {
-    return spdlog::error("No WorldState attached");
-  }
-
-  if (worldState->HasKeyword(baseId, "SweetCantDrop")) {
-    return spdlog::error("Attempt to drop SweetCantDrop item {:x}",
-                         ac->GetFormId());
   }
 
   Inventory::Entry entry;
@@ -2095,15 +2057,13 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     *combatEspmCache, &partOne.worldState, spellCastData.spell, false);
 
   if (!restoreEffects.empty()) {
-    const bool hasSweetpie = HasSweetPie(partOne.worldState);
-
     const uint32_t casterId = caster->GetFormId();
     auto existing = restorationChannels.find(casterId);
     const bool hadChannel = existing != restorationChannels.end();
 
     // Concentration heals accrue per second of channel so a tap heals a tap's worth
     if (!isConcentration && !spellCastData.keepAlive) {
-      targetActor->ApplyMagicEffects(restoreEffects, hasSweetpie);
+      targetActor->ApplyMagicEffects(restoreEffects);
       spdlog::info("ActionListener::OnSpellCast - applied {} restorative "
                    "effect(s) of spell {:x} to actor {:x}",
                    restoreEffects.size(), spellCastData.spell,
@@ -2124,7 +2084,6 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
         channel.lastHitAt = existing->second.lastHitAt;
       }
       channel.effects = restoreEffects;
-      channel.hasSweetpie = hasSweetpie;
       channel.lastRefresh = now;
       // A live channel keeps its generation and accrual so its timer chain carries on
       channel.generation = hadChannel ? existing->second.generation
@@ -2177,7 +2136,7 @@ void ActionListener::TickRestorationChannel(uint32_t casterId,
 
   channel.lastApplied = now;
   if (targetActor) {
-    targetActor->ApplyMagicEffects(channel.effects, channel.hasSweetpie);
+    targetActor->ApplyMagicEffects(channel.effects);
   }
 
   partOne.worldState.SetTimer(std::chrono::milliseconds(1000))
@@ -2242,7 +2201,7 @@ void ActionListener::ApplyRestorationChannelRemainder(
   for (auto& effect : effects) {
     effect.magnitude *= fraction;
   }
-  targetActor->ApplyMagicEffects(effects, channel.hasSweetpie);
+  targetActor->ApplyMagicEffects(effects);
 }
 
 void ActionListener::OnUnknown(const RawMessageData& rawMsgData)
@@ -2376,8 +2335,7 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   if (restoreEffects.empty()) {
     return;
   }
-  targetActorPtr->ApplyMagicEffects(restoreEffects,
-                                    HasSweetPie(partOne.worldState));
+  targetActorPtr->ApplyMagicEffects(restoreEffects);
   spdlog::info("OnSpellHit - applied {} restorative effect(s) of spell {:x} "
                "to actor {:x}",
                restoreEffects.size(), hitData.source,

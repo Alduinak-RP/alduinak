@@ -204,10 +204,8 @@ public:
   void ResetBlockCount() noexcept;
   uint32_t GetBlockCount() const noexcept;
   void ApplyMagicEffect(espm::Effects::Effect& effect,
-                        bool hasSweetpie = false,
                         bool durationOverriden = false);
   void ApplyMagicEffects(std::vector<espm::Effects::Effect>& effects,
-                         bool hasSweetpie = false,
                          bool durationOverriden = false);
   void RemoveMagicEffect(const espm::ActorValue actorValue);
   void RemoveAllMagicEffects();

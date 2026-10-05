@@ -10,7 +10,10 @@ bool IsNonPlayerBaseId(const MpActor& actor)
   return actor.GetBaseId() != 0x7;
 }
 
-DamageMultFormula::Settings ParseConfig(const nlohmann::json& config)
+}
+
+DamageMultFormula::Settings DamageMultFormula::ParseConfig(
+  const nlohmann::json& config)
 {
   DamageMultFormula::Settings settings;
 
@@ -31,13 +34,11 @@ DamageMultFormula::Settings ParseConfig(const nlohmann::json& config)
   return settings;
 }
 
-}
-
 DamageMultFormula::DamageMultFormula(
-  std::unique_ptr<IDamageFormula> baseFormula_, const nlohmann::json& config_)
+  std::unique_ptr<IDamageFormula> baseFormula_, const Settings& settings_)
   : baseFormula(std::move(baseFormula_))
+  , settings(settings_)
 {
-  settings = ParseConfig(config_);
 }
 
 float DamageMultFormula::CalculateDamage(const MpActor& aggressor,

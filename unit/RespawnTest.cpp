@@ -318,8 +318,8 @@ TEST_CASE("A revive before the respawn delay leaves the living actor alone",
   ac.Kill();
   REQUIRE(ac.IsDead());
 
-  // Kill() added the base's death item: proves the timer's wipe branch (which
-  // keeps only SweetCantDrop items) would engage for this actor.
+  // Kill() added the base's death item: proves the timer's wipe branch would
+  // engage for this actor.
   REQUIRE(ac.GetInventory().GetItemCount(kDaedraHeart) >= 1);
 
   // The gamemode revives before the delay elapses (the death screen's
@@ -329,8 +329,8 @@ TEST_CASE("A revive before the respawn delay leaves the living actor alone",
 
   p.Tick(); // fire the stale respawn timer
 
-  // The stale timer used to wipe the living actor's inventory down to
-  // SweetCantDrop items; a revived actor must be left untouched.
+  // The stale timer used to wipe the living actor's inventory; a revived
+  // actor must be left untouched.
   REQUIRE(ac.GetInventory().GetItemCount(kIronSword) == 1);
   REQUIRE(ac.IsDead() == false);
 }

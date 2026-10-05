@@ -7,7 +7,6 @@
 #include "PartOne.h"
 #include "RawMessageData.h"
 #include "SpellCastData.h"
-#include "SweetHidePlayerNamesService.h"
 #include "libespm/Loader.h"
 #include <chrono>
 #include <memory>
@@ -99,7 +98,6 @@ private:
     bool aimed = false;
     std::chrono::steady_clock::time_point lastHitAt;
     std::vector<espm::Effects::Effect> effects;
-    bool hasSweetpie = false;
     uint32_t ticks = 0;
     // Timer chains carry the generation they were started for
     uint32_t generation = 0;
@@ -210,5 +208,4 @@ private:
 
   // TODO: inverse dependency
   std::shared_ptr<CraftService> craftService;
-  std::shared_ptr<SweetHidePlayerNamesService> sweetHidePlayerNamesService;
 };

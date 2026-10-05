@@ -21,8 +21,6 @@
 #include "formulas/EffectModifiers.h"
 #include "formulas/ItemRowResolver.h"
 #include "formulas/MagicRules.h"
-#include "formulas/SweetPieDamageFormula.h"
-#include "formulas/SweetPieSpellDamageFormula.h"
 #include "formulas/TES5DamageFormula.h"
 #include "gamemode_events/DeathEvent.h"
 #include "libespm/IterateFields.h"
@@ -287,26 +285,6 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     }
     uint32_t listenPort = serverSettings.at("port").get<uint32_t>();
     uint32_t maxPlayers = serverSettings.at("maxPlayers").get<uint32_t>();
-
-    if (serverSettings.find("weaponStaminaModifiers") !=
-        serverSettings.end()) {
-      if (serverSettings.at("weaponStaminaModifiers").is_object()) {
-        auto modifiers = serverSettings.at("weaponStaminaModifiers")
-                           .get<std::unordered_map<std::string, float>>();
-        if (modifiers.empty()) {
-          logger->info("\"weaponStaminaModifiers field is empty. Using "
-                       "default values for stamina managment instead.\"");
-        } else {
-          logger->info(
-            "Using keywords based stamina forfeits for players attacks");
-        }
-        partOne->animationSystem.SetWeaponStaminaModifiers(
-          std::move(modifiers));
-      }
-    } else {
-      logger->info("\"weaponStaminaModifiers field is missing. Using "
-                   "default values for stamina managment instead.\"");
-    }
 
     if (serverSettings["logLevel"].is_string()) {
       const auto level = spdlog::level::from_str(serverSettings["logLevel"]);
@@ -607,14 +585,8 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       ConditionFunctionFactory::CreateConditionFunctions();
     partOne->worldState.conditionFunctionMap = conditionFunctionMap;
 
-    auto sweetPieDamageFormulaSettings =
-      serverSettings["sweetPieDamageFormulaSettings"];
-
-    auto sweetPieSpellDamageFormulaSettings =
-      serverSettings["sweetPieSpellDamageFormulaSettings"];
-
-    auto damageMultFormulaSettings =
-      serverSettings["damageMultFormulaSettings"];
+    const auto damageMultSettings = DamageMultFormula::ParseConfig(
+      serverSettings["damageMultFormulaSettings"]);
 
     auto damageMultConditionalFormulaSettings =
       serverSettings["damageMultConditionalFormulaSettings"];
@@ -701,12 +673,10 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
                      "weapon hits are priced by TES5 as without the block");
       }
     }
-    formula = std::make_unique<DamageMultFormula>(std::move(formula),
-                                                  damageMultFormulaSettings);
-    formula = std::make_unique<SweetPieDamageFormula>(
-      std::move(formula), sweetPieDamageFormulaSettings);
-    formula = std::make_unique<SweetPieSpellDamageFormula>(
-      std::move(formula), sweetPieSpellDamageFormulaSettings);
+    if (damageMultSettings.multiplier != 1.f) {
+      formula = std::make_unique<DamageMultFormula>(std::move(formula),
+                                                    damageMultSettings);
+    }
     formula = std::make_unique<DamageMultConditionalFormula>(
       std::move(formula), damageMultConditionalFormulaSettings,
       conditionsEvaluatorSettings,

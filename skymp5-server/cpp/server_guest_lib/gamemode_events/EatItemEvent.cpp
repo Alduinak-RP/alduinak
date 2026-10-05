@@ -2,7 +2,6 @@
 
 #include "MpActor.h"
 #include "WorldState.h"
-#include <unordered_set>
 #include <vector>
 
 EatItemEvent::EatItemEvent(MpActor* actor_, uint32_t baseId_,
@@ -40,8 +39,5 @@ void EatItemEvent::OnFireSuccess(WorldState* worldState)
   } else {
     return;
   }
-  std::unordered_set<std::string> modFiles = { worldState->espmFiles.begin(),
-                                               worldState->espmFiles.end() };
-  bool hasSweetpie = modFiles.count("SweetPie.esp");
-  actor->ApplyMagicEffects(effects, hasSweetpie);
+  actor->ApplyMagicEffects(effects);
 }

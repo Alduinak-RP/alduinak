@@ -7,8 +7,15 @@
 class DamageMultFormula : public IDamageFormula
 {
 public:
+  struct Settings
+  {
+    float multiplier = 2.f;
+  };
+
+  static Settings ParseConfig(const nlohmann::json& config);
+
   DamageMultFormula(std::unique_ptr<IDamageFormula> baseFormula_,
-                    const nlohmann::json& config);
+                    const Settings& settings_);
 
   [[nodiscard]] float CalculateDamage(const MpActor& aggressor,
                                       const MpActor& target,
@@ -17,12 +24,6 @@ public:
   [[nodiscard]] float CalculateDamage(
     const MpActor& aggressor, const MpActor& target,
     const SpellCastData& spellCastData) const override;
-
-public:
-  struct Settings
-  {
-    float multiplier = 2.f;
-  };
 
 private:
   std::unique_ptr<IDamageFormula> baseFormula;
