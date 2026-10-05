@@ -154,6 +154,21 @@ void RestoreActorValuePatched(MpActor* actor, espm::ActorValue actorValue,
   actor->UpdateNextRestorationTime(actorValue, std::chrono::seconds{ 5 });
 }
 
+// An effect of the same type on the value, at least as strong and lasting at least as long, stays in place
+bool KeepsCurrentEffect(const ActiveMagicEffectsMap::Entry& current,
+                        const espm::Effects::Effect& next,
+                        espm::MGEF::EffectType nextType,
+                        std::chrono::system_clock::time_point nextEnd,
+                        WorldState* worldState)
+{
+  if (current.data.magnitude < next.magnitude || current.endTime < nextEnd) {
+    return false;
+  }
+  return current.data.effectId == next.effectId ||
+    espm::GetData<espm::MGEF>(current.data.effectId, worldState)
+        .data.effectType == nextType;
+}
+
 // Lowest point of a base record's OBND below its origin, 0 without bounds
 int16_t BoundsMinZ(const espm::LookupResult& lookupRes,
                    espm::CompressedFieldsCache& cache)
@@ -2268,6 +2283,14 @@ void MpActor::ApplyMagicEffect(espm::Effects::Effect& effect, bool hasSweetpie,
         now + Viet::TimeUtils::To<std::chrono::milliseconds>(effect.duration);
       duration =
         Viet::TimeUtils::To<std::chrono::milliseconds>(effect.duration);
+      if (auto current = activeEffects.Get(av); current &&
+          KeepsCurrentEffect(current->get(), effect, type, endTime,
+                             worldState)) {
+        spdlog::trace("MpActor::ApplyMagicEffect {:x} - keeps effect {:x}, "
+                      "stronger and longer than {:x}",
+                      formId, current->get().data.effectId, effect.effectId);
+        return;
+      }
     }
     uint32_t timerId;
     worldState->SetEffectTimer(duration, &timerId)
