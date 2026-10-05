@@ -260,7 +260,8 @@ Known gaps worth closing later:
 - The launcher session files (`data/sessions.json`, `auth-states.json`) still hold
   raw tokens.
 - Ports 4000 and 4002 listen on all interfaces and rely on the firewall.
-- The relay on 7778 has no brute-force limit.
+- The relay on 7778 has no brute-force limit; it listens on 127.0.0.1 only, so only
+  processes on the box can reach it.
 
 ## 3. First-time setup (owner, on the box)
 

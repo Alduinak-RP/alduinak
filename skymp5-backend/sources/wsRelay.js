@@ -2,7 +2,7 @@
 //   gamemode - one persistent connection from the SkyMP gamemode sandbox; identified by RELAY_SECRET on first message
 //   console  - the SkyRP Server Manager admin console; shares RELAY_SECRET, sends typed commands to the gamemode and shows its output
 //
-// The main relay listens on WS_PORT; the test server's relay on WS_PORT_TEST (loopback only) when the test server is listed.
+// Both relays listen on loopback only: the main one on WS_PORT, the test server's on WS_PORT_TEST when the test server is listed.
 //
 // Message protocol (all JSON):
 //
@@ -149,7 +149,7 @@ function createRelay({ port, host, label }) {
 }
 
 // The main relay starts on require; server.js relies on that
-const wss = createRelay({ port: WS_PORT })
+const wss = createRelay({ port: WS_PORT, host: '127.0.0.1' })
 
 // The test game server's relay, loopback only: its gamemode part connects to WS_PORT from the service environment
 const testRelay = config.servers.some(s => s.id === 'test')

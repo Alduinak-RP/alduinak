@@ -17,7 +17,7 @@ manager) only receives files through the manager's **Migrate** box.
 | MongoDB | `AlduinakMongo`, 127.0.0.1:27017, `deploy\mongodb\mongod.cfg`, database `skymp` | the same instance, database `skymp_test` (`skympuser` with `readWrite` and `dbAdmin` on it) |
 | LiveKit | `AlduinakLiveKit`, `C:\Alduinak\livekit`, 7880/7881, UDP 50000-50200 | `AlduinakLiveKitTest`, `C:\Alduinak\livekit-test`, 7890/7891, UDP 50300-50500, room `alduinak-test` |
 | logs | `C:\logs` | `C:\logs\test` |
-| console relay | backend `WS_PORT` (7778) | backend `WS_PORT_TEST` (7779, loopback); the service runs with `WS_PORT=7779` |
+| console relay | backend `WS_PORT` (7778, loopback) | backend `WS_PORT_TEST` (7779, loopback); the service runs with `WS_PORT=7779` |
 | backend server id | `alduinak` | `test` (`?server=test` on the version, manifest, modlist and launch-check routes) |
 | backend files in `skymp5-backend\data` | `manifest.json`, `modlist.json`, `manifest-diff.json`, `data-sync.json` | `manifest-test.json`, `modlist-test.json`, `manifest-diff-test.json`, `data-sync-test.json` |
 | extras archives under `CLIENT_FILES_DIR` | `extras`, served at `/files/extras` | `extras-test`, served at `/files/extras-test` |
