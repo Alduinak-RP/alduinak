@@ -191,7 +191,9 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   the server holds it alive (a fall before its collision loaded) stays alive
   for the other viewers and is logged once per copy (`movementGet: hosted <id>
   engine-dead while the server says alive: 3D, z`). Every viewer kills its copy
-  from the server's `isDead` property or the death-state container.
+  from the server's `isDead` property or the death-state container, never from
+  the movement a client reports, and spawns it again when the server's `isDead`
+  turns false.
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.

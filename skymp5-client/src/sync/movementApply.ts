@@ -55,12 +55,8 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
     state.recheckAt = loaded && !mounted ? now + engineRecheckMs : 0;
   }
 
-  // A repeated packet changes nothing on a copy resting at it but its death state
+  // A repeated packet changes nothing on a copy resting at it
   if (trusted && state.rest && isSamePacket(state.rest, m) && isNearStandingSpot(ObjectReferenceEx.getPos(refr), m.pos)) {
-    const ac = Actor.from(refr);
-    if (ac) {
-      applyDeathState(ac, m, loaded);
-    }
     return;
   }
   state.rest = undefined;
@@ -110,18 +106,9 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
     state.health = applyHealthPercentage(ac, m.healthPercentage) ? m.healthPercentage : undefined;
   }
 
-  applyDeathState(ac, m, loaded);
-
   if (settled && faces && state.sprinting !== undefined && state.blocking !== undefined && state.sneaking !== undefined
     && state.weapDrawn !== undefined && state.health !== undefined) {
     state.rest = { ...m, pos: [m.pos[0], m.pos[1], m.pos[2]], rot: [m.rot[0], m.rot[1], m.rot[2]] };
-  }
-};
-
-// deathService ignores a state the engine already has; a kill before the 3D and its collision are in starts the ragdoll on nothing, so a later apply does it
-const applyDeathState = (ac: Actor, m: Movement, loaded: boolean): void => {
-  if ((!m.isDead || loaded) && ac.isDead() !== m.isDead) {
-    SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: m.isDead, trigger: "movement", serverPos: m.pos });
   }
 };
 
@@ -132,7 +119,7 @@ const isSamePoint = (a: NiPoint3 | undefined, b: NiPoint3 | undefined): boolean 
 const isSamePacket = (a: Movement, b: Movement): boolean =>
   a.worldOrCell === b.worldOrCell && ObjectReferenceEx.getDistance(a.pos, b.pos) <= 1 && isSamePoint(a.rot, b.rot)
   && a.runMode === b.runMode && a.isInJumpState === b.isInJumpState && a.isSneaking === b.isSneaking
-  && a.isBlocking === b.isBlocking && a.isWeapDrawn === b.isWeapDrawn && a.isDead === b.isDead
+  && a.isBlocking === b.isBlocking && a.isWeapDrawn === b.isWeapDrawn
   && a.healthPercentage === b.healthPercentage && isSamePoint(a.lookAt, b.lookAt);
 
 // A standing copy this close to the reported spot needs no translation

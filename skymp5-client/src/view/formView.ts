@@ -92,9 +92,7 @@ export class FormView {
         this.lastWorldOrCell = model.movement.worldOrCell;
       if (this.lastWorldOrCell !== model.movement.worldOrCell) {
         this.lastWorldOrCell = model.movement.worldOrCell;
-        this.destroy();
-        this.refrId = 0;
-        this.appearanceBasedBaseId = 0;
+        this.respawn();
         return;
       }
     }
@@ -291,6 +289,13 @@ export class FormView {
     return refr as ObjectReference;
   }
 
+  // Spawned again at the next update, its appearance base included
+  private respawn(): void {
+    this.destroy();
+    this.refrId = 0;
+    this.appearanceBasedBaseId = 0;
+  }
+
   destroy(): void {
     this.redrawTints();
     this.spawnMoment = 0;
@@ -331,6 +336,7 @@ export class FormView {
     })
 
     this.localImmortal = false;
+    this.killApplied = false;
     this.hostilityApplied = false;
     this.aggressionBeforeRaise = undefined;
     this.adminView = "visible";
@@ -461,17 +467,12 @@ export class FormView {
         const hostedByOther = isModelHostedByOther(model);
         if (hostedByOther || !this.movState.everApplied) {
           const backup = model.movement.isWeapDrawn;
-          const isDeadBackup = model.movement.isDead;
           if (forcedWeapDrawn === true || forcedWeapDrawn === false) {
             model.movement.isWeapDrawn = forcedWeapDrawn;
           }
           // A copy this client does not run is not drawn or sheathed while its skeleton settles
           if (actor && !alreadyHosted && this.isSettling(loaded)) {
             model.movement.isWeapDrawn = actor.isWeaponDrawn();
-          }
-          // The server's death state wins over a host that never saw the death
-          if (model.isDead) {
-            model.movement.isDead = true;
           }
           try {
             // A sender silent for 2 s (paused game, Steam overlay) settles at the copy's own height instead of running in place or hanging mid-air
@@ -488,16 +489,13 @@ export class FormView {
           } catch (e) {
             if (e instanceof RespawnNeededError) {
               this.lastWorldOrCell = model.movement.worldOrCell;
-              this.destroy();
-              this.refrId = 0;
-              this.appearanceBasedBaseId = 0;
+              this.respawn();
               return;
             } else {
               throw e;
             }
           } finally {
             model.movement.isWeapDrawn = backup;
-            model.movement.isDead = isDeadBackup;
           }
 
           this.movState.lastNumChanges = +(model.numMovementChanges as number);
@@ -520,9 +518,8 @@ export class FormView {
       }
     }
 
-    // Hosts skip applyMovement, so a copy still standing after the server's death is killed here, once its 3D is in so the ragdoll finds the ground
-    if (model.isDead && loaded && actor && !actor.isDead()) {
-      SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor, isDead: true, trigger: "model", serverPos: model.movement?.pos });
+    if (this.applyDeathState(actor, model, loaded)) {
+      return;
     }
 
     if (loaded) {
@@ -594,6 +591,41 @@ export class FormView {
       && this.eqState.lastNumChanges === model.equipment.numChanges) {
       this.keepTorch(actor, loaded, model.equipment);
     }
+  }
+
+  // Kills a copy once its 3D is in so the ragdoll finds the ground, and respawns a dead one only when the server revives it; true when respawned
+  private applyDeathState(actor: Actor | null, model: FormModel, loaded: boolean): boolean {
+    const isDead = !!model.isDead;
+    const revived = this.modelWasDead && !isDead;
+    this.modelWasDead = isDead;
+    if (!actor) {
+      return false;
+    }
+    const emitter = SpApiInteractor.getControllerInstance().emitter;
+    if (isDead) {
+      if (loaded && !this.killApplied) {
+        if (actor.isDead()) {
+          this.killApplied = true;
+        } else {
+          emitter.emit("applyDeathStateEvent", { actor, isDead: true, trigger: "model", serverPos: model.movement?.pos });
+        }
+      }
+      return false;
+    }
+    this.killApplied = false;
+    if (!revived) {
+      return false;
+    }
+    try {
+      emitter.emit("applyDeathStateEvent", { actor, isDead: false, trigger: "model" });
+    } catch (e) {
+      if (!(e instanceof RespawnNeededError)) {
+        throw e;
+      }
+      this.respawn();
+      return true;
+    }
+    return false;
   }
 
   // One head projection serves the tint on-screen trigger and the name tag; the tint also runs on the update after a reset
@@ -1015,6 +1047,10 @@ export class FormView {
   private mountState = makeMountState();
   private carriedState = makeCarriedViewState();
   private localImmortal = false;
+  // The model's isDead at the last apply, so a revive is acted on once
+  private modelWasDead = false;
+  // This copy read dead after the server's death, so it is not read again until it is respawned or revived
+  private killApplied = false;
   private hostilityApplied = false;
   private hostileFlagSeen: unknown = undefined;
   private aggressionBeforeRaise: number | undefined = undefined;
