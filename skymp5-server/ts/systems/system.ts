@@ -14,6 +14,9 @@ export const WORLD_LOADED_EVENT = "worldLoaded";
 // Emitted on SystemContext.gm (userId, actorId) when a player opens character select from the game; the body stays until the logout grace ends
 export const USER_MENU_QUIT_EVENT = "userMenuQuit";
 
+// Emitted on SystemContext.gm (userId, actorId) when the logout grace ends and Spawn unmaps a still-connected user from the body
+export const USER_DETACHED_EVENT = "userDetached";
+
 // Emitted on SystemContext.gm (profileId, CharacterListEntry[]) whenever Spawn sends a character select list
 export const CHARACTER_LIST_EVENT = "characterList";
 

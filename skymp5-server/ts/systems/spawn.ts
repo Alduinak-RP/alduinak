@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, CREATION_FINISHED_EVENT } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, USER_DETACHED_EVENT, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, CREATION_FINISHED_EVENT } from "./system";
 import { filterAccessForSlot } from "../backendFactionApi";
 import { validateResult, CharCreatorConfig } from "./charCreatorData";
 import { scanModHair, ModHairCatalog } from "./hairCatalog";
@@ -287,8 +287,9 @@ export class Spawn implements System {
       try {
         this.logInventory(ctx.svr as unknown as Mp, actorId, "despawned");
         ctx.svr.setEnabled(actorId, false);
-        this.detachUser(ctx, actorId);
+        const detached = this.detachUser(ctx, actorId);
         this.log("Logout grace expired, actor", actorId.toString(16), "despawned");
+        if (detached >= 0) ctx.gm.emit(USER_DETACHED_EVENT, detached, actorId);
       } catch { /* form vanished */ }
       // Disable keeps the stored pose; cleared here or the CreateActor of the next Enable still carries the sit
       if (wasParked) {
@@ -333,11 +334,14 @@ export class Spawn implements System {
     } catch (e) { this.log(`[spawn] releasing the seat of ${hex(actorId)} failed: ${e}`); }
   }
 
-  private detachUser(ctx: SystemContext, actorId: number): void {
+  // The user it unmapped, or -1
+  private detachUser(ctx: SystemContext, actorId: number): number {
     const userId = ctx.svr.getUserByActor(actorId);
     if (userId >= 0 && userId < 0xffff && ctx.svr.getUserActor(userId) === actorId) {
       ctx.svr.setUserActor(userId, 0);
+      return userId;
     }
+    return -1;
   }
 
   private cancelPark(actorId: number): void {

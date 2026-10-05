@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, AFTERLIFE_EVENT, CharacterListEntry } from "./system";
+import { System, Log, SystemContext, Content, CHARACTER_LIST_EVENT, CHARACTER_RETIRED_EVENT, ACCESS_REFRESHED_EVENT, AFTERLIFE_EVENT, USER_DETACHED_EVENT, CharacterListEntry } from "./system";
 import { AccessPayload, FactionBackend, RosterRow, factionBackendOf, filterAccessForSlot } from "../backendFactionApi";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { isNear, isPlayerActor, nameShownTo, onlineActors, userOf } from "./actorUtil";
@@ -162,6 +162,10 @@ export class FactionSystem implements System {
     this.housing.factionFresh = (userId, job) => this.withFreshRanks(userId, job);
 
     ctx.gm.on("userAssignActor", (userId: number, actorId: number) => { void this.onAssign(userId, actorId >>> 0); });
+    ctx.gm.on(USER_DETACHED_EVENT, (_userId: number, actorId: number) => {
+      const factionIds = this.leavePlay(actorId >>> 0);
+      if (factionIds.length) this.retitle(factionIds);
+    });
     ctx.gm.on(CHARACTER_LIST_EVENT, (profileId: number, entries: CharacterListEntry[]) => this.onCharacterList(profileId, entries));
     ctx.gm.on(CHARACTER_RETIRED_EVENT, (profileId: number, slot: number, actorId: number) => this.release(profileId, slot, actorId, this.realName(actorId), "deletion", 0));
     ctx.gm.on(AFTERLIFE_EVENT, (profileId: number, slot: number, actorId: number) => {
@@ -192,8 +196,10 @@ export class FactionSystem implements System {
   disconnect(userId: number): void {
     this.queues.delete(userId);
     this.queueDepth.delete(userId);
+    // A user leaving from character select after the grace detach still takes the last character out of play
+    const last = this.userActors.get(userId);
     this.userActors.delete(userId);
-    const actorId = this.actorOf(userId);
+    const actorId = this.actorOf(userId) || (last && userOf(this.mp, last) < 0 ? last : 0);
     if (!actorId) return;
     const factionIds = this.leavePlay(actorId);
     // The leaving character counts as online until the disconnect completes
