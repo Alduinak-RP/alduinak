@@ -277,6 +277,20 @@ export const isStreamedTo = (mp: Mp, actorId: number, viewerId: number): boolean
   }
 };
 
+// Connected users of the actors the server streams the form to, except exceptActor's
+export const neighborUsers = (mp: Mp, formId: number, exceptActor = 0): number[] => {
+  let ids: unknown[] = [];
+  try { ids = mp.get(formId, "actorNeighbors") ?? []; } catch { return []; }
+  const users: number[] = [];
+  for (const raw of ids) {
+    const id = Number(raw) >>> 0;
+    if (id === exceptActor >>> 0) continue;
+    const user = userOf(mp, id);
+    if (user >= 0) users.push(user);
+  }
+  return users;
+};
+
 // Introduced through the gamemode's ff_knownIds; without that list everyone counts as known
 export const isIntroduced = (mp: Mp, viewerActorId: number, subjectActorId: number): boolean => {
   try {

@@ -1,11 +1,13 @@
 import { MongoClient } from "mongodb";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, WORLD_LOADED_EVENT } from "./system";
-import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, notifyActor, onlineActors, sendActionLock, takeItemFrom, userOf } from "./actorUtil";
+import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, neighborUsers, notifyActor, sendActionLock, takeItemFrom, userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { AdminRoleConfig, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 import { formIdFromConfig, toFormId } from "./formIdUtil";
-import { every } from "./timers";
+import { isOutdoors } from "./holdOf";
+import { onlineSnapshot } from "./onlineSnapshot";
+import { KeyedTimers, every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -21,7 +23,6 @@ const MOVED_PROP = "ff_moved";
 const CARRIED_PROP = "ff_carried";
 const NAIL_DESC = "0300F:HearthFires.esm";
 const HAMMER_DESC = "5CAE1:Skyrim.esm";
-const POLL_MS = 60000;
 const SWEEP_MS = 30 * 60 * 1000;
 const MAX_AGE_MS = 2 * 60 * 60 * 1000;
 // The client's surface reach (350) plus slack for the server's lagging copy of the player's position
@@ -30,6 +31,8 @@ const NAIL_ANIM = "IdleHammerTableEnter";
 const NAIL_SECONDS = 2;
 // A carry the client never ends is given back after this long
 const GRAB_TTL_MS = 2 * 60 * 1000;
+// Clients load the 5x5 game cells around their own, so a plugin ref this far off on each axis may be loaded
+const PLUGIN_LOAD_RANGE = 3 * 4096;
 // A drop point serves the drops that follow it this closely, a multi-item drop included
 const DROP_POINT_MS = 2000;
 // Shield models lie face down; a half turn on Y shows the front
@@ -54,11 +57,11 @@ export class PlacedItemSystem implements System {
   private roleCfg: AdminRoleConfig = readAdminRoleConfig(null);
   private nailId = 0;
   private hammerId = 0;
-  private sweptAt = Date.now();
   private db: { uri: string; name: string } | null = null;
   private client: MongoClient | null = null;
-  // item -> who carries it and since when
-  private grabs = new Map<number, { by: number; at: number }>();
+  // item -> its carrier
+  private grabs = new Map<number, number>();
+  private grabTimeouts = new KeyedTimers<number>();
   private bases = new Map<number, BaseInfo>();
   private dropPoints = new Map<number, { pos: number[]; at: number }>();
 
@@ -74,12 +77,16 @@ export class PlacedItemSystem implements System {
     chainMpHook(mp, "onItemPlaced", (actorId: number, refId: number) => this.onPlaced(mp, Number(actorId) >>> 0, Number(refId) >>> 0));
     chainMpHook(mp, "onActivate", (targetId: number, casterId: number) => this.onActivate(mp, Number(targetId) >>> 0, Number(casterId) >>> 0));
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.releaseBy(mp, actorId >>> 0));
+    // A switch that skipped the menu-quit event leaves the previous character without a user
+    ctx.gm.on("userAssignActor", () => {
+      for (const [target, by] of Array.from(this.grabs)) if (userOf(mp, by) < 0) this.release(mp, target);
+    });
     // After the saves load and gamemode.js declares ff_carried, which the emit is followed by synchronously
     ctx.gm.once(WORLD_LOADED_EVENT, () => setImmediate(() => {
       if (this.db) this.clearStaleCarries(mp).catch((e) => this.log(`[placed] stale carry check failed: ${e}`));
     }));
     this.log(`[placed] nail ${hex(this.nailId)}, hammer ${hex(this.hammerId)}; ${this.db ? "old drops are swept every 30 min" : "no mongodb, old drops are never swept"}`);
-    every("placedItem", POLL_MS, () => this.poll(ctx));
+    if (this.db) every("placedItem.sweep", SWEEP_MS, () => this.sweep(mp).catch((e) => this.log(`[placed] sweep failed: ${e}`)));
   }
 
   disconnect(userId: number, ctx: SystemContext): void {
@@ -91,20 +98,6 @@ export class PlacedItemSystem implements System {
     this.dropPoints.delete(actorId);
   }
 
-  async poll(ctx: SystemContext): Promise<void> {
-    const mp = ctx.svr as Mp;
-    for (const [target, grab] of Array.from(this.grabs)) {
-      if (Date.now() - grab.at > GRAB_TTL_MS || userOf(mp, grab.by) < 0) this.release(mp, target);
-    }
-    if (!this.db || Date.now() - this.sweptAt < SWEEP_MS) return;
-    this.sweptAt = Date.now();
-    try {
-      await this.sweep(ctx.svr as Mp);
-    } catch (e) {
-      this.log(`[placed] sweep failed: ${e}`);
-    }
-  }
-
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     if (!["itemMenuRequest", "itemGrab", "itemMove", "itemRelease", "itemNail", "itemPry", "itemDropPoint"].includes(type)) return;
     const mp = ctx.svr as Mp;
@@ -114,7 +107,7 @@ export class PlacedItemSystem implements System {
     if (type === "itemDropPoint") return this.setDropPoint(mp, actorId, content["pos"]);
     const target = toFormId(content["target"]);
     const grab = this.grabs.get(target);
-    const mine = grab?.by === actorId;
+    const mine = grab === actorId;
     // The carrier's own release is judged by where it puts the item, not by where it picked it up
     const ending = mine && (type === "itemMove" || type === "itemRelease");
     // A carry request always gets an answer, so the client never waits on one
@@ -141,7 +134,7 @@ export class PlacedItemSystem implements System {
   }
 
   private onActivate(mp: Mp, targetId: number, casterId: number): boolean {
-    const by = this.grabs.get(targetId)?.by;
+    const by = this.grabs.get(targetId);
     if (by !== undefined && by !== casterId) return false;
     if (!this.nailedBy(mp, targetId)) return true;
     notifyActor(mp, casterId, "It is nailed down.");
@@ -165,13 +158,16 @@ export class PlacedItemSystem implements System {
   // The carrier's client shows the item turned and raised as it will rest
   private grab(mp: Mp, userId: number, actorId: number, target: number, ok: boolean): void {
     if (!ok) return sendJson(mp, userId, { customPacketType: "itemGrabState", target, ok });
-    this.grabs.set(target, { by: actorId, at: Date.now() });
+    this.grabs.set(target, actorId);
+    this.grabTimeouts.set(target, Date.now() + GRAB_TTL_MS, () => this.release(mp, target));
     this.setCarried(mp, target, actorId);
     const info = this.baseInfo(mp, target);
     const loc = mp.get(target, "locationalData");
     const rot = this.restRot(info, loc.rot, loc.rot[2]);
     sendJson(mp, userId, { customPacketType: "itemGrabState", target, ok, tilt: [rot[0], rot[1]], lift: this.restLift(info, rot) });
-    this.toCell(mp, target, { customPacketType: "itemGrabbed", target }, userId);
+    // ff_carried hides an FF copy; a plugin ref is also loaded by clients the server does not stream it to
+    if (target >= 0xff000000) return;
+    for (const user of this.viewers(mp, target)) if (user !== userId) sendJson(mp, user, { customPacketType: "itemGrabbed", target });
   }
 
   private move(mp: Mp, actorId: number, target: number, content: Content): void {
@@ -194,39 +190,52 @@ export class PlacedItemSystem implements System {
     mp.set(target, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: loc.pos, rot });
     mp.set(target, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos, rot });
     if (this.isPlaced(mp, target)) this.setPlacedAt(mp, target);
-    this.toCell(mp, target, { customPacketType: "itemMoved", target, pos, rot });
+    this.tellMoved(mp, target, pos, rot, actorId);
     this.log(`[placed] ${hex(target)} moved by ${hex(actorId)} to ${fmt(pos)} rot ${fmt(rot)}`);
   }
 
   // Ends a carry where the item already is, so the other clients show it again
   private release(mp: Mp, target: number): void {
+    const carrier = this.grabs.get(target) ?? 0;
     this.endGrab(mp, target);
     try {
       const loc = mp.get(target, "locationalData");
-      this.toCell(mp, target, { customPacketType: "itemMoved", target, pos: loc.pos, rot: loc.rot });
+      this.tellMoved(mp, target, loc.pos, loc.rot, carrier);
     } catch { /* the item is gone */ }
   }
 
-  // Copies already spawned never read a refr's position again, so its cell is told
-  private toCell(mp: Mp, target: number, packet: Record<string, unknown>, exceptUser = -1): void {
+  // Copies already spawned never read a refr's position again, so their clients are told; the carrier's carry only ends on itemMoved
+  private tellMoved(mp: Mp, target: number, pos: number[], rot: number[], carrier = 0): void {
+    const users = new Set(this.viewers(mp, target));
+    if (carrier) users.add(userOf(mp, carrier));
+    for (const user of users) sendJson(mp, user, { customPacketType: "itemMoved", target, pos, rot });
+  }
+
+  // Users whose client may have the item: the server's neighbours for an FF copy; for a plugin ref everyone in its interior, or within the cells clients load around it outdoors
+  private viewers(mp: Mp, target: number): number[] {
+    if (target >= 0xff000000) return neighborUsers(mp, target);
     let cell = 0;
-    try { cell = mp.getIdFromDesc(mp.get(target, "locationalData").cellOrWorldDesc) >>> 0; } catch { return; }
-    for (const actorId of onlineActors(mp)) {
-      try {
-        if ((Number(mp.getActorCellOrWorld(actorId)) >>> 0) !== cell) continue;
-      } catch { continue; }
-      const userId = userOf(mp, actorId);
-      if (userId !== exceptUser) sendJson(mp, userId, packet);
+    let pos: number[] = [];
+    try {
+      const loc = mp.get(target, "locationalData");
+      cell = mp.getIdFromDesc(loc.cellOrWorldDesc) >>> 0;
+      pos = loc.pos;
+    } catch {
+      return [];
     }
+    const outdoors = isOutdoors(mp, target);
+    const inRange = (p: readonly number[]) => Math.abs(p[0] - pos[0]) <= PLUGIN_LOAD_RANGE && Math.abs(p[1] - pos[1]) <= PLUGIN_LOAD_RANGE;
+    return (onlineSnapshot(mp).byCell.get(cell) ?? []).filter((p) => p.userId >= 0 && (!outdoors || inRange(p.pos))).map((p) => p.userId);
   }
 
   private endGrab(mp: Mp, target: number): void {
+    this.grabTimeouts.clear(target);
     if (this.grabs.delete(target)) this.setCarried(mp, target, 0);
   }
 
   private releaseBy(mp: Mp, actorId: number): void {
-    for (const [target, grab] of Array.from(this.grabs)) {
-      if (grab.by === actorId) this.release(mp, target);
+    for (const [target, by] of Array.from(this.grabs)) {
+      if (by === actorId) this.release(mp, target);
     }
   }
 
@@ -256,7 +265,7 @@ export class PlacedItemSystem implements System {
       try {
         if (!mp.get(id, "isDisabled")) {
           const loc = mp.get(id, "locationalData");
-          this.toCell(mp, id, { customPacketType: "itemMoved", target: id, pos: loc.pos, rot: loc.rot });
+          this.tellMoved(mp, id, loc.pos, loc.rot);
         }
       } catch { /* gone */ }
     }

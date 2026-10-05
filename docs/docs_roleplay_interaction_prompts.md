@@ -120,8 +120,10 @@ Any item in the world can be taken, carried or nailed down (`ItemService`,
 A press held 0.4 s, or Move in the interact menu, asks the server for the
 item (`itemGrab`): the server lets one player carry it at a time, answers
 `itemGrabState` with the X and Y rotation and the rest height it will give
-the item, and tells the rest of the cell `itemGrabbed`, which hides their
-copy; `ff_carried` on the item holds the carrier's id, so every other client
+the item. For a plugin-placed item it also sends `itemGrabbed`, which hides
+the copy, to every other player who may have it loaded: everyone in its
+interior cell, or outdoors everyone within 3 x 4096 units on each axis (the
+5x5 cells a client loads). `ff_carried` on the item holds the carrier's id, so every other client
 keeps its copy hidden however it is spawned until the carry ends (flags a
 restart left behind are cleared at boot, and a carrier who leaves or picks
 another character ends the carry). A refused grab is answered `ok: false`, and
@@ -144,8 +146,11 @@ with the last surface point, or `itemRelease`, which puts it back. The server
 owns the rest pose: it keeps the item's X and Y (a shield turns 180 on Y,
 since shield models lie face down), takes the yaw, raises the origin so the
 lowest corner of the turned OBND touches the point, saves
-it on the changeForm, sends `itemMoved` to the cell and logs `[placed] <id>
-moved by ...`. A carrier's own release is checked against where it puts the
+it on the changeForm, sends `itemMoved` and logs `[placed] <id>
+moved by ...`. `itemMoved` (also sent when a carry ends without a move) goes
+to the carrier and to the clients that have the item: for a dropped item the
+players the server streams it to, for a plugin-placed item the same players
+as `itemGrabbed`. A carrier's own release is checked against where it puts the
 item, not where it took it. A carry the client never ends is given back after
 2 minutes or when its carrier leaves, and the carrier's client drops it too.
 Nobody can nail an item while it is carried. A plugin-placed item moved this way gets

@@ -5,7 +5,7 @@ import { NEVER_RESPAWN } from "./npcPlacement";
 import { looseEntries } from "./companionSystem";
 import { InventoryEntry, addEntries, isNamedItemBase, readInventory } from "./inventoryExtras";
 import { SettleWear, wearSettler } from "./durabilityNative";
-import { destroyRef, hex, isAlive, userOf } from "./actorUtil";
+import { destroyRef, hex, isAlive, neighborUsers } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { markDeathAlerted } from "./discordAlerts";
 import { every } from "./timers";
@@ -165,11 +165,8 @@ export class BodySystem implements System {
 
   // Tells every other client that has a copy of the victim to drop it (FormView, bodyLeftUntil); the number of clients told
   private hideVictim(victimId: number): number {
-    const mp = this.mp;
-    let neighbors: unknown[] = [];
-    try { neighbors = mp.get(victimId, "actorNeighbors") ?? []; } catch { /* form vanished */ }
-    const users = neighbors.map((id) => Number(id) >>> 0).filter((id) => id !== victimId).map((id) => userOf(mp, id)).filter((user) => user >= 0);
-    for (const user of users) sendJson(mp, user, { customPacketType: "bodyLeft", victim: victimId, ms: VICTIM_HIDDEN_MS });
+    const users = neighborUsers(this.mp, victimId, victimId);
+    for (const user of users) sendJson(this.mp, user, { customPacketType: "bodyLeft", victim: victimId, ms: VICTIM_HIDDEN_MS });
     return users.length;
   }
 
