@@ -1,6 +1,5 @@
-// WS Relay: one WebSocketServer per game server bridging three connection types:
+// WS Relay: one WebSocketServer per game server bridging two connection types:
 //   gamemode - one persistent connection from the SkyMP gamemode sandbox; identified by RELAY_SECRET on first message
-//   player   - one connection per in-game browser (skymp5-front); identified by a one-time nonce the gamemode registers first
 //   console  - the SkyRP Server Manager admin console; shares RELAY_SECRET, sends typed commands to the gamemode and shows its output
 //
 // The main relay listens on WS_PORT; the test server's relay on WS_PORT_TEST (loopback only) when the test server is listed.
@@ -10,23 +9,12 @@
 //   Handshake (first message, unauthenticated):
 //     { type:'auth', role:'gamemode', secret:'...' }   -> gamemode auth (closed 4003 while another gamemode is connected)
 //     { type:'auth', role:'console',  secret:'...' }   -> console auth
-//     { type:'auth', nonce:'...' }                     -> player auth
 //
 //   Gamemode -> relay:
-//     { type:'register_nonce', nonce, userId }         -> map nonce to userId
-//     { type:'chat_deliver',   userId, msg }           -> push msg to one player
-//     { type:'chat_broadcast', msg }                   -> push msg to all players
 //     { type:'console_output', text }                  -> push text to all consoles
 //
 //   Console -> relay -> gamemode:
 //     { type:'console_command', text }                 -> run a server command
-//
-//   Player -> relay -> gamemode:
-//     { type:'chat_send', text }                       -> relayed with userId added
-//
-//   Relay -> gamemode (informational):
-//     { type:'player_connected',    userId }
-//     { type:'player_disconnected', userId }
 
 'use strict'
 
@@ -53,7 +41,7 @@ function send(ws, msg) {
   }
 }
 
-// A relay with its own gamemode socket, players, consoles and nonces; host undefined listens on every interface
+// A relay with its own gamemode socket and consoles; host undefined listens on every interface
 function createRelay({ port, host, label }) {
   const tag = label ? `[ws-relay:${label}]` : '[ws-relay]'
 
@@ -61,14 +49,8 @@ function createRelay({ port, host, label }) {
   let gamemodeSocket = null
   let lastRefusedLog = 0
 
-  // userId -> WebSocket (one per authenticated player browser)
-  const playerSockets = new Map()
-
   // Admin console sockets (the Alduinak Server Manager): receive console_output.
   const consoleSockets = new Set()
-
-  // nonce -> userId (registered by gamemode, consumed on player auth)
-  const nonceMap = new Map()
 
   function toGamemode(msg) {
     send(gamemodeSocket, msg)
@@ -77,8 +59,7 @@ function createRelay({ port, host, label }) {
   const wss = new WebSocketServer({ port, host })
 
   wss.on('connection', (ws) => {
-    let role   = null   // 'gamemode' | 'player' | 'console'
-    let userId = null
+    let role = null   // 'gamemode' | 'console'
 
     ws.on('message', (raw) => {
       let msg
@@ -117,48 +98,12 @@ function createRelay({ port, host, label }) {
           return
         }
 
-        if (msg.type === 'auth' && msg.nonce) {
-          const uid = nonceMap.get(msg.nonce)
-          if (uid === undefined) {
-            send(ws, { type: 'auth_fail', reason: 'unknown_nonce' })
-            ws.close(4002, 'unknown nonce')
-            return
-          }
-          role   = 'player'
-          userId = uid
-          nonceMap.delete(msg.nonce)
-          playerSockets.set(userId, ws)
-          send(ws, { type: 'auth_ok', role: 'player', userId })
-          toGamemode({ type: 'player_connected', userId })
-          console.log(`${tag} player ${userId} authenticated`)
-          return
-        }
-
         // Unknown or missing auth: reject immediately
         ws.close(4000, 'auth required')
         return
       }
 
       if (role === 'gamemode') {
-        if (msg.type === 'register_nonce') {
-          nonceMap.set(msg.nonce, msg.userId)
-          return
-        }
-
-        if (msg.type === 'chat_deliver') {
-          const sock = playerSockets.get(msg.userId)
-          send(sock, { type: 'chat_msg', msg: msg.msg })
-          return
-        }
-
-        if (msg.type === 'chat_broadcast') {
-          const payload = JSON.stringify({ type: 'chat_msg', msg: msg.msg })
-          for (const sock of playerSockets.values()) {
-            if (sock.readyState === WebSocket.OPEN) sock.send(payload)
-          }
-          return
-        }
-
         // Command output from the gamemode
         if (msg.type === 'console_output' && typeof msg.text === 'string') {
           const payload = JSON.stringify({ type: 'console_output', text: msg.text })
@@ -175,14 +120,6 @@ function createRelay({ port, host, label }) {
         if (msg.type === 'console_command' && typeof msg.text === 'string') {
           toGamemode({ type: 'console_command', text: msg.text })
         }
-        return
-      }
-
-      if (role === 'player') {
-        if (msg.type === 'chat_send' && typeof msg.text === 'string') {
-          toGamemode({ type: 'chat_send', userId, text: msg.text })
-        }
-        return
       }
     })
 
@@ -195,12 +132,6 @@ function createRelay({ port, host, label }) {
       if (role === 'console') {
         consoleSockets.delete(ws)
         console.log(`${tag} console disconnected`)
-        return
-      }
-      if (role === 'player') {
-        playerSockets.delete(userId)
-        toGamemode({ type: 'player_disconnected', userId })
-        console.log(`${tag} player ${userId} disconnected`)
       }
     })
 
