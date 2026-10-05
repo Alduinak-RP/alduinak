@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, WORLD_LOADED_EVENT } from "./system";
+import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, WORLD_LOADED_EVENT, ACCESS_REFRESHED_EVENT } from "./system";
 import { AdminTier, AdminRoleConfig, readAdminRoleConfig, adminTierOf, capForRequest, missingCap } from "./adminRoles";
 import { NpcSpawnSystem, pick } from "./npcSpawnSystem";
 import { MasterySystem, MAX_GRANT } from "./masterySystem";
@@ -13,6 +13,7 @@ import { ExecutionSystem } from "./executionSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
 import { addItemTo, chainMpHook, guardMpHook, onlineActors, userOf } from "./actorUtil";
+import { onlineSnapshot } from "./onlineSnapshot";
 import { adminAudit } from "./discordAlerts";
 import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
@@ -252,6 +253,12 @@ export class AdminSystem implements System {
       }
     });
 
+    // Backend permissions can grant or drop admin, so the gamemode re-syncs isAdmin on that profile's online characters
+    ctx.gm.on(ACCESS_REFRESHED_EVENT, (profileId: number) => {
+      const sync = (globalThis as any).__alduinakSyncPlayer;
+      if (typeof sync !== "function") return;
+      for (const p of onlineSnapshot(ctx.svr as Mp).players) if (p.profileId === profileId) sync(p.actorId);
+    });
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.autoRevert(ctx.svr as Mp, actorId >>> 0, "on character select", false));
     ctx.gm.once(WORLD_LOADED_EVENT, () => {
       const mp = ctx.svr as Mp;

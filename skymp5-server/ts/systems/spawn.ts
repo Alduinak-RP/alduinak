@@ -623,7 +623,7 @@ export class Spawn implements System {
       filterAccessForSlot(auth.access, slot), auth.username);
 
     ctx.gm.emit("userAssignActor", userId, actorId);
-    // Gamemode store re-sync: re-runs its connect chain when a switch assigns a new body
+    // Gamemode hook: syncs the new body's isAdmin, respawn timer and introduce list
     (ctx.svr as any).onUserAssignActor?.(userId, actorId);
 
     this.lastAssignMs.set(userId, Date.now());
@@ -974,7 +974,7 @@ export class Spawn implements System {
     this.applyAuthProps(mp, actorId, userProfileId, discordRoleIds, discordId, access, username);
 
     ctx.gm.emit("userAssignActor", userId, actorId);
-    // Gamemode store re-sync: re-runs its connect chain when a switch assigns a new body
+    // Gamemode hook: syncs the new body's isAdmin, respawn timer and introduce list
     (ctx.svr as any).onUserAssignActor?.(userId, actorId);
   }
 }

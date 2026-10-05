@@ -452,8 +452,8 @@ behaviour-graph events — no ESP required.**
   body's window with the key against a player's own body.
 - **A player's own body**: every death leaves the player's own actor dead
   where they fell until the engine respawns it after its `spawnDelay`, which
-  the gamemode's `70_admin_loop.js` holds at `respawnSeconds` (15) for every
-  online player (`MpActor::RespawnWithDelay`; the onRespawn hooks then route
+  the gamemode's `70_admin_loop.js` sets to `respawnSeconds` (15) whenever a
+  character is assigned (`MpActor::RespawnWithDelay`; the onRespawn hooks then route
   it to a temple or a realm). Clients that had a copy of the player see the
   ragdoll for those seconds; one that streams the player in later creates no
   dead copy (`formView.ts`). Anyone may open the body without a prompt and take
