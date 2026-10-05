@@ -10,6 +10,7 @@ import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, isInSitPose, needsEmptyHands, setRef
 import { CarryPose, DEFAULT_CARRY_POSE, describeCarryNodes, describeHold, finiteOr, holdOnCarrier, makeHoldState, readCarryPose, releaseHold, restartHold } from "../../sync/carryHold";
 import { isPlayerCharacterId } from "./playerActionService";
 import { MountService } from "./mountService";
+import { ANIM_DRIVEN_VAR, FIRST_PERSON_CAMERA, assertPoseCamera, holdPoseCamera, poseCameraHolders, releasePoseCamera } from "./poseCamera";
 import { SendInputsService } from "./sendInputsService";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 
@@ -53,8 +54,6 @@ const LOCK_POSE_MAX_RESTARTS = 2;
 // Skyrim.esm IDLE IdleKneelingEnter, the kneel played through the engine's idle path
 const KNEEL_ANIM = "IdleKneelingEnter";
 const KNEEL_IDLE_ID = 0xe8e52;
-// Set by the vanilla graph while a furniture or interaction idle (the kneel, the hoe) plays, and while the bleedout kneel plays
-const ANIM_DRIVEN_VAR = "bAnimationDriven";
 const BLEEDING_OUT_VAR = "IsBleedingOut";
 // The first-person camera a lock left comes back this long after its exit
 const LOCK_CAMERA_RESTORE_S = 1;
@@ -67,7 +66,9 @@ const LOCK_EXIT_REST_TICKS = 3;
 const LOCK_EXIT_KNOCKDOWN_MS = 2500;
 // Longer than the bleedout's fall or get-up clip: a kneel still held this long after an exit is stuck whatever bAnimationDriven reads
 const LOCK_EXIT_STUCK_MS = 4000;
-const FIRST_PERSON_CAMERA = 0;
+const CAMERA_HOLDER = "restraint";
+// At most one Platform log line per this long about a first-person camera under a pose
+const FIRST_PERSON_LOG_GAP_MS = 10000;
 
 const CARRIER_COLLISION_REFRESH_MS = 1000;
 // A lifted body can read as falling, so a carried idle pose is re-sent when no idle plays this long after it was sent instead of after a landing
@@ -134,6 +135,8 @@ interface LockExit {
   clearTicks: number;
   // The one exit sent to a stuck bleedout kneel has gone out, the knock-down is next
   stuckSent: boolean;
+  // Every exit went out and the kneel still shows; third person stays held while it does
+  gaveUp: boolean;
   // Another event the graph took since, which ends the watch of a pose read from bAnimationDriven
   otherEvent: string;
 }
@@ -224,7 +227,10 @@ const describeAttempt = (lock: ActionLock): string => {
  *     waits (up to 3 s) until the player has stood up from a sneak, sheathed a
  *     weapon (when its copies would sheathe) and turned to third person, since
  *     the graph refuses an idle in any of those and a first-person camera
- *     shows none; a first-person camera comes back 1 s after the exit. Each
+ *     shows none; a first-person camera comes back 1 s after the exit. The
+ *     POV key is off from the lock until the graph has left the pose, since
+ *     an animation-driven idle under a first-person camera moves the player
+ *     without collision (poseCamera.ts). Each
  *     attempt is checked 0.5 s after it was sent (the graph's answer and the
  *     graph variable the pose sets); one that shows nothing moves on to the
  *     kneel through the engine's idle path (Skyrim.esm IdleKneelingEnter,
@@ -240,8 +246,10 @@ const describeAttempt = (lock: ActionLock): string => {
  *     fall and get-up are clips), and a bleedout kneel that outlasts them all
  *     is ended by the engine's knock-down and get-up. A bleedout kneel still
  *     held 4 s after an exit gets one more whatever the graph reads, and the
- *     knock-down 4 s after that, so the watch always ends. The first-person
- *     camera comes back only once the pose is left.
+ *     knock-down 4 s after that. A kneel that outlasts its five exits, or
+ *     that another event took over, gets no further exit and keeps third
+ *     person held until the graph variable clears or the player sits or
+ *     mounts. The first-person camera comes back only once the pose is left.
  *   - stagger: plays staggerStart with the magnitude on the player, whose
  *     copies relay it; skipped while dead, mounted, seated or posed.
  *   - any of the above: jumping is blocked and the pose is re-applied after a
@@ -302,6 +310,11 @@ export class RestraintService extends ClientListener {
     });
 
     this.controller.emitter.on("applyDeathStateEvent", (e) => this.onApplyDeathState(e));
+
+    // Read on the next update, once the switch has settled
+    this.controller.on("cameraStateChanged", (e) => {
+      if (e.newStateId === FIRST_PERSON_CAMERA) this.controller.once("update", () => this.onFirstPerson());
+    });
   }
 
   // True while a restraint, carry, bleedout, execution or action pose owns the player's animation.
@@ -699,9 +712,13 @@ export class RestraintService extends ClientListener {
     }
     this.restoreLockCamera();
     this.applyDownedGhost(player);
+    this.applyControls(player);
+    this.syncCameraHold();
+  }
 
-    // Recompute the control lock each time. Argument order:
-    // (movement, fighting, camSwitch, looking, sneaking, menu, activate, journalTabs, disablePOVType).
+  // Recompute the control lock each time. Argument order:
+  // (movement, fighting, camSwitch, looking, sneaking, menu, activate, journalTabs, disablePOVType).
+  private applyControls(player: Actor): void {
     if (this.carried) {
       // First person would sit inside the pose and fight the forced heading, so third person is locked; re-forced after a reload
       this.sp.Game.forceThirdPerson();
@@ -746,6 +763,27 @@ export class RestraintService extends ClientListener {
     }
   }
 
+  // A carried or downed player and an action lock keep third person, the lock until the graph has left its pose; a block pose keeps its free camera
+  private syncCameraHold(): void {
+    if (this.carried || this.downed || this.lock || this.lockExit) holdPoseCamera(this.sp, CAMERA_HOLDER);
+    else releasePoseCamera(this.sp, CAMERA_HOLDER);
+  }
+
+  // The POV key is off under a held pose, so first person there came from another service; an animation-driven graph without a held pose is only logged
+  private onFirstPerson(): void {
+    const player = this.sp.Game.getPlayer();
+    if (!player || this.sp.Game.getCameraState() !== FIRST_PERSON_CAMERA || player.isDead() || player.getSitState() !== 0 || player.isOnMount()) return;
+    const holders = poseCameraHolders();
+    const animDriven = player.getAnimationVariableBool(ANIM_DRIVEN_VAR);
+    if (!holders && !animDriven) return;
+    assertPoseCamera(this.sp);
+    const now = Date.now();
+    if (now < this.nextFirstPersonLogMs) return;
+    this.nextFirstPersonLogMs = now + FIRST_PERSON_LOG_GAP_MS;
+    logToPlatformLog(this, `pose camera: first person ${holders ? `under a held pose (${holders}), third person forced` : "with an animation-driven graph and no camera hold, left alone"}; ` +
+      `${ANIM_DRIVEN_VAR} ${animDriven}, pose ${this.appliedPose || "none"}, last idle ${this.lastStateIdle || "none"}, in killmove ${player.isInKillMove()}, ${this.describePlayer(player)}`);
+  }
+
   // Overlays, state idles and the bleedout kneel live on separate graph layers: the old one is left first, alone, so the sync relays both
   private setPose(player: Actor, desired: string): void {
     const previous = this.appliedPose;
@@ -771,7 +809,7 @@ export class RestraintService extends ClientListener {
     this.sp.Debug.sendAnimationEvent(player, exit);
     if (desired === OFFSET_STOP_ANIM) {
       const now = Date.now();
-      if (previousByLock) this.lockExit = { anim: previous, exit, sinceMs: now, lastSendMs: now, checkedMs: now, sends: 1, restTicks: 0, clearTicks: 0, stuckSent: false, otherEvent: "" };
+      if (previousByLock) this.lockExit = { anim: previous, exit, sinceMs: now, lastSendMs: now, checkedMs: now, sends: 1, restTicks: 0, clearTicks: 0, stuckSent: false, gaveUp: false, otherEvent: "" };
       return;
     }
     this.sp.Utility.wait(POSE_SWAP_DELAY_S).then(() => {
@@ -866,8 +904,8 @@ export class RestraintService extends ClientListener {
     x.checkedMs = now;
     const player = this.sp.Game.getPlayer();
     const bleedout = x.anim === BLEEDOUT_ANIM_START;
-    // Another pose, a death, or for the kneel any other event the graph took owns the animation now
-    if (!player || player.isDead() || this.isPoseLocked || this.appliedPose !== OFFSET_STOP_ANIM || (!bleedout && x.otherEvent)) {
+    // Another pose or a death owns the animation now, a chair or a mount the camera
+    if (!player || player.isDead() || this.isPoseLocked || this.appliedPose !== OFFSET_STOP_ANIM || player.getSitState() !== 0 || player.isOnMount()) {
       this.endLockExit("");
       return;
     }
@@ -878,6 +916,8 @@ export class RestraintService extends ClientListener {
       return;
     }
     x.clearTicks = 0;
+    // For the kneel any other event the graph took owns the animation, so no exit follows it; third person stays held while the graph reads the pose
+    if (x.gaveUp || (!bleedout && x.otherEvent)) return;
     // The bleedout's fall to the knees and its get-up are animation-driven clips, the kneel between them is not
     const animDriven = bleedout && player.getAnimationVariableBool(ANIM_DRIVEN_VAR);
     x.restTicks = animDriven ? 0 : x.restTicks + 1;
@@ -893,7 +933,8 @@ export class RestraintService extends ClientListener {
       this.sp.Debug.sendAnimationEvent(player, x.exit);
       logToPlatformLog(this, `action lock exit: ${state}, ${x.exit} sent again; ${this.describePlayer(player)}`);
     } else if (!bleedout) {
-      this.endLockExit(`${state}, not sent again`);
+      x.gaveUp = true;
+      logToPlatformLog(this, `action lock exit: ${state}, not sent again, third person held while the graph reads the pose`);
     } else if (stuck || sinceSendMs >= LOCK_EXIT_KNOCKDOWN_MS) {
       // The knock-down's get-up returns the root graph to its default state
       player.pushActorAway(player, 0);
@@ -904,6 +945,7 @@ export class RestraintService extends ClientListener {
   private endLockExit(line: string): void {
     this.lockExit = null;
     if (line) logToPlatformLog(this, `action lock exit: ${line}`);
+    this.syncCameraHold();
     this.restoreLockCamera();
   }
 
@@ -961,7 +1003,8 @@ export class RestraintService extends ClientListener {
         const player = this.sp.Game.getPlayer();
         if (!player || !this.lockCameraRestore || this.isPoseLocked || this.lockExit) return;
         this.lockCameraRestore = false;
-        if (!player.isDead() && player.getSitState() === 0 && !player.isOnMount()) this.sp.Game.forceFirstPerson();
+        // An emote started meanwhile holds third person
+        if (!player.isDead() && player.getSitState() === 0 && !player.isOnMount() && !poseCameraHolders()) this.sp.Game.forceFirstPerson();
       });
     });
   }
@@ -1094,6 +1137,7 @@ export class RestraintService extends ClientListener {
   // Set when a lock turned a first-person camera to third person
   private lockCameraRestore = false;
   private cameraRestoreQueued = false;
+  private nextFirstPersonLogMs = 0;
   private stillControlsApplied = false;
   // The bleedout's camera and menu lock, which a disable call with false never lifts
   private downedControlsApplied = false;

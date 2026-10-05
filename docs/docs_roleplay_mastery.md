@@ -917,8 +917,11 @@ engine's knock-down (`PushActorAway` on the player), whose get-up returns the
 root graph to its default state. A bleedout kneel still held 4 s after an
 exit, longer than either clip, counts as stuck whatever `bAnimationDriven`
 reads: it gets one more exit, and the knock-down 4 s after that, so the watch
-always ends and writes its line, 8 s after the lock for a kneel that never rests. The kneel's watch stops at the first other
-event the graph takes. The first-person camera waits until the pose is left.
+always ends and writes its line, 8 s after the lock for a kneel that never rests. At the first other event the graph takes, or after its five exits (`action lock exit: ... not sent again, third
+person held while the graph reads the pose`), the kneel gets no further exit and the watch only holds the camera.
+Third person is held with the POV switch off from the lock until `bAnimationDriven` clears or the player sits or
+mounts, since an animation-driven idle under a first-person camera moves the player without collision
+(`poseCamera.ts`); the first-person camera of a player who had it comes back 1 s after that.
 Before this the lock sent `bleedOutStop` once and never looked again: in the
 test of 2026-10-01 a skinner who had crouched with a dagger out in first
 person had both kneels refused, got the bleedout kneel 2.5 s into the lock,

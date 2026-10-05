@@ -4,10 +4,11 @@ import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuKeyCode, isMenuHo
 import { RestraintService } from "./restraintService";
 import { SendInputsService } from "./sendInputsService";
 import { getPcInventory } from "./remoteServer";
+import { ANIM_DRIVEN_VAR, FIRST_PERSON_CAMERA, holdPoseCamera, releasePoseCamera } from "./poseCamera";
 import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, SHEATHE_SETTLE_S } from "../../sync/animation";
 import { formIdFromDesc } from "../../view/worldViewMisc";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, Inventory } from "skyrimPlatform";
-import { logTrace } from "../../logging";
+import { logToPlatformLog, logTrace } from "../../logging";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -16,9 +17,13 @@ declare const window: any;
 let wheelHold = false;
 const WIDGET_ID = 24;
 
-// An idle played in first person loses the character's collision, so an emote keeps the camera in third person
-const FIRST_PERSON_CAMERA = 0;
+// An idle played in first person loses the character's collision, so an emote holds the camera in third person (poseCamera.ts)
+const CAMERA_HOLDER = "emote";
 const CAMERA_TICK_MS = 250;
+// Waits of SHEATHE_SETTLE_S for a first-person body to come back before the idle is given up
+const CAMERA_MAX_WAITS = 10;
+// Checks after the emote's end that still read an animation-driven graph before the Platform log says so
+const CAMERA_LINGER_LOG_TICKS = 20;
 // Master graph variable set while an idle plays
 const IDLE_PLAYING_VAR = "bIdlePlaying";
 // Checks the idle must stay gone before the emote counts as over, so a switch between an idle's stages is not its end
@@ -322,7 +327,7 @@ export class EmoteService extends ClientListener {
     this.sendEmote(anim);
   }
 
-  private sendEmote(anim: string, sheathePolls = 0): void {
+  private sendEmote(anim: string, sheathePolls = 0, cameraWaits = 0): void {
     this.controller.once("update", () => {
       if (this.activeEmote !== anim) return;
       const player = this.sp.Game.getPlayer();
@@ -341,14 +346,21 @@ export class EmoteService extends ClientListener {
           // Observers start sheathing the copy now instead of when the idle arrives
           this.controller.lookupListener(SendInputsService).relayPlayerAnimEvent("Unequip");
         }
-        this.sp.Utility.wait(SHEATHE_POLL_S).then(() => this.sendEmote(anim, sheathePolls + 1));
+        this.sp.Utility.wait(SHEATHE_POLL_S).then(() => this.sendEmote(anim, sheathePolls + 1, cameraWaits));
         return;
       }
-      if (sheathePolls > 0) {
-        this.sp.Utility.wait(SHEATHE_SETTLE_S).then(() => this.sendEmote(anim));
+      // The body takes a few frames to come back from first person, and an idle sent before that plays under a first-person camera
+      const firstPerson = this.sp.Game.getCameraState() === FIRST_PERSON_CAMERA;
+      if (firstPerson && cameraWaits >= CAMERA_MAX_WAITS) {
+        this.activeEmote = "";
+        notifyNextUpdate(this.controller, this.sp, "Emotes play in third person.");
         return;
       }
-      this.sp.Game.forceThirdPerson();
+      this.holdCamera();
+      if (sheathePolls > 0 || firstPerson) {
+        this.sp.Utility.wait(SHEATHE_SETTLE_S).then(() => this.sendEmote(anim, 0, firstPerson ? cameraWaits + 1 : cameraWaits));
+        return;
+      }
       this.sentAnim = anim;
       this.idleGoneTicks = -1;
       this.sp.Debug.sendAnimationEvent(player, anim);
@@ -357,18 +369,34 @@ export class EmoteService extends ClientListener {
   }
 
   private onUpdate(): void {
+    if (!this.activeEmote && !this.cameraHeld) return;
     const now = Date.now();
     if (now < this.nextCameraTickMs) return;
     this.nextCameraTickMs = now + CAMERA_TICK_MS;
-    if (!this.activeEmote) return;
     const player = this.sp.Game.getPlayer();
     if (!player) return;
-    if (this.idleEnded(player)) {
-      this.activeEmote = "";
-      return;
-    }
+    if (this.activeEmote && this.idleEnded(player)) this.activeEmote = "";
     // A chair or a mount taken after the emote owns the camera again
-    if (this.sp.Game.getCameraState() === FIRST_PERSON_CAMERA && player.getSitState() === 0 && !player.isOnMount()) this.sp.Game.forceThirdPerson();
+    const free = player.getSitState() !== 0 || player.isOnMount();
+    // A pose can outlast its emote (a refused exit, a stand-up clip, a draw), and it is the animation-driven graph that loses collision in first person
+    const lingering = !this.activeEmote && !free && player.getAnimationVariableBool(ANIM_DRIVEN_VAR);
+    if (!free && (this.activeEmote || lingering)) {
+      this.holdCamera();
+      if (lingering && ++this.cameraLingerTicks === CAMERA_LINGER_LOG_TICKS) {
+        logToPlatformLog(this, `emote camera: the graph still reads ${ANIM_DRIVEN_VAR} ${CAMERA_LINGER_LOG_TICKS * CAMERA_TICK_MS} ms after ${this.sentAnim || "the emote"} ended, third person held while it lasts`);
+      }
+    } else if (this.cameraHeld && (free || ++this.cameraClearTicks >= IDLE_END_TICKS)) {
+      this.cameraHeld = false;
+      releasePoseCamera(this.sp, CAMERA_HOLDER);
+    }
+  }
+
+  // Must run on update
+  private holdCamera(): void {
+    if (this.activeEmote) this.cameraLingerTicks = 0;
+    this.cameraHeld = true;
+    this.cameraClearTicks = 0;
+    holdPoseCamera(this.sp, CAMERA_HOLDER);
   }
 
   // An idle seen playing and then gone ended by itself (a one-shot, combat, movement from any device); offset overlays are not idles
@@ -578,6 +606,10 @@ export class EmoteService extends ClientListener {
   // Generation counter: bumping it abandons any pending exit chain.
   private chainId = 0;
   private nextCameraTickMs = 0;
+  // The POV key is off for this emote, the checks in a row that found no pose, and the checks a pose has outlasted its emote
+  private cameraHeld = false;
+  private cameraClearTicks = 0;
+  private cameraLingerTicks = 0;
   // The idle last sent to the graph, and the checks it has been gone since it was seen playing (-1 while never seen)
   private sentAnim = "";
   private idleGoneTicks = -1;

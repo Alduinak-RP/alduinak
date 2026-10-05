@@ -41,7 +41,9 @@ behaviour-graph events — no ESP required.**
   The client forces third person and locks the camera switch for the whole
   bleedout, so a downed player never sits in first person inside the kneel;
   the camera can still orbit, and the switch comes back with the stand-up. The
-  execution block kneel and timed action locks keep the camera free. The player who downed them is told too. NPCs, and admins in god or
+  execution block kneel keeps the camera free. A timed action lock (harvesting, skinning, nailing) holds third
+  person with the camera switch off from the lock until the graph has left its pose, since an animation-driven
+  idle under a first-person camera moves the player without collision (`poseCamera.ts`). The player who downed them is told too. NPCs, and admins in god or
   ghost mode, never go down. Without the native server build the gate never
   fires and players die at once, as before.
 - **Dying**: a further hit from another player kills at once, and the
@@ -772,7 +774,7 @@ prisoner can also be carried).
 | `pairedIdleDone` `{ target, seq }` | Participant client → server | The pair ended on that client: the victim dies now |
 | `prepareExecutionRequest` / `executeRequest` `{ target }` | Client → server | Lead a prisoner onto the block, behead them |
 | `executionState` `{ pose }` | Server → prisoner's client | Kneel at the block in the pose (`bleedOutStart`), `""` leaves it |
-| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting, skinning); the pose waits up to 3 s for a stand-up from a sneak, a sheathe and third person; a pose not seen playing 0.5 s later falls back to the kneel through `Actor.PlayIdle`, then to the bleedout kneel, and one that stops early is re-sent twice at most; after the exit the client sends it again while the graph still holds the pose (5 exits at most, then the engine's knock-down ends a bleedout kneel); 0 s ends the lock, as the server sends when a skinning ends; a mounted or swimming player skips it |
+| `actionLock` `{ anim, seconds, exitAnim }` | Server → client | Play a pose and hold still for the seconds (harvesting, skinning); the pose waits up to 3 s for a stand-up from a sneak, a sheathe and third person; a pose not seen playing 0.5 s later falls back to the kneel through `Actor.PlayIdle`, then to the bleedout kneel, and one that stops early is re-sent twice at most; after the exit the client sends it again while the graph still holds the pose (5 exits at most, then the engine's knock-down ends a bleedout kneel); third person is held with the POV switch off from the lock until the graph has left the pose; 0 s ends the lock, as the server sends when a skinning ends; a mounted or swimming player skips it |
 | `playerMenuState` `{ target, canRelease, givePotion, hasPotion, finishOff, prepareExecution, execute, assassinate }` | Server → requester | Which flagged X menu actions apply to the target |
 | *(CarryAnimSystem, existing gamemode)* | Server → clients | Carrier pose |
 

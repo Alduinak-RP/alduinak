@@ -10,11 +10,19 @@ the emote under the cursor (or only closes the wheel when nothing is hovered). T
 reports the slice under the cursor as `emote:hover`. Movement keys (`W A S D`,
 `Space`) end an emote, and so does drawing a weapon or spell. A draw leaves an idle by itself, so no idle exit event is sent while the hands
 are drawn; an offset overlay such as Crossed Arms is not an idle, so a draw still sends its `OffsetStop`.
-An emote forces third person and keeps the camera there while it plays (a 250 ms check), because an idle in
-first person loses the character's collision and walks through geometry. The same check ends the emote once the
+An emote holds the camera in third person, because an animation-driven idle under a first-person camera moves
+the character without collision and walks through geometry. The hold (`poseCamera.ts`, shared with
+`RestraintService`) forces third person and switches the POV key off, so neither the key nor the mouse wheel
+reaches first person. A player in first person gets third person first and the idle 0.3 s later, once the body
+is back; after 3 s still in first person the emote is given up with "Emotes play in third person.". A 250 ms
+check keeps the hold while the emote is active and, after it, while the graph still reads `bAnimationDriven` (a
+stand-up clip, an exit the graph refused, a pose a draw did not end), and lifts it after two checks with neither.
+A chair or a mount taken meanwhile owns the camera again. A pose that outlasts its emote by 5 s writes
+`EmoteService: emote camera: the graph still reads bAnimationDriven 5000 ms after <idle> ended, third person held
+while it lasts` to the Platform log. The same check ends the emote once the
 graph's `bIdlePlaying` has been off for two checks after the idle was seen playing (a one-shot such as Wave
-finished, or combat or stick movement ended it), or at once when the graph refuses it, so the camera is free again; sit and kneel poses keep the idle
-playing and the lock with it. An offset overlay (Crossed Arms) is not an idle and keeps the lock until it is
+finished, or combat or stick movement ended it), or at once when the graph refuses it; sit and kneel poses keep the idle
+playing and the hold with it. An offset overlay (Crossed Arms) is not an idle and keeps the hold until it is
 cancelled.
 
 - Client: `skymp5-client/src/services/services/emoteService.ts` (the `GROUPS` catalog, playing, exiting, the
