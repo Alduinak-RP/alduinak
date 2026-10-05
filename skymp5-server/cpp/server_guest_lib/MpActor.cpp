@@ -87,7 +87,7 @@ struct MpActor::Impl
     { espm::ActorValue::StaminaRateMult,
       std::chrono::steady_clock::time_point{} },
   };
-  uint32_t blockActiveCount = 0;
+  std::chrono::steady_clock::time_point blockStartAt;
   std::optional<AnimationData> animationData;
   uint32_t serverAnimChanges = 0;
 
@@ -210,21 +210,6 @@ MpActor::MpActor(const LocationalData& locationalData_,
 {
   pImpl.reset(new Impl);
   asActor = this;
-}
-
-void MpActor::IncreaseBlockCount() noexcept
-{
-  ++pImpl->blockActiveCount;
-}
-
-void MpActor::ResetBlockCount() noexcept
-{
-  pImpl->blockActiveCount = 0;
-}
-
-uint32_t MpActor::GetBlockCount() const noexcept
-{
-  return pImpl->blockActiveCount;
 }
 
 bool MpActor::GetConsoleCommandsAllowedFlag() const
@@ -2142,6 +2127,25 @@ void MpActor::SetIsBlockActive(bool active)
 bool MpActor::IsBlockActive() const
 {
   return pImpl->isBlockActive;
+}
+
+void MpActor::StartBlock()
+{
+  pImpl->isBlockActive = true;
+  pImpl->blockStartAt = std::chrono::steady_clock::now();
+}
+
+void MpActor::ApplyBlockingReport(bool isBlocking)
+{
+  // A report sent before the engine raised the shield still says false
+  constexpr auto kBlockStartGrace = std::chrono::milliseconds(400);
+
+  if (isBlocking) {
+    pImpl->isBlockActive = true;
+  } else if (std::chrono::steady_clock::now() - pImpl->blockStartAt >=
+             kBlockStartGrace) {
+    pImpl->isBlockActive = false;
+  }
 }
 
 const float kAngleToRadians = std::acos(-1.f) / 180.f;

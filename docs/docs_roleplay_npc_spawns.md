@@ -252,7 +252,7 @@ The server now audits every zone NPC and companion every 1.5 seconds and moves
 hosting with `mp.setHoster` (a `scam_native` addon call; without it the audit
 logs once at boot and hosting stays client-driven). A candidate host is a
 living player whose game is running (the server got movement for that
-player's own character within the last 2 seconds, read through
+player's own character within the last 3 seconds, read through
 `mp.getMovementAgeMs`; a paused, alt-tabbed or loading game sends none, while
 a paralysed player's ignored movement still counts), that
 the server streams the NPC to (the NPC's 4096-unit grid cell and the eight
@@ -269,7 +269,7 @@ within `npcHostRange`:
 - a host that is still a candidate never loses the NPC within 5 seconds of a
   switch, and that includes a claim its own client made;
 - the current host stays a candidate for 6 seconds after its last movement,
-  not 2, so a load screen does not cost it the NPC;
+  not 3, so a load screen does not cost it the NPC;
 - while the current host is still a candidate, a player who entered the NPC's
   cell within the last 3 seconds (or whom the audit has only just seen) is not
   picked over it. Companions and pets are exempt;
@@ -284,7 +284,7 @@ within `npcHostRange`:
   is unhosted and stands still until a client that has it loaded claims it.
 
 A client can still claim an NPC on its own: an unhosted one at once, a hosted
-one once its host has sent no movement for that NPC for 2 seconds. For zone
+one once its host has sent no movement for that NPC for 3 seconds. For zone
 NPCs the server refuses the claim (`onHostAttempt`) when the NPC is not
 streamed to that player or that player's game is paused. A dead player's claim
 is refused for every NPC, and a downed player's for every NPC but their own

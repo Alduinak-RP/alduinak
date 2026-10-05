@@ -9,7 +9,7 @@ AnimationSystem::AnimationSystem()
   animationCallbacks = {
     {
       "blockStart",
-      [](MpActor* actor) { actor->SetIsBlockActive(true); },
+      [](MpActor* actor) { actor->StartBlock(); },
     },
     {
       "blockStop",

@@ -29,8 +29,8 @@ const DEFAULT_AGGRO_SEC = 30;
 const SWITCH_COOLDOWN_MS = 5000;
 // Without aggro, a nearer player takes over only when this much nearer than the current host
 const NEARER_FACTOR = 0.5;
-// A client that sent no movement for its own player this long is paused, alt-tabbed or loading; the C++ takeover rule uses 2 s too
-const LIVE_MS = 2000;
+// A client that sent no movement for its own player this long is paused, alt-tabbed or loading; the C++ takeover rule uses 3 s too
+const LIVE_MS = 3000;
 // The current host stays a candidate this long after its last movement, so a load screen does not cost it the NPC
 const HOST_KEEP_MS = 6000;
 // A player who entered the NPC's cell this recently does not take it from a host that is still a candidate

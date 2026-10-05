@@ -113,6 +113,8 @@ public:
               SetPosMode setPosMode = SetPosMode::Other);
   void SetAngle(const NiPoint3& newAngle,
                 SetAngleMode setAngleMode = SetAngleMode::Other);
+  // Within 1 unit and 0.5 degrees of the stored place a report only saves a pending move and re-tests changed triggers
+  void ApplyMovementReport(const NiPoint3& pos, const NiPoint3& rot);
   void SetHarvested(bool harvested);
   void SetOpen(bool open);
   void PutItem(MpActor& actor, const Inventory::Entry& entry);
@@ -224,6 +226,12 @@ private:
   void SendOpenContainer(uint32_t refId);
   void CheckInteractionAbility(MpObjectReference& ac);
   bool IsLocationSavingNeeded() const;
+  // A movement report stored the place after the last save request
+  bool IsPositionSavePending() const;
+  void EditLocation(const std::function<void(MpChangeForm&)>& edit,
+                    SetPosMode setPosMode);
+  // Sends OnTriggerEnter or OnTriggerLeave for each trigger whose inside changed
+  void TestPrimitives(const NiPoint3& pos);
   void ProcessActivateNormal(MpObjectReference& activationSource);
   bool ProcessActivateSecond(MpObjectReference& activationSource);
   void GivePickupItemsToActivationSource(MpObjectReference& activationSource,

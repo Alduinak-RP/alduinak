@@ -649,18 +649,14 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
       return;
     }
 
-    if (!msg.data.isBlocking) {
-      actor->IncreaseBlockCount();
-    } else {
-      actor->ResetBlockCount();
+    // Hosted NPCs never block
+    if (partOne.serverState.ActorByUser(rawMsgData.userId) == actor) {
+      actor->ApplyBlockingReport(msg.data.isBlocking);
     }
 
-    actor->SetPos(
+    actor->ApplyMovementReport(
       NiPoint3{ msg.data.pos[0], msg.data.pos[1], msg.data.pos[2] },
-      SetPosMode::CalledByUpdateMovement);
-    actor->SetAngle(
-      NiPoint3{ msg.data.rot[0], msg.data.rot[1], msg.data.rot[2] },
-      SetAngleMode::CalledByUpdateMovement);
+      NiPoint3{ msg.data.rot[0], msg.data.rot[1], msg.data.rot[2] });
     actor->SetAnimationVariableBool(
       AnimationVariableBool::kVariable_bInJumpState, msg.data.isInJumpState);
     actor->SetAnimationVariableBool(
@@ -673,11 +669,6 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
     if (partOne.worldState.alduinakDamageFormula) {
       HitRules::NoteSneaking(actor->GetCombatState(), msg.data.isSneaking,
                              HitRules::Clock::now());
-    }
-
-    if (actor->GetBlockCount() == 5) {
-      actor->SetIsBlockActive(false);
-      actor->ResetBlockCount();
     }
 
     if (msg.data.runMode != "Standing") {
@@ -1408,7 +1399,7 @@ void ActionListener::OnHostAttempt(const RawMessageData& rawMsgData,
   const auto lastRemoteUpdate =
     partOne.worldState.GetLastMovUpdate(remote.GetIdx());
 
-  const auto hostResetTimeout = std::chrono::seconds(2);
+  const auto hostResetTimeout = std::chrono::seconds(3);
 
   if (hoster == 0 || !lastRemoteUpdate ||
       std::chrono::system_clock::now() - *lastRemoteUpdate >

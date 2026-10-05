@@ -195,10 +195,11 @@ public:
   void DropItem(const uint32_t baseId, const Inventory::Entry& entry);
   void SetIsBlockActive(bool isBlockActive);
   bool IsBlockActive() const;
+  // A blockStart animation event
+  void StartBlock();
+  // The isBlocking flag of the player's movement report
+  void ApplyBlockingReport(bool isBlocking);
   NiPoint3 GetViewDirection() const;
-  void IncreaseBlockCount() noexcept;
-  void ResetBlockCount() noexcept;
-  uint32_t GetBlockCount() const noexcept;
   void ApplyMagicEffect(espm::Effects::Effect& effect,
                         bool durationOverriden = false);
   void ApplyMagicEffects(std::vector<espm::Effects::Effect>& effects,

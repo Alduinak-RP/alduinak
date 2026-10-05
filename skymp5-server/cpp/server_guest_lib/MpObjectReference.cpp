@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <antigo/Context.h>
 #include <antigo/ResolvedContext.h>
+#include <cmath>
 #include <map>
 #include <numeric>
 #include <optional>
@@ -228,6 +229,10 @@ public:
   bool teleportFlag = false;
   bool setPropertyCalled = false;
   std::optional<Inventory::ExtraData> pickupExtras;
+  // When a movement report last stored the place without a save request
+  std::optional<std::chrono::system_clock::time_point> unsavedMoveAt;
+  // emittersWithPrimitives gained or lost a trigger since the last test
+  bool primitivesDirty = false;
 
   // Form id of worldOrCellDesc, 0 until read; reset wherever the desc is written
   uint32_t cellOrWorldFormId = 0;
@@ -600,52 +605,15 @@ void MpObjectReference::SetPos(const NiPoint3& newPos, SetPosMode setPosMode)
   auto oldGridPos = GetGridPos(ChangeForm().position);
   auto newGridPos = GetGridPos(newPos);
 
-  EditChangeForm(
+  EditLocation(
     [&newPos](MpChangeFormREFR& changeForm) { changeForm.position = newPos; },
-    MakeMode(IsLocationSavingNeeded(), setPosMode));
+    setPosMode);
 
   if (oldGridPos != newGridPos || !everSubscribedOrListened)
     ForceSubscriptionsUpdate();
 
   if (!IsDisabled()) {
-    if (emittersWithPrimitives) {
-      for (auto& [emitterRefr, wasInside] : *emittersWithPrimitives) {
-        bool inside = emitterRefr->IsPointInsidePrimitive(newPos);
-        if (wasInside != inside) {
-          wasInside = inside;
-          auto me = ToVarValue();
-
-          auto wst = GetParent();
-          auto id = emitterRefr->GetFormId();
-          auto myId = GetFormId();
-          wst->SetTimer(std::chrono::seconds(0))
-            .Then([wst, id, inside, me, myId, this](Viet::Void) {
-              if (wst->LookupFormById(myId).get() != this) {
-                wst->logger->error("Refr pointer expired", id);
-                return;
-              }
-              auto& emitter = wst->LookupFormById(id);
-              MpObjectReference* emitterRefr =
-                emitter ? emitter->AsObjectReference() : nullptr;
-              if (!emitterRefr) {
-                wst->logger->error("Emitter not found in timer ({0:x})", id);
-                return;
-              }
-              emitterRefr->SendPapyrusEvent(
-                inside ? "OnTriggerEnter" : "OnTriggerLeave", &me, 1);
-            });
-
-          if (inside) {
-            if (!primitivesWeAreInside) {
-              primitivesWeAreInside.reset(new std::set<MpObjectReference*>);
-            }
-            primitivesWeAreInside->insert(emitterRefr);
-          } else if (primitivesWeAreInside) {
-            primitivesWeAreInside->erase(emitterRefr);
-          }
-        }
-      }
-    }
+    TestPrimitives(newPos);
 
     if (primitivesWeAreInside && !primitivesWeAreInside->empty()) {
       // Papyrus may edit the set, so dispatch from a copy
@@ -670,9 +638,102 @@ void MpObjectReference::SetPos(const NiPoint3& newPos, SetPosMode setPosMode)
 void MpObjectReference::SetAngle(const NiPoint3& newAngle,
                                  SetAngleMode setAngleMode)
 {
-  EditChangeForm(
+  EditLocation(
     [&](MpChangeFormREFR& changeForm) { changeForm.angle = newAngle; },
-    MakeMode(IsLocationSavingNeeded(), setAngleMode));
+    setAngleMode);
+}
+
+void MpObjectReference::ApplyMovementReport(const NiPoint3& pos,
+                                            const NiPoint3& rot)
+{
+  constexpr float kSameSqrDistance = 1.f;
+  constexpr float kSameAngleDegrees = 0.5f;
+
+  const NiPoint3& storedRot = GetAngle();
+  const bool samePlace = everSubscribedOrListened &&
+    (pos - GetPos()).SqrLength() <= kSameSqrDistance &&
+    std::abs(rot.x - storedRot.x) <= kSameAngleDegrees &&
+    std::abs(rot.y - storedRot.y) <= kSameAngleDegrees &&
+    std::abs(rot.z - storedRot.z) <= kSameAngleDegrees;
+
+  if (!samePlace) {
+    SetPos(pos, SetPosMode::CalledByUpdateMovement);
+    SetAngle(rot, SetAngleMode::CalledByUpdateMovement);
+    return;
+  }
+
+  // A move left unsaved is saved once 30 s passed since the last save request
+  if (IsPositionSavePending() && IsLocationSavingNeeded()) {
+    EditChangeForm([](MpChangeForm&) {});
+  }
+
+  // A trigger that streamed in around a standing actor still sees it enter
+  if (pImpl->primitivesDirty && !IsDisabled()) {
+    TestPrimitives(GetPos());
+  }
+}
+
+bool MpObjectReference::IsPositionSavePending() const
+{
+  const auto lastSaveRequest = GetLastSaveRequestMoment();
+  return pImpl->unsavedMoveAt &&
+    (!lastSaveRequest || *lastSaveRequest <= *pImpl->unsavedMoveAt);
+}
+
+void MpObjectReference::EditLocation(
+  const std::function<void(MpChangeForm&)>& edit, SetPosMode setPosMode)
+{
+  const auto mode = MakeMode(IsLocationSavingNeeded(), setPosMode);
+  EditChangeForm(edit, mode);
+  if (mode == Mode::NoRequestSave) {
+    pImpl->unsavedMoveAt = std::chrono::system_clock::now();
+  }
+}
+
+void MpObjectReference::TestPrimitives(const NiPoint3& pos)
+{
+  pImpl->primitivesDirty = false;
+  if (!emittersWithPrimitives) {
+    return;
+  }
+
+  for (auto& [emitterRefr, wasInside] : *emittersWithPrimitives) {
+    bool inside = emitterRefr->IsPointInsidePrimitive(pos);
+    if (wasInside == inside) {
+      continue;
+    }
+    wasInside = inside;
+    auto me = ToVarValue();
+
+    auto wst = GetParent();
+    auto id = emitterRefr->GetFormId();
+    auto myId = GetFormId();
+    wst->SetTimer(std::chrono::seconds(0))
+      .Then([wst, id, inside, me, myId, this](Viet::Void) {
+        if (wst->LookupFormById(myId).get() != this) {
+          wst->logger->error("Refr pointer expired", id);
+          return;
+        }
+        auto& emitter = wst->LookupFormById(id);
+        MpObjectReference* emitterRefr =
+          emitter ? emitter->AsObjectReference() : nullptr;
+        if (!emitterRefr) {
+          wst->logger->error("Emitter not found in timer ({0:x})", id);
+          return;
+        }
+        emitterRefr->SendPapyrusEvent(
+          inside ? "OnTriggerEnter" : "OnTriggerLeave", &me, 1);
+      });
+
+    if (inside) {
+      if (!primitivesWeAreInside) {
+        primitivesWeAreInside.reset(new std::set<MpObjectReference*>);
+      }
+      primitivesWeAreInside->insert(emitterRefr);
+    } else if (primitivesWeAreInside) {
+      primitivesWeAreInside->erase(emitterRefr);
+    }
+  }
 }
 
 void MpObjectReference::SetHarvested(bool harvested)
@@ -1113,6 +1174,7 @@ void MpObjectReference::Subscribe(MpObjectReference* emitter,
         new std::map<MpObjectReference*, bool>);
     }
     listener->emittersWithPrimitives->insert({ emitter, false });
+    listener->pImpl->primitivesDirty = true;
   }
 }
 
@@ -1143,8 +1205,9 @@ void MpObjectReference::Unsubscribe(MpObjectReference* emitter,
 
   listener->emitters->erase(emitter);
 
-  if (listener->emittersWithPrimitives && hasPrimitive) {
-    listener->emittersWithPrimitives->erase(emitter);
+  if (listener->emittersWithPrimitives && hasPrimitive &&
+      listener->emittersWithPrimitives->erase(emitter)) {
+    listener->pImpl->primitivesDirty = true;
   }
 }
 
