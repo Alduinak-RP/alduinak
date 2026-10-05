@@ -30,6 +30,8 @@ const STATE_FILE = "./weather-state.json";
 const OVERRIDE_FILE = "./weather-regions.json";
 const REGION_PROP = "private.weatherRegion";
 const POLL_MS = 2000;
+// The poll works a player's region out again after a cell change or this much travel on the x/y plane
+const RESOLVE_MOVE = 1024;
 const DEFAULT_MIN_MINUTES = 30;
 const DEFAULT_MAX_MINUTES = 90;
 const MAX_MINUTES = 1440;
@@ -109,6 +111,8 @@ export class WeatherSystem implements System {
   private worldCache = new Map<number, boolean>();
   private lastRegion = new Map<number, string | null>();
   private lastSent = new Map<number, string>();
+  // Where the poll last worked out each actor's region
+  private resolvedAt = new Map<number, { cell: number; x: number; y: number }>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const all = (await Settings.get()).allSettings as Record<string, any> | null;
@@ -275,7 +279,10 @@ export class WeatherSystem implements System {
     this.lastSent.delete(userId);
     try {
       const actorId = (ctx.svr as Mp).getUserActor(userId);
-      if (actorId) this.lastRegion.delete(actorId);
+      if (actorId) {
+        this.lastRegion.delete(actorId);
+        this.resolvedAt.delete(actorId);
+      }
     } catch { }
   }
 
@@ -295,7 +302,7 @@ export class WeatherSystem implements System {
     if (changed) this.saveState();
     for (const { actorId, userId, cell, pos } of onlineSnapshot(mp).players) {
       if (userId < 0) continue;
-      const regionId = this.regionFor(mp, actorId, cell, pos);
+      const regionId = this.polledRegion(mp, actorId, cell, pos);
       const region = regionId ? this.regions.get(regionId) : undefined;
       const key = region ? `${regionId}|${region.state.weatherId}|${region.state.startedAt}` : "none";
       if (this.lastSent.get(userId) === key) continue;
@@ -343,6 +350,16 @@ export class WeatherSystem implements System {
       this.worldCache.set(id, known);
     }
     return known;
+  }
+
+  // The last region (exact lookups refresh it too) until the actor changes cell or travels RESOLVE_MOVE from the last resolve
+  private polledRegion(mp: Mp, actorId: number, cell: number, pos: readonly number[]): string | null {
+    const at = this.resolvedAt.get(actorId);
+    if (at && at.cell === cell && this.lastRegion.has(actorId) && (pos[0] - at.x) ** 2 + (pos[1] - at.y) ** 2 < RESOLVE_MOVE ** 2) {
+      return this.lastRegion.get(actorId) ?? null;
+    }
+    this.resolvedAt.set(actorId, { cell, x: pos[0], y: pos[1] });
+    return this.regionFor(mp, actorId, cell, pos);
   }
 
   // The region at place and pos in a listed world; with place 0 (unknown), indoors, or outside every polygon, the last one the actor stood in

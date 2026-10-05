@@ -80,9 +80,16 @@ first region whose polygon holds their position is theirs (an area without a
 polygon covers the whole world); inside a cell they keep the last exterior
 region (`private.weatherRegion` on the character, so a relog in an inn keeps
 it), which the client puts up the moment they step outside; in an unlisted
-world they get none. A packet goes out only when the region, its weather or
-its start changed for that player, so riding along a border never flips the
-sky back and forth.
+world they get none. The check reads cell and position from the server's
+shared 500 ms online snapshot and works a player's region out again only
+after a cell change or 1,024 units (about 15 m) of travel across the map
+since the last time; in between the player keeps the last region, which the
+survival climate step (every 15 s outdoors while survival is on) also
+refreshes from the live position. A player who stops just past a border gets
+the new region's weather at the next climate step, after a trip through a
+door, or after 15 m more travel. A packet goes out only when the region, its
+weather or its start changed for that player, so riding along a border never
+flips the sky back and forth.
 
 ```
 Server -> Client  { customPacketType: "weather", region, name, weatherId, weather, endsAt, transition, gameSettings? }
