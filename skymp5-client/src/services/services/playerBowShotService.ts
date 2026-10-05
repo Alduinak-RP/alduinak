@@ -3,6 +3,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { MsgType } from "../../messages";
 import { getEquipment } from "../../sync/equipment";
 import { QueryBlockSetInventoryEvent } from "../events/queryBlockSetInventoryEvent";
+import { PlayerBowShotMessage } from "../messages/playerBowShotMessage";
 import { logError, logTrace } from "../../logging";
 
 export class PlayerBowShotService extends ClientListener {
@@ -49,16 +50,20 @@ export class PlayerBowShotService extends ClientListener {
         }
     }
 
-    private onPlayerBowShot(e: PlayerBowShotEvent) {
+    // Reliable because the server removes the arrow and prices the next hit with this ammo
+    private sendShot(shot: Omit<PlayerBowShotMessage, "t">) {
         this.controller.emitter.emit("sendMessage", {
-            message: {
-                t: MsgType.PlayerBowShot,
-                weaponId: e.weapon.getFormID(),
-                ammoId: e.ammo.getFormID(),
-                power: e.power,
-                isSunGazing: e.isSunGazing || false
-            },
-            reliability: "unreliable"
+            message: { t: MsgType.PlayerBowShot, ...shot },
+            reliability: "reliable"
+        });
+    }
+
+    private onPlayerBowShot(e: PlayerBowShotEvent) {
+        this.sendShot({
+            weaponId: e.weapon.getFormID(),
+            ammoId: e.ammo.getFormID(),
+            power: e.power,
+            isSunGazing: e.isSunGazing || false
         });
     }
 
@@ -94,15 +99,11 @@ export class PlayerBowShotService extends ClientListener {
             return;
         }
 
-        this.controller.emitter.emit("sendMessage", {
-            message: {
-                t: MsgType.PlayerBowShot,
-                weaponId: crossbow.getFormID(),
-                ammoId: equippedAmmoEntries[0].baseId,
-                isSunGazing: false,
-                power: 1.0
-            },
-            reliability: "unreliable"
+        this.sendShot({
+            weaponId: crossbow.getFormID(),
+            ammoId: equippedAmmoEntries[0].baseId,
+            isSunGazing: false,
+            power: 1.0
         });
 
         // Fixes a race: the server removes the ammo before the local crossbow does, briefly showing -2 then -1
