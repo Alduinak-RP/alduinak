@@ -10,6 +10,7 @@ import { destroyLeftovers } from "./actorUtil";
 import { loadNavmeshSpots, randomPointOn, NavmeshTarget, SpotKind, Spots } from "./navmeshSpots";
 import { writeFileAtomic } from "./fileUtil";
 import { every } from "./timers";
+import { onlineSnapshot, OnlinePlayer } from "./onlineSnapshot";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -211,7 +212,7 @@ const hex = (id: number): string => id.toString(16);
 
 const view = (data: Uint8Array): DataView => new DataView(data.buffer, data.byteOffset, data.byteLength);
 
-const distance = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const distance = (a: readonly number[], b: readonly number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 // Navmesh height under (x, y): of the triangles covering the point, the one whose height is nearest z; null off the mesh
 const navmeshZAt = (spots: Spots, x: number, y: number, z: number): number | null => {
@@ -553,11 +554,9 @@ export class NpcSpawnSystem implements System {
     this.sweepCorpses(mp, now);
     if (this.loading || !this.zones.length) return;
 
-    let playerIds: number[] = [];
-    try { playerIds = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
-
+    const online = onlineSnapshot(mp);
     for (const zone of this.zones) {
-      this.updateInside(mp, zone, playerIds);
+      this.updateInside(mp, zone, online.byCell.get(zone.cellOrWorldId));
       const occupied = zone.inside.size > 0;
       if (zone.spawned.length) {
         this.checkDeaths(mp, zone, now);
@@ -599,21 +598,14 @@ export class NpcSpawnSystem implements System {
     });
   }
 
-  private updateInside(mp: Mp, zone: Zone, playerIds: number[]): void {
+  // Players in the zone's cell or worldspace, from the online snapshot
+  private updateInside(mp: Mp, zone: Zone, players: readonly OnlinePlayer[] = []): void {
+    if (!players.length && !zone.inside.size) return;
     const inside = new Set<number>();
-    for (const id of playerIds) {
+    for (const { actorId: id, pos } of players) {
       // Hysteresis: a player already inside only counts as gone beyond 1.5x the trigger radius
       const reach = zone.inside.has(id) ? zone.radius * DESPAWN_HYSTERESIS : zone.radius;
-      try {
-        if (mp.getActorCellOrWorld(id) !== zone.cellOrWorldId) continue;
-        const pos = mp.getActorPos(id);
-        const dx = pos[0] - zone.pos[0];
-        const dy = pos[1] - zone.pos[1];
-        const dz = pos[2] - zone.pos[2];
-        if (dx * dx + dy * dy + dz * dz > reach * reach) continue;
-      } catch {
-        continue;
-      }
+      if (!(distance(pos, zone.pos) <= reach)) continue;
       inside.add(id);
       if (!zone.inside.has(id)) this.log(`NpcSpawnSystem: '${zone.name}' entered by ${this.actorLabel(mp, id)}`);
     }
@@ -804,7 +796,8 @@ export class NpcSpawnSystem implements System {
     if (zone.spread === 0 || !zone.spots) return this.slotPos(zone, slot);
     const reach = zone.spread || zone.radius;
     const taken = zone.spawned.filter((e) => e.id && !e.diedAt).map((e) => e.pos);
-    const players = this.playerPositions(mp, zone);
+    // Every online player in the zone's cell or worldspace, admins included
+    const players = (onlineSnapshot(mp).byCell.get(zone.cellOrWorldId) ?? []).map((p) => p.pos);
     let best: number[] | null = null;
     let bestScore = -1;
     for (let attempt = 0; attempt < PLACE_ATTEMPTS; attempt++) {
@@ -818,17 +811,6 @@ export class NpcSpawnSystem implements System {
       if (spaced && clear >= PLAYER_CLEARANCE) break;
     }
     return best ?? this.slotPos(zone, slot);
-  }
-
-  // Every online player in the zone's cell or worldspace, admins included
-  private playerPositions(mp: Mp, zone: Zone): number[][] {
-    let ids: number[] = [];
-    try { ids = mp.get(0, "onlinePlayers") ?? []; } catch { }
-    const out: number[][] = [];
-    for (const id of ids) {
-      try { if (mp.getActorCellOrWorld(id) === zone.cellOrWorldId) out.push(mp.getActorPos(id)); } catch { }
-    }
-    return out;
   }
 
   // A death starts the slot's Respawn cooldown and the corpse's own removal timer

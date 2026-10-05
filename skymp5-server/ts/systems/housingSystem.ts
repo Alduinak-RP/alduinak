@@ -11,6 +11,7 @@ import { describeActor, profileIdOf, realNameOf, titledName } from "./playerText
 import { adminAudit } from "./discordAlerts";
 import { WRITING_ID } from "./writingStore";
 import { soon } from "./timers";
+import { onlineSnapshot } from "./onlineSnapshot";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -904,20 +905,20 @@ export class HousingSystem implements System {
   // A notice for every player not yet told within say range of a ref, in its cell or worldspace; returns how many it reached
   private noticeAround(ctx: SystemContext, refrId: number, told: Set<number>, line: (listenerId: number) => string): number {
     const mp = ctx.svr as Mp;
+    let cell = 0;
+    let pos: unknown = null;
+    try {
+      cell = mp.getIdFromDesc(String(mp.get(refrId, "worldOrCellDesc"))) >>> 0;
+      pos = mp.get(refrId, "pos");
+    } catch {
+      return 0;
+    }
+    if (!Array.isArray(pos)) return 0;
     let reached = 0;
-    for (const listenerId of onlineActors(mp)) {
+    for (const { actorId: listenerId, userId } of onlineSnapshot(mp).nearNow(cell, pos, this.sayRange)) {
       if (told.has(listenerId)) continue;
-      try {
-        if (String(mp.get(listenerId, "worldOrCellDesc")) !== String(mp.get(refrId, "worldOrCellDesc"))) continue;
-        const a = mp.get(listenerId, "pos");
-        const b = mp.get(refrId, "pos");
-        const d2 = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
-        if (!(d2 <= this.sayRange * this.sayRange)) continue;
-      } catch {
-        continue;
-      }
       told.add(listenerId);
-      this.notice(ctx, this.userOf(ctx, listenerId), line(listenerId));
+      this.notice(ctx, userId, line(listenerId));
       reached++;
     }
     return reached;

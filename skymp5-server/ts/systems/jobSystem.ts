@@ -10,6 +10,7 @@ import { MasterySystem } from "./masterySystem";
 import { pick, pickKey, num, parsePos, parseIdCount } from "./npcSpawnSystem";
 import { ITEM_TYPES, descKey, itemNames } from "./itemCatalog";
 import { every } from "./timers";
+import { onlineSnapshot } from "./onlineSnapshot";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -185,7 +186,7 @@ export interface JobSummary {
 
 type Reject = (msg: string) => void;
 
-const distance = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const distance = (a: readonly number[], b: readonly number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 const article = (noun: string): string => (/^[aeiou]/i.test(noun) ? "an" : "a");
 
@@ -763,23 +764,15 @@ export class JobSystem implements System {
   // A player standing at a pickup is offered its job; the offer holds to the slack edge
   private updateOffers(): void {
     const mp = this.mp;
-    let players: number[] = [];
-    try { players = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
     const seen = new Set<number>();
-    for (const actorId of players) {
-      const userId = userOf(mp, actorId);
+    for (const { actorId, userId, cell, pos } of onlineSnapshot(mp).players) {
       if (userId < 0) continue;
       seen.add(userId);
       const offered = this.findJob(this.offers.get(userId) ?? "");
       let next: Job | undefined;
-      if (this.jobs.length && !this.trips.has(actorId) && isAlive(mp, actorId)) {
-        try {
-          const cellId = mp.getActorCellOrWorld(actorId);
-          const pos = mp.getActorPos(actorId);
-          next = offered && this.inside(cellId, pos, offered.pickup, EDGE_SLACK) ? offered : this.jobs.find((j) => this.inside(cellId, pos, j.pickup, 1));
-        } catch {
-          next = undefined;
-        }
+      if (this.jobs.length && !this.trips.has(actorId)) {
+        next = offered && this.inside(cell, pos, offered.pickup, EDGE_SLACK) ? offered : this.jobs.find((j) => this.inside(cell, pos, j.pickup, 1));
+        if (next && !isAlive(mp, actorId)) next = undefined;
       }
       if (next !== offered) this.setOffer(userId, next ?? null);
     }
@@ -800,7 +793,7 @@ export class JobSystem implements System {
 
   // ── Rules ──────────────────────────────────────────────────────────────────
 
-  private inside(cellId: number, pos: number[], end: End, slack: number): boolean {
+  private inside(cellId: number, pos: readonly number[], end: End, slack: number): boolean {
     return cellId === end.cellId && Array.isArray(pos) && distance(pos, end.pos) <= end.radius * slack;
   }
 

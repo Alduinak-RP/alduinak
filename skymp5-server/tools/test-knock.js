@@ -53,6 +53,11 @@ function setup () {
     users.set(i + 1, id)
   })
   const userOf = (actorId) => [...users].find(([, a]) => a === actorId)?.[0] ?? -1
+  const cellIds = new Map([[STREET, 0x3c], [HOUSE, 0x165a8]])
+  const cellOf = (desc) => {
+    if (!cellIds.has(desc)) throw new Error('bad desc')
+    return cellIds.get(desc)
+  }
   const mp = {
     get: (id, key) => {
       if (id === 0 && key === 'onlinePlayers') return [...users.values()]
@@ -65,6 +70,9 @@ function setup () {
     },
     getUserActor: (u) => users.get(u) ?? 0,
     getUserByActor: userOf,
+    getIdFromDesc: cellOf,
+    getActorCellOrWorld: (id) => cellOf(props.get(id).worldOrCellDesc),
+    getActorPos: (id) => props.get(id).pos,
     isConnected: (u) => users.has(u),
     sendCustomPacket: (u, text) => packets.push({ u, actor: users.get(u), ...JSON.parse(text) }),
   }

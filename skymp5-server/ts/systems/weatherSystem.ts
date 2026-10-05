@@ -3,8 +3,8 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
 import { WEATHER_REGIONS, WEATHER_CATALOG, WeatherRegionDef, WeatherChance } from "./weatherRegions";
 import { writeFileAtomic } from "./fileUtil";
-import { userOf } from "./actorUtil";
 import { every } from "./timers";
+import { onlineSnapshot } from "./onlineSnapshot";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -293,12 +293,9 @@ export class WeatherSystem implements System {
       }
     }
     if (changed) this.saveState();
-    let players: number[] = [];
-    try { players = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
-    for (const actorId of players) {
-      const userId = userOf(mp, actorId);
+    for (const { actorId, userId, cell, pos } of onlineSnapshot(mp).players) {
       if (userId < 0) continue;
-      const regionId = this.regionFor(mp, actorId);
+      const regionId = this.regionFor(mp, actorId, cell, pos);
       const region = regionId ? this.regions.get(regionId) : undefined;
       const key = region ? `${regionId}|${region.state.weatherId}|${region.state.startedAt}` : "none";
       if (this.lastSent.get(userId) === key) continue;
@@ -348,14 +345,12 @@ export class WeatherSystem implements System {
     return known;
   }
 
-  // The region under the actor in a listed world; indoors, or outside every polygon, the last one they stood in
-  private regionFor(mp: Mp, actorId: number): string | null {
-    let place = 0;
-    try { place = mp.getActorCellOrWorld(actorId) >>> 0; } catch { return this.lastKnown(mp, actorId); }
+  // The region at place and pos in a listed world; with place 0 (unknown), indoors, or outside every polygon, the last one the actor stood in
+  private regionFor(mp: Mp, actorId: number, place: number, pos: readonly number[] | null): string | null {
+    if (!place) return this.lastKnown(mp, actorId);
     const areas = this.worldAreas.get(place);
     if (areas) {
-      let pos: number[];
-      try { pos = mp.getActorPos(actorId); } catch { return this.lastKnown(mp, actorId); }
+      if (!pos) return this.lastKnown(mp, actorId);
       for (const a of areas) {
         if (!a.poly || pointInPolygon(a.poly, pos[0], pos[1])) return this.remember(mp, actorId, a.region.def.id);
       }
@@ -383,16 +378,24 @@ export class WeatherSystem implements System {
   // ── Admin API (AdminSystem's Weather sub-tab) ─────────────────────────────
 
   regionOf(mp: Mp, actorId: number): string | null {
-    return this.enabled ? this.regionFor(mp, actorId) : null;
+    return this.enabled ? this.regionNow(mp, actorId) : null;
+  }
+
+  private regionNow(mp: Mp, actorId: number): string | null {
+    let place = 0;
+    let pos: number[] | null = null;
+    try {
+      place = mp.getActorCellOrWorld(actorId) >>> 0;
+      pos = mp.getActorPos(actorId);
+    } catch { /* falls back to the last known region */ }
+    return this.regionFor(mp, actorId, place, pos);
   }
 
   listRegions(mp: Mp, hereActorId: number): WeatherRegionRow[] {
     if (!this.enabled) return [];
-    const here = this.regionFor(mp, hereActorId);
+    const here = this.regionNow(mp, hereActorId);
     const counts = new Map<string, number>();
-    let players: number[] = [];
-    try { players = mp.get(0, "onlinePlayers") ?? []; } catch { }
-    for (const id of players) {
+    for (const id of onlineSnapshot(mp).byActor.keys()) {
       const r = this.lastRegion.get(id);
       if (r) counts.set(r, (counts.get(r) ?? 0) + 1);
     }

@@ -65,6 +65,7 @@ import { KnowledgeSystem } from "./systems/knowledgeSystem";
 import { FactionSystem } from "./systems/factionSystem";
 import { JobSystem } from "./systems/jobSystem";
 import { trackConnections } from "./systems/actorUtil";
+import { trackOnline } from "./systems/onlineSnapshot";
 import { startPolls } from "./systems/timers";
 import { EventEmitter } from "events";
 import { pid } from "process";
@@ -410,6 +411,7 @@ const main = async () => {
   }
   const ctx = { svr: server, gm: new EventEmitter() };
   trackConnections(server);
+  trackOnline(ctx);
 
   console.log(`Current process ID is ${pid}`);
 

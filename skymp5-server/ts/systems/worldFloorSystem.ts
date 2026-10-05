@@ -5,6 +5,7 @@ import { hex, isAlive, isPlayerActor, notifyActor } from "./actorUtil";
 import { DEFAULT_START_LOCATIONS, parseStartLocations } from "./startLocations";
 import { Locational, loadWorldBorders, isOutsideBorder, noteInside, insideSpot } from "./worldBorder";
 import { every } from "./timers";
+import { onlineSnapshot } from "./onlineSnapshot";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -37,11 +38,9 @@ export class WorldFloorSystem implements System {
 
   poll(): void {
     const mp = this.mp;
-    let players: unknown[] = [];
-    try { players = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
-    const online = new Set(players.map((raw) => Number(raw) >>> 0));
+    const online = onlineSnapshot(mp).byActor;
     for (const id of this.outside) if (!online.has(id)) this.outside.delete(id);
-    for (const actorId of online) {
+    for (const actorId of online.keys()) {
       try {
         if (!isPlayerActor(mp, actorId) || !isAlive(mp, actorId)) continue;
         const loc = mp.get(actorId, "locationalData");
