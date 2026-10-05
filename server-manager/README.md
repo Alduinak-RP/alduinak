@@ -285,7 +285,14 @@ fails it prints a direct download URL - save that zip as
     MO2 would show it; before, the lower mod overwrote it and the two mods
     flagged each other on alternate Plays, re-downloading the DynDOLOD archive
     each time (`[install] Mod Manager None: N file(s) left to a higher-priority
-    mod with the same path`). On every Play the launcher also deletes, from a
+    mod with the same path`). `SKSE/Plugins/SSEDisplayTweaks.ini` is the one
+    shipped file a player may edit (`mo2::is_player_editable`, launchers after
+    3.0.6): it stays in the manifest and is installed when missing, but it is
+    left out of the folder size check and of the Mod Manager None size check,
+    and a reinstall of its mod keeps the copy on disk whatever it holds, so an
+    edit is never reverted. Only Repair Modlist puts the server's copy back,
+    which is also how a changed default in the reference install reaches a PC
+    that already has the file. On every Play the launcher also deletes, from a
     portable game copy (`<install>\skyrim`), each file it did not put there
     (`[game] removed stray file <path>` in `install.log`); logs, the client's
     own files under `Data/Platform` and, in launchers after 3.0.6, `.png`

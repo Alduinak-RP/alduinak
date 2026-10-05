@@ -640,6 +640,14 @@ pub fn is_unverified(rel: &str) -> bool {
     l.ends_with(".log") || l.rsplit('/').next() == Some("actorlimitfix.pdb")
 }
 
+// Config a mod ships for the player to edit: installed when missing, never sized, and only Repair Modlist replaces it
+pub fn is_player_editable(rel: &str) -> bool {
+    let l = rel.to_lowercase();
+    l.rsplit('/').next() == Some("ssedisplaytweaks.ini")
+}
+
+pub fn is_sized(rel: &str) -> bool { !is_unverified(rel) && !is_player_editable(rel) }
+
 // Why a mod installed straight into Data differs from the manifest, None when it matches
 pub async fn direct_mod_problem(game_dir: &Path, m: &Value) -> Option<String> {
     let record = read_direct_record(game_dir);
@@ -650,6 +658,7 @@ pub async fn direct_mod_problem(game_dir: &Path, m: &Value) -> Option<String> {
         if is_unverified(to) { continue; }
         let p = join_rel(&game_dir.join("Data"), to);
         let Ok(meta) = fs::metadata(&p) else { return Some(format!("missing file {to}")) };
+        if is_player_editable(to) { continue; }
         if f["size"].as_u64().is_some_and(|s| s != meta.len()) { return Some(format!("resized file {to}")); }
         if let (true, Some(want)) = (is_risky(to), f["sha256"].as_str()) {
             if !sha256_file(&p).await.map(|h| h.eq_ignore_ascii_case(want)).unwrap_or(false) { return Some(format!("modified file {to}")); }
@@ -672,9 +681,9 @@ pub async fn risky_file_problem(dir: &Path, files: &[Value]) -> Result<Option<St
     Ok(expected.keys().find(|to| !have.contains(*to)).map(|to| format!("missing file {to}")))
 }
 
-// Files of an installed mod folder that count toward its size: all but the launcher's meta.ini and unverified files
+// Files of an installed mod folder that count toward its size: all but the launcher's meta.ini, unverified and player-editable files
 fn sized_files(dir: &Path) -> Vec<String> {
-    list_files_rel(dir).into_iter().filter(|rel| !rel.eq_ignore_ascii_case("meta.ini") && !is_unverified(rel)).collect()
+    list_files_rel(dir).into_iter().filter(|rel| !rel.eq_ignore_ascii_case("meta.ini") && is_sized(rel)).collect()
 }
 
 // Byte size of an installed mod folder; None when missing or unreadable
@@ -689,7 +698,7 @@ pub fn mod_folder_size(name: &str) -> Option<u64> {
 // The files behind a folder size mismatch: unlisted, resized or missing
 pub fn size_mismatches(name: &str, files: &[Value]) -> String {
     let dir = mods_dir().join(sanitize(name));
-    let mut want: HashMap<String, u64> = files.iter().filter_map(|f| Some((f["to"].as_str()?.to_lowercase(), f["size"].as_u64()?))).filter(|(to, _)| !is_unverified(to)).collect();
+    let mut want: HashMap<String, u64> = files.iter().filter_map(|f| Some((f["to"].as_str()?.to_lowercase(), f["size"].as_u64()?))).filter(|(to, _)| is_sized(to)).collect();
     let mut out = vec![];
     for rel in sized_files(&dir) {
         let size = fs::metadata(join_rel(&dir, &rel)).map(|m| m.len()).unwrap_or(0);
