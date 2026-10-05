@@ -177,21 +177,25 @@ export class SendInputsService extends ClientListener {
         return this.controller.lookupListener(MountService).filterOwnMovement(restrained);
     }
 
+    // The server applies ChangeValues to the sender's own actor whatever idx says, so hosted NPCs report none
     private sendActorValuePercentage(_refrId?: number, form?: FormModel) {
+        if (_refrId) {
+          return;
+        }
         const canSend = form && (form.isDead ?? false) === false;
         if (!canSend) {
           return;
         }
 
-        const owner = this.getInputOwner(_refrId);
-        if (!owner) {
+        const player = this.sp.Game.getPlayer();
+        if (!player) {
           return;
         }
 
         // A clone's replayed hostile spell must not lower the reported health
         this.controller.lookupListener(CloneSpellGuardService).enforce();
 
-        const av = getActorValues(this.sp.Game.getPlayer() as Actor);
+        const av = getActorValues(player);
         const currentTime = Date.now();
         if (
             this.actorValuesNeedUpdate === false &&
@@ -230,9 +234,10 @@ export class SendInputsService extends ClientListener {
             data: av,
             _refrId
         };
+        // A lost report is never repeated while the values stay put
         this.controller.emitter.emit("sendMessageWithRefrId", {
             message,
-            reliability: "unreliable"
+            reliability: "reliable"
         });
         this.actorValuesNeedUpdate = false;
         this.prevValues = av;
