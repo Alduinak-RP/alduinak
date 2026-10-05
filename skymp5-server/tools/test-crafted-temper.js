@@ -154,6 +154,8 @@ const setup = ({ slots = THREE } = {}) => {
   mastery.gateCache.set(TEMPER_DAEDRIC, [{ profession: 'blacksmith', rank: 4 }])
   mastery.gateCache.set(TEMPER_LEATHER, [{ profession: 'tailor', rank: 1 }])
   mastery.onActorAssigned(ctx, USER, ACTOR)
+  // The login grant timer would fire into a later test
+  mastery.pendingGrants.clear(ACTOR)
   const needs = new NeedsSystem(log, mastery)
   needs.onActorAssigned(ctx, USER, ACTOR)
   needs.online.get(ACTOR).rec.at = FUTURE

@@ -8,7 +8,7 @@ import { parseStartingItems } from "./spawn";
 import { setIntroProfessions } from "./startLocations";
 import { BLANK_BOOK_EDID } from "./writingSystem";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
-import { EVERY_PASS_MS, every } from "./timers";
+import { KeyedTimers, every, soon } from "./timers";
 import {
   ADEPT, ChooseRefusal, FREE, HeldSlot, LEGENDARY, NOVICE, RANK_NAMES, RecipeGate, SLOT_NAMES, SlotConfig, SlotRecord, bestSlot, chooseRefusal,
   creditsCraft, defaultSlots, describeSlots, duplicateSlots, emptySlotRecord, hoursToNext, isCapped, multiclassOn, nextEmptySlot, parseSlots,
@@ -93,13 +93,13 @@ const MAGE_MAGICKA = [100, 125, 150, 175, 200, 500];
 const DEFAULT_RANK_HOURS = [40, 100, 180, 6000];
 const DEFAULT_POINT_INTERVAL_MINUTES = 60;
 const DEFAULT_HOUR_BANK = 2;
-const BANK_CHECK_MS = 5000;
-// Online time is saved this often while hours are banked, so a crash loses at most this much of it
+const BANK_CHECK_MS = 60000;
+// Online time is saved at the first bank check this long after the last save while hours are banked
 const BANK_SAVE_MS = 5 * 60000;
 const CHOOSE_COOLDOWN_MS = 1000;
 // Admin grants are for testing and corrections, never a bulk import.
 export const MAX_GRANT = 1000;
-// Events queue up between ticks; anything past this is a runaway loop.
+// Events queue up until the next turn drains them; anything past this is a runaway loop.
 const MAX_QUEUED_EVENTS = 4096;
 // The C++ never asks where an activator or crafter stands, so a forged packet from afar must not count as work
 const ACTIVATE_REACH = 600;
@@ -435,6 +435,7 @@ export class MasterySystem implements System {
   }
 
   async initAsync(ctx: SystemContext): Promise<void> {
+    this.ctx = ctx;
     const s = await Settings.get();
     const all = s.allSettings as Record<string, unknown> | null;
 
@@ -488,11 +489,11 @@ export class MasterySystem implements System {
     });
     ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.goOffline(ctx, actorId >>> 0));
     // Magicka follows the race once creation has settled it, after the kit trim
-    ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.pendingGrants.set(actorId >>> 0, Date.now() + LOGIN_GRANT_DELAY_MS));
+    ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.grantLater(ctx, actorId >>> 0));
 
     // Events are only queued so every property write and Papyrus call runs outside the native event call stack.
     this.hookNativeEvents(ctx);
-    every("mastery", EVERY_PASS_MS, () => this.poll(ctx));
+    every("mastery.banks", BANK_CHECK_MS, () => this.payBanks(ctx));
   }
 
   // Chain onto whatever already owns these `mp` hooks and never change their verdict.
@@ -516,6 +517,22 @@ export class MasterySystem implements System {
     }
     if (this.events.length >= MAX_QUEUED_EVENTS) this.events.shift();
     this.events.push({ kind: kind as ActivityKind, actorId: Number(actorId) >>> 0, detail: numeric });
+    if (this.drainQueued) return;
+    this.drainQueued = true;
+    soon(() => this.drain());
+  }
+
+  private drain(): void {
+    this.drainQueued = false;
+    const ctx = this.ctx;
+    if (!ctx) return;
+    for (const ev of this.events.splice(0, this.events.length)) {
+      try {
+        this.creditActivity(ctx, ev);
+      } catch (e) {
+        this.log(`[mastery] ${ev.kind} credit failed for ${ev.actorId.toString(16)}: ${e}`);
+      }
+    }
   }
 
   // Work another system verified (skinning); credited like any activity of that profession
@@ -530,20 +547,6 @@ export class MasterySystem implements System {
       case "masteryChoose": this.onChoose(ctx, userId, content); break;
       case "masteryResetRequest": this.onResetRequest(ctx, userId, content); break;
       default: break;
-    }
-  }
-
-  poll(ctx: SystemContext): void {
-    this.flushPendingGrants(ctx);
-    this.payBanks(ctx);
-    if (!this.events.length) return;
-    const batch = this.events.splice(0, this.events.length);
-    for (const ev of batch) {
-      try {
-        this.creditActivity(ctx, ev);
-      } catch (e) {
-        this.log(`[mastery] ${ev.kind} credit failed for ${ev.actorId.toString(16)}: ${e}`);
-      }
     }
   }
 
@@ -590,6 +593,7 @@ export class MasterySystem implements System {
   private deposit(ctx: SystemContext, actorId: number, char: Character, slot: Slot, now: number): void {
     const rec = slot.rec;
     rec.bank += 1;
+    this.banked.add(actorId);
     this.settleClock(actorId, char, now);
     this.save(ctx, actorId, char);
     const waitMin = Math.max(1, Math.ceil((this.intervalMs - rec.onlineMs) / 60000));
@@ -600,29 +604,38 @@ export class MasterySystem implements System {
 
   // A banked hour is counted once a full interval of online time has passed since the slot's last counted hour
   private payBanks(ctx: SystemContext): void {
+    if (!this.banked.size) return;
     const now = Date.now();
-    if (!this.clocks.size || now - this.lastBankCheck < BANK_CHECK_MS) return;
-    this.lastBankCheck = now;
-    this.clocks.forEach((clock, actorId) => {
+    for (const actorId of this.banked) {
       try {
-        const char = this.load(ctx, actorId);
-        const banked = char ? this.activeSlots(char).filter((s) => s.rec.bank > 0 && !(s.index > 0 && isCapped(s.cfg!, s.rec.points))) : [];
-        if (!char || !banked.length) return;
+        const clock = this.clocks.get(actorId);
+        const char = clock ? this.load(ctx, actorId) : null;
+        const slots = char ? this.bankedSlots(char) : [];
+        if (!clock || !char || !slots.length) {
+          this.banked.delete(actorId);
+          continue;
+        }
         let paid = false;
-        for (const slot of banked) {
+        for (const slot of slots) {
           if (slot.rec.bank > this.bankMax) slot.rec.bank = this.bankMax;
           if (slot.rec.onlineMs + now - clock.since < this.intervalMs || now - slot.rec.lastPointAt < this.intervalMs) continue;
           slot.rec.bank -= 1;
           this.countHour(ctx, actorId, char, slot, now, true);
           paid = true;
         }
-        if (paid || now - clock.savedAt < BANK_SAVE_MS) return;
+        if (!this.bankedSlots(char).length) this.banked.delete(actorId);
+        if (paid || now - clock.savedAt < BANK_SAVE_MS) continue;
         this.settleClock(actorId, char, now);
         this.save(ctx, actorId, char);
       } catch (e) {
         this.log(`[mastery] bank payout failed for ${hex(actorId)}: ${e}`);
       }
-    });
+    }
+  }
+
+  // Slots in force with an hour to pay; a sub-slot at its cap is never paid
+  private bankedSlots(char: Character): Slot[] {
+    return this.activeSlots(char).filter((s) => s.rec.bank > 0 && !(s.index > 0 && isCapped(s.cfg!, s.rec.points)));
   }
 
   // Moves the online time since the clock's mark into every slot in force; the caller writes them
@@ -637,6 +650,7 @@ export class MasterySystem implements System {
 
   private goOffline(ctx: SystemContext, actorId: number): void {
     this.sentMagicka.delete(actorId);
+    this.banked.delete(actorId);
     if (!this.clocks.has(actorId)) return;
     const char = this.load(ctx, actorId);
     if (char) {
@@ -791,9 +805,10 @@ export class MasterySystem implements System {
       if (rec.bank > 0) this.log(`[mastery] ${hex(actorId)} online with ${hoursText(rec.bank)} banked, next paid in ${Math.max(1, Math.ceil((this.intervalMs - rec.onlineMs) / 60000))} online min`);
     }
     if (char && char.subs) this.settleSubs(ctx, actorId, char);
+    if (char && this.bankedSlots(char).length) this.banked.add(actorId);
     this.sendState(ctx, actorId, userId);
     // Grants, kits and the state again wait out the client's spawn-time spell wipe
-    this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS);
+    this.grantLater(ctx, actorId);
   }
 
   // Markers of the old ladder that are not markers of the new one go; the ones still wanted are granted after the login delay
@@ -830,25 +845,23 @@ export class MasterySystem implements System {
     this.log(`[mastery] ${hex(actorId)} slots at login: ${text}${banked.length ? `; ${banked.join(", ")}` : ""}`);
   }
 
-  private flushPendingGrants(ctx: SystemContext): void {
-    if (!this.pendingGrants.size) return;
-    const now = Date.now();
-    this.pendingGrants.forEach((dueAt, actorId) => {
-      if (now < dueAt) return;
-      this.pendingGrants.delete(actorId);
-      const userId = this.userOf(ctx, actorId);
-      if (userId < 0) return;
-      const char = this.load(ctx, actorId);
-      if (char) {
-        const inForce = this.activeSlots(char);
-        for (const slot of inForce) this.applySpells(ctx, actorId, char, slot);
-        if (char.primary.profession) this.giveKit(ctx, actorId, userId, char.primary.profession);
-        for (const slot of inForce) {
-          if (slot.index > 0) this.giveSlotKit(ctx, actorId, userId, char, slot);
-        }
+  private grantLater(ctx: SystemContext, actorId: number): void {
+    this.pendingGrants.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS, () => this.grantAfterSpawn(ctx, actorId));
+  }
+
+  private grantAfterSpawn(ctx: SystemContext, actorId: number): void {
+    const userId = this.userOf(ctx, actorId);
+    if (userId < 0) return;
+    const char = this.load(ctx, actorId);
+    if (char) {
+      const inForce = this.activeSlots(char);
+      for (const slot of inForce) this.applySpells(ctx, actorId, char, slot);
+      if (char.primary.profession) this.giveKit(ctx, actorId, userId, char.primary.profession);
+      for (const slot of inForce) {
+        if (slot.index > 0) this.giveSlotKit(ctx, actorId, userId, char, slot);
       }
-      this.sendState(ctx, actorId, userId);
-    });
+    }
+    this.sendState(ctx, actorId, userId);
   }
 
   // The player's own reset of one craft (the primary unless a profession is named): the same as the admin one, counted against masteryResetsPerCharacter over all slots
@@ -1693,9 +1706,11 @@ export class MasterySystem implements System {
   private kitGold = DEFAULT_KIT_GOLD;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
   private bankMax = DEFAULT_HOUR_BANK;
+  private ctx: SystemContext | null = null;
   // Online player characters and the online time not yet in their record
   private clocks = new Map<number, OnlineClock>();
-  private lastBankCheck = 0;
+  // Online characters with banked hours, the only ones the bank check reads
+  private banked = new Set<number>();
   private hoe = 0;
   // Profession resets a player may use on one character; masteryResetsPerCharacter overrides
   private resetsPerCharacter = 1;
@@ -1704,8 +1719,9 @@ export class MasterySystem implements System {
   private playerKeyword = 0;
   private neighborsFailed = false;
   private events: ActivityEvent[] = [];
+  private drainQueued = false;
   private lastChooseMs = new Map<number, number>();
-  private pendingGrants = new Map<number, number>();
+  private pendingGrants = new KeyedTimers<number>();
 
   private benchCache = new Map<number, number>();
   private gateCache = new Map<number, RecipeGate[]>();

@@ -84,6 +84,7 @@ const setup = ({ slots = THREE, bonus = null } = {}) => {
   const sys = new MasterySystem((line) => lines.push(line))
   const mp = makeMp()
   const ctx = { svr: mp, gm: { on: () => {} } }
+  sys.ctx = ctx
   sys.slots = parseSlots(slots, RANK_HOURS).slots
   sys.spells = SPELLS
   for (const [profession, list] of Object.entries(SPELLS)) list.forEach((id, i) => sys.markers.set(id, { profession, rank: 1 + i }))
@@ -202,10 +203,53 @@ test('each slot has its own clock and bank, and banked hours are paid per slot',
   assert.deepEqual([t.subs().secondary.bank, t.primary().bank], [1, 0])
   assert.equal(t.notices().pop(), 'Extra work banked for your secondary craft: 1 hour will be counted, one per hour you stay online.')
   now += 51 * 60000
-  t.sys.lastBankCheck = 0
   t.sys.payBanks(t.ctx)
   assert.deepEqual([t.subs().secondary.points, t.subs().secondary.bank, t.primary().points], [2, 0, 1])
   assert.ok(t.lines.some((l) => /secondary tailor hour paid from the bank after 60 online min: 2h, 2 of 20 hours toward Novice/.test(l)))
+})
+
+test('the bank check reads only online characters with banked hours, saves their online time and lets them go once paid', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.craft(NAILS)
+  assert.equal(t.sys.banked.size, 0, 'a counted hour banks nothing')
+  t.craft(NAILS)
+  assert.deepEqual([...t.sys.banked], [ACTOR])
+  t.sys.disconnect(USER, t.ctx)
+  assert.equal(t.sys.banked.size, 0, 'offline characters are not checked')
+  t.login()
+  assert.deepEqual([...t.sys.banked], [ACTOR], 'a login with an hour in the bank joins the check')
+  now += 6 * 60000
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().bank, t.primary().onlineMs], [1, 1, 6 * 60000], 'not yet due, the online time is saved')
+  now += 54 * 60000
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().bank, t.sys.banked.size], [2, 0, 0], 'paid and out of the check')
+  let reads = 0
+  const get = t.mp.get
+  t.mp.get = (id, key) => { reads++; return get(id, key) }
+  now += HOUR
+  t.sys.payBanks(t.ctx)
+  assert.equal(reads, 0, 'an empty check reads no record')
+})
+
+test('activity events are credited on the next turn, one drain for a burst', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  const queued = []
+  const realImmediate = global.setImmediate
+  global.setImmediate = (fn) => queued.push(fn)
+  try {
+    t.sys.creditWork(ACTOR, 'blacksmith')
+    t.sys.creditWork(ACTOR, 'blacksmith')
+  } finally {
+    global.setImmediate = realImmediate
+  }
+  assert.equal(queued.length, 1, 'one drain for both events')
+  assert.equal(t.primary().points, 0, 'nothing is credited inside the hook')
+  queued[0]()
+  assert.equal(t.primary().points, 1, 'one hour per interval')
+  assert.equal(t.sys.events.length, 0)
 })
 
 test('a sub-slot climbs to its cap on its own ladder, then earns nothing', () => {
@@ -359,8 +403,8 @@ test('login drops a duplicate sub-slot without stripping the primary, and multic
   assert.equal(t.sys.rankOf(t.ctx, ACTOR, 'tailor'), 0)
   t.sys.slots = parseSlots(THREE, RANK_HOURS).slots
   t.login()
-  t.sys.pendingGrants.set(ACTOR, 0)
-  t.sys.flushPendingGrants(t.ctx)
+  assert.ok(t.sys.pendingGrants.has(ACTOR), 'the login waits out the spawn-time spell wipe')
+  t.sys.grantAfterSpawn(t.ctx, ACTOR)
   assert.ok(t.mp.spells.has(SPELLS.tailor[0]), 'turning it back on re-grants the markers')
 })
 

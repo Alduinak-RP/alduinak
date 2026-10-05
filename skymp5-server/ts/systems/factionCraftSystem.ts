@@ -3,7 +3,7 @@ import { System, Log, SystemContext, ACCESS_REFRESHED_EVENT } from "./system";
 import { resolveEditorIds } from "./espmEditorIds";
 import { addSpellTo, hex, removeSpellFrom } from "./actorUtil";
 import { FactionSystem } from "./factionSystem";
-import { EVERY_PASS_MS, every } from "./timers";
+import { KeyedTimers } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -98,31 +98,21 @@ export class FactionCraftSystem implements System {
     this.log(`[factionCraft] ready, ${this.spells.size}/${ids.length} faction marker spell(s) found in ${scan.scannedMs} ms`);
     if (!this.enabled) this.log("[factionCraft] no markers in the load order, faction recipes stay ungated");
 
-    ctx.gm.on("userAssignActor", (userId: number, actorId: number) => {
-      this.online.set(userId, actorId >>> 0);
-      this.pending.set(actorId >>> 0, Date.now() + LOGIN_GRANT_DELAY_MS);
+    ctx.gm.on("userAssignActor", (userId: number, assigned: number) => {
+      const actorId = assigned >>> 0;
+      this.online.set(userId, actorId);
+      this.pending.set(actorId, Date.now() + LOGIN_GRANT_DELAY_MS, () => this.sync(ctx, actorId, "at login"));
     });
     // applyAccess writes every online character's own copy before it fires
     ctx.gm.on(ACCESS_REFRESHED_EVENT, () => {
       for (const actorId of this.online.values()) this.sync(ctx, actorId, "after a rank reload");
     });
-    every("factionCraft", EVERY_PASS_MS, () => this.poll(ctx));
-  }
-
-  poll(ctx: SystemContext): void {
-    if (!this.pending.size) return;
-    const now = Date.now();
-    for (const [actorId, dueAt] of Array.from(this.pending)) {
-      if (now < dueAt) continue;
-      this.pending.delete(actorId);
-      this.sync(ctx, actorId, "at login");
-    }
   }
 
   disconnect(userId: number): void {
     const actorId = this.online.get(userId);
     this.online.delete(userId);
-    if (actorId !== undefined) this.pending.delete(actorId);
+    if (actorId !== undefined) this.pending.clear(actorId);
   }
 
   // Hand over the markers of every faction whose rank may craft, take back the rest; logged at login and on every change
@@ -194,5 +184,5 @@ export class FactionCraftSystem implements System {
   private enabled = false;
   private spells = new Map<string, number>();
   private online = new Map<number, number>();
-  private pending = new Map<number, number>();
+  private pending = new KeyedTimers<number>();
 }

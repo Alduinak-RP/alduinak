@@ -8,9 +8,6 @@ export interface Poll {
 const MAX_DELAY_MS = 0x7fffffff;
 const ERRORS_KEPT = 100;
 
-// A poll this short runs on about every event loop pass
-export const EVERY_PASS_MS = 1;
-
 let polling = false;
 const waiting: Array<() => void> = [];
 
