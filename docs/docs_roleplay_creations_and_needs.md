@@ -491,7 +491,7 @@ spend shows nothing on the HUD, and the stage notice from stage 2 and the "too t
 `survivalDiseases.ts` (diseases) and the generated heat list `heatSources.ts`; registered after HuntingSystem and
 NeedsSystem. The client half is `SurvivalService` (`skymp5-client/src/services/services/survivalService.ts`). It covers
 the owner's survival list of r27: cold and warmth, clothing warmth, the race cold rules, raw meat, freezing water, slow
-health regeneration (a full bar in about 30 minutes) with a 1 health point respawn, carry weight 150, creature
+health regeneration (a full bar in about 30 minutes) with a 1 health point respawn, creature
 diseases, Oblivion diseases, contagion, the two
 afflictions and shrines that no longer cure.
 
@@ -504,8 +504,9 @@ Every number is a `server-settings.json` key, listed with its default in `docs_s
 **Switches.** `survivalEnabled` is **false in code**: nothing below runs until the Test settings switch it on, and it is
 one of the manager's protected settings (plan task M0), so Migrate settings never carries it to live. Each part has its
 own switch: `survivalColdEnabled`, `survivalDiseasesEnabled`, `survivalAfflictions: false`,
-`survivalCarryWeightSpell: ""`, `survivalNoHealthRegen: false`, `survivalFreezingWater: false`,
-`survivalRespawnHealth: 1`, `survivalFoodPoisoningChance: 0`. Switching survival or a part off undoes, at each
+`survivalNoHealthRegen: false`, `survivalFreezingWater: false`,
+`survivalRespawnHealth: 1`, `survivalFoodPoisoningChance: 0` (the carry weight rule is off unless
+`survivalCarryWeightSpell` names an ability). Switching survival or a part off undoes, at each
 character's next login, what an earlier session granted (the abilities, the respawn health, food poisoning, afflictions,
 diseases, the cold stage ability): `[survival] <id> body rules off: respawn 100%, abilities removed: ...`. Server code
 older than r27 does not undo them, so a rollback first runs one session with the switch off.
@@ -521,8 +522,12 @@ server logs them as skipped and runs the rest.
 
 At each login, about 5 s after the spawn (the login delay of the shared `StageAbilityTracker`, with the same login window
 re-send as the hunger stages), and at creation finish:
-- **Carry weight 150**: `Survival_abLowerCarryWeightSpell` (Survival esl 0x887, CarryWeight -150). Satchels, pouches and
-  Fortify Carry Weight still add. A character over 150 is over-encumbered at the first login after it goes on.
+- **Carry weight stays 300** (the owner's "update carry weight back to 300", 2026-10-05; survival lowered it to 150
+  from r27 until then): `survivalCarryWeightSpell` is empty by default, so no carry weight ability is granted, and a
+  character that holds `Survival_abLowerCarryWeightSpell` from an earlier login loses it at its next login, about 5 s
+  after the spawn (the body line reads `carry weight off, ..., removed Survival_abLowerCarryWeightSpell`). Setting the
+  key to `"Survival_abLowerCarryWeightSpell"` (Survival esl 0x887, CarryWeight -150) brings the 150 back at each
+  character's next login.
 - **Slow health regeneration** (the owner's "30 minutes instead of vanilla or disabled", 2026-10-01):
   `AldSurvival_AbNoHealthRegen`, shown as "Slow Health Regeneration" since plugin r29. Its one effect,
   `Survival_DamageHealRate` 92, takes HealRateMult from 100 to 8, and the player races regenerate 0.7% of the maximum
@@ -568,7 +573,7 @@ re-send as the hunger stages), and at creation finish:
   frost resistance, and no health regeneration) run only while the engine says `IsSwimming` and the client holds
   `AldSurvival_FreezingArea` at 1, which `SurvivalService` sets from `survivalState.freezingArea`, so a region border
   never costs a spell change (critique A.14).
-- One line per login: `[survival] <id> body: carry weight Survival_abLowerCarryWeightSpell granted, no regen
+- One line per login: `[survival] <id> body: carry weight off, no regen
   AldSurvival_AbNoHealthRegen granted, freezing water AldSurvival_FreezingWaterDamage granted, respawn health 1 of 100 (set),
   no food poisoning, weakened until 14:05, rockjoint 2 (stage 3 at 10-04 14:00); cold 55 (Comfortable), level 16
   (freezing, night, snow; region coast), warmth 71 (29.3% less cold), freezing water area yes, cold ability
@@ -900,7 +905,8 @@ unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
 3. Races: a naked Nord shows warmth 25 and gains cold about 10% slower than a Redguard, a Khajiit or an Argonian 25%
    faster; an Orc's needs lines show `race x0.85`.
 4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.
-5. Body: carry weight 150, slow regeneration, a death wakes with 1 health point: the bar is a sliver as the character
+5. Body: carry weight 300 (a character that had 150 reads 300 in the inventory a few seconds after its login), slow
+   regeneration, a death wakes with 1 health point: the bar is a sliver as the character
    stands up (not full for a few seconds first), the server logs `[survival] <id> respawned: health 1 of 100 sent to the
    client` (`1 of 150` for an Orc), it is about 4 of 100 a minute later (plugin r29 with `healthRegenerationMultiplier`
    0.08: 3.4% of the bar a minute, full after about 30 minutes; still 1 with plugin r28 or the key at 0), a relog keeps

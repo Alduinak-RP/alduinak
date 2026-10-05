@@ -32,9 +32,9 @@ type Mp = any;
 //
 // Body rules, at each login once the client's load settled and at creation finish: respawnPercentages.health = survivalRespawnHealthPoints
 // (1) of the race's base health, which the client is sent right after each native respawn and afterlife revive (the character wakes with
-// 1 health point), and the abilities Survival_abLowerCarryWeightSpell (carry weight 300 -> 150),
-// AldSurvival_AbNoHealthRegen (no health regeneration on the client) and AldSurvival_FreezingWaterDamage (freezing water damage while
-// swimming, inert until the client sets AldSurvival_FreezingArea) through the StageAbilityTracker, each with its own switch; a record the
+// 1 health point), and the abilities AldSurvival_AbNoHealthRegen (no health regeneration on the client), AldSurvival_FreezingWaterDamage
+// (freezing water damage while swimming, inert until the client sets AldSurvival_FreezingArea) and the one survivalCarryWeightSpell names
+// (none by default, so carry weight stays 300) through the StageAbilityTracker, each with its own switch; a record the
 // plugin lacks is skipped with a log line. With survivalEnabled false, or a switch off, what an earlier session granted is undone at login.
 // Raw meat (Survival_FoodRawMeat, HuntingSystem's meats, survivalRawMeatExtra) gives Survival_DiseaseFoodPoisoning at
 // survivalFoodPoisoningChance x (1 - disease resist / 100) for survivalFoodPoisoningHours of wall clock, never to a race whose
@@ -90,7 +90,8 @@ type Mp = any;
 //   survivalEnabled               true runs survival, default false; one of the manager's PROTECTED_SETTINGS, so Migrate settings leaves it
 //   survivalRespawnHealthPoints   health points a respawn wakes with, default 1; 0 uses the share below
 //   survivalRespawnHealth         share used with 0 points or an unreadable race, in (0, 1], default 0.01; 1 turns the respawn rule off
-//   survivalCarryWeightSpell      editor id or desc of the carry weight ability, default "Survival_abLowerCarryWeightSpell"; "" turns it off
+//   survivalCarryWeightSpell      editor id or desc of a carry weight ability to grant, default "" (none, carry weight stays 300);
+//                                 "Survival_abLowerCarryWeightSpell" is Survival's 150
 //   survivalNoHealthRegen         false grants no AldSurvival_AbNoHealthRegen, default true
 //   survivalFreezingWater         false grants no AldSurvival_FreezingWaterDamage and no freezing water cold, default true
 //   survivalFoodPoisoningChance   chance raw meat poisons before disease resistance, 0 to 1, default 0.5; 0 turns it off
@@ -171,7 +172,6 @@ const EPSILON = 1e-4;
 
 const DEFAULT_RESPAWN_HEALTH = 0.01;
 const DEFAULT_RESPAWN_POINTS = 1;
-const DEFAULT_CARRY_SPELL = "Survival_abLowerCarryWeightSpell";
 const NO_REGEN_SPELL = "AldSurvival_AbNoHealthRegen";
 const FREEZING_WATER_SPELL = "AldSurvival_FreezingWaterDamage";
 const DEFAULT_POISON_CHANCE = 0.5;
@@ -438,9 +438,9 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (cure !== undefined && CURE_MODES.indexOf(cure as CureMode) === -1) problems.push(`survivalCure ${JSON.stringify(cure)} is not ${CURE_MODES.join(" or ")}, cureDiseaseOrHealth is used`);
     this.cureMode = CURE_MODES.indexOf(cure as CureMode) !== -1 ? cure as CureMode : "cureDiseaseOrHealth";
     const carry = all["survivalCarryWeightSpell"];
-    if (carry !== undefined && typeof carry !== "string") problems.push(`survivalCarryWeightSpell ${JSON.stringify(carry)} is not a string, ${DEFAULT_CARRY_SPELL} is used`);
+    if (carry !== undefined && typeof carry !== "string") problems.push(`survivalCarryWeightSpell ${JSON.stringify(carry)} is not a string, no carry weight ability is granted`);
     this.body = [
-      { key: "carry", label: "carry weight", name: typeof carry === "string" ? carry.trim() : DEFAULT_CARRY_SPELL, id: 0 },
+      { key: "carry", label: "carry weight", name: typeof carry === "string" ? carry.trim() : "", id: 0 },
       { key: "regen", label: "no regen", name: all["survivalNoHealthRegen"] !== false ? NO_REGEN_SPELL : "", id: 0 },
       { key: "water", label: "freezing water", name: all["survivalFreezingWater"] !== false ? FREEZING_WATER_SPELL : "", id: 0 },
     ];

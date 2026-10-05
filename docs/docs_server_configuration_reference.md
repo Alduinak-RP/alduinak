@@ -1645,7 +1645,7 @@ of `skymp5-server/ts/systems/survivalSystem.ts` lists the same keys) is one of t
 boot. The race numbers it uses (`coldRateMult`, `warmth`, `rawMeatSafe`) live in `racialPassives`. Nothing runs
 until `survivalEnabled` is true, which only the Test settings set; it is one of the manager's protected settings, so
 Migrate settings never carries it to live. Each part has its own switch: `survivalColdEnabled`,
-`survivalDiseasesEnabled`, `survivalAfflictions: false`, `survivalCarryWeightSpell: ""`, `survivalNoHealthRegen:
+`survivalDiseasesEnabled`, `survivalAfflictions: false`, `survivalNoHealthRegen:
 false`, `survivalFreezingWater: false`, `survivalRespawnHealth: 1` and `survivalFoodPoisoningChance: 0`. A master or
 part switch turned off undoes, at each character's next login, what an earlier session granted (the body abilities,
 the respawn health, food poisoning, afflictions, diseases and the cold stage ability); server code older than r27 does not,
@@ -1660,7 +1660,7 @@ Body rules, raw meat and the cure:
 | `survivalEnabled` | `false` | The master switch. Protected (plan task M0): set it on live by hand once survival is signed off |
 | `survivalRespawnHealthPoints` | `1` | Health points a respawn after a death wakes with (temple, afterlife arrival, a looted PK body's respawn) and a staff revive out of a realm sets, measured against the race's base health (100, an Orc 150); the client is sent the value right after the native respawn; magicka and stamina keep theirs; `0` uses the share below instead |
 | `survivalRespawnHealth` | `0.01` | Share of base health used when the points are 0 or the race cannot be read, above 0 up to 1; `1` turns the respawn rule off, whatever the points say |
-| `survivalCarryWeightSpell` | `"Survival_abLowerCarryWeightSpell"` | Editor id or desc of the carry weight ability (Survival esl 0x887, carry weight 150); `""` turns it off |
+| `survivalCarryWeightSpell` | `""` | Editor id or desc of a carry weight ability every character is granted. Empty (the default since 2026-10-05): none, carry weight stays 300, and a character that holds one from an earlier login loses it at its next login. `"Survival_abLowerCarryWeightSpell"` (Survival esl 0x887) is Survival's carry weight 150 |
 | `survivalNoHealthRegen` | `true` | Every character holds `AldSurvival_AbNoHealthRegen` (plugin r27a). Since plugin r29 the ability, shown as "Slow Health Regeneration", slows health regeneration to a full bar in about 30 minutes (HealRateMult 8 of 100); up to r28 it stopped it. Potions, food and Restoration still heal. The server half is the native `healthRegenerationMultiplier` (top level, its own section above), which should be `0.08` to match (`0` refuses all regeneration, every health increase a client reports) and needs a native server build from `ea63f69a` or later |
 | `survivalFreezingWater` | `true` | Grants `AldSurvival_FreezingWaterDamage` once (it hurts only while swimming with the client's `AldSurvival_FreezingArea` at 1) and runs the freezing water cold; `false` turns both off |
 | `survivalFoodPoisoningChance` | `0.5` | Chance raw meat (`Survival_FoodRawMeat`, the hunting meats and `survivalRawMeatExtra`) gives food poisoning, times (1 - disease resistance); 0 to 1, `0` turns it off. A race with `rawMeatSafe` never gets it |
