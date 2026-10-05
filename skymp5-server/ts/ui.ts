@@ -3,12 +3,11 @@ const serve = require("koa-static");
 const proxy = require("koa-proxy");
 const Router = require("koa-router");
 const auth = require("koa-basic-auth");
-import * as koaBody from "koa-body";
 import * as http from "http";
 import { Settings } from "./settings";
 import Axios from "axios";
 import { AddressInfo } from "net";
-import { register, getAggregatedMetrics, rpcCallsCounter, rpcDurationHistogram } from "./systems/metricsSystem";
+import { register, getAggregatedMetrics } from "./systems/metricsSystem";
 
 let gScampServer: any = null;
 
@@ -29,7 +28,6 @@ const metricsAuthParse = (settings: Settings): void => {
 
 const createApp = (getOriginPort: () => number) => {
   const app = new Koa();
-  app.use(koaBody.default({ multipart: true }));
 
   app.use(async (ctx: any, next: any) => {
     try {
@@ -48,22 +46,6 @@ const createApp = (getOriginPort: () => number) => {
   router.get(new RegExp("/scripts/.*"), (ctx: any) => ctx.throw(403));
   router.get(new RegExp("\.es[mpl]"), (ctx: any) => ctx.throw(403));
   router.get(new RegExp("\.bsa"), (ctx: any) => ctx.throw(403));
-
-  router.post("/rpc/:rpcClassName", (ctx: any) => {
-    const { rpcClassName } = ctx.params;
-    const { payload } = ctx.request.body;
-
-    rpcCallsCounter.inc({ rpcClassName });
-    const endTimer = rpcDurationHistogram.startTimer({ rpcClassName });
-
-    try {
-      if (gScampServer.onHttpRpcRunAttempt) {
-        ctx.body = gScampServer.onHttpRpcRunAttempt(rpcClassName, payload);
-      }
-    } finally {
-      endTimer();
-    }
-  });
 
   router.use('/metrics', (ctx: any, next: any) => {
     console.log(`Metrics requested by ${ctx.request.ip}`);

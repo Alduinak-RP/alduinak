@@ -26,34 +26,9 @@ export const loginErrorsCounter = new promClient.Counter({
   labelNames: ["reason"] as const,
 });
 
-export const rpcCallsCounter = new promClient.Counter({
-  name: "skymp_rpc_calls_total",
-  help: "Total number of RPC calls received",
-  labelNames: ["rpcClassName"] as const,
-});
-
-export const rpcDurationHistogram = new promClient.Histogram({
-  name: "skymp_rpc_duration_seconds",
-  help: "Duration of RPC call handling in seconds",
-  labelNames: ["rpcClassName"] as const,
-  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
-});
-
 export const cppMetricsErrorsCounter = new promClient.Counter({
   name: 'skymp_cpp_metrics_errors_total',
   help: 'Total number of errors during C++ metrics collection',
-});
-
-export const tickDurationHistogram = new promClient.Histogram({
-  name: "skymp_tick_duration_seconds",
-  help: "Duration of tick handling in seconds",
-  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
-});
-
-export const tickDurationSummary = new promClient.Summary({
-  name: "skymp_tick_duration_summary_seconds",
-  help: "Duration of tick handling in seconds",
-  percentiles: [0.5, 0.9, 0.95, 0.99, 0.995, 0.999],
 });
 
 export const getAggregatedMetrics = async (scampServer?: any): Promise<string> => {
