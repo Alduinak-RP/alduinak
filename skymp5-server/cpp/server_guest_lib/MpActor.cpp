@@ -1812,8 +1812,8 @@ void MpActor::Teleport(const LocationalData& position)
   GetActorToSendTo().SendToUser(msg, true);
 
   SetCellOrWorldObsolete(position.cellOrWorldDesc);
-  SetPos(position.pos);
   SetAngle(position.rot);
+  SetPos(position.pos);
   SetTeleportFlag(true);
 }
 

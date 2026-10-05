@@ -732,7 +732,8 @@ VarValue PapyrusObjectReference::MoveTo(VarValue self,
   if (_thisActor) {
     _thisActor->Teleport(data);
   } else {
-    _thisObjectReference->SetCellOrWorld(objectReference->GetCellOrWorld());
+    _thisObjectReference->SetCellOrWorldObsolete(
+      objectReference->GetCellOrWorld());
     _thisObjectReference->SetAngle(rotation);
     _thisObjectReference->SetPos(dest);
   }

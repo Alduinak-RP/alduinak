@@ -53,8 +53,8 @@ void LocationalDataBinding::Set(Napi::Env, ScampServer& scampServer,
     Apply(*actor, locationalData);
   } else if (locationalData.cellOrWorldDesc == refr.GetCellOrWorld()) {
     // A refr moves within its cell or worldspace only; clients that see it are told by the gamemode
-    refr.SetPos(locationalData.pos);
     refr.SetAngle(locationalData.rot);
+    refr.SetPos(locationalData.pos);
   } else {
     throw std::runtime_error("mp.set can only move a refr's '" +
                              GetPropertyName() +

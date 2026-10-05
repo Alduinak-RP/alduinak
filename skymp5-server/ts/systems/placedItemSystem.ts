@@ -184,10 +184,9 @@ export class PlacedItemSystem implements System {
     const info = this.baseInfo(mp, target);
     const rot = this.restRot(info, loc.rot, yaw);
     const pos = [surface[0], surface[1], surface[2] + this.restLift(info, rot)];
-    // Flag and turn first: a move across a grid border sends create messages at once, which must carry both
+    // Flag first: a move across a grid border sends create messages at once, which must carry it
     if (target < 0xff000000) this.markMoved(mp, target);
     this.endGrab(mp, target);
-    mp.set(target, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: loc.pos, rot });
     mp.set(target, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos, rot });
     if (this.isPlaced(mp, target)) this.setPlacedAt(mp, target);
     this.tellMoved(mp, target, pos, rot, actorId);

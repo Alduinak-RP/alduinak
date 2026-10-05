@@ -193,7 +193,6 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("makeEventSource", &ScampServer::MakeEventSource),
       InstanceMethod("get", &ScampServer::Get),
       InstanceMethod("set", &ScampServer::Set),
-      InstanceMethod("place", &ScampServer::Place),
       InstanceMethod("lookupEspmRecordById",
                      &ScampServer::LookupEspmRecordById),
       InstanceMethod("getEspmRecordIdsByType",
@@ -1625,47 +1624,6 @@ Napi::Value ScampServer::Set(const Napi::CallbackInfo& info)
     }
 
     return info.Env().Undefined();
-  } catch (std::exception& e) {
-    throw Napi::Error::New(info.Env(), std::string(e.what()));
-  }
-}
-
-Napi::Value ScampServer::Place(const Napi::CallbackInfo& info)
-{
-  try {
-    auto globalRecordId = NapiHelper::ExtractUInt32(info[0], "globalRecordId");
-    auto akFormToPlace =
-      partOne->GetEspm().GetBrowser().LookupById(globalRecordId);
-    if (!akFormToPlace.rec) {
-      std::stringstream ss;
-      ss << std::hex << "Bad record Id " << globalRecordId;
-      throw std::runtime_error(ss.str());
-    }
-
-    std::string type = akFormToPlace.rec->GetType().ToString();
-
-    LocationalData locationalData = { { 0, 0, 0 },
-                                      { 0, 0, 0 },
-                                      FormDesc::Tamriel() };
-    FormCallbacks callbacks = partOne->CreateFormCallbacks();
-
-    std::unique_ptr<MpObjectReference> newRefr;
-    if (akFormToPlace.rec->GetType() == "NPC_") {
-      auto actor = new MpActor(locationalData, callbacks, globalRecordId);
-      newRefr.reset(actor);
-    } else {
-      newRefr.reset(new MpObjectReference(locationalData, callbacks,
-                                          globalRecordId, type));
-    }
-
-    auto worldState = &partOne->worldState;
-    auto newRefrId = worldState->GenerateFormId();
-    worldState->AddForm(std::move(newRefr), newRefrId);
-
-    auto& refr = worldState->GetFormAt<MpObjectReference>(newRefrId);
-    refr.ForceSubscriptionsUpdate();
-
-    return Napi::Number::New(info.Env(), refr.GetFormId());
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), std::string(e.what()));
   }
