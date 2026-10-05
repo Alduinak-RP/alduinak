@@ -134,8 +134,6 @@ export class Login implements System {
       this.log("The server is in offline mode, the client is NOT");
     } else if (this.offlineMode === false && gameData && gameData.session) {
       (async () => {
-        this.emit(ctx, "userAssignSession", userId, gameData.session);
-
         const guidBeforeAsyncOp = ctx.svr.getUserGuid(userId);
         const profile = await this.getUserProfile(gameData.session, userId, ctx);
         const guidAfterAsyncOp = ctx.svr.isConnected(userId) ? ctx.svr.getUserGuid(userId) : "<disconnected>";

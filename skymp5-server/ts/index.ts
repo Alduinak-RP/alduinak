@@ -53,7 +53,6 @@ import { LeverLinkSystem } from "./systems/leverLinkSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
 import { DiscordAlerts } from "./systems/discordAlerts";
-import { MasterApiBalanceSystem } from "./systems/masterApiBalanceSystem";
 import { TorchSystem } from "./systems/torchSystem";
 import { PlacedItemSystem } from "./systems/placedItemSystem";
 import { CombatReadoutSystem } from "./systems/combatReadoutSystem";
@@ -383,7 +382,6 @@ const main = async () => {
     new KnowledgeSystem(log),
     new DiscordBanSystem(),
     new DiscordAlerts(),
-    new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
     // After every other activate hook but the job one, so only an allowed pull moves the linked gate
     new LeverLinkSystem(log),
     // Last: its hit and activate hooks wrap every other one
