@@ -63,6 +63,7 @@ struct WorldState::Impl
     allFormsByModIndexCache;
   std::unordered_set<uint32_t> attachEspmRecordFailures;
   std::unordered_map<uint32_t, bool> baseHasVmadScripts;
+  std::unordered_map<uint32_t, bool> refrHasDoorTeleport;
 };
 
 WorldState::WorldState()
@@ -1009,6 +1010,21 @@ bool WorldState::HasVmadScripts(uint32_t baseId, uint32_t refrId)
     it->second = hasScripts(baseId);
   }
   return it->second || hasScripts(refrId);
+}
+
+bool WorldState::HasDoorTeleport(uint32_t refrId)
+{
+  if (!espm) {
+    return false;
+  }
+
+  auto [it, inserted] = pImpl->refrHasDoorTeleport.try_emplace(refrId, false);
+  if (inserted) {
+    auto refr =
+      espm::Convert<espm::REFR>(espm->GetBrowser().LookupById(refrId).rec);
+    it->second = refr && refr->GetData(GetEspmCache()).teleport;
+  }
+  return it->second;
 }
 
 IScriptStorage* WorldState::GetScriptStorage() const

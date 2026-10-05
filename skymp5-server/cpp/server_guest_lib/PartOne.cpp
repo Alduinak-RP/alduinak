@@ -845,6 +845,13 @@ void PartOne::Init()
     if (const std::string& baseType = emitter->GetBaseType();
         baseType == "DOOR") {
       message.baseRecordType = "DOOR";
+      if (emitter->IsEspmForm() &&
+          worldState.HasDoorTeleport(emitter->GetFormId())) {
+        CustomPropsEntry loadDoor;
+        loadDoor.propName = "ff_loadDoor";
+        loadDoor.propValueJsonDump = "true";
+        message.customPropsJsonDumps.push_back(std::move(loadDoor));
+      }
     }
 
     message.idx = emitter->GetIdx();

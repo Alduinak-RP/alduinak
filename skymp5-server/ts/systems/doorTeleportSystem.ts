@@ -99,6 +99,11 @@ export class DoorTeleportSystem implements System {
     this.log(this.destinations.size === 0 ? "DoorTeleportSystem: no doors overridden" : `DoorTeleportSystem: ${this.destinations.size} door(s) redirected`);
   }
 
+  // Plugin doors with an XTEL arrive with ff_loadDoor; the overridden ones are only known here
+  connect(userId: number, ctx: SystemContext): void {
+    sendJson(ctx.svr as Mp, userId, { customPacketType: "loadDoorOverrides", doors: [...this.destinations.keys()] });
+  }
+
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     if (type === "loadDoorQuery") return this.answerLoadDoor(userId, content, ctx);
     if (type !== "teleportReport") return;

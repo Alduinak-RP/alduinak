@@ -383,6 +383,11 @@ first press on any plugin door, swinging or not: a load door is refused there
 ("Set them down before going through this door."), a plain one is sent once the
 answer is in (section 10 of `docs_roleplay_survival_loop.md`).
 
+The server also tells clients which doors teleport without being asked: a
+plugin door with an XTEL arrives with an `ff_loadDoor` custom property, and the
+door ids of this list go to each client once per connection
+(`loadDoorOverrides`). Clients that read these need no `loadDoorQuery`.
+
 ```json5
 {
   // ...

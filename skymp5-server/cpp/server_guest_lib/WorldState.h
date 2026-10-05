@@ -212,6 +212,8 @@ public:
   espm::CompressedFieldsCache& GetEspmCache();
   // Whether the base or the REFR record has VMAD scripts, cached per base
   bool HasVmadScripts(uint32_t baseId, uint32_t refrId);
+  // Whether the plugin REFR has an XTEL teleport, cached per ref
+  bool HasDoorTeleport(uint32_t refrId);
   IScriptStorage* GetScriptStorage() const;
   VirtualMachine& GetPapyrusVm();
   const std::set<uint32_t>& GetActorsByProfileId(int32_t profileId) const;
