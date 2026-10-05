@@ -958,14 +958,14 @@ void MpObjectReference::RegisterProfileId(int32_t profileId)
   auto currentProfileId = ChangeForm().profileId;
   auto formId = GetFormId();
 
-  if (currentProfileId > 0) {
+  if (currentProfileId >= 0) {
     worldState->actorIdByProfileId[currentProfileId].erase(formId);
   }
 
   EditChangeForm(
     [&](MpChangeFormREFR& changeForm) { changeForm.profileId = profileId; });
 
-  if (profileId > 0) {
+  if (profileId >= 0) {
     worldState->actorIdByProfileId[profileId].insert(formId);
   }
 }

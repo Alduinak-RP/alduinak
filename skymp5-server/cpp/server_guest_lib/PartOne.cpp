@@ -389,7 +389,7 @@ void PartOne::AttachSaveStorage(
 
     n++;
     // Do not let players become NPCs
-    if (changeForm.profileId != -1 && !changeForm.isDisabled) {
+    if (changeForm.profileId >= 0 && !changeForm.isDisabled) {
       MpChangeForm disabled = changeForm;
       disabled.isDisabled = true;
       worldState.LoadChangeForm(disabled, CreateFormCallbacks());

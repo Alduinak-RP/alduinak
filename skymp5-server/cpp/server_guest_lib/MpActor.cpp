@@ -1652,7 +1652,7 @@ void MpActor::BeforeDestroy()
   // Logins then crash on it (character delete lockout).
   if (auto worldState = GetParent()) {
     auto profileId = ChangeForm().profileId;
-    if (profileId > 0) {
+    if (profileId >= 0) {
       auto it = worldState->actorIdByProfileId.find(profileId);
       if (it != worldState->actorIdByProfileId.end()) {
         it->second.erase(GetFormId());
