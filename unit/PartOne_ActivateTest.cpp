@@ -47,6 +47,8 @@ TEST_CASE("Activate without espm attached", "[PartOne][espm]")
 {
   PartOne partOne;
   DoConnect(partOne, 0);
+  partOne.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
+  partOne.SetUserActor(0, 0xff000000);
 
   REQUIRE_THROWS_WITH(
     DoMessage(partOne, 0,
@@ -58,20 +60,21 @@ TEST_CASE("Activate without espm attached", "[PartOne][espm]")
     ContainsSubstring("No loaded esm or esp files are found"));
 }
 
-TEST_CASE("Activate without Actor attached", "[PartOne][espm]")
+TEST_CASE("Activate without Actor attached is dropped", "[PartOne][espm]")
 {
   auto& partOne = GetPartOne();
 
   DoConnect(partOne, 0);
+  partOne.Messages().clear();
 
-  REQUIRE_THROWS_WITH(
+  REQUIRE_NOTHROW(
     DoMessage(partOne, 0,
               nlohmann::json{ { "t", MsgType::Activate },
                               { "data",
                                 { { "caster", 0x15 },
                                   { "target", 0 },
-                                  { "isSecondActivation", false } } } }),
-    ContainsSubstring("Can't do this without Actor attached"));
+                                  { "isSecondActivation", false } } } }));
+  REQUIRE(partOne.Messages().empty());
 
   DoDisconnect(partOne, 0);
 }

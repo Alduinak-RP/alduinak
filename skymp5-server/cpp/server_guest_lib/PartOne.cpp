@@ -459,6 +459,35 @@ public:
 private:
   const std::function<void()> f;
 };
+
+bool IsClientMessageType(MsgType msgType)
+{
+  switch (msgType) {
+    case MsgType::CustomPacket:
+    case MsgType::UpdateMovement:
+    case MsgType::UpdateAnimation:
+    case MsgType::UpdateAppearance:
+    case MsgType::UpdateEquipment:
+    case MsgType::Activate:
+    case MsgType::PutItem:
+    case MsgType::TakeItem:
+    case MsgType::FinishSpSnippet:
+    case MsgType::OnEquip:
+    case MsgType::ConsoleCommand:
+    case MsgType::CraftItem:
+    case MsgType::Host:
+    case MsgType::CustomEvent:
+    case MsgType::ChangeValues:
+    case MsgType::OnHit:
+    case MsgType::DropItem:
+    case MsgType::PlayerBowShot:
+    case MsgType::SpellCast:
+    case MsgType::UpdateAnimVariables:
+      return true;
+    default:
+      return false;
+  }
+}
 }
 
 void PartOne::HandlePacket(void* partOneInstance, Networking::UserId userId,
@@ -1023,6 +1052,16 @@ void PartOne::HandleMessagePacket(Networking::UserId userId,
     spdlog::error("PartOne::HandleMessagePacket - received Message packet "
                   "from non-existing user {}, ignoring",
                   userId);
+    return;
+  }
+
+  // Byte 1 is the message type; only CustomPacket works before an actor
+  const auto msgType =
+    length >= 2 ? static_cast<MsgType>(data[1]) : MsgType::Invalid;
+  if (!IsClientMessageType(msgType)) {
+    return;
+  }
+  if (msgType != MsgType::CustomPacket && !serverState.ActorByUser(userId)) {
     return;
   }
 

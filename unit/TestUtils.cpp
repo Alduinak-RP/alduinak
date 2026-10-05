@@ -1,9 +1,11 @@
 #include "TestUtils.hpp"
 #include "FormCallbacks.h"
+#include "MessageSerializerFactory.h"
 #include "MpActor.h"
 #include "MsgType.h"
 #include "PartOne.h"
 #include <catch2/catch_all.hpp>
+#include <slikenet/BitStream.h>
 
 // Utilities for testing
 
@@ -25,10 +27,10 @@ const char* GetDataDir()
 
 std::string MakeMessage(const nlohmann::json& j)
 {
-  std::string s;
-  s += (char)Networking::MinPacketId;
-  s += j.dump();
-  return s;
+  SLNet::BitStream stream;
+  PartOne::GetMessageSerializerInstance().Serialize(j.dump().c_str(), stream);
+  return std::string(reinterpret_cast<const char*>(stream.GetData()),
+                     stream.GetNumberOfBytesUsed());
 }
 
 void DoMessage(PartOne& partOne, Networking::UserId id,

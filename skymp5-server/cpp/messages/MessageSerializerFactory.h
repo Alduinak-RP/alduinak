@@ -21,17 +21,10 @@ public:
   static std::shared_ptr<MessageSerializer> CreateMessageSerializer();
 };
 
-enum class DeserializeInputFormat
-{
-  Json,
-  Binary
-};
-
 struct DeserializeResult
 {
   MsgType msgType = MsgType::Invalid;
   std::unique_ptr<IMessageBase> message;
-  DeserializeInputFormat format = DeserializeInputFormat::Json;
 };
 
 class MessageSerializer
@@ -43,14 +36,14 @@ public:
 
   void Serialize(const IMessageBase& message, SLNet::BitStream& outputStream);
 
-  std::optional<DeserializeResult> Deserialize(
-    const uint8_t* rawMessageJsonOrBinary, size_t length);
+  std::optional<DeserializeResult> Deserialize(const uint8_t* rawMessage,
+                                               size_t length);
 
 private:
   typedef void (*SerializeFn)(const simdjson::dom::element& inputJson,
                               SLNet::BitStream& outputStream);
-  typedef std::optional<DeserializeResult> (*DeserializeFn)(
-    const uint8_t* rawMessageJsonOrBinary, size_t length);
+  typedef DeserializeResult (*DeserializeFn)(const uint8_t* rawMessage,
+                                             size_t length);
 
   MessageSerializer(std::vector<SerializeFn> serializerFns,
                     std::vector<DeserializeFn> deserializerFns);

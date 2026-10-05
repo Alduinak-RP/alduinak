@@ -1410,7 +1410,7 @@ void ActionListener::OnHostAttempt(const RawMessageData& rawMsgData,
 
   MpActor* me = partOne.serverState.ActorByUser(rawMsgData.userId);
   if (!me) {
-    throw std::runtime_error("Unable to host without actor attached");
+    return;
   }
 
   auto& remote = partOne.worldState.GetFormAt<MpObjectReference>(remoteId);
@@ -1899,7 +1899,7 @@ void ActionListener::OnUpdateAnimVariables(
 {
   const MpActor* myActor = partOne.serverState.ActorByUser(rawMsgData.userId);
   if (!myActor) {
-    throw std::runtime_error("Unable to change values without Actor attached");
+    return;
   }
 
   SendToNeighbours(myActor->idx, rawMsgData);
@@ -1911,7 +1911,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   MpActor* myActor = partOne.serverState.ActorByUser(rawMsgData.userId);
 
   if (!myActor) {
-    throw std::runtime_error("Unable to change values without Actor attached");
+    return;
   }
 
   MpActor* caster = nullptr;

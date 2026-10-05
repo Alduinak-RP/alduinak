@@ -29,68 +29,24 @@ void Serialize(const simdjson::dom::element& inputJson,
 }
 
 template <class Message>
-std::optional<DeserializeResult> Deserialize(
-  const uint8_t* rawMessageJsonOrBinary, size_t length)
+DeserializeResult Deserialize(const uint8_t* rawMessage, size_t length)
 {
-  if (length >= 2 && rawMessageJsonOrBinary[1] == Message::kMsgType.value) {
-    // byte 0 is packet id => skipping here
-    // byte 1 is message type => letting Message::ReadBinary handle it
-    // kMsgReadBinaryStart is 1, not 2 because of Message::ReadBinary design
-    constexpr auto kMsgReadBinaryOffset = 1;
+  // byte 0 is packet id => skipping here
+  // byte 1 is message type => letting Message::ReadBinary handle it
+  constexpr auto kMsgReadBinaryOffset = 1;
 
-    // BitStream requires non-const ref even though it doesn't modify it
-    SLNet::BitStream stream(
-      const_cast<unsigned char*>(rawMessageJsonOrBinary) +
-        kMsgReadBinaryOffset,
-      length - kMsgReadBinaryOffset,
-      /*copyData*/ false);
-
-    Message message;
-    message.ReadBinary(stream);
-
-    DeserializeResult result;
-    result.msgType = static_cast<MsgType>(Message::kMsgType.value);
-    result.message = std::make_unique<Message>(std::move(message));
-    result.format = DeserializeInputFormat::Binary;
-    return result;
-  }
-
-  std::string str(reinterpret_cast<const char*>(rawMessageJsonOrBinary + 1),
-                  length - 1);
-  simdjson::dom::parser sjParser;
-  auto parseResult = sjParser.parse(str);
-  if (auto err = parseResult.error()) {
-    throw std::runtime_error(
-      fmt::format("failed to parse message, simdjson error: {}",
-                  simdjson::error_message(err)));
-  }
-  auto parsedJson = parseResult.value_unsafe();
-
-  auto msgTypeResult = parsedJson.at_key("t").get_uint64();
-  if (msgTypeResult.error() == simdjson::NO_SUCH_FIELD) {
-    // Messages produced by the server use string "type" instead of integer "t"
-    // We will refactor them out at some point
-    return std::nullopt;
-  }
-  if (auto err = msgTypeResult.error()) {
-    throw std::runtime_error(
-      fmt::format("failed to get message type, simdjson error: {}",
-                  simdjson::error_message(err)));
-  }
-  auto msgType = msgTypeResult.value_unsafe();
-
-  if (msgType != Message::kMsgType) {
-    // In case of JSON we keep searching in deserializers array
-    return std::nullopt;
-  }
+  // BitStream requires non-const ref even though it doesn't modify it
+  SLNet::BitStream stream(const_cast<unsigned char*>(rawMessage) +
+                            kMsgReadBinaryOffset,
+                          length - kMsgReadBinaryOffset,
+                          /*copyData*/ false);
 
   Message message;
-  message.ReadJson(parsedJson);
+  message.ReadBinary(stream);
 
   DeserializeResult result;
-  result.msgType = static_cast<MsgType>(msgType);
+  result.msgType = static_cast<MsgType>(Message::kMsgType.value);
   result.message = std::make_unique<Message>(std::move(message));
-  result.format = DeserializeInputFormat::Json;
   return result;
 }
 } // namespace
@@ -168,34 +124,14 @@ void MessageSerializer::Serialize(const IMessageBase& message,
 }
 
 std::optional<DeserializeResult> MessageSerializer::Deserialize(
-  const uint8_t* rawMessageJsonOrBinary, size_t length)
+  const uint8_t* rawMessage, size_t length)
 {
   if (length < 2) {
     spdlog::trace("MessageSerializer::Deserialize - Length < 2");
     return std::nullopt;
   }
 
-  auto headerByte = rawMessageJsonOrBinary[1];
-  if (headerByte == '{') {
-    std::string s(reinterpret_cast<const char*>(rawMessageJsonOrBinary) + 1,
-                  length - 1);
-    spdlog::trace(
-      "MessageSerializer::Deserialize - Encountered JSON message {}", s);
-    // TODO(#2257): try to pass JSON in advance, avoid parsing each time
-    for (auto fn : deserializerFns) {
-      if (fn) {
-        auto result = fn(rawMessageJsonOrBinary, length);
-        if (result) {
-          spdlog::trace("MessageSerializer::Deserialize - Deserialized");
-          return result;
-        }
-      }
-    }
-    spdlog::trace("MessageSerializer::Deserialize - Failed to deserialize, "
-                  "falling back to PacketParser.cpp");
-    return std::nullopt;
-  }
-
+  auto headerByte = rawMessage[1];
   if (headerByte >= deserializerFns.size()) {
     spdlog::trace(
       "MessageSerializer::Deserialize - {} >= deserializerFns.size() ",
@@ -209,23 +145,9 @@ std::optional<DeserializeResult> MessageSerializer::Deserialize(
       "MessageSerializer::Deserialize - deserializerFn not found "
       "for headerByte {}, (full message was {})",
       static_cast<int>(headerByte),
-      fmt::join(std::vector<uint8_t>(rawMessageJsonOrBinary,
-                                     rawMessageJsonOrBinary + length),
-                ", "));
+      fmt::join(std::vector<uint8_t>(rawMessage, rawMessage + length), ", "));
     return std::nullopt;
   }
 
-  auto result = deserializerFn(rawMessageJsonOrBinary, length);
-  if (result == std::nullopt) {
-    spdlog::warn(
-      "MessageSerializer::Deserialize - deserializerFn returned "
-      "nullopt for headerByte {}, (full message was {})",
-      static_cast<int>(headerByte),
-      fmt::join(std::vector<uint8_t>(rawMessageJsonOrBinary,
-                                     rawMessageJsonOrBinary + length),
-                ", "));
-    return std::nullopt;
-  }
-
-  return result;
+  return deserializerFn(rawMessage, length);
 }

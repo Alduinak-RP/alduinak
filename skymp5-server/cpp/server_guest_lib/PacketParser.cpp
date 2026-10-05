@@ -13,9 +13,7 @@
 
 struct PacketParser::Impl
 {
-  simdjson::dom::parser simdjsonParser;
   std::shared_ptr<MessageSerializer> serializer;
-  std::once_flag jsonWarning;
 };
 
 PacketParser::PacketParser()
@@ -41,13 +39,6 @@ void PacketParser::TransformPacketIntoAction(Networking::UserId userId,
 
   auto result = pImpl->serializer->Deserialize(data, length);
   if (result != std::nullopt) {
-    if (result->format == DeserializeInputFormat::Json) {
-      std::call_once(pImpl->jsonWarning, [&] {
-        spdlog::warn("PacketParser::TransformPacketIntoAction - 1-st time "
-                     "encountered a JSON packet, userId={}, msgType={}",
-                     userId, static_cast<int64_t>(result->msgType));
-      });
-    }
     switch (result->msgType) {
       case MsgType::Invalid: {
         return;
