@@ -1182,7 +1182,8 @@ void ActionListener::OnActivate(const RawMessageData& rawMsgData,
                             : partOne.worldState.GetFormAt<MpObjectReference>(
                                 static_cast<uint32_t>(msg.data.caster)),
     kDefaultProcessingOnlyFalse, msg.data.isSecondActivation);
-  if (hosterId) {
+  // A hosted NPC that picked up a weapon draws the best one it carries
+  if (hosterId && targetPtr->GetBaseType() == espm::WEAP::kType) {
     auto actor =
       std::dynamic_pointer_cast<MpActor>(partOne.worldState.LookupFormById(
         static_cast<uint32_t>(msg.data.caster)));
