@@ -66,8 +66,14 @@ export class WorldView extends ClientListener {
 
     const singlePlayerService = this.controller.lookupListener(SinglePlayerService);
     if (!singlePlayerService.isSinglePlayer) {
+      const now = Date.now();
+      const tagPass = now >= this.nextTagPassAt;
+      if (tagPass) {
+        this.nextTagPassAt = now + WorldView.tagPassMs;
+        PlayerCharacterDataHolder.readJumpState();
+      }
       const modelSource = this.controller.lookupListener(RemoteServer);
-      this.updateWorld(modelSource.getWorldModel());
+      this.updateWorld(modelSource.getWorldModel(), tagPass);
     }
   }
 
@@ -113,7 +119,7 @@ export class WorldView extends ClientListener {
     logTrace(this, 'Update is now', allowed ? 'allowed' : 'disallowed');
   }
 
-  private updateWorld(model: WorldModel): void {
+  private updateWorld(model: WorldModel, tagPass: boolean): void {
     const state = this.state;
 
     if (!state.allowUpdate) {
@@ -125,7 +131,7 @@ export class WorldView extends ClientListener {
     }
 
     state.formViews.resize(model.forms.length);
-    state.formViews.updateAll(model);
+    state.formViews.updateAll(model, tagPass);
   }
 
   private makeEmptyState() {
@@ -141,4 +147,7 @@ export class WorldView extends ClientListener {
   };
 
   private oldView?: WorldView;
+  private nextTagPassAt = 0;
+  // Name tags and the tint on-screen check react within this
+  private static readonly tagPassMs = 200;
 }

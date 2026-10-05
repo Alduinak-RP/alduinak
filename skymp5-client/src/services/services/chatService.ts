@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logTrace } from "../../logging";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { MsgType } from "../../messages";
-import { FormView, getScreenResolution } from "../../view/formView";
+import { createHeadText, FormView, getScreenResolution } from "../../view/formView";
 import { FovSettingsService } from "./fovSettingsService";
 import { readClientSettingNumber } from "./widgetMenuUtil";
 import { EmoteService } from "./emoteService";
@@ -577,11 +577,7 @@ export class ChatService extends ClientListener {
   // Chat bubbles over the player's head for IC lines (/say /me /my ...).
   private showBubble(refrId: number, text: string): void {
     if (!text || !refrId) return;
-    const id = this.sp.createText(-1000, -1000, text.slice(0, 100), [1, 1, 1, 1]);
-    this.sp.setTextSize(id, 0.4);
-    this.sp.setTextRefr(id, refrId);
-    this.sp.setTextRefrNode(id, "NPC Head [Head]");
-    this.sp.setTextRefrOffset(id, [0, 0, 40]);
+    const id = createHeadText(refrId, text.slice(0, 100), [1, 1, 1, 1], 0.4, 40);
     this.controller.lookupListener(TimersService).setTimeoutOnUpdate(() => this.sp.destroyText(id), BUBBLE_MS);
   }
 

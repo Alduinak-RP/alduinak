@@ -10,7 +10,6 @@ export class PlayerCharacterDataHolder {
       return undefined;
     }
 
-    this.inJumpState = player.getAnimationVariableBool("bInJumpState");
     this.worldOrCell = ObjectReferenceEx.getWorldOrCell(player);
 
     if (!this.worldOrCell || this.worldOrCell === this.lastWorldOrCell) {
@@ -19,6 +18,11 @@ export class PlayerCharacterDataHolder {
     const previous = this.lastWorldOrCell;
     this.lastWorldOrCell = this.worldOrCell;
     return { worldOrCell: this.worldOrCell, previous, interior: !!player.getParentCell()?.isInterior() };
+  }
+
+  // Read by the tag pass only
+  static readJumpState() {
+    this.inJumpState = !!Game.getPlayer()?.getAnimationVariableBool("bInJumpState");
   }
 
   static setCrosshairRef(ref: ObjectReference | null | undefined) {

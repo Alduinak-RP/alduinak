@@ -1,4 +1,4 @@
-import { Actor, ActorBase, createText, destroyText, FormType, Game, Keyword, NetImmerse, ObjectReference, once, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
+import { Actor, ActorBase, createText, destroyText, FormType, Game, Keyword, NetImmerse, ObjectReference, once, setTextColor, setTextRefr, setTextRefrNode, setTextRefrOffset, setTextRefrScreenOffset, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, getWornLight, resyncHandGraph, wearsExactly } from "../sync/equipment";
@@ -46,6 +46,31 @@ const TIER_TAG_COLORS: Record<string, number[]> = {
 // Every invisibility effect carries MagicInvisibility, the spell and the potion alike; resolved at the first check
 let magicInvisibility: Keyword | null | undefined;
 
+const HEAD_NODE = "NPC Head [Head]";
+// Name tags sit this many units above the head node
+const TAG_HEAD_OFFSET = 32;
+const MAX_TAG_DISTANCE = 1000;
+
+// The platform moves the text over the ref's head every frame until it is destroyed
+export const createHeadText = (refrId: number, text: string, color: number[], size: number, heightOffset: number, screenOffsetY = 0): number => {
+  const id = createText(-1000, -1000, text, color);
+  setTextSize(id, size);
+  setTextRefr(id, refrId);
+  setTextRefrNode(id, HEAD_NODE);
+  setTextRefrOffset(id, [0, 0, heightOffset]);
+  if (screenOffsetY) {
+    setTextRefrScreenOffset(id, [0, screenOffsetY]);
+  }
+  return id;
+};
+
+// Normalized screen point of the head node; z is 0 or less behind the camera
+const headScreenPoint = (refr: ObjectReference): number[] => worldPointToScreenPoint([
+  NetImmerse.getNodeWorldPositionX(refr, HEAD_NODE, false),
+  NetImmerse.getNodeWorldPositionY(refr, HEAD_NODE, false),
+  NetImmerse.getNodeWorldPositionZ(refr, HEAD_NODE, false),
+])[0];
+
 let _screenResolution: ScreenResolution | undefined;
 export const getScreenResolution = (): ScreenResolution => {
   if (!_screenResolution) {
@@ -60,7 +85,7 @@ export const getScreenResolution = (): ScreenResolution => {
 export class FormView {
   constructor(private remoteRefrId?: number, private readonly onLocalIdChange?: (view: FormView, previous: number) => void) { }
 
-  update(model: FormModel): void {
+  update(model: FormModel, tagPass = false): void {
     // Other players mutate into PC clones when moving to another location
     if (model.movement) {
       if (!this.lastWorldOrCell)
@@ -124,8 +149,6 @@ export class FormView {
             const refr = ObjectReference.from(Game.getFormEx(this.refrId));
             refr?.getBaseObject()?.setName(model.appearance.name);
             refr?.setDisplayName(model.appearance.name, true);
-            // Recreate the floating tag so watchers see the new name (/mask)
-            this.removeNickname();
           } else {
             // Force re-apply appearance on the next getAppearanceBasedBase call
             this.appearanceBasedBaseId = 0;
@@ -186,7 +209,7 @@ export class FormView {
     if (actor && !refId) {
       this.applyHostility(actor, model);
     }
-    this.applyAll(refr, actor, model, loaded, loadedNow);
+    this.applyAll(refr, actor, model, loaded, loadedNow, tagPass);
 
     const gamemodeUpdateService = SpApiInteractor.getControllerInstance().lookupListener(GamemodeUpdateService);
     gamemodeUpdateService.updateNeighbor(refr, model, this.state);
@@ -387,7 +410,7 @@ export class FormView {
     }
   }
 
-  private applyAll(refr: ObjectReference, actor: Actor | null, model: FormModel, loaded: boolean, loadedNow: boolean) {
+  private applyAll(refr: ObjectReference, actor: Actor | null, model: FormModel, loaded: boolean, loadedNow: boolean, tagPass: boolean) {
     let forcedWeapDrawn: boolean | null = null;
 
     if (!this.isActor) {
@@ -520,49 +543,8 @@ export class FormView {
     this.applyAdminView(actor, loaded, model);
     this.applyAfterlifeView(actor, loaded, model);
 
-    if (model.appearance) {
-      if (actor && !PlayerCharacterDataHolder.isInJumpState()) {
-        if (PlayerCharacterDataHolder.getWorldOrCell()) {
-          if (
-            this.lastPcWorldOrCell &&
-            PlayerCharacterDataHolder.getWorldOrCell() !== this.lastPcWorldOrCell
-          ) {
-            // Redraw tints if PC world/cell changed
-            this.redrawTints();
-          }
-          this.lastPcWorldOrCell = PlayerCharacterDataHolder.getWorldOrCell();
-        }
-
-        const headPos = [
-          NetImmerse.getNodeWorldPositionX(actor, "NPC Head [Head]", false),
-          NetImmerse.getNodeWorldPositionY(actor, "NPC Head [Head]", false),
-          NetImmerse.getNodeWorldPositionZ(actor, "NPC Head [Head]", false),
-        ];
-        const [screenPoint] = worldPointToScreenPoint(headPos);
-        const isOnScreen =
-          screenPoint[0] > 0 &&
-          screenPoint[1] > 0 &&
-          screenPoint[2] > 0 &&
-          screenPoint[0] < 1 &&
-          screenPoint[1] < 1 &&
-          screenPoint[2] < 1;
-        // The carry partner's head sits at the camera for the whole carry, so it is rebuilt only after its tints were reset
-        const carryPartner = (held && this.carriedState.onPlayer) || isCarrierCloneId(this.refrId);
-        if (isOnScreen != this.isOnScreen) {
-          this.isOnScreen = isOnScreen;
-          if (isOnScreen && Date.now() - this.lastNiNodeUpdateMs >= FormView.niNodeUpdateMinIntervalMs && !(carryPartner && this.lastNiNodeUpdateMs)) {
-            this.lastNiNodeUpdateMs = Date.now();
-            actor.queueNiNodeUpdate();
-            // The rebuilt 3D drops effect shaders
-            if (this.adminShaderOn) {
-              this.adminShaderReplayAt = this.lastNiNodeUpdateMs + FormView.adminShaderReplayDelayMs;
-            }
-            if (this.afterlifeShaderId) {
-              this.afterlifeShaderReplayAt = this.lastNiNodeUpdateMs + FormView.adminShaderReplayDelayMs;
-            }
-          }
-        }
-      }
+    if (tagPass || (this.tintDue && model.appearance && actor)) {
+      this.updateTagAndTint(refr, actor, model, loaded, held, tagPass);
     }
 
     if (model.equipment) {
@@ -612,68 +594,72 @@ export class FormView {
       && this.eqState.lastNumChanges === model.equipment.numChanges) {
       this.keepTorch(actor, loaded, model.equipment);
     }
+  }
+
+  // One head projection serves the tint on-screen trigger and the name tag; the tint also runs on the update after a reset
+  private updateTagAndTint(refr: ObjectReference, actor: Actor | null, model: FormModel, loaded: boolean, held: boolean, tagPass: boolean): void {
+    let head: number[] | undefined;
+    if (model.appearance && actor && !PlayerCharacterDataHolder.isInJumpState()) {
+      this.tintDue = false;
+      head = headScreenPoint(actor);
+      const isOnScreen = head[0] > 0 && head[1] > 0 && head[2] > 0 && head[0] < 1 && head[1] < 1 && head[2] < 1;
+      // The carry partner's head sits at the camera for the whole carry, so it is rebuilt only after its tints were reset
+      const carryPartner = (held && this.carriedState.onPlayer) || isCarrierCloneId(this.refrId);
+      if (isOnScreen !== this.isOnScreen) {
+        this.isOnScreen = isOnScreen;
+        if (isOnScreen && Date.now() - this.lastNiNodeUpdateMs >= FormView.niNodeUpdateMinIntervalMs && !(carryPartner && this.lastNiNodeUpdateMs)) {
+          this.lastNiNodeUpdateMs = Date.now();
+          actor.queueNiNodeUpdate();
+          // The rebuilt 3D drops effect shaders
+          if (this.adminShaderOn) {
+            this.adminShaderReplayAt = this.lastNiNodeUpdateMs + FormView.adminShaderReplayDelayMs;
+          }
+          if (this.afterlifeShaderId) {
+            this.afterlifeShaderReplayAt = this.lastNiNodeUpdateMs + FormView.adminShaderReplayDelayMs;
+          }
+        }
+      }
+    }
+    if (!tagPass) {
+      return;
+    }
 
     const identifies = !!FormView.adminTagOf(model);
     const showTag = FormView.isDisplayingNicknames || FormView.isSpeaking(this.getRemoteRefrId()) || identifies;
-    if (showTag && this.refrId && model.appearance?.name) {
-      const headPart = "NPC Head [Head]";
-      const maxNicknameDrawDistance = 1000;
-      const playerActor = Game.getPlayer()!;
-      // An admin tag shows through sneaking and invisibility
-      const isVisibleByPlayer = (identifies || (!model.movement?.isSneaking && !this.isInvisible(actor)))
-        && playerActor.getDistance(refr) <= maxNicknameDrawDistance
-        && playerActor.hasLOS(refr)
-        && FormView.adminViewOf(model) !== "hidden";
-      if (isVisibleByPlayer) {
-        const headScreenPos = worldPointToScreenPoint([
-          NetImmerse.getNodeWorldPositionX(refr, headPart, false),
-          NetImmerse.getNodeWorldPositionY(refr, headPart, false),
-          NetImmerse.getNodeWorldPositionZ(refr, headPart, false) + 32
-        ])[0];
-        const resolution = getScreenResolution();
-        const textXPos = Math.round(headScreenPos[0] * resolution.width);
-        const textYPos = Math.round((1 - headScreenPos[1]) * resolution.height);
-
-        if (!this.textNameId && headScreenPos[2] > 0) {
-          this.createdTagName = this.tagName(refr, model);
-          this.createdActorIdLine = FormView.showsActorIdLine();
-          this.createdTagColor = this.tagColor(model);
-          this.textNameId = createText(textXPos, textYPos, this.createdTagName, this.createdTagColor);
-          setTextSize(this.textNameId, 0.5);
-          // The server's actor id (a player's character id, a PK body's own id) on a second line under the name
-          const serverId = this.createdActorIdLine ? shortRemoteId(this.remoteRefrId ?? 0) : 0;
-          if (serverId) {
-            this.textActorIdId = createText(
-              textXPos,
-              textYPos + FormView.actorIdLineOffset,
-              serverId.toString(16).toUpperCase().padStart(8, "0"),
-              [1, 1, 1, 0.6]
-            );
-            setTextSize(this.textActorIdId, 0.4);
-          }
-        } else {
-          const deleteNickname = headScreenPos[2] < 0;
-          if (deleteNickname) {
-            this.removeNickname();
-          }
-          // Rename (/mask), a fresh introduction, a toggled id line or a tier colour: recreate
-          if (this.textNameId
-            && (this.tagName(refr, model) !== this.createdTagName || this.createdActorIdLine !== FormView.showsActorIdLine()
-              || this.tagColor(model) !== this.createdTagColor)) {
-            this.removeNickname();
-          }
-          if (this.textNameId) {
-            setTextPos(this.textNameId, textXPos, textYPos);
-          }
-          if (this.textActorIdId) {
-            setTextPos(this.textActorIdId, textXPos, textYPos + FormView.actorIdLineOffset);
-          }
-        }
-      } else {
-        this.removeNickname();
-      }
-    } else {
+    // An admin tag shows through sneaking and invisibility
+    if (!showTag || !loaded || !model.appearance?.name || FormView.adminViewOf(model) === "hidden"
+      || (!identifies && (model.movement?.isSneaking || this.isInvisible(actor)))) {
       this.removeNickname();
+      return;
+    }
+    const player = Game.getPlayer()!;
+    if (player.getDistance(refr) > MAX_TAG_DISTANCE || (head ?? headScreenPoint(refr))[2] <= 0 || !player.hasLOS(refr)) {
+      this.removeNickname();
+      return;
+    }
+    this.showNickname(refr, model);
+  }
+
+  // Created once while shown; a new name, colour or id line is written into the shown texts
+  private showNickname(refr: ObjectReference, model: FormModel): void {
+    const name = this.tagName(refr, model);
+    const color = this.tagColor(model);
+    if (!this.textNameId) {
+      this.textNameId = createHeadText(this.refrId, name, color, 0.5, TAG_HEAD_OFFSET);
+    } else {
+      if (name !== this.shownTagName) setTextString(this.textNameId, name);
+      if (color !== this.shownTagColor) setTextColor(this.textNameId, color);
+    }
+    this.shownTagName = name;
+    this.shownTagColor = color;
+    // The server's actor id (a player's character id, a PK body's own id) on a second line under the name
+    const serverId = FormView.showsActorIdLine() ? shortRemoteId(this.remoteRefrId ?? 0) : 0;
+    if (serverId && !this.textActorIdId) {
+      const idText = serverId.toString(16).toUpperCase().padStart(8, "0");
+      this.textActorIdId = createHeadText(this.refrId, idText, [1, 1, 1, 0.6], 0.4, TAG_HEAD_OFFSET, FormView.actorIdLineOffset);
+    } else if (!serverId && this.textActorIdId) {
+      destroyText(this.textActorIdId);
+      this.textActorIdId = undefined;
     }
   }
 
@@ -744,7 +730,7 @@ export class FormView {
     logToPlatformLog("FormView", `${id} was off the copy and is equipped again, try ${t.tries} of ${FormView.torchMaxTries}${last}: ${state()}`);
   }
 
-  // The shared arrays double as identity keys for the recreate check
+  // The shared arrays double as identity keys for the change check
   private tagColor(model: FormModel): number[] {
     const tier = FormView.adminTagOf(model)?.t;
     return (tier && TIER_TAG_COLORS[tier]) || DEFAULT_TAG_COLOR;
@@ -932,6 +918,7 @@ export class FormView {
   private redrawTints(): void {
     this.isOnScreen = false;
     this.lastNiNodeUpdateMs = 0;
+    this.tintDue = true;
   }
 
   private getDefaultEquipState() {
@@ -999,10 +986,11 @@ export class FormView {
   private eqState = this.getDefaultEquipState();
   private appearanceBasedBaseId = 0;
   private isOnScreen = false;
+  // A tint reset is checked on the next update instead of the next pass
+  private tintDue = false;
   private lastNiNodeUpdateMs = 0;
   // A head at the camera (a carried player inside their carrier) flickers on and off screen; each rebuild is a hitch
   private static readonly niNodeUpdateMinIntervalMs = 5000;
-  private lastPcWorldOrCell = 0;
   private lastWorldOrCell = 0;
   private spawnMoment = 0;
   private loaded3DMoment = 0;
@@ -1039,9 +1027,8 @@ export class FormView {
   private afterlifeShaderReplayAt = 0;
   private textNameId: number | undefined = undefined;
   private textActorIdId: number | undefined = undefined;
-  private createdTagName = "";
-  private createdActorIdLine = false;
-  private createdTagColor: number[] = DEFAULT_TAG_COLOR;
+  private shownTagName = "";
+  private shownTagColor: number[] = DEFAULT_TAG_COLOR;
 
   // Screen-space pixels between the name line and the actor id line
   private static readonly actorIdLineOffset = 18;
