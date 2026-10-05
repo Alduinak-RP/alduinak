@@ -86,8 +86,7 @@ TEST_CASE("DeathState packed is correct if actor is respawning", "[Respawn]")
 
   // Respawning teleports the player into a temple, which streams in the
   // surrounding cell, so the message count is not fixed. The death-state
-  // container is still sent first (before the teleport), and the broadcast
-  // "isDead=false" property is found by scanning below.
+  // container is still sent first (before the teleport).
   REQUIRE(p.Messages().size() >= 2);
 
   nlohmann::json message = p.Messages()[0].j;
@@ -117,23 +116,58 @@ TEST_CASE("DeathState packed is correct if actor is respawning", "[Respawn]")
   REQUIRE(ac.IsDead() == false);
   REQUIRE(ac.GetChangeForm().actorValues.healthPercentage == 1.f);
 
-  // TODO: should probably not sending to ourselves. see also RespawnEvent.cpp
-
-  // The RespawnEvent broadcasts an "isDead=false" property update; teleport
-  // streaming means it is no longer at a fixed index, so scan for it.
-  bool foundIsDeadBroadcast = false;
+  // The owner gets isDead only inside the container
   for (auto& msg : p.Messages()) {
     nlohmann::json j = msg.j; // copy: operator[] auto-inserts null for absentees
-    if (j["propName"] == "isDead" && j["dataDump"] == "false" &&
-        j["refrId"] == ac.GetFormId()) {
-      foundIsDeadBroadcast = true;
-      REQUIRE(j["t"] == MsgType::UpdateProperty);
-      REQUIRE(j["idx"] == ac.GetIdx());
-      REQUIRE(j["baseRecordType"] == nlohmann::json{});
-      break;
-    }
+    REQUIRE_FALSE((j["t"] == MsgType::UpdateProperty &&
+                   j["propName"] == "isDead" &&
+                   j["refrId"] == ac.GetFormId()));
   }
-  REQUIRE(foundIsDeadBroadcast);
+}
+
+TEST_CASE("A death and a revive reach each other player who sees it once, "
+          "not the owner",
+          "[Respawn]")
+{
+  PartOne& p = GetPartOne();
+  constexpr uint32_t kOwner = 0xff000000;
+  constexpr uint32_t kObserver = 0xff000001;
+  DoConnect(p, 0);
+  DoConnect(p, 1);
+  p.CreateActor(kOwner, { 0, 0, 0 }, 0, 0x3c);
+  p.CreateActor(kObserver, { 0, 0, 0 }, 0, 0x3c);
+  p.SetUserActor(0, kOwner);
+  p.SetUserActor(1, kObserver);
+  auto& ac = p.worldState.GetFormAt<MpActor>(kOwner);
+
+  auto countIsDead = [&](Networking::UserId userId, const char* dump) {
+    int n = 0;
+    for (auto& msg : p.Messages()) {
+      nlohmann::json j = msg.j; // copy: operator[] auto-inserts null
+      if (msg.userId == userId && j["t"] == MsgType::UpdateProperty &&
+          j["propName"] == "isDead" && j["dataDump"] == dump &&
+          j["refrId"] == kOwner) {
+        ++n;
+      }
+    }
+    return n;
+  };
+
+  p.Messages().clear();
+  ac.Kill();
+  REQUIRE(countIsDead(0, "true") == 0);
+  REQUIRE(countIsDead(1, "true") == 1);
+
+  p.Messages().clear();
+  ac.SetIsDead(false);
+  REQUIRE(ac.IsDead() == false);
+  REQUIRE(countIsDead(0, "false") == 0);
+  REQUIRE(countIsDead(1, "false") == 1);
+
+  p.DestroyActor(kOwner);
+  p.DestroyActor(kObserver);
+  DoDisconnect(p, 0);
+  DoDisconnect(p, 1);
 }
 
 TEST_CASE("A gamemode-set spawn point wins over the temple fallback",

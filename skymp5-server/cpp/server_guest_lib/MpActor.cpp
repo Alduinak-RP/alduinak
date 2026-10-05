@@ -1473,12 +1473,21 @@ void MpActor::SendAndSetDeathState(bool isDead, bool shouldTeleport)
   auto position = GetRespawnPosition();
 
   auto respawnMsg = GetDeathStateMsg(position, isDead, shouldTeleport);
-  GetActorToSendTo().SendToUser(respawnMsg, true);
+  auto& containerReceiver = GetActorToSendTo();
+  containerReceiver.SendToUser(respawnMsg, true);
 
-  // The container only reaches the hoster; NPC viewers need the death too
-  if (isDead && GetUserId() == Networking::InvalidUserId) {
-    SendMessageToActorListeners(CreatePropertyMessage_(this, "isDead", "true"),
-                                true);
+  // One copy per other user; the owner or host has it in the container
+  auto isDeadMsg =
+    CreatePropertyMessage_(this, "isDead", isDead ? "true" : "false");
+  std::set<MpActor*> sentTo{ &containerReceiver };
+  for (auto listener : GetActorListeners()) {
+    if (listener == this) {
+      continue;
+    }
+    auto& receiver = listener->GetActorToSendTo();
+    if (sentTo.insert(&receiver).second) {
+      receiver.SendToUser(isDeadMsg, true);
+    }
   }
 
   EditChangeForm([&](MpChangeForm& changeForm) {
