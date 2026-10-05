@@ -3,8 +3,9 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
+import { DeathService } from "./deathService";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
-import { releaseCloneMovement, suspendCloneMovement } from "../../sync/mountApply";
+import { releaseCloneMovement, stopMoving, suspendCloneMovement } from "../../sync/mountApply";
 import { logToPlatformLog } from "../../logging";
 
 const PLAYER_FORM_ID = 0x14;
@@ -25,6 +26,8 @@ const MIN_PAIR_MS = 1500;
 const QUIET_POLLS = 2;
 // A pair the graph never showed as started is taken as over at the old fixed length
 const UNSEEN_PAIR_MS = 4500;
+// A graph that refused the pair (a step still finishing, a translation under way) is asked again at each poll this long
+const RETRY_MS = 1500;
 
 interface Pair {
   attackerId: number;
@@ -40,9 +43,12 @@ interface Pair {
   // Not before this, and not later than playBy
   playAt: number;
   playBy: number;
-  // 0 until the pair was played
+  // This client's own player is held still for the pair
+  holdsPlayer: boolean;
+  // 0 until the pair was first asked of the graph
   startedAt: number;
   played: boolean;
+  tries: number;
   nextPollAt: number;
   sawSynced: boolean;
   sawKillMove: boolean;
@@ -87,7 +93,7 @@ export class PairedIdleService extends ClientListener {
     const pair: Pair = {
       attackerId, targetId, targetRemoteId, idleId, seq, ms, standUp,
       participant: attackerId === PLAYER_FORM_ID || targetId === PLAYER_FORM_ID,
-      requestedAt: now, playAt: now, playBy: now, startedAt: 0, played: false,
+      holdsPlayer: false, requestedAt: now, playAt: now, playBy: now, startedAt: 0, played: false, tries: 0,
       nextPollAt: 0, sawSynced: false, sawKillMove: false, quietPolls: 0,
     };
     const restraint = this.controller.lookupListener(RestraintService);
@@ -108,8 +114,25 @@ export class PairedIdleService extends ClientListener {
       }
       pair.playAt = pair.playBy = now + KNEEL_RESEND_MS;
     }
+    this.holdPlayer(pair, restraint);
     this.pairs.push(pair);
     if (pair.playAt <= now) this.play(pair);
+  }
+
+  // A participant walking on would move out of the pair, and the graph refuses one for a moving actor; a pose lock already holds the player
+  private holdPlayer(pair: Pair, restraint: RestraintService): void {
+    const player = pair.participant ? this.sp.Game.getPlayer() : null;
+    if (!player || player.isDead() || restraint.isPoseLocked) return;
+    player.setDontMove(true);
+    pair.holdsPlayer = true;
+  }
+
+  // Let go once no pair holds the player and nothing else has taken them over
+  private releasePlayer(): void {
+    if (this.pairs.some((pair) => pair.holdsPlayer)) return;
+    const player = this.sp.Game.getPlayer();
+    if (!player || this.controller.lookupListener(RestraintService).isPoseLocked || this.controller.lookupListener(DeathService).isBusy()) return;
+    player.setDontMove(false);
   }
 
   // The get-up is over once the target's graph is neither animation driven nor synced, twice in a row
@@ -123,6 +146,7 @@ export class PairedIdleService extends ClientListener {
     if ((settled && now >= pair.playAt) || now >= pair.playBy) this.play(pair);
   }
 
+  // The graph answers false while either actor is mid-step, so a refused pair is asked again at each poll until RETRY_MS, the copies' translations stopped first
   private play(pair: Pair): void {
     const attacker = this.actorOf(pair.attackerId);
     const target = this.actorOf(pair.targetId);
@@ -131,14 +155,35 @@ export class PairedIdleService extends ClientListener {
       this.drop(pair);
       return;
     }
+    const first = pair.tries === 0;
+    if (!first) {
+      for (const actor of [attacker, target]) {
+        if (actor.getFormID() !== PLAYER_FORM_ID) stopMoving(actor);
+      }
+    }
     const a = `synced=${flag(attacker, SYNCED_VAR)},killmove=${attacker.isInKillMove()},drawn=${attacker.isWeaponDrawn()}`;
     const pose = pair.targetId === PLAYER_FORM_ID ? `,pose=${this.controller.lookupListener(RestraintService).currentPose || "none"}` : "";
     const t = `synced=${flag(target, SYNCED_VAR)},killmove=${target.isInKillMove()},animDriven=${flag(target, ANIM_DRIVEN_VAR)}${pose}`;
     pair.played = attacker.playIdleWithTarget(idle, target);
-    pair.startedAt = Date.now();
+    pair.tries++;
+    const now = Date.now();
+    if (first || pair.played) pair.startedAt = now;
     pair.quietPolls = 0;
-    logToPlatformLog(this, `pair ${pair.idleId.toString(16)} start a=${pair.attackerId.toString(16)} t=${pair.targetId.toString(16)}` +
-      ` played=${pair.played} waited=${pair.startedAt - pair.requestedAt} a[${a}] t[${t}]`);
+    if (first || pair.played) {
+      logToPlatformLog(this, `pair ${pair.idleId.toString(16)} ${first ? "start" : `try ${pair.tries}`} a=${pair.attackerId.toString(16)} t=${pair.targetId.toString(16)}` +
+        ` played=${pair.played} waited=${now - pair.requestedAt} a[${a}] t[${t}]`);
+    }
+    if (!pair.played && first) {
+      logToPlatformLog(this, `pair ${pair.idleId.toString(16)} refused: ${this.describeRefusal(attacker, target)}`);
+    }
+  }
+
+  // What the graph may have held against the pair, read only when it refused
+  private describeRefusal(attacker: Actor, target: Actor): string {
+    const describe = (actor: Actor): string =>
+      `sneaking=${actor.isSneaking()},attacking=${flag(actor, "IsAttacking")},jump=${flag(actor, "bInJumpState")},speed=${Math.round(actor.getAnimationVariableFloat("SpeedSampled"))}` +
+      `,sit=${actor.getSitState()},dead=${actor.isDead()},swimming=${actor.isSwimming()},mount=${actor.isOnMount()}`;
+    return `a[${describe(attacker)}] t[${describe(target)}] distance=${Math.round(attacker.getDistance(target))} heading=${Math.round(attacker.getHeadingAngle(target))} camera=${this.sp.Game.getCameraState()}`;
   }
 
   private onUpdate(): void {
@@ -150,6 +195,10 @@ export class PairedIdleService extends ClientListener {
       if (!pair.startedAt) {
         this.settle(pair, now);
         continue;
+      }
+      if (!pair.played && now - pair.startedAt < RETRY_MS) {
+        this.play(pair);
+        if (!this.pairs.includes(pair)) continue;
       }
       const elapsed = now - pair.startedAt;
       const actors = [this.actorOf(pair.attackerId), this.actorOf(pair.targetId)];
@@ -169,7 +218,7 @@ export class PairedIdleService extends ClientListener {
     if (pair.participant) {
       sendCustomPacket(this.controller, { customPacketType: "pairedIdleDone", target: pair.targetRemoteId, seq: pair.seq });
     }
-    logToPlatformLog(this, `pairEnd ${pair.idleId.toString(16)} after ${elapsed} ms, played=${pair.played}, synced seen ${pair.sawSynced}, killmove seen ${pair.sawKillMove}`);
+    logToPlatformLog(this, `pairEnd ${pair.idleId.toString(16)} after ${elapsed} ms, played=${pair.played} in ${pair.tries} tr${pair.tries === 1 ? "y" : "ies"}, synced seen ${pair.sawSynced}, killmove seen ${pair.sawKillMove}`);
   }
 
   private drop(pair: Pair): void {
@@ -178,6 +227,7 @@ export class PairedIdleService extends ClientListener {
       if (id !== PLAYER_FORM_ID) releaseCloneMovement(id);
     }
     if (pair.targetId === PLAYER_FORM_ID) this.controller.lookupListener(RestraintService).pairEnded();
+    if (pair.holdsPlayer) this.releasePlayer();
   }
 
   private actorOf(localId: number): Actor | null {

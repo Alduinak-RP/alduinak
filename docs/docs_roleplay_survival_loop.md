@@ -138,12 +138,20 @@ behaviour-graph events — no ESP required.**
   again 1.5 s after their client saw the pair end (`RestraintService.pairEnded`,
   the grace a kill needs to land), or once the cap lapses. The killmove is sent to both players and to
   everyone whose client has a copy of the victim (`PairedIdleService`), and
-  both copies leave the movement and animation sync until it ends. Each
+  both copies leave the movement and animation sync until it ends; a
+  participant's own player is held still (`SetDontMove`) for the pair unless
+  a pose lock already holds them, and let go when it ends. A graph that
+  refuses the play call (false from `PlayIdleWithTarget`, seen on standing
+  victims that were walking) is asked again at every 100 ms poll for 1.5 s,
+  the copies' translations stopped first. Each
   client writes one `pair <idle> start a=<killer> t=<victim> played=<bool>
   waited=<ms> a[synced,killmove,drawn] t[synced,killmove,animDriven,pose]`
   line to `skyrim-platform.log` (the graph flags at the moment of the play
-  call, `pose` on the victim's own client) and one `pairEnd ...
-  played=<bool>` line saying which signal ended the pair; the server logs
+  call, `pose` on the victim's own client), on a refusal one `pair <idle>
+  refused: a[sneaking,attacking,jump,speed,sit,dead,swimming,mount] t[...]
+  distance heading camera` line with both actors' state, one `pair <idle>
+  try <n> ... played=true` line for the retry that played, and one `pairEnd
+  ... played=<bool> in <n> tries` line saying which signal ended the pair; the server logs
   `[execution] pair <seq> on <victim> ended by <reporter> after <ms> ms`
   for each participant's report (`also ended by` for the second) and
   `stale pair report` for a rejected one, so the server log alone tells a
