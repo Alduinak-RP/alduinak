@@ -1,7 +1,7 @@
 import { Actor, ActorBase, createText, destroyText, FormType, Game, Keyword, NetImmerse, ObjectReference, once, setTextColor, setTextRefr, setTextRefrNode, setTextRefrOffset, setTextRefrScreenOffset, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
-import { isBadMenuShown, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, getWornLight, resyncHandGraph, wearsExactly } from "../sync/equipment";
+import { isBadMenuShown, isBadMenuShownNow, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, getWornLight, resyncHandGraph, wearsExactly } from "../sync/equipment";
 import { Entry } from "../sync/inventory";
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
@@ -557,9 +557,9 @@ export class FormView {
         if (
           actor &&
           loaded &&
-          !isBadMenuShown() &&
           Date.now() - this.eqState.lastEqMoment > 500 &&
-          this.spawnMoment > 0
+          this.spawnMoment > 0 &&
+          !isBadMenuShownNow()
         ) {
           // Stripping and re-equipping an NPC copy races the engine's skeleton update, so a copy already wearing the set is left alone
           if (!model.appearance && wearsExactly(actor, model.equipment)) {

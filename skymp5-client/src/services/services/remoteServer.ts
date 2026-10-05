@@ -37,6 +37,7 @@ import { LoadGameService } from './loadGameService';
 import { MasteryService } from './masteryService';
 import { CharacterSelectService } from './characterSelectService';
 import { CreationLightService } from './creationLightService';
+import { isMenuShown } from './menuStateService';
 import { endSeatWait, markLocalActivation, noteSeatWait } from './activationService';
 import { UpdateMovementMessage } from '../messages/updateMovementMessage';
 import { ChangeValuesMessage } from '../messages/changeValuesMessage';
@@ -280,7 +281,7 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
     return true;
   }
   // The race menu undresses the player on purpose until it closes
-  if (Ui.isMenuOpen('RaceSex Menu')) {
+  if (isMenuShown(Menu.RaceSex)) {
     return true;
   }
   if (spawnTopUp === "landed") {
@@ -825,7 +826,7 @@ export class RemoteServer extends ClientListener {
     if (!target || target.moves === 0) {
       return;
     }
-    if (Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.RaceSex)) {
+    if (isMenuShown(Menu.Loading) || isMenuShown(Menu.RaceSex)) {
       target.nextCheckAt = Date.now() + PLAYER_TELEPORT_CHECK_MS;
       return;
     }
@@ -1556,7 +1557,7 @@ export class RemoteServer extends ClientListener {
 
   // A pending creation whose menu never opened calls it again once no loading screen or focused page is up
   private checkRaceMenu(): void {
-    if (!this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.Main) ||
+    if (!this.raceMenuPending || isMenuShown(Menu.RaceSex) || isMenuShown(Menu.Loading) || isMenuShown(Menu.Main) ||
         this.sp.browser.isFocused() || this.controller.lookupListener(CharacterSelectService).isMenuOpen()) {
       this.raceMenuSettledAt = 0;
       return;
@@ -1615,7 +1616,7 @@ export class RemoteServer extends ClientListener {
     if (!check || !check.due) {
       return;
     }
-    if (this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading) || Ui.isMenuOpen(Menu.Main) || Ui.isMenuOpen(Menu.Magic)) {
+    if (this.raceMenuPending || isMenuShown(Menu.RaceSex) || isMenuShown(Menu.Loading) || isMenuShown(Menu.Main) || isMenuShown(Menu.Magic)) {
       check.settleFrom = 0;
       return;
     }
@@ -1694,7 +1695,7 @@ export class RemoteServer extends ClientListener {
   // Written once the race menu and loading are over, with the current percentages kept as the server syncs shares of the maximum
   private applyRaceBase(): void {
     const pending = this.raceBase;
-    if (!pending || this.raceMenuPending || Ui.isMenuOpen(Menu.RaceSex) || Ui.isMenuOpen(Menu.Loading)) {
+    if (!pending || this.raceMenuPending || isMenuShown(Menu.RaceSex) || isMenuShown(Menu.Loading)) {
       return;
     }
     this.raceBase = undefined;

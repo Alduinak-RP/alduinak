@@ -3,6 +3,9 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { keepMenusClosed } from "./menuBlockUtil";
 import { CONSOLE_MENUS } from "./widgetMenuUtil";
 
+// The console can swallow input without a menuOpen
+const CONSOLE_BACKSTOP_MS = 250;
+
 // Refused when they run, which also covers a console open for a frame, the main menu, bat files, sStartingConsoleCommand and ConsoleUtil
 const BLOCKED_COMMANDS = [
   "tgm", "tcl", "tfc", "tim", "tai", "tcai", "tdetect", "tm", "tfow", "tmm", "twf", "sgtm",
@@ -18,7 +21,7 @@ export class ConsoleBlockService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.blockCommands();
-    keepMenusClosed(this.sp, this.controller, CONSOLE_MENUS);
+    keepMenusClosed(this.sp, this.controller, CONSOLE_MENUS, { backstopMs: CONSOLE_BACKSTOP_MS });
   }
 
   // Papyrus natives never dispatch through these entries, so admin God and NoClip keep working

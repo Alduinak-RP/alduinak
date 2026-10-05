@@ -4,6 +4,7 @@ import { ConnectionMessage } from "../events/connectionMessage";
 import { SpSnippetMessage } from "../messages/spSnippetMessage";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { onWidgetsCleared } from "./widgetMenuUtil";
+import { isMenuShown } from "./menuStateService";
 import { NeedsService, UPDATE_ESM, globalOf, readGlobal } from "./needsService";
 import { RemoteServer } from "./remoteServer";
 import { applyAttributePenalty, COLD_PENALTY_AV } from "../../sync/attributePenalty";
@@ -233,7 +234,7 @@ export class SurvivalService extends ClientListener {
     if (!this.state || now < this.pollAt) return;
     this.pollAt = now + POLL_MS;
     const player = this.sp.Game.getPlayer();
-    if (!player || this.sp.Ui.isMenuOpen(Menu.Loading)) return;
+    if (!player || isMenuShown(Menu.Loading)) return;
     if (!this.bootLogged) this.logBoot();
     this.report(player, now);
     if (this.refreshAt && now >= this.refreshAt) {

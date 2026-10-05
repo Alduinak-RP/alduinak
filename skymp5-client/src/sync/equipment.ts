@@ -4,6 +4,7 @@ import {
   Armor,
   FormType,
   Game,
+  Menu,
   ObjectReference,
   Spell,
   Ui,
@@ -13,6 +14,7 @@ import {
 
 import { Entry, Inventory, getInventory, getPlayerEnchantment, healthStep, isBoundItem, sameItem } from './inventory';
 import { sameTaggedCopy } from './durabilityNames';
+import { isMenuShown } from '../services/services/menuStateService';
 
 export const enum SpellType {
   Left,
@@ -235,12 +237,9 @@ export const applyEquipment = (ac: Actor, eq: Equipment): boolean => {
   return true;
 };
 
-export const isBadMenuShown = (): boolean => {
-  return (
-    Ui.isMenuOpen('InventoryMenu') ||
-    Ui.isMenuOpen('FavoritesMenu') ||
-    Ui.isMenuOpen('MagicMenu') ||
-    Ui.isMenuOpen('ContainerMenu') ||
-    Ui.isMenuOpen('Crafting Menu') // Actually I don't think it causes crashes
-  );
-};
+const BAD_MENUS: string[] = [Menu.Inventory, Menu.Favorites, Menu.Magic, Menu.Container, Menu.Crafting];
+
+export const isBadMenuShown = (): boolean => BAD_MENUS.some((menu) => isMenuShown(menu));
+
+// The engine's own state, for an apply that must not run in the update a menu opens
+export const isBadMenuShownNow = (): boolean => BAD_MENUS.some((menu) => Ui.isMenuOpen(menu));

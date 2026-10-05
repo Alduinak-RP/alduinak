@@ -42,7 +42,7 @@ export class TimeService extends ClientListener {
     controller.on("loadGame", () => this.onLoadGame());
     onCustomPacket(controller, "gameTime", (content) => this.onCustomPacketMessage(content));
     // Waiting or sleeping (beds included) would push this client's clock ahead of the server's
-    keepMenusClosed(sp, controller, [Menu.Sleep], () => showSystemNotification(sp, "Time follows the realm's clock, so waiting and sleeping are unavailable."));
+    keepMenusClosed(sp, controller, [Menu.Sleep], { onBlocked: () => showSystemNotification(sp, "Time follows the realm's clock, so waiting and sleeping are unavailable.") });
   }
 
   // The date's UTC fields read as the server's local wall clock

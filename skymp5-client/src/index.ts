@@ -105,6 +105,7 @@ import { ActivatePickService } from "./services/services/activatePickService";
 import { FurnitureAnimationsService } from "./services/services/furnitureAnimationsService";
 import { LipSyncService } from "./services/services/lipSyncService";
 import { VanillaMenuService } from "./services/services/vanillaMenuService";
+import { MenuStateService } from "./services/services/menuStateService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -117,6 +118,7 @@ const main = () => {
     const controller = SpApiInteractor.getControllerInstance();
 
     const listeners = [
+      new MenuStateService(sp, controller),
       new BlockPapyrusEventsService(sp, controller),
       new LoadGameService(sp, controller),
       new SinglePlayerService(sp, controller),

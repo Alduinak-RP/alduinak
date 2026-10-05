@@ -8,7 +8,7 @@ import { getMovement } from "../../sync/movementGet";
 import * as worldViewMisc from "../../view/worldViewMisc";
 
 import { AnimationSource, getCopyAnimationSource, needsReliableSend, playerAnimationSource } from "../../sync/animation";
-import { Actor, EquipEvent, FormType, HitEvent, Menu } from "skyrimPlatform";
+import { Actor, EquipEvent, FormType, HitEvent, Menu, MenuCloseEvent } from "skyrimPlatform";
 import { getAppearance } from "../../sync/appearance";
 import { ActorValues, getActorValues } from "../../sync/actorvalues";
 import { countWorn, getEquipment } from "../../sync/equipment";
@@ -48,6 +48,7 @@ export class SendInputsService extends ClientListener {
         this.controller.on("equip", (e) => this.onEquip(e));
         this.controller.on("unequip", (e) => this.onUnequip(e));
         this.controller.on("loadGame", () => this.onLoadGame());
+        this.controller.on("menuClose", (e) => this.onMenuClose(e));
         this.controller.on("hit", (e) => this.onHit(e));
         this.controller.emitter.on("connectionAccepted", () => this.lastSendMovementMoment.clear());
     }
@@ -133,7 +134,6 @@ export class SendInputsService extends ClientListener {
         const playerForm = world.forms[world.playerCharacterFormIdx];
         this.sendMovement(undefined, playerForm, () => player);
         this.sendAnimation(playerAnimationSource);
-        this.sendAppearance(player);
         this.sendEquipment(player);
         this.sendActorValuePercentage(player, playerForm);
 
@@ -278,26 +278,25 @@ export class SendInputsService extends ClientListener {
         playerAnimationSource.relay(animEventName);
     }
 
-    private sendAppearance(player: Actor) {
-        const shown = this.sp.Ui.isMenuOpen('RaceSex Menu');
-        if (shown != this.isRaceSexMenuShown) {
-            this.isRaceSexMenuShown = shown;
-            if (!shown) {
-                this.sp.printConsole('Exited from race menu');
-
-                const appearance = getAppearance(player);
-                // TODO: log appearance contents to debug appearance issues?
-                const message: MessageWithRefrId<UpdateAppearanceMessage> = {
-                    t: MsgType.UpdateAppearance,
-                    data: appearance,
-                    _refrId: undefined
-                };
-                this.controller.emitter.emit("sendMessageWithRefrId", {
-                    message,
-                    reliability: "reliable"
-                });
-            }
+    private onMenuClose(event: MenuCloseEvent) {
+        if (event.name !== Menu.RaceSex || this.singlePlayerService.isSinglePlayer) {
+            return;
         }
+        const player = this.sp.Game.getPlayer();
+        if (!player) {
+            return;
+        }
+        this.sp.printConsole('Exited from race menu');
+
+        const message: MessageWithRefrId<UpdateAppearanceMessage> = {
+            t: MsgType.UpdateAppearance,
+            data: getAppearance(player),
+            _refrId: undefined
+        };
+        this.controller.emitter.emit("sendMessageWithRefrId", {
+            message,
+            reliability: "reliable"
+        });
     }
 
     private sendEquipment(player: Actor) {
@@ -379,7 +378,6 @@ export class SendInputsService extends ClientListener {
     private lastSendMovementMoment = new Map<string, number>();
     private actorValuesNeedUpdate = false;
     private actorValuesReadAt = 0;
-    private isRaceSexMenuShown = false;
     private equipmentChanged = false;
     private lastSpellSlots?: readonly number[];
     private lastEquipmentSentMs = 0;
