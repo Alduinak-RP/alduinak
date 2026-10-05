@@ -32,8 +32,6 @@ struct State
 {
   std::vector<Pending> pending;
   std::optional<Clock::time_point> lastFlushAt;
-  // The last weapon hit dealt, taken or blocked
-  std::optional<Clock::time_point> lastHitAt;
   bool calmTimerSet = false;
 };
 

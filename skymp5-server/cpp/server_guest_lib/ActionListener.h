@@ -81,6 +81,9 @@ public:
 
   virtual void OnUnknown(const RawMessageData& rawMsgData);
 
+  // Drops the combat bookkeeping kept for a player's actor when the player disconnects
+  void ForgetActor(uint32_t actorId);
+
   // for CraftTest.cpp
   const std::shared_ptr<CraftService>& GetCraftService() noexcept
   {
@@ -145,6 +148,8 @@ private:
 
   void NoteRefusedHealthIncrease(const MpActor& actor, float refused,
                                  std::chrono::steady_clock::time_point now);
+  void LogRefusedHealthIncreases(uint32_t actorId,
+                                 const RefusedHealthIncreases& entry) const;
 
   void TickRestorationChannel(uint32_t casterId, uint32_t generation);
   MpActor* GetRestorationChannelTarget(uint32_t casterId,

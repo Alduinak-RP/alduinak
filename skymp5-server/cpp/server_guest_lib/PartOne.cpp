@@ -519,6 +519,9 @@ void PartOne::HandlePacket(void* partOneInstance, Networking::UserId userId,
           // TODO: apply dependency inversion here: connection handling code
           // should not depend on animation system
           this_->animationSystem.ClearInfo(actor);
+          if (this_->pImpl->actionListener) {
+            this_->pImpl->actionListener->ForgetActor(actor->GetFormId());
+          }
         }
         this_->serverState.Disconnect(userId);
         this_->serverState.disconnectingUserId = Networking::InvalidUserId;

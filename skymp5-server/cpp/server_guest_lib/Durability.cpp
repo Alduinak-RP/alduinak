@@ -2,6 +2,7 @@
 
 #include "MpActor.h"
 #include "WorldState.h"
+#include "formulas/AlduinakHitRules.h"
 #include "formulas/ItemRowResolver.h"
 #include "gamemode_events/CustomEvent.h"
 #include "libespm/espm.h"
@@ -344,9 +345,9 @@ void OnCalmTimer(WorldState* worldState, uint32_t formId)
     return;
   }
   const float calm = ctx->settings->flushCalmSeconds;
-  const float since = state.lastHitAt
-    ? std::chrono::duration<float>(Durability::Clock::now() - *state.lastHitAt)
-        .count()
+  const auto& lastCombatAt = actor->GetCombatState().lastCombatAt;
+  const float since = lastCombatAt
+    ? HitRules::SecondsBetween(*lastCombatAt, Durability::Clock::now())
     : calm;
   if (since + 0.05f >= calm) {
     Flush(*actor, *ctx, true);
@@ -488,10 +489,6 @@ void WearFromHit(MpActor& aggressor, MpActor& target, const Context& context,
                  const HitData& hitData, float preDT, float damage)
 {
   const Context* ctx = &context;
-  const auto now = Durability::Clock::now();
-  aggressor.GetDurabilityState().lastHitAt = now;
-  target.GetDurabilityState().lastHitAt = now;
-
   const DurabilityRules::HitFacts facts{ hitData.isPowerAttack,
                                          hitData.isBashAttack,
                                          hitData.isHitBlocked };

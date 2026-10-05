@@ -2687,11 +2687,9 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     currentActorValues, aggressor,
     std::vector<espm::ActorValue>{ espm::ActorValue::Health });
   aggressor->SetLastHitTime(targetActor.GetFormId(), currentHitTime);
-  if (rebalance) {
-    // A hit dealt, taken or blocked ends the calm a sneak attack needs
-    HitRules::NoteCombat(aggressor->GetCombatState(), currentHitTime);
-    HitRules::NoteCombat(targetActor.GetCombatState(), currentHitTime);
-  }
+  // A hit dealt, taken or blocked ends the calm a sneak attack and the durability flush wait for
+  HitRules::NoteCombat(aggressor->GetCombatState(), currentHitTime);
+  HitRules::NoteCombat(targetActor.GetCombatState(), currentHitTime);
 
   spdlog::debug(
     "OnWeaponHit - Target {0:x} is hit by {1} damage. Percentage was: {3}, "
@@ -2954,12 +2952,7 @@ void ActionListener::NoteRefusedHealthIncrease(
 {
   auto& entry = refusedHealthIncreases[actor.GetFormId()];
   if (entry.count > 0 && now - entry.since >= std::chrono::minutes(1)) {
-    spdlog::info(
-      "OnChangeValues - {:x} sent {} health increase(s) above the allowed "
-      "regeneration within a minute, largest {} of full health refused "
-      "(healthRegenerationMultiplier {})",
-      actor.GetFormId(), entry.count, entry.largest,
-      *partOne.worldState.healthRegenerationMultiplier);
+    LogRefusedHealthIncreases(actor.GetFormId(), entry);
     entry = {};
   }
   if (entry.count == 0) {
@@ -2967,6 +2960,32 @@ void ActionListener::NoteRefusedHealthIncrease(
   }
   ++entry.count;
   entry.largest = std::max(entry.largest, refused);
+}
+
+void ActionListener::LogRefusedHealthIncreases(
+  uint32_t actorId, const RefusedHealthIncreases& entry) const
+{
+  spdlog::info(
+    "OnChangeValues - {:x} sent {} health increase(s) above the allowed "
+    "regeneration within a minute, largest {} of full health refused "
+    "(healthRegenerationMultiplier {})",
+    actorId, entry.count, entry.largest,
+    partOne.worldState.healthRegenerationMultiplier.value_or(1.f));
+}
+
+void ActionListener::ForgetActor(uint32_t actorId)
+{
+  if (auto it = refusedHealthIncreases.find(actorId);
+      it != refusedHealthIncreases.end()) {
+    if (it->second.count > 0) {
+      LogRefusedHealthIncreases(actorId, it->second);
+    }
+    refusedHealthIncreases.erase(it);
+  }
+  blockedHitGuards.erase(actorId);
+  unblockedPoisonUntil.erase(actorId);
+  wardChannels.erase(actorId);
+  restorationChannels.erase(actorId);
 }
 
 // A lower health reported inside the guard is the blocked hit's poison, so the server keeps its value for up to that poison's damage
