@@ -12,8 +12,9 @@ import { AfterlifeSystem, REALMS, fallenLabel, fallenOf, livingCount, profileMax
 import { ExecutionSystem } from "./executionSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
-import { addItemTo, chainMpHook, guardMpHook, onlineActors, userOf } from "./actorUtil";
+import { addItemTo, chainMpHook, guardMpHook, isBleedingOut, isPlayerActor, MpGuardVerdict, onlineActors, userOf } from "./actorUtil";
 import { onlineSnapshot } from "./onlineSnapshot";
+import { after } from "./timers";
 import { adminAudit } from "./discordAlerts";
 import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
@@ -1274,10 +1275,29 @@ export class AdminSystem implements System {
     }
   }
 
-  // C++ fires onHitDamageAttempt before applying weapon and spell damage; returning false refuses it
+  // C++ fires onHitDamageAttempt before applying weapon and spell damage; god and ghost targets refuse it, smite and heal on hit replace a damaging one
   private installHitRefusalHook(mp: Mp): void {
-    guardMpHook(mp, "onHitDamageAttempt", (_aggressorId: number, targetId: number) =>
-      this.hasMode(mp, targetId, "god") || this.hasMode(mp, targetId, "ghost") ? false : undefined);
+    guardMpHook(mp, "onHitDamageAttempt", (aggressorId: number, targetId: number, _sourceId: number, damage: number): MpGuardVerdict => {
+      const target = this.modesOf(mp, targetId);
+      if (target?.god || target?.ghost) return false;
+      if (!(damage > 0)) return;
+      const aggressor = this.modesOf(mp, aggressorId);
+      // BleedoutSystem kills a smitten player and stands a downed one up on a heal
+      if (aggressor?.smite) return isPlayerActor(mp, targetId) ? undefined : () => this.setHealthSoon(mp, targetId, 0);
+      if (!aggressor?.healhit || isBleedingOut(mp, targetId)) return;
+      this.setHealthSoon(mp, targetId, 1);
+      return false;
+    });
+  }
+
+  // Deferred so the health write runs outside the native hit call stack
+  private setHealthSoon(mp: Mp, actorId: number, health: number): void {
+    after(50, () => {
+      try {
+        const cur = mp.get(actorId, "percentages") ?? { health: 1, magicka: 1, stamina: 1 };
+        mp.set(actorId, "percentages", { health, magicka: cur.magicka, stamina: cur.stamina });
+      } catch { /* form gone */ }
+    });
   }
 
   private installRespawnHook(mp: Mp): void {
@@ -1302,9 +1322,13 @@ export class AdminSystem implements System {
   }
 
   hasMode(mp: Mp, actorId: number, mode: string): boolean {
-    if (this.modesByProfile.size === 0) return false;
+    return !!this.modesOf(mp, actorId)?.[mode];
+  }
+
+  private modesOf(mp: Mp, actorId: number): Record<string, boolean> | undefined {
+    if (this.modesByProfile.size === 0) return undefined;
     const profileId = this.profileOf(mp, actorId);
-    return profileId > 0 && !!this.modesByProfile.get(profileId)?.[mode];
+    return profileId > 0 ? this.modesByProfile.get(profileId) : undefined;
   }
 
   private banViaBackend(

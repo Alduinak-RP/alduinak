@@ -235,6 +235,16 @@ through, a player's hit stays fully blocked`, and for each blocked hit on a play
 npc <npc> with <weapon>, <landed> of <unblocked> damage lands (npcBlockedDamageShare <share>)` or `OnWeaponHit -
 <player> blocked player|npc <aggressor> with <weapon>, fully blocked` (another player, or any NPC when the share is 0).
 
+## Admin modes
+
+The admin hit modes live in `onHitDamageAttempt` (`skymp5-server/ts/systems/adminSystem.ts`, the hit-refusal hook),
+which reads AdminSystem's per-profile modes from memory, plus the two actors' profile ids once any admin has used a
+mode since the restart. God and Ghost refuse every hit on that admin, paralysis included. A damaging hit by an admin in Smite kills: a player
+outright through BleedoutSystem (never downed), an NPC once the hit has landed (its health set to 0 50 ms later). A
+damaging hit by an admin in Heal on Hit is refused and the target's health set to full 50 ms later; a downed player
+is refused and stood up at full health by BleedoutSystem instead. A fully blocked hit, which deals no damage, does
+nothing under Smite to an NPC, nor under Heal on Hit to anyone but a downed player.
+
 ## Crit notice, /armor and the pvp.log columns (rebalance)
 
 Three readouts show players and staff what the rebalance formula and durability did. Without
@@ -255,9 +265,9 @@ treated as before.
 **Crit notice** (`60_admin_modes.js`). A hit with `critical` true sends the aggressor `Critical hit! <damage>
 damage.` and the target `You took a critical hit: <damage> damage.`, each only to a player, so a player's crit on
 an NPC and a humanoid NPC's crit on a player are announced too. The damage is what landed, after DT and the cap.
-A hit that an admin mode replaced (god, smite, heal) is not announced. `combatCritNotice: false` in
-`server-settings.json` keeps the notices off (default true); the gamemode reads it when it loads. The client has
-no sound packet, so the notice is text in the System tab only.
+A Smite hit is not announced, and God, Ghost and Heal on Hit hits never land (see Admin modes).
+`combatCritNotice: false` in `server-settings.json` keeps the notices off (default true); the gamemode reads it when
+it loads. The client has no sound packet, so the notice is text in the System tab only.
 
 **pvp.log.** A player's hit on a player is still one line, `<aggressor> hit <target> for <damage> (source
 <weapon or spell id>)`. With the rebalance on and the new arguments present the line ends with five columns:
