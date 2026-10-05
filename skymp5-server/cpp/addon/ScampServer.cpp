@@ -553,6 +553,12 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     ReadAuthorityBound(serverSettings, "spellHitWindow",
                        "enforceSpellHitWindow",
                        partOne->worldState.spellHitWindow);
+    ReadAuthorityBound(serverSettings, "maxAppearanceNameLength",
+                       "enforceAppearanceLimits",
+                       partOne->worldState.appearanceNameLength);
+    ReadAuthorityBound(serverSettings, "maxAppearanceTints",
+                       "enforceAppearanceLimits",
+                       partOne->worldState.appearanceTints);
 
     partOne->worldState.isPapyrusHotReloadEnabled =
       serverSettings.count("isPapyrusHotReloadEnabled") != 0 &&

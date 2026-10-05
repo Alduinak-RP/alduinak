@@ -1321,6 +1321,8 @@ native server at boot; it logs `<limit> is <n> and <switch> is <true|false>: ...
 | `meleeSlack` | `enforceMeleeReach` | `400` | Units a player's melee hit (fists, any weapon but a staff, a bow bash) may land beyond its reach, measured between the two origins. The reach is the weapon's reach times `fCombatDistance`, or the race's unarmed reach for fists; the slack covers body size and movement lag. Logs `ActionListener::OnHit - <attacker> hits <target> with <weapon> from <n> units, beyond its reach <r> plus meleeSlack <slack>, logged only\|refused`. Hosted NPCs are never checked, because creatures (giants, mammoths, dragons) hit from far-off origins. Large targets have far origins too. |
 | `maxShotDistance` | `enforceShotDistance` | `8192` | Units from the shooter, a player or a hosted NPC, to the target of a bow or crossbow hit (not a bash). Logs `ActionListener::OnHit - <shooter> shoots <target> with <weapon> from <n> units, farther than maxShotDistance <max>, logged only\|refused`. Other hits stay bounded by the fixed 4096 units. |
 | `spellHitWindow` | `enforceSpellHitWindow` | `10` | Seconds a spell hit may land after the longest effect duration of the attacker's last cast or keep-alive of that spell, or of a cloak or hazard spell that grants it (at least the 8 s keep-alive timeout). Players and hosted NPCs are checked. Logs `ActionListener::OnHit - <attacker> hits <target> with spell <spell> without a cast of it or of a spell that grants it within its longest effect plus spellHitWindow <s> s, logged only\|refused`. Runes triggered long after their cast and creature breath or spit attacks that send no cast can fall outside it. Separately, a second hit by the same attacker on the same target with the same spell within 90 ms is always dropped; the client sends at most one per 100 ms. |
+| `maxAppearanceNameLength` | `enforceAppearanceLimits` | `64` | Characters of the name in an appearance, from the race menu or a server write (character creation, `/mask`, polymorph, a body). The same switch covers `maxAppearanceTints` and three record checks: every head part is an HDPT, the face texture set is 0 or a TXST, and the weight lies in 0-100. Logs `MpActor::SetAppearanceAndBroadcast - appearance of <actor>: <problems>, logged only\|refused`, one line per write (writes are rare and the race menu path is gated). A race that is not a RACE is always refused, with no switch; any RACE passes, creature races included, because polymorph needs them. Head parts from a client-side cosmetic plugin the server does not load fail the record check. |
+| `maxAppearanceTints` | `enforceAppearanceLimits` | `128` | Tint layers in an appearance, logged and refused like `maxAppearanceNameLength`. |
 
 ```json5
 {
@@ -1334,7 +1336,10 @@ native server at boot; it logs `<limit> is <n> and <switch> is <true|false>: ...
   "maxShotDistance": 8192,
   "enforceShotDistance": false,
   "spellHitWindow": 10,
-  "enforceSpellHitWindow": false
+  "enforceSpellHitWindow": false,
+  "maxAppearanceNameLength": 64,
+  "maxAppearanceTints": 128,
+  "enforceAppearanceLimits": false
   // ...
 }
 ```

@@ -43,6 +43,8 @@
 #include "ChangeValuesMessage.h"
 #include "CustomPacketMessage.h"
 #include "TeleportMessage.h"
+#include "UpdateAppearanceMessage.h"
+#include <fmt/ranges.h>
 #include "UpdateAnimationMessage.h"
 #include "UpdateEquipmentMessage.h"
 #include <nlohmann/json.hpp>
@@ -351,6 +353,101 @@ void MpActor::SetAppearance(const Appearance* newAppearance)
     else
       changeForm.appearanceDump.clear();
   });
+}
+
+namespace {
+// Keeps a server-made look behind the custom packets of the same tick (the polymorph packet before its creature race)
+constexpr int kChannelAppearance = 2;
+
+size_t CountCodePoints(const std::string& text)
+{
+  return std::count_if(text.begin(), text.end(), [](char c) {
+    return (static_cast<unsigned char>(c) & 0xC0) != 0x80;
+  });
+}
+
+// What the appearance limits object to, empty for a look that passes them
+std::vector<std::string> FindAppearanceProblems(WorldState& worldState,
+                                                const Appearance& appearance)
+{
+  auto& browser = worldState.GetEspm().GetBrowser();
+  const auto isType = [&](uint32_t formId, const char* type) {
+    const auto lookup = browser.LookupById(formId);
+    return lookup.rec && lookup.rec->GetType() == type;
+  };
+
+  std::vector<std::string> problems;
+  for (uint32_t headpartId : appearance.headpartIds) {
+    if (!isType(headpartId, "HDPT")) {
+      problems.push_back(
+        fmt::format("head part {:x} is not an HDPT", headpartId));
+    }
+  }
+  if (appearance.headTextureSetId != 0 &&
+      !isType(appearance.headTextureSetId, "TXST")) {
+    problems.push_back(fmt::format("face texture {:x} is not a TXST",
+                                   appearance.headTextureSetId));
+  }
+  if (!(appearance.weight >= 0.f && appearance.weight <= 100.f)) {
+    problems.push_back(
+      fmt::format("weight {} is outside 0-100", appearance.weight));
+  }
+  const size_t nameLength = CountCodePoints(appearance.name);
+  if (nameLength > worldState.appearanceNameLength.max) {
+    problems.push_back(
+      fmt::format("name of {} characters is over maxAppearanceNameLength {}",
+                  nameLength, worldState.appearanceNameLength.max));
+  }
+  if (appearance.tints.size() > worldState.appearanceTints.max) {
+    problems.push_back(fmt::format("{} tints are over maxAppearanceTints {}",
+                                   appearance.tints.size(),
+                                   worldState.appearanceTints.max));
+  }
+  return problems;
+}
+}
+
+bool MpActor::SetAppearanceAndBroadcast(const Appearance* newAppearance,
+                                        bool deferred)
+{
+  WorldState* worldState = GetParent();
+  if (newAppearance && worldState && worldState->HasEspm()) {
+    const auto raceLookup =
+      worldState->GetEspm().GetBrowser().LookupById(newAppearance->raceId);
+    if (!raceLookup.rec || !(raceLookup.rec->GetType() == espm::RACE::kType)) {
+      spdlog::warn("MpActor::SetAppearanceAndBroadcast - appearance of {:x} "
+                   "refused, race {:x} is not a RACE",
+                   GetFormId(), newAppearance->raceId);
+      return false;
+    }
+    const auto problems = FindAppearanceProblems(*worldState, *newAppearance);
+    const bool enforce = worldState->appearanceNameLength.enforce;
+    if (!problems.empty()) {
+      spdlog::warn("MpActor::SetAppearanceAndBroadcast - appearance of {:x}: "
+                   "{}, {}",
+                   GetFormId(), fmt::join(problems, "; "),
+                   enforce ? "refused" : "logged only");
+      if (enforce) {
+        return false;
+      }
+    }
+  }
+
+  SetAppearance(newAppearance);
+
+  UpdateAppearanceMessage message;
+  message.idx = GetIdx();
+  if (newAppearance) {
+    message.data = *newAppearance;
+  }
+  for (auto listener : GetActorListeners()) {
+    if (deferred) {
+      listener->SendToUserDeferred(message, true, kChannelAppearance, false);
+    } else {
+      listener->SendToUser(message, true);
+    }
+  }
+  return true;
 }
 
 void MpActor::SetEquipment(const Equipment& newEquipment)

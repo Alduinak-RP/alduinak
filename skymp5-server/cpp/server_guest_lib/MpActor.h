@@ -76,6 +76,9 @@ public:
 
   void SetRaceMenuOpen(bool isOpen);
   void SetAppearance(const Appearance* newAppearance);
+  // Stores the look and sends it to every listener, at once or on the deferred appearance channel; false when its race is not a RACE or an enforced limit refuses it
+  bool SetAppearanceAndBroadcast(const Appearance* newAppearance,
+                                 bool deferred);
   void SetEquipment(const Equipment& newEquipment);
   // One change form edit for both, then the inventory goes to the owner
   void SetInventoryAndEquipment(const Inventory& newInventory,

@@ -754,12 +754,13 @@ void ActionListener::OnUpdateAppearance(const RawMessageData& rawMsgData,
     return;
   }
 
-  const bool isAllowed = actor->IsRaceMenuOpen();
+  bool isAllowed = actor->IsRaceMenuOpen();
 
   if (isAllowed) {
     actor->SetRaceMenuOpen(false);
-    actor->SetAppearance(&msg.data.value());
-    SendToNeighbours(msg.idx, rawMsgData, true);
+    isAllowed = actor->SetAppearanceAndBroadcast(&msg.data.value(), false);
+  }
+  if (isAllowed) {
     // The race menu's race switch brought the new race's spells to the client
     actor->SendLearnedSpells();
   }

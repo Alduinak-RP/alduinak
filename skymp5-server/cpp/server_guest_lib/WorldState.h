@@ -294,6 +294,10 @@ public:
   AuthorityBound shotDistance{ 8192.f };
   // Seconds a spell hit may land after the longest effect of the aggressor's last cast of it, or of a spell that grants it
   AuthorityBound spellHitWindow{ 10.f };
+  // Characters of an appearance name; its enforce switch covers every appearance limit
+  AuthorityBound appearanceNameLength{ 64.f };
+  // Tint layers of an appearance
+  AuthorityBound appearanceTints{ 128.f };
 
   // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
   std::shared_ptr<ItemRowResolver> itemRowResolver;

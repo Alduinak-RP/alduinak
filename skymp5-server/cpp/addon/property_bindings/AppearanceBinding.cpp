@@ -19,30 +19,13 @@ Napi::Value AppearanceBinding::Get(Napi::Env env, ScampServer& scampServer,
 void AppearanceBinding::Set(Napi::Env env, ScampServer& scampServer,
                             uint32_t formId, Napi::Value newValue)
 {
-  // TODO: Validation
   auto& partOne = scampServer.GetPartOne();
   auto& actor = partOne->worldState.GetFormAt<MpActor>(formId);
+  std::optional<Appearance> appearance;
   if (newValue.IsObject()) {
-    auto appearanceDump = NapiHelper::Stringify(env, newValue);
-    nlohmann::json j = nlohmann::json::parse(appearanceDump);
-    auto appearance = Appearance::FromJson(j);
-    actor.SetAppearance(&appearance);
-  } else {
-    actor.SetAppearance(nullptr);
+    appearance = Appearance::FromJson(
+      nlohmann::json::parse(NapiHelper::Stringify(env, newValue)));
   }
-
-  constexpr int kChannelAppearance = 2;
-
-  auto appearance = actor.GetAppearance();
-
-  UpdateAppearanceMessage message;
-  message.data =
-    appearance ? std::optional<Appearance>(*appearance) : std::nullopt;
-  message.idx = actor.GetIdx();
-
-  for (auto listener : actor.GetActorListeners()) {
-    // TODO: change to SendToUser, probably was deferred only for ability to
-    // send text packets
-    listener->SendToUserDeferred(message, true, kChannelAppearance, false);
-  }
+  // Deferred so a custom packet sent in the same tick arrives first
+  actor.SetAppearanceAndBroadcast(appearance ? &*appearance : nullptr, true);
 }
