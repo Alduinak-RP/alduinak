@@ -40,9 +40,13 @@ export class WorldView extends ClientListener {
   }
 
   destroy() {
-    this.state.formViews.resize(0);
-    this.state.cloneFormViews.resize(0); // Recenrly added, not tested if it's needed
+    this.resetFormViews();
     this.state = this.makeEmptyState();
+  }
+
+  resetFormViews() {
+    this.state.formViews.resize(0);
+    this.state.cloneFormViews.resize(0);
   }
 
   getFormViews() {
@@ -79,8 +83,7 @@ export class WorldView extends ClientListener {
   private onPlayerWorldOrCellChanged(e: PlayerWorldOrCellChangedEvent) {
     if (e.previous) {
       logTrace(this, 'Reset all form views');
-      this.state.formViews.resize(0);
-      this.state.cloneFormViews.resize(0);
+      this.resetFormViews();
     }
     this.controller.emitter.emit("playerWorldOrCellChanged", e);
   }

@@ -44,6 +44,7 @@ export class SendInputsService extends ClientListener {
         this.controller.on("equip", (e) => this.onEquip(e));
         this.controller.on("unequip", (e) => this.onUnequip(e));
         this.controller.on("loadGame", () => this.onLoadGame());
+        this.controller.emitter.on("connectionAccepted", () => this.lastSendMovementMoment.clear());
     }
 
     private onUpdate() {

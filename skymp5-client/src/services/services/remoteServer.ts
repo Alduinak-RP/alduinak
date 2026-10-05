@@ -30,6 +30,8 @@ import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
 import { describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
+import { FormView } from '../../view/formView';
+import { resetHostAttempts } from '../../view/hostAttempts';
 import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
 import { MasteryService } from './masteryService';
@@ -705,7 +707,7 @@ export class RemoteServer extends ClientListener {
 
   private onTeleportMessage(event: ConnectionMessage<TeleportMessage> | ConnectionMessage<TeleportMessage2>): void {
     const msg = event.message;
-    once('update', () => {
+    this.onceInSession(() => {
       const id = ("idx" in msg && typeof msg.idx === "number") ? this.getIdManager().getId(msg.idx) : this.getMyActorIndex();
       const refr = id === this.getMyActorIndex() ? Game.getPlayer() : getObjectReference(id);
       logTrace(this,
@@ -1513,6 +1515,16 @@ export class RemoteServer extends ClientListener {
     this.worldModel.playerCharacterRefrId = 0;
     this.playerTeleport = undefined;
     this.resyncing = false;
+    // Views are indexed by these ids, so a new id must never reach an old view
+    storage['idManager'] = new IdManager();
+    getViewFromStorage()?.resetFormViews();
+    storage['hosted'] = [];
+    resetHostAttempts();
+    pluginRefProps.clear();
+    pluginRefPose.clear();
+    this.cloneCastWatch.clear();
+    this.cloneCastStoppedAt.clear();
+    FormView.speakingUntil.clear();
 
     logTrace(this, "Handle connection accepted");
   }
@@ -1520,7 +1532,7 @@ export class RemoteServer extends ClientListener {
   private onChangeValuesMessage(event: ConnectionMessage<ChangeValuesMessage>): void {
     const msg = event.message;
 
-    once('update', () => {
+    this.onceInSession(() => {
       const id = this.getIdManager().getId(msg.idx);
       const isMe = id === this.getMyActorIndex();
       const refr = isMe ? Game.getPlayer() : getObjectReference(id);
@@ -1796,6 +1808,14 @@ export class RemoteServer extends ClientListener {
       storage["idManager"] = new IdManager();
     }
     return storage["idManager"] as IdManager;
+  }
+
+  // Across a reconnect an unknown idx and the unset own index both read -1, so a deferred packet would land on the player
+  private onceInSession(callback: () => void): void {
+    const ids = this.getIdManager();
+    once('update', () => {
+      if (ids === this.getIdManager()) callback();
+    });
   }
 
   private onceLoad(

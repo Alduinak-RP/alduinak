@@ -15,3 +15,8 @@ export const nextHostAttempt = (): number | undefined => {
 };
 
 export const lastTryHost: Record<number, number> = {};
+
+export const resetHostAttempts = (): void => {
+  storage["hostAttempts"] = [];
+  Object.keys(lastTryHost).forEach((remoteId) => delete lastTryHost[Number(remoteId)]);
+};
