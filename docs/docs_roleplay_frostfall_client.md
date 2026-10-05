@@ -121,10 +121,14 @@ line to `skyrim-platform.log`.
 
 - **Journal (Esc and J)**: opens on the System page only. The service calls
   `_root.QuestJournalFader.Menu_mc.ShiftTab` to leave the page the engine
-  restored (so that page's bottom bar listeners end) and then
-  `RestoreSavedSettings(true, true)`, the engine's own tabs-disabled mode, in
-  which `ShiftTab` and `onTabClick` do nothing and the saved tab reads as the
-  last one. `QuestsTab`, `StatsTab`, `TabButtonHelp` and the pages behind
+  restored (so that page's bottom bar listeners end) and, once `iCurrentTab`
+  reads the System tab, sets `bTabsDisabled`, `QuestsTab.disabled` and
+  `StatsTab.disabled`, the members `RestoreSavedSettings` sets for the
+  engine's own tabs-disabled mode, in which `ShiftTab` and `onTabClick` do
+  nothing. The members are written one by one because SkyrimPlatform takes no
+  array argument: the `Ui.invokeBoolA(..., [true, true])` call of the first
+  version threw on every pass, and the journal was left as it was
+  (`Journal Menu left as it is: stays on tab 2`). `QuestsTab`, `StatsTab`, `TabButtonHelp` and the pages behind
   the two tabs (`QuestsFader`, `StatsFader`) are hidden and `SystemTab` moves
   to the middle slot on the first pass that finds `SystemTab`, which runs in
   the `menuOpen` task itself, before the queued invokes land; so neither the

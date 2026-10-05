@@ -205,16 +205,21 @@ export class VanillaMenuService extends ClientListener {
       this.centreSystemTab();
     }
     const tab = ui.getInt(Menu.Journal, journalAt("iCurrentTab"));
-    if (!ui.getBool(Menu.Journal, journalAt("bTabsDisabled")) || tab !== SYSTEM_TAB) {
+    const tabsDisabled = ui.getBool(Menu.Journal, journalAt("bTabsDisabled"));
+    if (tab !== SYSTEM_TAB) {
       if (++j.switches > MAX_JOURNAL_SWITCHES) return this.failJournal(j, `stays on tab ${tab}`);
-      // ShiftTab ends the open page first, so its bottom bar listeners do not follow onto System
-      if (tab !== SYSTEM_TAB) ui.invokeInt(Menu.Journal, journalAt("ShiftTab"), SYSTEM_TAB - tab);
-      // With tabs disabled the saved tab argument is ignored and the last tab is used
-      ui.invokeBoolA(Menu.Journal, journalAt("RestoreSavedSettings"), [true, true]);
+      // ShiftTab does nothing while tabs are disabled; it ends the open page first, so its bottom bar listeners do not follow onto System
+      if (tabsDisabled) ui.setBool(Menu.Journal, journalAt("bTabsDisabled"), false);
+      ui.invokeInt(Menu.Journal, journalAt("ShiftTab"), SYSTEM_TAB - tab);
       // The System page may add entries when it starts, so its list stays unseen until they are trimmed
       this.setSystemListShown(j, false);
       j.settle = INVOKE_SETTLE_UPDATES;
       return;
+    }
+    if (!tabsDisabled) {
+      // The members RestoreSavedSettings sets for disabled tabs, written one by one: SkyrimPlatform takes no array argument, so invokeBoolA throws
+      ui.setBool(Menu.Journal, journalAt("bTabsDisabled"), true);
+      for (const tabClip of ["QuestsTab", "StatsTab"]) ui.setBool(Menu.Journal, journalAt(`${tabClip}.disabled`), true);
     }
     if (!j.onSystem) {
       j.onSystem = true;
