@@ -12,8 +12,12 @@ export class WorldCleanerService extends ClientListener {
   }
 
   modWcProtection(actorId: number, mod: number): void {
-    const currentProtection = this.protection.get(actorId);
-    this.protection.set(actorId, currentProtection ? currentProtection + mod : mod);
+    const protection = (this.protection.get(actorId) || 0) + mod;
+    if (protection > 0) {
+      this.protection.set(actorId, protection);
+    } else {
+      this.protection.delete(actorId);
+    }
   }
 
   getWcProtection(actorId: number): number {

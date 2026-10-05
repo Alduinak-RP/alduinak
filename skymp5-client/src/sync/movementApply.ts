@@ -222,6 +222,10 @@ const getGroundSample = (refrId: number, m: Movement): GroundSample => {
   return sample;
 };
 
+export const forgetGroundSample = (localId: number): void => {
+  groundSamples.delete(localId);
+};
+
 const translateTo = (refr: ObjectReference, m: Movement) => {
   let time = 0.2;
   if (m.isInJumpState || m.runMode !== "Standing") {

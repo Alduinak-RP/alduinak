@@ -6,7 +6,7 @@ import { Entry } from "../sync/inventory";
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
-import { applyMovement, isCarrierCloneId } from "../sync/movementApply";
+import { applyMovement, forgetGroundSample, isCarrierCloneId } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseCloneOnEvent, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
 import { Movement, NiPoint3 } from "../sync/movement";
@@ -329,6 +329,7 @@ export class FormView {
     this.loaded3DMoment = 0;
     this.dealtWithRef = false;
     const refrId = this.refrId;
+    forgetGroundSample(refrId);
     this.mountState = makeMountState();
     // Before the id can go to another copy
     releaseHold(this.carriedState.hold);

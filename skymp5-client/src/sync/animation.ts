@@ -36,7 +36,53 @@ export const SHEATHE_MAX_POLLS = 15;
 // The sheathe animation still blends out after the weapon state reads sheathed
 export const SHEATHE_SETTLE_S = 0.3;
 
-const allowedIdles = new Array<[number, string]>();
+interface PendingIdle {
+  count: number;
+  expiresAt: number;
+}
+
+// Idles the sync sent to a copy, by local id and event name; a send the graph never reports lapses
+const allowedIdles = new Map<number, Map<string, PendingIdle>>();
+const ALLOWED_IDLE_TTL_MS = 5000;
+let nextAllowedIdleSweep = 0;
+
+const allowIdle = (refrId: number, animEventName: string): void => {
+  const now = Date.now();
+  if (now >= nextAllowedIdleSweep) {
+    nextAllowedIdleSweep = now + ALLOWED_IDLE_TTL_MS;
+    allowedIdles.forEach((idles, id) => {
+      idles.forEach((idle, name) => idle.expiresAt <= now && idles.delete(name));
+      if (idles.size === 0) allowedIdles.delete(id);
+    });
+  }
+  let idles = allowedIdles.get(refrId);
+  if (!idles) {
+    idles = new Map();
+    allowedIdles.set(refrId, idles);
+  }
+  const idle = idles.get(animEventName);
+  if (idle && idle.expiresAt > now) {
+    idle.count++;
+    idle.expiresAt = now + ALLOWED_IDLE_TTL_MS;
+  } else {
+    idles.set(animEventName, { count: 1, expiresAt: now + ALLOWED_IDLE_TTL_MS });
+  }
+};
+
+const consumeAllowedIdle = (refrId: number, animEventName: string): boolean => {
+  const idles = allowedIdles.get(refrId);
+  const idle = idles?.get(animEventName);
+  if (!idles || !idle) {
+    return false;
+  }
+  const allowed = idle.expiresAt > Date.now();
+  if (!allowed || --idle.count === 0) {
+    idles.delete(animEventName);
+    if (idles.size === 0) allowedIdles.delete(refrId);
+  }
+  return allowed;
+};
+
 const refsWithDefaultAnimsDisabled = new Set<number>();
 const allowedAnims = new Set<string>();
 // A copy's graph starts with staggerMagnitude 0, which would make a relayed stagger invisible
@@ -277,7 +323,7 @@ const sendToGraph = (refr: ObjectReference, anim: Animation): void => {
   const animEventNameLowerCase = anim.animEventName.toLowerCase();
 
   if (isIdle(anim.animEventName)) {
-    allowedIdles.push([refr.getFormID(), anim.animEventName]);
+    allowIdle(refr.getFormID(), anim.animEventName);
   }
 
   if (refsWithDefaultAnimsDisabled.has(refr.getFormID())) {
@@ -535,11 +581,8 @@ export const setupHooks = (): void => {
       if (isRiderClone(ctx.selfId)) {
         return;
       }
-      if (isIdle(ctx.animEventName)) {
-        const i = allowedIdles.findIndex((pair) => {
-          return pair[0] === ctx.selfId && pair[1] === ctx.animEventName;
-        });
-        i === -1 ? (ctx.animEventName = "") : allowedIdles.splice(i, 1);
+      if (isIdle(ctx.animEventName) && !consumeAllowedIdle(ctx.selfId, ctx.animEventName)) {
+        ctx.animEventName = "";
       }
     },
     leave: () => { },
