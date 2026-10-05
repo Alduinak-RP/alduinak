@@ -278,6 +278,9 @@ public:
   // Magic resistance abilities reduce hostile spell damage inside the rebalance formula
   bool nativeMagicResistance = false;
 
+  // The rebalance formula's per-hit lines log at info instead of debug
+  bool combatTrace = false;
+
   // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
   std::shared_ptr<ItemRowResolver> itemRowResolver;
 

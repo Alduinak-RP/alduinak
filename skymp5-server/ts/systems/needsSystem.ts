@@ -300,6 +300,7 @@ export class NeedsSystem implements System {
     this.survivalModeFlag = all["needsSurvivalModeFlag"] !== false;
     this.alcoholDiscount = clamp(num("needsAlcoholDiscount", DEFAULT_ALCOHOL_DISCOUNT), 0, 1);
     this.alcoholMs = num("needsAlcoholMinutes", DEFAULT_ALCOHOL_MINUTES) * 60000;
+    this.combatTrace = all["combatTrace"] === true;
     this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05),
       all["blockStaggerWithoutStamina"] !== false ? clamp(num("blockStaggerMagnitude", 0.5), 0.1, 1) : 0,
       blockWeightRule(all["alduinakDamageFormulaSettings"], (text) =>
@@ -467,7 +468,7 @@ export class NeedsSystem implements System {
           const weight = byWeight ? armorWeight(targetId) : null;
           if (byWeight && weight !== null && weight > 0) {
             drain = base * blockWeightMult(byWeight, weight);
-            this.log(`[needs] ${hex(targetId)} blocked in ${share(weight)} armor weight: stamina -${tenth(drain)}% (${tenth(base)}% x${share(drain / base)})`);
+            if (this.combatTrace) this.log(`[needs] ${hex(targetId)} blocked in ${share(weight)} armor weight: stamina -${tenth(drain)}% (${tenth(base)}% x${share(drain / base)})`);
           }
           const short = Number(p.stamina) < drain;
           mp.set(targetId, "percentages", { ...p, stamina: Math.max(0, Number(p.stamina) - drain) });
@@ -1089,4 +1090,6 @@ export class NeedsSystem implements System {
   private nextTickAt = 0;
   // Player actor id -> its user and worn armor weight for block stamina, null when the stats carry none
   private blockWeights = new Map<number, { userId: number; weight: number | null }>();
+  // combatTrace: per-block stamina lines
+  private combatTrace = false;
 }

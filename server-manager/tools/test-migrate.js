@@ -62,14 +62,14 @@ function testSettingsMerge() {
     name: 'Test Server', port: 7787, maxPlayers: 20, masterKey: 't', dataDir: 'C:\\GOG Games\\Skyrim Anniversary Edition - Test\\Data',
     loadOrder: ['C:/GOG Games/Skyrim Anniversary Edition - Test/Data/Skyrim.esm', 'c:/gog games/skyrim anniversary edition - test/Data/New.esp', 'D:/elsewhere/Other.esp'],
     archives: ['C:/GOG Games/Skyrim Anniversary Edition - Test/Data/Skyrim - Misc.bsa', 'C:/GOG Games/Skyrim Anniversary Edition - Test/Data/New.bsa'],
-    respawnSeconds: 45, reloot: { a: 1 }, newKey: [1, 2], access: { locked: false }, enableConsoleCommandsForAll: true, isPapyrusHotReloadEnabled: true, gamemodeHotReload: true, npcCorpseWatch: true,
+    respawnSeconds: 45, reloot: { a: 1 }, newKey: [1, 2], access: { locked: false }, enableConsoleCommandsForAll: true, isPapyrusHotReloadEnabled: true, gamemodeHotReload: true, npcCorpseWatch: true, combatTrace: true,
     alduinakDamageFormulaSettings: { enabled: true }, survivalEnabled: true, masterySlots: 3, healthRegenerationMultiplier: 0,
   }
   const logs = []
   const res = m.mergeSettings({ live, test, log: t => logs.push(t) })
   assert.deepEqual(res.added, ['newKey'])
   assert.deepEqual(res.changed, ['respawnSeconds'])
-  assert.deepEqual(res.kept, ['name', 'port', 'maxPlayers', 'masterKey', 'dataDir', 'access', 'enableConsoleCommandsForAll', 'isPapyrusHotReloadEnabled', 'gamemodeHotReload', 'npcCorpseWatch', 'alduinakDamageFormulaSettings', 'survivalEnabled', 'masterySlots', 'healthRegenerationMultiplier'])
+  assert.deepEqual(res.kept, ['name', 'port', 'maxPlayers', 'masterKey', 'dataDir', 'access', 'enableConsoleCommandsForAll', 'isPapyrusHotReloadEnabled', 'gamemodeHotReload', 'npcCorpseWatch', 'combatTrace', 'alduinakDamageFormulaSettings', 'survivalEnabled', 'masterySlots', 'healthRegenerationMultiplier'])
   const mg = res.merged
   assert.equal(mg.name, 'Alduinak')
   assert.equal(mg.port, 7777)
@@ -81,7 +81,7 @@ function testSettingsMerge() {
   assert.deepEqual(mg.newKey, [1, 2])
   assert.deepEqual(mg.reloot, { a: 1 })
   assert.deepEqual(mg.access, { locked: true })
-  assert.ok(!('enableConsoleCommandsForAll' in mg) && !('isPapyrusHotReloadEnabled' in mg) && !('gamemodeHotReload' in mg) && !('npcCorpseWatch' in mg), 'debug toggles never migrate')
+  assert.ok(!('enableConsoleCommandsForAll' in mg) && !('isPapyrusHotReloadEnabled' in mg) && !('gamemodeHotReload' in mg) && !('npcCorpseWatch' in mg) && !('combatTrace' in mg), 'debug toggles never migrate')
   assert.ok(!('alduinakDamageFormulaSettings' in mg) && !('survivalEnabled' in mg) && !('masterySlots' in mg), 'test-only feature switches never migrate')
   assert.equal(mg.healthRegenerationMultiplier, 1)
   assert.ok(logs.includes('kept survivalEnabled (protected)'))

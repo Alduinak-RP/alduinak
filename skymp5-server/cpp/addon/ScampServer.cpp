@@ -532,6 +532,21 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
                  "fully blocked",
                  partOne->worldState.npcBlockedDamageShare);
 
+    // combatTrace: the rebalance formula's per-hit lines log at info, the balance trace of the Test Server
+    if (auto it = serverSettings.find("combatTrace");
+        it != serverSettings.end()) {
+      if (it->is_boolean()) {
+        partOne->worldState.combatTrace = it->get<bool>();
+      } else {
+        spdlog::error("Unexpected value of combatTrace, should be true or "
+                      "false, the per-hit formula lines stay at debug");
+      }
+    }
+    logger->info("combatTrace is {}: the rebalance formula's per-hit lines "
+                 "log at {}",
+                 partOne->worldState.combatTrace,
+                 partOne->worldState.combatTrace ? "info" : "debug");
+
     partOne->worldState.isPapyrusHotReloadEnabled =
       serverSettings.count("isPapyrusHotReloadEnabled") != 0 &&
       serverSettings.at("isPapyrusHotReloadEnabled").get<bool>();

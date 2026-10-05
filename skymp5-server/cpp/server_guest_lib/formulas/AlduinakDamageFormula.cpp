@@ -32,6 +32,13 @@ bool IsPlayer(const MpActor& actor)
   return actor.GetProfileId() >= 0;
 }
 
+// The per-hit formula lines log at info only while combatTrace is on
+spdlog::level::level_enum TraceLevel(const WorldState* worldState)
+{
+  return worldState && worldState->combatTrace ? spdlog::level::info
+                                               : spdlog::level::debug;
+}
+
 // Temper step of a player's worn copy, never above the best copy of that base the player owns; NPC gear is plain
 int WornTemperStep(const MpActor& wearer, const Inventory::Entry& worn)
 {
@@ -374,28 +381,32 @@ float AlduinakDamageFormula::CalculateDamage(const MpActor& aggressor,
   }
   hit.damage = damage;
 
-  spdlog::info(
-    "AlduinakDamageFormula - {:x} hits {:x} with {:x} ({}{}{}{}, temper "
-    "{}):{}{}{}{}{} {} before DT, DT {} worn + {} natural -> {} effective, "
-    "speed x{}, {} unblocked, {} lands{}{}",
-    hit.aggressor, hit.target, hit.source, HitMath::AttackKindName(hit.kind),
-    hit.row.empty() ? "" : " ", hit.row,
-    ItemRows::IsMeleeType(hit.type)
-      ? std::string(" ") + ItemRows::WeaponTypeName(hit.type)
-      : std::string(),
-    hit.temperStep, hit.ignored ? " ignored" : "", hit.crit ? " crit" : "",
-    hit.power ? " power" : "", hit.sneak ? " sneak" : "",
-    hit.bash ? " bash" : "", hit.preDT, hit.wornDT, hit.naturalDT,
-    hit.effectiveDT, hit.speedFactor, hit.unblockedDamage, hit.damage,
-    hit.blocked ? fmt::format(" (blocked{}, share {})",
-                              hit.brokenBlocker ? " with a broken item" : "",
-                              hit.blockedShare)
-                : std::string(),
-    hit.conditionMult != 1.f
-      ? fmt::format(", the weapon{} deals x{} at its condition",
-                    hit.brokenWeapon ? " is broken and" : "",
-                    hit.conditionMult)
-      : std::string());
+  if (const auto level = TraceLevel(aggressor.GetParent());
+      spdlog::should_log(level)) {
+    spdlog::log(
+      level,
+      "AlduinakDamageFormula - {:x} hits {:x} with {:x} ({}{}{}{}, temper "
+      "{}):{}{}{}{}{} {} before DT, DT {} worn + {} natural -> {} effective, "
+      "speed x{}, {} unblocked, {} lands{}{}",
+      hit.aggressor, hit.target, hit.source,
+      HitMath::AttackKindName(hit.kind), hit.row.empty() ? "" : " ", hit.row,
+      ItemRows::IsMeleeType(hit.type)
+        ? std::string(" ") + ItemRows::WeaponTypeName(hit.type)
+        : std::string(),
+      hit.temperStep, hit.ignored ? " ignored" : "", hit.crit ? " crit" : "",
+      hit.power ? " power" : "", hit.sneak ? " sneak" : "",
+      hit.bash ? " bash" : "", hit.preDT, hit.wornDT, hit.naturalDT,
+      hit.effectiveDT, hit.speedFactor, hit.unblockedDamage, hit.damage,
+      hit.blocked ? fmt::format(" (blocked{}, share {})",
+                                hit.brokenBlocker ? " with a broken item" : "",
+                                hit.blockedShare)
+                  : std::string(),
+      hit.conditionMult != 1.f
+        ? fmt::format(", the weapon{} deals x{} at its condition",
+                      hit.brokenWeapon ? " is broken and" : "",
+                      hit.conditionMult)
+        : std::string());
+  }
 
   lastHit = std::move(hit);
   return damage;
@@ -428,7 +439,8 @@ float AlduinakDamageFormula::CalculateDamage(
   }
 
   if (hit.damage != hit.unresisted) {
-    spdlog::info(
+    spdlog::log(
+      TraceLevel(worldState),
       "AlduinakDamageFormula - spell {:x} of {:x} on {:x}: {} before "
       "resistances, {} after (magic resistance x{}{}), worn DT {} x {} "
       "takes {}, {} lands",

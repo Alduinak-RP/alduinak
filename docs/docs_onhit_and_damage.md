@@ -127,7 +127,7 @@ condition and the shield included); a creature's natural DT takes nothing from a
 `damageMultConditionalFormulaSettings` wrappers and the 45 cap still come last. `magic.dtShare: 0` leaves spells as
 the vanilla formula prices them. A spell hit that a resistance or the DT changed logs `AlduinakDamageFormula - spell
 <s> of <a> on <t>: <u> before resistances, <r> after (magic resistance x<m>), worn DT <dt> x <share> takes <n>, <d>
-lands`.
+lands` at debug level, at info with `combatTrace` on.
 
 Weapon poison:
 ```
@@ -147,7 +147,7 @@ r22's Bosmer 25 is gone); the vanilla Damage Stamina poisons name no
 resist value and land in full. Paralysis, rate drains (Damage Stamina Rate), weaknesses (PeakValueMod) and influence
 effects, dual effects whose two values are neither Health, Stamina nor Magicka, and any effect whose conditions fail,
 are only counted in the log line (`OnWeaponHit - <aggressor> poisons
-<target> with <alch>: ... effects ignored`). Applying a poison puts one use on the server's copy of the worn weapon at
+<target> with <alch>: ... effects ignored`, at debug level). Applying a poison puts one use on the server's copy of the worn weapon at
 once; with Concentrated Poison the engine puts two, and the client's report within 15 s raises the copy to two on the
 same credit (`poison up to 2 (perk)` in the crafted log).
 Each landed hit spends one use of the poison on the server's copy and sends the attacker a SetInventory, which their
@@ -231,7 +231,8 @@ blocks a whole spell hit.
 The server logs at boot `npcBlockedDamageShare is <share>: a player's block lets that share of an NPC's weapon hit
 through, a player's hit stays fully blocked`, and for each blocked hit on a player `OnWeaponHit - <player> blocked
 npc <npc> with <weapon>, <landed> of <unblocked> damage lands (npcBlockedDamageShare <share>)` or `OnWeaponHit -
-<player> blocked player|npc <aggressor> with <weapon>, fully blocked` (another player, or any NPC when the share is 0).
+<player> blocked player|npc <aggressor> with <weapon>, fully blocked` (another player, or any NPC when the share is 0),
+both at debug level.
 
 ## Admin modes
 

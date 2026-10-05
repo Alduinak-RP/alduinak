@@ -1611,10 +1611,10 @@ float CalculateCurrentHealthPercentage(const MpActor& actor, float damage,
     *outMaxHealth = maxHealth;
   }
   if (logScale && healthScale != 1.f && damage > 0.f) {
-    spdlog::info("CalculateCurrentHealthPercentage - {:x} takes {} damage "
-                 "against {} health ({} base x private.healthScale {})",
-                 actor.GetFormId(), damage, maxHealth, baseHealth,
-                 healthScale);
+    spdlog::debug("CalculateCurrentHealthPercentage - {:x} takes {} damage "
+                  "against {} health ({} base x private.healthScale {})",
+                  actor.GetFormId(), damage, maxHealth, baseHealth,
+                  healthScale);
   }
 
   const float damagePercentage = damage / maxHealth;
@@ -1883,8 +1883,8 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
     if (CanHitWithSpell(*combatEspmCache, *aggressor, hitData.source)) {
       OnSpellHit(aggressor, targetRef, hitData);
     } else {
-      spdlog::info("ActionListener::OnHit - {:x} cannot hit with spell {:x}",
-                   hitData.aggressor, hitData.source);
+      spdlog::debug("ActionListener::OnHit - {:x} cannot hit with spell {:x}",
+                    hitData.aggressor, hitData.source);
     }
     return;
   }
@@ -1967,9 +1967,9 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
       restorationChannels.erase(channelIt);
       ApplyRestorationChannelRemainder(caster->GetFormId(), channel);
     }
-    spdlog::info("ActionListener::OnSpellCast - {:x} interrupted spell {:x} "
-                 "(restoration channel erased: {})",
-                 caster->GetFormId(), spellCastData.spell, hadChannel);
+    spdlog::debug("ActionListener::OnSpellCast - {:x} interrupted spell {:x} "
+                  "(restoration channel erased: {})",
+                  caster->GetFormId(), spellCastData.spell, hadChannel);
     return;
   }
 
@@ -2037,8 +2037,8 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   caster->SendPapyrusEvent("OnSpellCast", args.data(), args.size());
 
   if (!spellCastData.keepAlive) {
-    spdlog::info("ActionListener::OnSpellCast - {:x} cast spell {:x}",
-                 caster->GetFormId(), spellCastData.spell);
+    spdlog::debug("ActionListener::OnSpellCast - {:x} cast spell {:x}",
+                  caster->GetFormId(), spellCastData.spell);
     FireGamemodeEvent(partOne.worldState, caster->GetFormId(), "onSpellCast",
                       nlohmann::json::array({ spellCastData.spell }));
   }
@@ -2330,10 +2330,10 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
   targetActorPtr->NetSetPercentages(targetActorValues, aggressor,
                                     kHealthAvFilter);
 
-  spdlog::info("OnSpellHit - Target {0:x} is hit by {1:x} spell on {2} "
-               "damage. By caster: {3:x})",
-               spellCastData.target, spellCastData.spell, damage,
-               spellCastData.caster);
+  spdlog::debug("OnSpellHit - Target {0:x} is hit by {1:x} spell on {2} "
+                "damage. By caster: {3:x})",
+                spellCastData.target, spellCastData.spell, damage,
+                spellCastData.caster);
 
   FireHitDamageEvent("onHitDamage", aggressor, targetActorPtr, hitData.source,
                      damage, false, eventDetails);
@@ -2417,8 +2417,8 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     : -1.f;
 
   if (isSplash) {
-    spdlog::info("Splash attack detected from aggressor {:x} to target {:x}",
-                 aggressor->GetFormId(), targetActor.GetFormId());
+    spdlog::debug("Splash attack detected from aggressor {:x} to target {:x}",
+                  aggressor->GetFormId(), targetActor.GetFormId());
 
     // Check if THIS specific target was hit recently
     auto lastHitSpecific = aggressor->GetLastHitTime(targetActor.GetFormId());
@@ -2599,36 +2599,36 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   const AlduinakDamageFormula::LastHit priced =
     rebalance ? rebalance->GetLastHit() : AlduinakDamageFormula::LastHit();
   if (rebalance && playerBlocked && damage > 0.f) {
-    spdlog::info("OnWeaponHit - {:x} blocked {} {:x} with {:x}, {} of {} "
-                 "damage lands (share {}, npcBlockedDamageShare {})",
-                 targetActor.GetFormId(), npcAggressor ? "npc" : "player",
-                 aggressor->GetFormId(), hitData.source, damage,
-                 priced.unblockedDamage, priced.blockedShare,
-                 partOne.worldState.npcBlockedDamageShare);
+    spdlog::debug("OnWeaponHit - {:x} blocked {} {:x} with {:x}, {} of {} "
+                  "damage lands (share {}, npcBlockedDamageShare {})",
+                  targetActor.GetFormId(), npcAggressor ? "npc" : "player",
+                  aggressor->GetFormId(), hitData.source, damage,
+                  priced.unblockedDamage, priced.blockedShare,
+                  partOne.worldState.npcBlockedDamageShare);
   } else if (blockedShare > 0.f && blockMult != 1.f) {
-    spdlog::info("OnWeaponHit - {:x} blocked npc {:x} with {:x}, {} of {} "
-                 "damage lands (npcBlockedDamageShare {}, share {} at block "
-                 "modifier x{})",
-                 targetActor.GetFormId(), aggressor->GetFormId(),
-                 hitData.source, damage * blockedShare, damage,
-                 partOne.worldState.npcBlockedDamageShare, blockedShare,
-                 blockMult);
+    spdlog::debug("OnWeaponHit - {:x} blocked npc {:x} with {:x}, {} of {} "
+                  "damage lands (npcBlockedDamageShare {}, share {} at block "
+                  "modifier x{})",
+                  targetActor.GetFormId(), aggressor->GetFormId(),
+                  hitData.source, damage * blockedShare, damage,
+                  partOne.worldState.npcBlockedDamageShare, blockedShare,
+                  blockMult);
     damage *= blockedShare;
   } else if (blockedShare > 0.f) {
-    spdlog::info("OnWeaponHit - {:x} blocked npc {:x} with {:x}, {} of {} "
-                 "damage lands (npcBlockedDamageShare {})",
-                 targetActor.GetFormId(), aggressor->GetFormId(),
-                 hitData.source, damage * blockedShare, damage, blockedShare);
+    spdlog::debug("OnWeaponHit - {:x} blocked npc {:x} with {:x}, {} of {} "
+                  "damage lands (npcBlockedDamageShare {})",
+                  targetActor.GetFormId(), aggressor->GetFormId(),
+                  hitData.source, damage * blockedShare, damage, blockedShare);
     damage *= blockedShare;
   } else if (playerBlocked && damage > 0.f) {
-    spdlog::info("OnWeaponHit - {:x} blocked {} {:x} with {:x}, {} damage "
-                 "lands through the block",
-                 targetActor.GetFormId(), npcAggressor ? "npc" : "player",
-                 aggressor->GetFormId(), hitData.source, damage);
+    spdlog::debug("OnWeaponHit - {:x} blocked {} {:x} with {:x}, {} damage "
+                  "lands through the block",
+                  targetActor.GetFormId(), npcAggressor ? "npc" : "player",
+                  aggressor->GetFormId(), hitData.source, damage);
   } else if (playerBlocked) {
-    spdlog::info("OnWeaponHit - {:x} blocked {} {:x} with {:x}, fully blocked",
-                 targetActor.GetFormId(), npcAggressor ? "npc" : "player",
-                 aggressor->GetFormId(), hitData.source);
+    spdlog::debug("OnWeaponHit - {:x} blocked {} {:x} with {:x}, fully blocked",
+                  targetActor.GetFormId(), npcAggressor ? "npc" : "player",
+                  aggressor->GetFormId(), hitData.source);
   }
   // A block stops the blade, not the poison on it; a bash never carries it
   const auto poisoned = hitData.isBashAttack
@@ -2708,19 +2708,19 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
     }
     const uint32_t usesLeft = ConsumePoisonCharge(*aggressor, *poisoned);
     if (rebalance) {
-      spdlog::info("OnWeaponHit - {:x} poisons {:x} with {:x}: {} health ({} "
-                   "before worn DT {}), {} stamina, {} magicka, {} effects "
-                   "ignored, {} uses left",
-                   aggressor->GetFormId(), targetActor.GetFormId(),
-                   *poisoned->poisonId, poison.health, poisonBeforeDT,
-                   priced.wornDT, poison.stamina, poison.magicka,
-                   poison.ignored, usesLeft);
+      spdlog::debug("OnWeaponHit - {:x} poisons {:x} with {:x}: {} health ({} "
+                    "before worn DT {}), {} stamina, {} magicka, {} effects "
+                    "ignored, {} uses left",
+                    aggressor->GetFormId(), targetActor.GetFormId(),
+                    *poisoned->poisonId, poison.health, poisonBeforeDT,
+                    priced.wornDT, poison.stamina, poison.magicka,
+                    poison.ignored, usesLeft);
     } else {
-      spdlog::info("OnWeaponHit - {:x} poisons {:x} with {:x}: {} health, {} "
-                   "stamina, {} magicka, {} effects ignored, {} uses left",
-                   aggressor->GetFormId(), targetActor.GetFormId(),
-                   *poisoned->poisonId, poison.health, poison.stamina,
-                   poison.magicka, poison.ignored, usesLeft);
+      spdlog::debug("OnWeaponHit - {:x} poisons {:x} with {:x}: {} health, {} "
+                    "stamina, {} magicka, {} effects ignored, {} uses left",
+                    aggressor->GetFormId(), targetActor.GetFormId(),
+                    *poisoned->poisonId, poison.health, poison.stamina,
+                    poison.magicka, poison.ignored, usesLeft);
     }
   } else if (poisoned) {
     // The attacker's engine spent the charge on the swing, so it is gone here too

@@ -408,8 +408,8 @@ tried again on the next block. It is still a share of max stamina, so a bigger s
 Without the block, with `enabled` false (durability alone does not count), or on a `scam_native.node` without
 `getCombatStats`, a block costs the base share as before. The server logs at boot `[needs] block stamina by armor
 weight: a block costs x (1 + 0.006 x worn armor weight, counted up to 115)`, or `[needs] block stamina by armor weight
-is off: this scam_native.node has no getCombatStats, a block costs its base share`, and for each weighted block
-`[needs] <blocker> blocked in <weight> armor weight: stamina -<cost>% (<base>% x<multiplier>)`.
+is off: this scam_native.node has no getCombatStats, a block costs its base share`, and, with `combatTrace` on, for
+each weighted block `[needs] <blocker> blocked in <weight> armor weight: stamina -<cost>% (<base>% x<multiplier>)`.
 
 The boot line only says the rule was read. A block that cannot be priced by weight costs the base share, and the
 server log says why, once per reason and server start:

@@ -1293,12 +1293,32 @@ after DT lands, and a player's hit on a blocking player still lands 0. Two keys 
 further, for a player's hit too: a blocker's `BlockMod` (`effectModifiers`) scales the blocked part, and a broken
 shield or parrying weapon lets the larger of this share and `durability.effect.brokenBlockPass` through. The line then
 reads `OnWeaponHit - <target> blocked npc|player <aggressor> with <weapon>, <landed> of <unblocked> damage lands
-(share <share>, npcBlockedDamageShare <n>)`.
+(share <share>, npcBlockedDamageShare <n>)`. These per-hit lines log at debug level, so `logLevel` `debug` shows them.
 
 ```json5
 {
   // ...
   "npcBlockedDamageShare": 0.2
+  // ...
+}
+```
+
+## combatTrace
+
+The balance trace. `true`: the rebalance formula logs at info level one line per priced weapon hit
+(`AlduinakDamageFormula - <aggressor> hits <target> with <weapon> (...): <n> before DT, DT ... lands ...`) and one per
+spell hit a resistance or the DT changed (`AlduinakDamageFormula - spell <s> of <a> on <t>: ...`), and NeedsSystem one
+line per block priced by armor weight (`[needs] <blocker> blocked in <weight> armor weight: ...`). `false` (default,
+also when unset): the formula lines log at debug level and the NeedsSystem line not at all. The other per-hit and
+per-cast lines (casts, spell hits, blocked hits, poisons, splash hits, `private.healthScale` damage and each
+durability write) always log at debug level; refusals and anomalies stay at info. Turn it on for the Test Server
+only; at 200 hits/s the trace is gigabytes of log a day. Protected: **Migrate settings** never copies it to live.
+Read by the native server and NeedsSystem at boot; the native logs `combatTrace is <true|false>: ...`.
+
+```json5
+{
+  // ...
+  "combatTrace": true
   // ...
 }
 ```

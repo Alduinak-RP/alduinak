@@ -68,10 +68,11 @@ const tick = () => new Promise((r) => setImmediate(r))
 const near = (actual, expected, what, eps = 1e-9) => assert.ok(Math.abs(actual - expected) < eps, `${what}: ${actual} != ${expected}`)
 
 // A NeedsSystem with only the block hook installed; warrior names the actors holding the profession
-const setup = ({ rule = null, native, stamina = 1, warrior = [], cost = 0.1, warriorCost = 0.05, stagger = 0.5 } = {}) => {
+const setup = ({ rule = null, native, stamina = 1, warrior = [], cost = 0.1, warriorCost = 0.05, stagger = 0.5, trace = true } = {}) => {
   const logs = []
   const mastery = { rankOf: (_ctx, id, p) => (p === 'warrior' && warrior.includes(id) ? 2 : 0) }
   const sys = new NeedsSystem((line) => logs.push(String(line)), mastery)
+  sys.combatTrace = trace
   const mp = makeMp(native, stamina)
   const listeners = {}
   const ctx = { svr: mp, gm: { on: (event, fn) => { (listeners[event] ||= []).push(fn) }, emit: () => {} } }
@@ -223,6 +224,13 @@ async function main() {
     const w = setup({ rule: DEFAULT_RULE, native: () => ({ armorWeight: 52 }), warrior: [BLOCKER] })
     await w.hit()
     near(w.staminaOf(), 1 - 0.0656, 'Steel warrior block')
+  })
+
+  await test('without combatTrace a weighted block costs the same and logs no line', async () => {
+    const t = setup({ rule: DEFAULT_RULE, native: () => ({ armorWeight: 52 }), trace: false })
+    await t.hit()
+    near(t.staminaOf(), 1 - 0.1312, 'Steel block')
+    assert.equal(t.logs.length, 1)
   })
 
   await test('a Daedric set gets 6 full blocks from full stamina where the base cost gives 10', async () => {
@@ -436,6 +444,13 @@ async function main() {
     near(b.stamina, 1 - 0.1312, 'Steel block')
     const own = await boot({ alduinakDamageFormulaSettings: { enabled: true, blockStamina: { perArmorWeight: 0.01, weightCap: 40 } }, blockStaminaCost: 0.2 }, steel)
     near(own.stamina, 1 - 0.2 * 1.4, 'own numbers')
+  })
+
+  await test('boot: only combatTrace true logs the per-block line', async () => {
+    const line = (b) => b.logs.filter((l) => /blocked in 52 armor weight/.test(l)).length
+    assert.equal(line(await boot({ alduinakDamageFormulaSettings: ENABLED }, steel)), 0)
+    assert.equal(line(await boot({ alduinakDamageFormulaSettings: ENABLED, combatTrace: 'true' }, steel)), 0)
+    assert.equal(line(await boot({ alduinakDamageFormulaSettings: ENABLED, combatTrace: true }, steel)), 1)
   })
 
   await test('boot: a blockStamina value the native rejects boots, names the value once and charges the base share', async () => {

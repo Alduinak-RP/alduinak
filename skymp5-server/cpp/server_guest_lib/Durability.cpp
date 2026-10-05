@@ -276,12 +276,12 @@ bool Flush(MpActor& actor, const Context& ctx, bool final)
     if (wornEntry) {
       worn->condition = stored;
     }
-    spdlog::info("Durability - {:x} {:x} ({} {}): {}% -> {}% after {} "
-                 "points of {} HP",
-                 actor.GetFormId(), pending.baseId,
-                 ItemRows::KindName(item.kind), item.row,
-                 ConditionTag::Percent(copy.condition),
-                 ConditionTag::Percent(stored), pending.points, item.hp);
+    spdlog::debug("Durability - {:x} {:x} ({} {}): {}% -> {}% after {} "
+                  "points of {} HP",
+                  actor.GetFormId(), pending.baseId,
+                  ItemRows::KindName(item.kind), item.row,
+                  ConditionTag::Percent(copy.condition),
+                  ConditionTag::Percent(stored), pending.points, item.hp);
     pending.condition = stored;
     pending.points = after.carry;
     changed = true;

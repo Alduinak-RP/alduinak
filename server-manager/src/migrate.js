@@ -11,7 +11,7 @@ const { isDeepStrictEqual } = require('util')
 const SERVER_ITEMS = ['dist_back', 'scam_native.node', 'gamemode.js', 'gamemode_extensions', 'plugins', 'data/scripts', 'NPC-Spawns.json', 'weather-regions.json', 'Jobs.json', 'faction-access.json', 'alert-keywords.json']
 
 // Live identity, runtime, debug-only and feature switch keys the settings merge never overwrites
-const PROTECTED_SETTINGS = ['name', 'port', 'maxPlayers', 'playerSlots', 'queueGraceMs', 'queueStaffBypass', 'masterKey', 'masterApiAuthToken', 'master', 'offlineMode', 'databaseDriver', 'databaseName', 'databaseUri', 'dataDir', 'loadOrder', 'archives', 'logDir', 'listenHost', 'uiListenHost', 'ip', 'voiceChat', 'access', 'adminRoleIds', 'adminRoles', 'adminProfileIds', 'discordAuth', 'metricsAuth', 'securityAlertChannelId', 'dailyRestartAt', 'enableConsoleCommandsForAll', 'isPapyrusHotReloadEnabled', 'gamemodeHotReload', 'npcCorpseWatch',
+const PROTECTED_SETTINGS = ['name', 'port', 'maxPlayers', 'playerSlots', 'queueGraceMs', 'queueStaffBypass', 'masterKey', 'masterApiAuthToken', 'master', 'offlineMode', 'databaseDriver', 'databaseName', 'databaseUri', 'dataDir', 'loadOrder', 'archives', 'logDir', 'listenHost', 'uiListenHost', 'ip', 'voiceChat', 'access', 'adminRoleIds', 'adminRoles', 'adminProfileIds', 'discordAuth', 'metricsAuth', 'securityAlertChannelId', 'dailyRestartAt', 'enableConsoleCommandsForAll', 'isPapyrusHotReloadEnabled', 'gamemodeHotReload', 'npcCorpseWatch', 'combatTrace',
   // Test-only features the owner copies to live by hand once signed off
   'alduinakDamageFormulaSettings', 'survivalEnabled', 'masterySlots', 'healthRegenerationMultiplier']
 // Synced by Migrate client from the manifest, so its diff records the plugin shifts the MongoDB purge needs
