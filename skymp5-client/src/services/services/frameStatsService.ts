@@ -14,7 +14,8 @@ const HITCH_MS = 100;
 const PAUSE_MS = 1000;
 
 // The engine's sub-millisecond clock when it has one
-const precise = (globalThis as { performance?: { now(): number } }).performance;
+declare const performance: { now(): number } | undefined;
+const precise = typeof performance !== "undefined" && performance && typeof performance.now === "function" ? performance : null;
 const clock = (): number => (precise ? precise.now() : Date.now());
 
 interface Span {
