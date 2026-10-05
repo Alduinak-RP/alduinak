@@ -1,5 +1,10 @@
 export class IdManager {
   allocateIdFor(value: number): number {
+    const existing = this.getId(value);
+    if (existing !== -1) {
+      return existing;
+    }
+
     if (this.idByValue.length <= value) {
       this.idByValue.length = value + 1;
     }

@@ -933,6 +933,10 @@ export class RemoteServer extends ClientListener {
 
     logTrace(this, "Create actor");
 
+    if (this.getIdManager().getId(msg.idx) !== -1) {
+      logToPlatformLog(this, `repeated CreateActor for idx ${msg.idx} (refr ${(msg.refrId ?? 0).toString(16)}), model and view replaced`);
+      this.removeForm(msg.idx);
+    }
     const i = this.getIdManager().allocateIdFor(msg.idx);
     if (this.worldModel.forms.length <= i) {
       this.worldModel.forms.length = i + 1;
@@ -1240,11 +1244,15 @@ export class RemoteServer extends ClientListener {
   }
 
   private onDestroyActorMessage(event: ConnectionMessage<DestroyActorMessage>): void {
-    const msg = event.message;
+    this.removeForm(event.message.idx);
+    this.getIdManager().freeIdFor(event.message.idx);
+  }
 
-    const i = this.getIdManager().getId(msg.idx);
+  // Drops the model at this idx and destroys its view; the idx keeps its id
+  private removeForm(idx: number): void {
+    const i = this.getIdManager().getId(idx);
     const refrId = this.worldModel.forms[i]?.refrId;
-    // A repeated CreateActor can leave another form with this refrId, which may own the entry
+    // Another form with this refrId may own the entry
     if (refrId && this.formIdxByRefrId.get(refrId) === i) {
       this.formIdxByRefrId.delete(refrId);
     }
@@ -1277,8 +1285,6 @@ export class RemoteServer extends ClientListener {
         }
       });
     }
-
-    this.getIdManager().freeIdFor(msg.idx);
   }
 
   private onUpdateMovementMessage(event: ConnectionMessage<UpdateMovementMessage>): void {
