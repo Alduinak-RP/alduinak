@@ -6,7 +6,7 @@ import { Entry } from "../sync/inventory";
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
-import { applyMovement, forgetGroundSample, isCarrierCloneId, makeAppliedMovement, noteMovementArrival } from "../sync/movementApply";
+import { applyMovement, forgetGroundSample, isCarrierCloneId, makeAppliedMovement, noteMovementArrival, recheckTurn } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseCloneOnEvent, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
 import { Movement } from "../sync/movement";
@@ -454,12 +454,11 @@ export class FormView {
     const movementHeld = mounted || held;
 
     if (model.movement) {
-      if (
-        this.movState.lastApply &&
-        Date.now() - this.movState.lastApply > 1500
-      ) {
-        if (Date.now() - this.movState.lastRehost > 1000) {
-          this.movState.lastRehost = Date.now();
+      const now = Date.now();
+      // A copy silent this long may have lost its host
+      if (this.movState.lastApply && now - this.movState.lastApply > FormView.movementStallMs) {
+        if (now - this.movState.lastRehost > 1000) {
+          this.movState.lastRehost = now;
           const remoteId = this.remoteRefrId;
           if (actor && loaded) {
             this.tryHostIfNeed(actor, remoteId as number);
@@ -468,12 +467,12 @@ export class FormView {
       }
 
       const isNewMovement = +(model.numMovementChanges as number) !== this.movState.lastNumChanges;
-      if (isNewMovement || Date.now() - this.movState.lastApply > 2000) {
-        this.movState.lastApply = Date.now();
+      if (isNewMovement || now - this.movState.lastApply > FormView.movementStallMs) {
+        this.movState.lastApply = now;
         const hostedByOther = isModelHostedByOther(model);
         if (hostedByOther || !this.movState.everApplied) {
           if (isNewMovement) {
-            noteMovementArrival(this.appliedMovement);
+            noteMovementArrival(this.appliedMovement, model.movement);
           }
           const backup = model.movement.isWeapDrawn;
           if (forcedWeapDrawn === true || forcedWeapDrawn === false) {
@@ -484,7 +483,7 @@ export class FormView {
             model.movement.isWeapDrawn = actor.isWeaponDrawn();
           }
           try {
-            // A sender silent for 2 s (paused game, Steam overlay) settles at the copy's own height instead of running in place or hanging mid-air
+            // A sender silent for 3 s (paused game, Steam overlay) settles at the copy's own height instead of running in place or hanging mid-air
             const movement: Movement = movementHeld || isNewMovement || !this.movState.everApplied || !actor
               ? model.movement
               : { ...model.movement, runMode: "Standing", isInJumpState: false, pos: [model.movement.pos[0], model.movement.pos[1], refr.getPositionZ()] };
@@ -524,6 +523,8 @@ export class FormView {
             }
           }
         }
+      } else if (actor && loaded && !alreadyHosted && !movementHeld) {
+        recheckTurn(actor, this.appliedMovement);
       }
     }
 
@@ -786,6 +787,7 @@ export class FormView {
 
   // A copy the engine runs here drops the keep-offset of its last applied packet; own companions and steered pets keep the one their service gives them
   private releaseKeepOffset(actor: Actor | null): void {
+    this.appliedMovement.turn = undefined;
     if (keepsOwnOffset(this.remoteRefrId)) {
       this.offsetCleared = false;
     } else if (!this.offsetCleared) {
@@ -1041,6 +1043,8 @@ export class FormView {
   private checkedModelBaseId: number | undefined | null = null;
   private checkedAppearanceBaseId = 0;
   private static readonly copySettleMs = 1000;
+  // Senders report at least once a second, so this is three missed keepalives
+  private static readonly movementStallMs = 3000;
   // A door mid-swing or with its graph still loading can drop an apply, so each one is repeated after about a swing
   private static readonly openReapplyMs = 2000;
   private static readonly handGraphCheckDelayMs = 1500;

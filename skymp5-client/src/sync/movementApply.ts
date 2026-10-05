@@ -28,6 +28,8 @@ const minTranslateWindow = 0.13;
 const maxTranslateWindow = 0.6;
 // Lag compensation leads by at most this speed, so a stale speed sample can't fling the clone past the target
 const maxExtrapolationSpeed = 640;
+// A standing copy's self offset turns it until re-evaluated, which an idle sender's packets no longer do often enough
+const turnRecheckMs = 130;
 
 // What the applies left on one copy, so an unchanged value is neither read nor sent again
 export interface AppliedMovement {
@@ -44,22 +46,27 @@ export interface AppliedMovement {
   recheckAt: number;
   // The packet the copy rests at: standing on its spot, facing its way, with nothing left to apply
   rest?: Movement;
-  // When the last new packet was applied
+  // When the last new packet was applied, and whether it was a moving one
   arrivedAt?: number;
+  arrivedMoving?: boolean;
   // Seconds translateTo takes to reach the target
   window: number;
+  // The standing packet the copy still turns toward
+  turn?: { m: Movement; recheckAt: number };
 }
 
 export const makeAppliedMovement = (): AppliedMovement => ({ recheckAt: 0, window: 0.2 });
 
 // A longer gap is taken at once so the copy is not left short of the next packet; a shorter one is eased in
-export const noteMovementArrival = (state: AppliedMovement): void => {
+// A gap after a standing packet measures the idle keepalive, not how often a moving sender reports
+export const noteMovementArrival = (state: AppliedMovement, m: Movement): void => {
   const now = Date.now();
-  if (state.arrivedAt !== undefined) {
+  if (state.arrivedAt !== undefined && state.arrivedMoving) {
     const gap = Math.max(minTranslateWindow, Math.min(maxTranslateWindow, (now - state.arrivedAt) / 1000));
     state.window = gap > state.window ? gap : (state.window + gap) / 2;
   }
   state.arrivedAt = now;
+  state.arrivedMoving = m.runMode !== "Standing";
 };
 
 // A riding clone is carried by its horse, and a horse being mounted is left to the engine: no translation, offset or locomotion events reach either
@@ -79,6 +86,7 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
     return;
   }
   state.rest = undefined;
+  state.turn = undefined;
 
   let settled = false;
   if (!mounted) {
@@ -105,6 +113,9 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
   if (!mounted) {
     if (!ownOffset) {
       faces = keepOffsetFromActor(ac, m);
+      if (!faces && m.runMode === "Standing") {
+        state.turn = { m, recheckAt: now + turnRecheckMs };
+      }
     }
 
     const sprinting = m.runMode === "Sprinting";
@@ -182,9 +193,23 @@ export const setCarrierClone = (localId: number): void => {
 
 export const isCarrierCloneId = (localId: number): boolean => carrierCloneId !== 0 && localId === carrierCloneId;
 
+// Between packets a turning standing copy is re-evaluated at the old packet rate until it faces the reported way
+export const recheckTurn = (ac: Actor, state: AppliedMovement): void => {
+  const turn = state.turn;
+  const now = Date.now();
+  if (!turn || now < turn.recheckAt) {
+    return;
+  }
+  if (keepOffsetFromActor(ac, turn.m)) {
+    state.turn = undefined;
+  } else {
+    turn.recheckAt = now + turnRecheckMs;
+  }
+};
+
 // True when a standing copy already faces the reported way, so the offset holds it still
 const keepOffsetFromActor = (ac: Actor, m: Movement): boolean => {
-  let offsetAngle = m.rot[2] - ac.getAngleZ();
+  let offsetAngle = normalizeAngle(m.rot[2] - ac.getAngleZ());
   // Wider deadzone when standing: 130ms-stale idle angle noise makes the offset hunt visibly; the carrier clone turns all the way so the body in its arms does
   const deadzone = isCarrierCloneId(ac.getFormID()) ? 0 : m.runMode === "Standing" ? 12 : 5;
   if (Math.abs(offsetAngle) < deadzone) {
@@ -268,13 +293,13 @@ const applyHealthPercentage = (ac: Actor, healthPercentage: number): boolean => 
     return true;
   }
 
-  const currentMax = ac.getBaseActorValue('health');
+  // The maximum with every modifier, so one step lands on the reported value
+  const currentMax = currentPercentage > 0 ? ac.getActorValue('health') / currentPercentage : ac.getBaseActorValue('health');
   const deltaPercentage = healthPercentage - currentPercentage;
-  const k = 0.25;
   if (deltaPercentage > 0) {
-    ac.restoreActorValue('health', deltaPercentage * currentMax * k);
+    ac.restoreActorValue('health', deltaPercentage * currentMax);
   } else if (deltaPercentage < 0) {
-    ac.damageActorValue('health', deltaPercentage * currentMax * k);
+    ac.damageActorValue('health', deltaPercentage * currentMax);
   }
   return Math.abs(deltaPercentage) < healthConvergedDelta;
 };

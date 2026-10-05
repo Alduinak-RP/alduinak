@@ -445,6 +445,11 @@ export class AnimationSource {
     return { numChanges, animEventName };
   }
 
+  // Counts every event not ignored, sneaks included, so a movement report can follow it
+  getNumEvents(): number {
+    return this.numEvents;
+  }
+
   // For events the send hook does not report, such as a sheathe started by a script
   relay(animEventName: string): void {
     this.onSendAnimationEvent(animEventName);
@@ -454,6 +459,7 @@ export class AnimationSource {
     if (ignoredAnims.has(animEventName)) {
       return;
     }
+    this.numEvents++;
     const lower = animEventName.toLowerCase();
     // Half of a paired idle replayed alone on a copy has no partner; PairedIdleService plays both halves everywhere
     if (lower.startsWith("pa_")) {
@@ -477,6 +483,7 @@ export class AnimationSource {
   }
 
   private numChanges = 0;
+  private numEvents = 0;
   private animEventName = "";
 }
 

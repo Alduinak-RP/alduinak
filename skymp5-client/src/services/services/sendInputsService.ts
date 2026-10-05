@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { SinglePlayerService } from "./singlePlayerService";
 import { FormModel } from "../../view/model";
 import { MsgType } from "../../messages";
-import { getMovement } from "../../sync/movementGet";
+import { getMovement, MovementProbe, probeChanged, probeFlagsDiffer, probeMovement } from "../../sync/movementGet";
 
 // TODO: refactor this out
 import * as worldViewMisc from "../../view/worldViewMisc";
@@ -28,10 +28,13 @@ import { RestraintService } from "./restraintService";
 import { MountService } from "./mountService";
 import { PolymorphService } from "./polymorphService";
 import { MagicSyncService } from "./magicSyncService";
-import { Movement } from "../../sync/movement";
+import { Movement, RunMode } from "../../sync/movement";
 import { logTrace, logToPlatformLog } from "../../logging";
 
 const playerFormId = 0x14;
+const MOVEMENT_PROBE_MS = 130;
+// An unchanged actor is still reported this often (D10)
+const MOVEMENT_KEEPALIVE_MS = 1000;
 const ACTOR_VALUES_READ_MS = 250;
 // Changed values go out at most this often unless a landing or death forces a report
 const ACTOR_VALUES_SEND_GAP_MS = 2000;
@@ -39,6 +42,18 @@ const ACTOR_VALUES_SEND_GAP_MS = 2000;
 // Menus named in a zero-worn report, the ones that undress or re-dress the player or hide the engine's equips
 const REPORT_MENUS = [Menu.Inventory, Menu.Container, Menu.Crafting, Menu.RaceSex, Menu.Loading, Menu.Favorites, Menu.Magic, Menu.Barter, Menu.Gift];
 const ZERO_WORN_LOG_GAP_MS = 2000;
+
+// One owned actor's movement reports; the player is remote id 0
+interface MovementSendState {
+    probedAt: number;
+    sentAt: number;
+    // The probe, engine run mode and animation event count behind the last report
+    sent?: MovementProbe;
+    sentRunMode?: RunMode;
+    sentEvents: number;
+    // A stop or a flag change is reported once more, since a lost unreliable report would stand until the keepalive
+    followUp: boolean;
+}
 
 // TODO: split this service into EquipmentService, MovementService, AnimationService, ActorValueService, HostAttemptsService
 export class SendInputsService extends ClientListener {
@@ -50,7 +65,11 @@ export class SendInputsService extends ClientListener {
         this.controller.on("loadGame", () => this.onLoadGame());
         this.controller.on("menuClose", (e) => this.onMenuClose(e));
         this.controller.on("hit", (e) => this.onHit(e));
-        this.controller.emitter.on("connectionAccepted", () => this.lastSendMovementMoment.clear());
+        this.controller.emitter.on("connectionAccepted", () => this.movementSends.clear());
+        // A new spawn or host reports at once
+        this.controller.emitter.on("ownerModelReset", () => this.movementSends.delete(0));
+        this.controller.emitter.on("hostStartMessage", (e) => this.movementSends.delete(e.message.target));
+        this.controller.emitter.on("hostStopMessage", (e) => this.movementSends.delete(e.message.target));
     }
 
     private onUpdate() {
@@ -132,12 +151,12 @@ export class SendInputsService extends ClientListener {
         const modelSource = this.controller.lookupListener(RemoteServer);
         const world = modelSource.getWorldModel();
         const playerForm = world.forms[world.playerCharacterFormIdx];
-        this.sendMovement(undefined, playerForm, () => player);
+        this.sendMovement(0, playerForm, () => player, playerAnimationSource);
         this.sendAnimation(playerAnimationSource);
         this.sendEquipment(player);
         this.sendActorValuePercentage(player, playerForm);
 
-        // A hosted actor resolves through the id maps, and natively only when its movement report is due
+        // A hosted actor resolves through the id maps, and natively only when its movement probe is due
         const hosted = this.sp.storage['hosted'];
         if (Array.isArray(hosted)) {
             (hosted as number[]).forEach((remoteId) => {
@@ -145,35 +164,61 @@ export class SendInputsService extends ClientListener {
                 if (!localId) {
                     return;
                 }
-                this.sendMovement(remoteId, modelSource.getFormByRefrId(remoteId), () => this.sp.Actor.from(this.sp.Game.getFormEx(localId)));
-                this.sendAnimation(getCopyAnimationSource(localId, remoteId));
+                const source = getCopyAnimationSource(localId, remoteId);
+                this.sendMovement(remoteId, modelSource.getFormByRefrId(remoteId), () => this.sp.Actor.from(this.sp.Game.getFormEx(localId)), source);
+                this.sendAnimation(source);
             });
         }
         this.sendHostAttempts();
     }
 
-    private sendMovement(_refrId: number | undefined, form: FormModel | undefined, getOwner: () => Actor | null) {
-        const refrIdStr = `${_refrId}`;
-        const sendMovementRateMs = 130;
-        const now = Date.now();
-        const last = this.lastSendMovementMoment.get(refrIdStr);
-        if (!last || now - last > sendMovementRateMs) {
-            const owner = getOwner();
-            if (!owner) {
-                return;
-            }
-            const movement = getMovement(owner, form);
-            const message: MessageWithRefrId<UpdateMovementMessage> = {
-                t: MsgType.UpdateMovement,
-                data: _refrId ? movement : this.filterOwnMovement(movement),
-                _refrId
-            };
-            this.controller.emitter.emit("sendMessageWithRefrId", {
-                message,
-                reliability: "unreliable"
-            });
-            this.lastSendMovementMoment.set(refrIdStr, now);
+    // A cheap probe every 130 ms; the full report is built only when the probe finds it due
+    private sendMovement(remoteId: number, form: FormModel | undefined, getOwner: () => Actor | null, source: AnimationSource) {
+        const idx = form?.idx;
+        if (idx === undefined) {
+            return;
         }
+        const now = Date.now();
+        let state = this.movementSends.get(remoteId);
+        if (state && now - state.probedAt <= MOVEMENT_PROBE_MS) {
+            return;
+        }
+        const owner = getOwner();
+        if (!owner) {
+            return;
+        }
+        if (!state) {
+            state = { probedAt: 0, sentAt: 0, sentEvents: 0, followUp: false };
+            this.movementSends.set(remoteId, state);
+        }
+        state.probedAt = now;
+
+        const probe = probeMovement(owner, form);
+        const events = source.getNumEvents();
+        const sent = state.sent;
+        if (
+            sent && !state.followUp && state.sentRunMode === "Standing" && events === state.sentEvents &&
+            now - state.sentAt < MOVEMENT_KEEPALIVE_MS && !probeChanged(probe, sent)
+        ) {
+            return;
+        }
+
+        const movement = getMovement(owner, probe);
+        state.followUp = !!sent && ((movement.runMode === "Standing" && state.sentRunMode !== "Standing") || probeFlagsDiffer(probe, sent));
+        state.sent = probe;
+        state.sentRunMode = movement.runMode;
+        state.sentEvents = events;
+        state.sentAt = now;
+
+        const message: UpdateMovementMessage = {
+            t: MsgType.UpdateMovement,
+            idx,
+            data: remoteId ? movement : this.filterOwnMovement(movement)
+        };
+        this.controller.emitter.emit("sendMessage", {
+            message,
+            reliability: "unreliable"
+        });
     }
 
     // A held pose or a saddle owns the player's locomotion, observers must not replay it on the clone
@@ -375,7 +420,7 @@ export class SendInputsService extends ClientListener {
         return this.controller.lookupListener(SinglePlayerService);
     }
 
-    private lastSendMovementMoment = new Map<string, number>();
+    private movementSends = new Map<number, MovementSendState>();
     private actorValuesNeedUpdate = false;
     private actorValuesReadAt = 0;
     private equipmentChanged = false;

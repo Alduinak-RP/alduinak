@@ -3,6 +3,13 @@ import { ObjectReference, Actor, TESModPlatform } from "skyrimPlatform";
 import { NiPoint3, Movement, RunMode } from "./movement";
 import { ObjectReferenceEx } from '../extensions/objectReferenceEx';
 import { logToPlatformLog } from '../logging';
+import { wrappedAngleDiff } from './movementApply';
+import { PlayerCharacterDataHolder } from '../view/playerCharacterDataHolder';
+
+// A probe that moved, turned or changed health by less than this is not worth a report
+const MIN_MOVE_UNITS = 4;
+const MIN_TURN_DEGREES = 2;
+const MIN_HEALTH_CHANGE = 0.01;
 
 // Hosted copies already logged as dead in their own engine while the server holds them alive
 const engineDeadLogged = new Set<number>();
@@ -17,13 +24,21 @@ const noteEngineDeadHosted = (refr: ObjectReference, pos: NiPoint3): void => {
 };
 
 class PlayerCharacterSpeedCalculator {
-  static savePosition(pos: NiPoint3, worldOrCell: number) {
+  // Sampled at every probe, so the first report after standing still measures one probe interval
+  static sample(pos: NiPoint3, worldOrCell: number): number {
+    const speed = this.getSpeed(pos, worldOrCell);
+    this.savePosition(pos, worldOrCell);
+    // It's unrealistic speed. It still may happen due to teleports
+    return speed > 2000 ? 0 : speed;
+  }
+
+  private static savePosition(pos: NiPoint3, worldOrCell: number) {
     this.lastPcPos = pos;
     this.lastPcPosCheck = Date.now();
     this.lastPcWorldOrCell = worldOrCell;
   }
 
-  static getSpeed(currentPos: NiPoint3, worldOrCell: number) {
+  private static getSpeed(currentPos: NiPoint3, worldOrCell: number) {
     if (this.lastPcPosCheck === -1) {
       return 0;
     }
@@ -44,20 +59,62 @@ class PlayerCharacterSpeedCalculator {
   private static lastPcWorldOrCell = 0;
 }
 
-export const getMovement = (refr: ObjectReference, form?: FormModel): Movement => {
+// The cheap values read at every probe; a full report is built only when they say one is due
+export interface MovementProbe {
+  pos: NiPoint3;
+  pitch: number;
+  yaw: number;
+  health: number;
+  isInJumpState: boolean;
+  isSneaking: boolean;
+  isBlocking: boolean;
+  isWeapDrawn: boolean;
+  // The server's death state, from the model
+  isDead: boolean;
+  // Measured for the player only; copies report SpeedSampled
+  speed?: number;
+}
+
+export const probeMovement = (refr: ObjectReference, form?: FormModel): MovementProbe => {
   const ac = Actor.from(refr);
+  const pos = ObjectReferenceEx.getPos(refr);
+  return {
+    pos,
+    pitch: refr.getAngleX(),
+    yaw: refr.getAngleZ(),
+    health: (ac && ac.getActorValuePercentage("health")) || 0,
+    isInJumpState: !!(ac && ac.getAnimationVariableBool("bInJumpState")),
+    isSneaking: !!(ac && isSneaking(ac)),
+    isBlocking: !!(ac && ac.getAnimationVariableBool("IsBlocking")),
+    isWeapDrawn: !!(ac && ac.isWeaponDrawn()),
+    isDead: form?.isDead ?? false,
+    // Real players often run into the wall, where SpeedSampled stays high
+    speed: refr.getFormID() === 0x14 ? PlayerCharacterSpeedCalculator.sample(pos, PlayerCharacterDataHolder.getWorldOrCell()) : undefined,
+  };
+};
+
+export const probeFlagsDiffer = (a: MovementProbe, b: MovementProbe): boolean =>
+  a.isInJumpState !== b.isInJumpState || a.isSneaking !== b.isSneaking || a.isBlocking !== b.isBlocking
+  || a.isWeapDrawn !== b.isWeapDrawn || a.isDead !== b.isDead;
+
+// Pitch counts only with a weapon or spell out, where it aims the shot
+export const probeChanged = (a: MovementProbe, b: MovementProbe): boolean =>
+  probeFlagsDiffer(a, b)
+  || ObjectReferenceEx.getDistance(a.pos, b.pos) > MIN_MOVE_UNITS
+  || wrappedAngleDiff(a.yaw, b.yaw) > MIN_TURN_DEGREES
+  || (a.isWeapDrawn && wrappedAngleDiff(a.pitch, b.pitch) > MIN_TURN_DEGREES)
+  || Math.abs(a.health - b.health) >= MIN_HEALTH_CHANGE;
+
+export const getMovement = (refr: ObjectReference, probe: MovementProbe): Movement => {
+  const ac = Actor.from(refr);
+  const isPlayer = refr.getFormID() === 0x14;
 
   // It is running for ObjectReferences because Standing
   // Doesn't lead to translateTo call
   const runMode = ac ? getRunMode(ac) : "Running";
 
-  let healthPercentage = ac && ac.getActorValuePercentage("health");
-  if (ac && ac.isDead()) {
-    healthPercentage = 0;
-  }
-
   let lookAt: undefined | NiPoint3 = undefined;
-  if (refr.getFormID() !== 0x14) {
+  if (!isPlayer) {
     const combatTarget = ac?.getCombatTarget();
     if (combatTarget) {
       lookAt = [
@@ -68,48 +125,30 @@ export const getMovement = (refr: ObjectReference, form?: FormModel): Movement =
     }
   }
 
-  const pos = ObjectReferenceEx.getPos(refr);
-
-  let speed;
-  if (refr.getFormID() !== 0x14) {
-    speed = refr.getAnimationVariableFloat("SpeedSampled");
-  } else {
-    // Real players often run into the wall.
-    // We need to have zero speed in this case. SpeedSampled doesn't help
-    const w = ObjectReferenceEx.getWorldOrCell(refr);
-    speed = PlayerCharacterSpeedCalculator.getSpeed(pos, w);
-    PlayerCharacterSpeedCalculator.savePosition(pos, w);
-
-    // It's unrealistic speed. It still may happen due to teleports
-    if (speed > 2000) {
-      speed = 0;
-    }
-  }
+  const speed = isPlayer ? probe.speed ?? 0 : refr.getAnimationVariableFloat("SpeedSampled");
 
   const worldOrCell = refr.getWorldSpace() || refr.getParentCell();
 
   // A hosted NPC's death is the server's to declare; its copy's own engine death (a fall before its collision loaded) is only logged
-  const hostedNpc = refr.getFormID() !== 0x14;
   const engineDead = !!(ac && ac.isDead());
-  const modelDead = form?.isDead ?? false;
-  if (hostedNpc && engineDead && !modelDead) {
-    noteEngineDeadHosted(refr, pos);
+  if (!isPlayer && engineDead && !probe.isDead) {
+    noteEngineDeadHosted(refr, probe.pos);
   }
 
   return {
     worldOrCell: worldOrCell?.getFormID() || 0,
-    pos,
-    rot: [refr.getAngleX(), refr.getAngleY(), refr.getAngleZ()],
+    pos: [probe.pos[0], probe.pos[1], probe.pos[2]],
+    rot: [probe.pitch, refr.getAngleY(), probe.yaw],
     runMode: runMode,
     direction: runMode !== "Standing"
       ? 360 * refr.getAnimationVariableFloat("Direction")
       : 0,
-    isInJumpState: !!(ac && ac.getAnimationVariableBool("bInJumpState")),
-    isSneaking: !!(ac && isSneaking(ac)),
-    isBlocking: !!(ac && ac.getAnimationVariableBool("IsBlocking")),
-    isWeapDrawn: !!(ac && ac.isWeaponDrawn()),
-    isDead: hostedNpc ? modelDead : modelDead || engineDead,
-    healthPercentage: healthPercentage || 0,
+    isInJumpState: probe.isInJumpState,
+    isSneaking: probe.isSneaking,
+    isBlocking: probe.isBlocking,
+    isWeapDrawn: probe.isWeapDrawn,
+    isDead: isPlayer ? probe.isDead || engineDead : probe.isDead,
+    healthPercentage: engineDead ? 0 : probe.health,
     lookAt,
     speed
   };
