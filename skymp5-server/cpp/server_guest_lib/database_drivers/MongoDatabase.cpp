@@ -90,10 +90,17 @@ std::vector<std::optional<MpChangeForm>>&& MongoDatabase::UpsertImpl(
         continue;
       }
 
-      auto jChangeForm = MpChangeForm::ToJson(*changeForm);
-
       auto filter = nlohmann::json::object();
       filter["formDesc"] = changeForm->formDesc.ToString();
+
+      // Deleted characters stay flagged
+      if (changeForm->isDeleted && changeForm->profileId < 0) {
+        bulk.append(
+          mongocxx::model::delete_one(bsoncxx::from_json(filter.dump())));
+        continue;
+      }
+
+      auto jChangeForm = MpChangeForm::ToJson(*changeForm);
 
       auto upd = nlohmann::json::object();
       upd["$set"] = pImpl->jsonSanitizer->SanitizeJsonRecursive(jChangeForm);

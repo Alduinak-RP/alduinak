@@ -357,7 +357,7 @@ void PartOne::AttachSaveStorage(
   int n = 0;
   int numPlayerCharacters = 0;
   int numDeleted = 0;
-  int numUnplacedItems = 0;
+  std::vector<std::optional<MpChangeForm>> tombstones;
   saveStorage->IterateSync([&](const MpChangeForm& changeForm) {
     if (changeForm.isDeleted) {
       ++numDeleted;
@@ -370,12 +370,19 @@ void PartOne::AttachSaveStorage(
       auto baseId = changeForm.baseDesc.ToFormId(worldState.espmFiles);
       auto lookupRes = GetEspm().GetBrowser().LookupById(baseId);
 
-      // Drops the gamemode stamped (PlacedItemSystem) persist until it removes them; older ones are skipped
+      // Drops the gamemode stamped (PlacedItemSystem) persist until it removes them; older ones are deleted
       bool placed =
         changeForm.dynamicFields.GetValueDump("private.placedAt") != "null";
       if (lookupRes.rec && espm::utils::IsItem(lookupRes.rec->GetType()) &&
           !placed) {
-        ++numUnplacedItems;
+        pImpl->logger->info("Deleting unplaced FF item {} (base {}, {})",
+                            changeForm.formDesc.ToString(),
+                            changeForm.baseDesc.ToString(),
+                            lookupRes.rec->GetType().ToString());
+        MpChangeForm tombstone;
+        tombstone.formDesc = changeForm.formDesc;
+        tombstone.isDeleted = true;
+        tombstones.push_back(std::move(tombstone));
         return;
       }
     }
@@ -400,9 +407,13 @@ void PartOne::AttachSaveStorage(
 
   pImpl->logger->info("AttachSaveStorage took {} seconds and {} milliseconds, "
                       "loaded {} ChangeForms (Including {} player characters), "
-                      "skipped {} deleted and {} unplaced FF items",
+                      "skipped {} deleted, deleting {} unplaced FF items",
                       duration.count() / 1000, duration.count() % 1000, n,
-                      numPlayerCharacters, numDeleted, numUnplacedItems);
+                      numPlayerCharacters, numDeleted, tombstones.size());
+
+  if (!tombstones.empty()) {
+    saveStorage->Upsert(std::move(tombstones), [] {});
+  }
 }
 
 espm::Loader& PartOne::GetEspm() const

@@ -13,6 +13,13 @@ one-shot migration.
   when they are missing. Claude does not run installers or register services.
 - `wipe-world.js` - backup, verify, apply and restore for a full world wipe
   before a deploy. Runbook: [`docs/docs_database_wipe.md`](../../docs/docs_database_wipe.md).
+- `trim-changeforms.js` - migration M1 of the syncing Stage 2 native builds
+  (`plans/syncing-stage2.md`), run once with the game server stopped when the
+  build is deployed: `node deploy/mongodb/trim-changeforms.js [--test]` is a
+  dry run, `--apply` runs it, `--test` targets the Test Server's database.
+  Steps: delete the documents flagged `isDeleted` (deleted characters stay
+  flagged), backed up first as canonical EJSON into
+  `<backup root>\rollback-trim-<db>-<stamp>` (`mongoimport --jsonArray` puts them back).
 - `forbidden-items.py` + `strip-inventories.js` - one-time strip of gear above
   Adept, jewelry, spell tomes, scrolls, staves, enchanted gear and learned spells
   (abilities stay) from characters and claimed containers (personal and

@@ -39,10 +39,10 @@ function writeNew(file, text) {
   fs.writeFileSync(file, text, { flag: 'wx' })
 }
 
-function loadSettings() {
+function loadSettings(file = config.paths.serverSettings) {
   let s
-  try { ({ settings: s } = modsync.readSettingsFile(config.paths.serverSettings)) }
-  catch (err) { throw new Refusal(`cannot read ${config.paths.serverSettings}: ${err.code || err.message}`) }
+  try { ({ settings: s } = modsync.readSettingsFile(file)) }
+  catch (err) { throw new Refusal(`cannot read ${file}: ${err.code || err.message}`) }
   if (s.databaseDriver !== 'mongodb') throw new Refusal(`databaseDriver is "${s.databaseDriver}", this script only handles mongodb`)
   if (!s.databaseUri || !s.databaseName) throw new Refusal('server-settings.json needs databaseUri and databaseName')
   current = s
