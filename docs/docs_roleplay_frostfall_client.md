@@ -332,6 +332,67 @@ inventory patch setting on sends them.
 
 ---
 
+## Frame rate and script time
+
+`FrameStatsService` (`skymp5-client/src/services/services/frameStatsService.ts`,
+built first in `index.ts`) measures what a "low FPS" report needs and writes it
+to `skyrim-platform.log`: one line for the first minute of play, one for every
+minute that averaged under 30 fps (marked `slow`), and one in five minutes
+otherwise.
+
+```
+FrameStatsService: frame stats 60 s: 58.9 fps (17.0 ms a frame, worst 212 ms, 3 over 100 ms, 1.2% over 33 ms);
+client script 2.31 ms a frame (update 1.94, worst 18.2; tick 0.37, worst 3.1); 41 server forms
+```
+
+- A frame is the time between two `update` events; a gap over 1 s (a menu, a
+  load, a pause) is left out. `worst` is the longest frame of the minute.
+- `client script` is the time the `update` and `tick` callbacks of every client
+  service take together in an average frame, and the worst single dispatch. At
+  60 fps a frame has 16.7 ms, so 2 ms of script is 12% of it. Native event
+  handlers (hit, equip, menu events) are outside the measure.
+- `server forms` is how many actors and references the server streams to this
+  client at that moment; the per-frame view work grows with it.
+- Reading it: low fps with a small script share is the game or the machine
+  (graphics, mods, the browser overlay); a script share that grows with the
+  server forms is the per-frame view code; a large `worst` beside a small
+  average is a hitch from a single step.
+- The cost is two clock reads per update and per tick.
+
+For a function by function profile, upstream's `ProfilingService` can record a
+V8 CPU profile from the client's start: `"enableProfiling": true` and
+`"profilingDurationMs": 600000` in the client settings
+(`Data/Platform/Plugins/skymp5-client-settings.txt`) write
+`profile<number>.cpuprofile` into the game folder when the time is up; Chrome's
+DevTools opens it. It is untested on this build.
+
+**Survival, needs and diseases on the client** (`survivalService.ts`,
+`needsService.ts`), by reading the code at each version; a native is one call
+into the engine:
+
+| Path | Live clients (0.9, before Stage 2) | Release A (1.0.1-b6) | From 2026-10-05 |
+|---|---|---|---|
+| Every frame | one time compare | the same | the same |
+| Every 500 ms | 12 natives: the player, the Loading menu, `isSwimming`, three flame cloak effects at 3 each | 2: the player and `isSwimming`; the cloak after its `effectStart` only | none outside a freezing water area; 2 there, 11 while swimming there |
+| Disease guard | 369 natives in one frame every 10 s (123 disease spells at 3 each) | the same 369 every 60 s, and 2 s and 12 s after a hit or effect on the player | 1 + 2 per added spell (about 31), same schedule |
+| Contagion check | 5 natives and a pass over the server forms every 60 s | the same | the same |
+| A `survivalState` (on change, 6 s apart at most) | about 21: three globals set and read back, the health penalty | the same | about 15: two globals |
+| A `needsState` (on change) | about 30: three globals, two penalties, the log line's reads | the same | the same |
+| Engine events | `equip`, `unequip`: 1 each | also `effectStart`, `hit`, `magicEffectApply`: 1 each at most | `effectStart` gone |
+| Browser widget | pushed only when its content changes; no animation | the same | the same, cold line only |
+| Steady rate | about 60 natives a second | about 10 | under 1 |
+
+For scale, the Stage 1 map counted 65 to 70 natives per frame with nobody in
+view (about 4,000 a second at 60 fps), 10 more per NPC copy and 15 to 27 per
+player copy every frame, and 20 per remote actor at 7.5 Hz for movement: a busy
+street is tens of thousands a second. The owner's release A log of 2026-10-05
+shows the whole client creating 4,600 to 7,700 engine objects a second, of
+which survival's poll made 2. Survival was never more than about 0.2% of the
+client's script work, and its one visible cost on the live clients was the
+369 call guard run in a single frame every 10 s.
+
+---
+
 ## Engine crash guards
 
 **Occlusion plane sets** (`Hooks.cpp` `InstallCompoundFrustumStateGuard`, 1.6

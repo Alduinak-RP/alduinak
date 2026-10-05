@@ -822,7 +822,10 @@ regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
   stages the record held at logout), and the `[needs]` lines name the factor (`hunger drain survival x1.5`). Chills
   speeds cold gain.
 - **Local infections**: the victim's own engine can still apply a vanilla creature disease (the `ATKD` attack spells);
-  `SurvivalService` drops any Disease spell the server does not list at two checks 10 s apart. The server's list is the
+  `SurvivalService` drops any Disease spell among the player's added spells that the server does not list at two
+  checks 10 s apart. A check runs 2 s after a hit or effect on the player, again 10 s later, and every 60 s; it walks
+  the player's added spells (about 30 native calls at 15 spells; up to client 1.0.1-b6 it tested all 123 disease
+  spells, 369 calls, and on the 0.9 clients did so every 10 s). The server's list is the
   spawn's learned spells plus every `AddSpell` and `RemoveSpell` the server sent the player since (the world model
   keeps only the spawn copy), so a disease, food poisoning or stage spell granted after the spawn stays
   (`local disease dropped b8782 Rockjoint: not granted by the server (spawn list 41, 3 server grant(s) and removal(s)

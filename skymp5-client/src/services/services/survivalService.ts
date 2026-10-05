@@ -1,4 +1,4 @@
-import { Actor, MagicEffect, Menu, ObjectReference } from "skyrimPlatform";
+import { Actor, Menu, ObjectReference } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { SpSnippetMessage } from "../messages/spSnippetMessage";
@@ -33,6 +33,8 @@ const DISEASE_SPELLS: Array<[string, number[]]> = [
 ];
 
 const POLL_MS = 500;
+// The report key of a player who is not swimming in freezing water
+const NOT_SWIMMING = "false|false";
 const GUARD_MS = 60000;
 // A hit or an effect on the player brings the disease guard forward to this long after it
 const GUARD_AFTER_HARM_MS = 2000;
@@ -106,7 +108,8 @@ const listText = (items: string[]): string => items.join(", ") || "none";
  * server never granted. The server deals the freezing water damage from the swimming report, so AldSurvival_FreezingArea
  * is never set and the plugin's own water damage spell stays inert. What the server granted is the spawn's
  * learnedSpells plus every Actor AddSpell and RemoveSpell snippet it sent the player since. Nothing runs until a
- * survivalState arrives.
+ * survivalState arrives, and the 500 ms poll calls no native until a step is due: swimming is read only in a freezing
+ * water area, the flame cloak only while swimming there, and the disease guard walks the player's added spells.
  * Contagion is checked here so the server does no proximity work: every contagion.seconds, from a random first second,
  * the players this client has loaded within contagion.range (the chat whisper range) whose ff_contagious names a
  * disease the player's own ff_contagious lacks go out in one survivalExposure; nothing is sent when nobody is near. The
@@ -131,20 +134,17 @@ export class SurvivalService extends ClientListener {
       this.warmthDueAt = 0;
       this.contagionAt = 0;
       this.firstState = true;
-      this.cloakDue = true;
       this.request();
     }));
     // A load resets the globals and may carry a stale Variable04
     this.controller.on("loadGame", () => this.controller.once("update", () => {
       logToPlatformLog(this, `before load re-apply: ${this.describeHealth()}`);
       this.hudLogKey = "";
-      this.cloakDue = true;
       this.apply();
       this.request();
     }));
     this.controller.on("equip", (e) => this.onEquipChange(e.actor));
     this.controller.on("unequip", (e) => this.onEquipChange(e.actor));
-    this.controller.on("effectStart", (e) => this.onEffectStart(e.effect, e.target));
     this.controller.on("hit", (e) => this.onHarm(e.target));
     this.controller.on("magicEffectApply", (e) => this.onHarm(e.target));
     this.controller.on("update", () => this.onUpdate());
@@ -212,12 +212,6 @@ export class SurvivalService extends ClientListener {
     this.warmthDueAt = Date.now() + WARMTH_REPORT_MS;
   }
 
-  // A cloak on the player is read at the next poll; one in force is read every poll, which also sees it end
-  private onEffectStart(effect: MagicEffect | null, target: ObjectReference | null): void {
-    if (this.cloakDue || this.flameCloak || !effect || FLAME_CLOAK_EFFECTS.indexOf(effect.getFormID()) === -1) return;
-    if (target?.getFormID() === PLAYER_ID) this.cloakDue = true;
-  }
-
   private onHarm(target: ObjectReference | null): void {
     if (this.harmed || target?.getFormID() !== PLAYER_ID) return;
     this.harmed = true;
@@ -226,12 +220,14 @@ export class SurvivalService extends ClientListener {
 
   private onUpdate(): void {
     const now = Date.now();
-    if (!this.state || now < this.pollAt) return;
+    const state = this.state;
+    if (!state || now < this.pollAt) return;
     this.pollAt = now + POLL_MS;
+    if (isMenuShown(Menu.Loading) || !this.due(state, now)) return;
     const player = this.sp.Game.getPlayer();
-    if (!player || isMenuShown(Menu.Loading)) return;
+    if (!player) return;
     if (!this.bootLogged) this.logBoot();
-    this.report(player, now);
+    this.report(state, player, now);
     if (this.refreshAt && now >= this.refreshAt) {
       this.refreshAt = 0;
       refreshMovement(player);
@@ -243,7 +239,13 @@ export class SurvivalService extends ClientListener {
       this.guardRanAt = now;
       this.harmed = false;
     }
-    if (this.state.contagion) this.checkContagion(player, now, this.state.contagion);
+    if (state.contagion) this.checkContagion(player, now, state.contagion);
+  }
+
+  // What a poll calls natives for: its first run, a freezing water area or a swim still reported, a timed step
+  private due(state: SurvivalState, now: number): boolean {
+    return !this.bootLogged || state.freezingArea || this.reported !== NOT_SWIMMING || (this.warmthDueAt > 0 && now >= this.warmthDueAt) ||
+      (this.refreshAt > 0 && now >= this.refreshAt) || now >= this.guardAt || (!!state.contagion && now >= this.contagionAt);
   }
 
   // Loaded players within range carrying a contagious disease the player lacks, reported in one packet; the first check at a random second
@@ -272,11 +274,10 @@ export class SurvivalService extends ClientListener {
     logToPlatformLog(this, `contagion exposure reported: ${seen.join(", ")}`);
   }
 
-  // Swimming and a flame cloak on change, the engine's warmth total once due
-  private report(player: Actor, now: number): void {
-    const swimming = player.isSwimming();
-    if (this.cloakDue || this.flameCloak) this.readFlameCloak(player);
-    const flameCloak = this.flameCloak;
+  // Swimming in a freezing water area and a flame cloak there on change, the engine's warmth total once due
+  private report(state: SurvivalState, player: Actor, now: number): void {
+    const swimming = state.freezingArea && player.isSwimming();
+    const flameCloak = swimming && FLAME_CLOAK_EFFECTS.some((id) => player.hasMagicEffect(this.sp.MagicEffect.from(this.sp.Game.getFormEx(id))));
     const key = `${swimming}|${flameCloak}`;
     const warmthDue = this.warmthDueAt > 0 && now >= this.warmthDueAt;
     if (key === this.reported && !warmthDue) return;
@@ -285,14 +286,9 @@ export class SurvivalService extends ClientListener {
     if (warmthDue) {
       this.warmthDueAt = 0;
       payload["engineWarmth"] = player.getWarmthRating();
-      logToPlatformLog(this, `engine warmth ${payload["engineWarmth"]} reported, server warmth ${this.state?.warmth ?? "none"}`);
+      logToPlatformLog(this, `engine warmth ${payload["engineWarmth"]} reported, server warmth ${state.warmth}`);
     }
     sendCustomPacket(this.controller, payload);
-  }
-
-  private readFlameCloak(player: Actor): void {
-    this.cloakDue = false;
-    this.flameCloak = FLAME_CLOAK_EFFECTS.some((id) => player.hasMagicEffect(this.sp.MagicEffect.from(this.sp.Game.getFormEx(id))));
   }
 
   // The server's spell grants and removals on the player after the spawn's learnedSpells, which the world model never gets
@@ -305,7 +301,7 @@ export class SurvivalService extends ClientListener {
     if (id) this.serverSpells.set(id, fn === "addspell");
   }
 
-  // A disease on the player the server does not list at two checks in a row came from the player's own engine
+  // A disease among the player's added spells the server does not list at two checks in a row came from the player's own engine
   private guardDiseases(player: Actor): void {
     const remote = this.controller.lookupListener(RemoteServer);
     const learned = remote.getWorldModel().forms[remote.getMyActorIndex()]?.learnedSpells;
@@ -315,9 +311,12 @@ export class SurvivalService extends ClientListener {
     if (!listed.size) return;
     const seen = this.unlistedSeen;
     this.unlistedSeen = [];
-    for (const id of this.diseaseIds()) {
-      const spell = this.sp.Spell.from(this.sp.Game.getFormEx(id));
-      if (!spell || listed.has(id) || !player.hasSpell(spell)) continue;
+    const diseases = this.diseaseIds();
+    // From the end, since a removal shifts the spells after it
+    for (let i = player.getSpellCount() - 1; i >= 0; i--) {
+      const spell = player.getNthSpell(i);
+      const id = spell ? spell.getFormID() >>> 0 : 0;
+      if (!spell || !diseases.has(id) || listed.has(id)) continue;
       if (seen.indexOf(id) === -1) {
         this.unlistedSeen.push(id);
         continue;
@@ -329,13 +328,13 @@ export class SurvivalService extends ClientListener {
     }
   }
 
-  private diseaseIds(): number[] {
+  private diseaseIds(): Set<number> {
     if (!this.diseases) {
-      const ids = new Array<number>();
+      const ids = new Set<number>();
       for (const [plugin, locals] of DISEASE_SPELLS) {
         for (const local of locals) {
           const id = this.sp.Game.getFormFromFile(local, plugin)?.getFormID();
-          if (id) ids.push(id >>> 0);
+          if (id) ids.add(id >>> 0);
         }
       }
       this.diseases = ids;
@@ -351,11 +350,12 @@ export class SurvivalService extends ClientListener {
     const cloaks = FLAME_CLOAK_EFFECTS.filter((id) => this.sp.Game.getFormEx(id)).length;
     logToPlatformLog(this, `survival client on: cold ${state.cold} (${state.coldStageName || "off"}, stage ${state.coldStage}), penalty ${Math.round(state.coldPenalty * 100)}%, ` +
       `temperature ${state.temperatureLevel}, warmth ${state.warmth}, freezing area ${state.freezingArea ? "yes" : "no"}, afflictions ${listText(state.afflictions)}, ` +
-      `diseases ${this.diseaseText(state)}; swim poll every ${POLL_MS} ms, flame cloak read on its effectStart and every poll while on ` +
+      `diseases ${this.diseaseText(state)}; swimming read every ${POLL_MS} ms in a freezing water area only, the flame cloak while swimming there ` +
       `(${cloaks} of ${FLAME_CLOAK_EFFECTS.length} cloak effects found), ` +
       `engine warmth ${WARMTH_REPORT_MS / 1000} s after the last equip change, movement refresh ${MOVEMENT_REFRESH_MS / 1000} s after a stage or disease change, ` +
       `disease guard every ${GUARD_MS / 1000} s, ${GUARD_AFTER_HARM_MS / 1000} s after a hit or effect on the player and again ${GUARD_CONFIRM_MS / 1000} s later ` +
-      `(a harm never brings it under ${GUARD_CONFIRM_MS / 1000} s after the last run), over ${this.diseaseIds().length} of ${total} disease spells (dropped when neither the spawn list nor a later ` +
+      `(a harm never brings it under ${GUARD_CONFIRM_MS / 1000} s after the last run), over the player's ${this.sp.Game.getPlayer()?.getSpellCount() ?? 0} added spells against ` +
+      `${this.diseaseIds().size} of ${total} disease spells (dropped when neither the spawn list nor a later ` +
       `server AddSpell names it at two checks in a row, ${this.serverSpells.size} server grant(s) and removal(s) so far), ` +
       `contagion ${state.contagion ? `check every ${state.contagion.seconds} s within ${state.contagion.range} units of the loaded players' ${CONTAGIOUS_PROP}` : "off"}`);
   }
@@ -374,11 +374,9 @@ export class SurvivalService extends ClientListener {
   private warmthDueAt = 0;
   private contagionAt = 0;
   private reported = "";
-  private flameCloak = false;
-  private cloakDue = true;
   private hudLogKey = "";
   private unlistedSeen: number[] = [];
-  private diseases: number[] | null = null;
+  private diseases: Set<number> | null = null;
   // Spell id -> true when the server's last snippet on the player added it, false when it removed it
   private serverSpells = new Map<number, boolean>();
 }

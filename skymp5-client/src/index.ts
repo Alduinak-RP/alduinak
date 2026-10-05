@@ -99,6 +99,7 @@ import { FurnitureAnimationsService } from "./services/services/furnitureAnimati
 import { LipSyncService } from "./services/services/lipSyncService";
 import { VanillaMenuService } from "./services/services/vanillaMenuService";
 import { MenuStateService } from "./services/services/menuStateService";
+import { FrameStatsService } from "./services/services/frameStatsService";
 import { dropPlayerInventoryMemo } from "./sync/inventory";
 
 once("update", () => {
@@ -114,6 +115,8 @@ const main = () => {
     controller.on("update", dropPlayerInventoryMemo);
 
     const listeners = [
+      // First, so its frame clock opens ahead of every service's callbacks
+      new FrameStatsService(sp, controller),
       new MenuStateService(sp, controller),
       new BlockPapyrusEventsService(sp, controller),
       new LoadGameService(sp, controller),
