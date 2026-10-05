@@ -100,7 +100,8 @@ export class WritingService extends ClientListener {
     }
   }
 
-  private isWriting(form: Form): boolean {
+  // Blank or written: reading one is this service's, never the vanilla Book Menu's
+  isWriting(form: Form): boolean {
     const id = form.getFormID();
     let known = this.writingBases.get(id);
     if (known === undefined) {

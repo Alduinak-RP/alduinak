@@ -9,7 +9,7 @@ import { isPlayerCharacterId } from "./playerActionService";
 import { PetService } from "./petService";
 import { MountService } from "./mountService";
 import { JobService } from "./jobService";
-import { NAILED_PROP } from "./itemService";
+import { ItemService, NAILED_PROP } from "./itemService";
 import { formProp } from "../../view/worldViewMisc";
 import { PlayerCharacterDataHolder } from "../../view/playerCharacterDataHolder";
 
@@ -247,7 +247,8 @@ export class InteractionPromptService extends ClientListener {
       case FormType.Furniture:
         return "Use";
       case FormType.Book:
-        return "Read";
+        // A nailed writing, spell tome or skill book stays shut
+        return this.formFlag(ref, NAILED_PROP) && !this.controller.lookupListener(ItemService).isReadable(ref) ? "Admire" : "Read";
       case FormType.Flora:
       case FormType.Tree:
         return ref.isHarvested() ? null : "Harvest";

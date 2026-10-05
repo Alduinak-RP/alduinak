@@ -72,7 +72,8 @@ keeps its display name with a verb picked from its base form type.
 - **Verbs by base type**: Door Open/Unlock, Container Search/Unlock,
   Activator Activate, Furniture Use, Book Read, Flora/Tree Harvest (skipped
   when harvested), item types Take (Admire
-  when nailed down), books Read. A plugin-placed item of a `forbiddenReloot`
+  when nailed down), books Read (a nailed book that will not open reads Admire:
+  a writing, a spell tome or a skill book). A plugin-placed item of a `forbiddenReloot`
   type is taken once and never comes back. The board base (`12cb:Missives.esp`,
   resolved through `Game.getFormFromFile` so load order cannot break it)
   gets Read + "Notice Board"; `isBoard` is public, and `PlayerActionService`
@@ -162,7 +163,8 @@ pose, then enabled, so the only create message carries the final pose
 (HearthFires `BYOHMaterialNails`) and needs a hammer (`BlacksmithHammer01`),
 plays `IdleHammerTableEnter` for 2 s and sets `ff_nailed` (owner-visible, or
 create messages would drop it), which shows Admire and refuses pickups and
-carries; Pry Free is for the one who nailed it and for staff. Every drop
+carries; Pry Free is for the one who nailed it and for staff. A nailed book
+or note is read where it lies, see Nailed books below. Every drop
 raises `onItemPlaced` and the server writes `private.placedAt` on the item's
 changeForm (a carry or a pry of a dropped item writes it again, nailing
 writes `private.nailedBy`); every 30 min it asks the `changeForms` collection
@@ -172,6 +174,46 @@ live world and removes it. Plugin-placed items never expire. Without
 purses the plugins place are disabled in the plugin (`disableLooseItems`).
 The client logs every drop point and release: `drop point: hit ref ... layer
 ... at ...`; `missing` there means an old SkyrimPlatform in `Platform/`.
+
+## Nailed books (2026-10-05)
+
+Activate on a nailed book or note opens it in the vanilla Book Menu and leaves
+it nailed. Before, the prompt said Read and the press did nothing: `ItemService`
+swallows every press on a nailed item, and the server's "It is nailed down."
+only answers an activation that reaches it.
+
+How (`ItemService.readNailed`, client only, nothing is sent): the engine opens
+a book from an item menu's select handler, or when the player activates a book
+reference (`TESObjectBOOK::Activate`, which always opens the menu for the
+player unless the book teaches a spell). The second is the only one a script
+can start, and it shows **Take**: `BookMenu::ProcessMessage` answers Accept
+with `PlayerCharacter::PickUpObject` on the menu's reference, a direct call
+that `blockActivation` does not stop. Read from SkyrimSE.exe 1.6.1179 with the
+Address Library: `BookMenu::OpenBookMenu` (51053) is called from three places
+only, the book's Activate (17840) and two functions reached from menu
+callbacks (51149, 51870), none of them `ActorEquipManager::EquipObject`
+(38894), so `Actor.equipItem` on a book opens nothing; the Take is the virtual
+call at 0x8F2A05. A Take on the nailed reference itself would remove it from
+that client's world, for good on a plugin-placed book. So the press places a
+copy of the book only this client has (`placeAtMe` on the nailed reference,
+moved 4000 units straight down, out of sight and out of the crosshair's reach)
+and activates the copy. Close leaves the copy, which is deleted on the next
+update; Take picks the copy up, and the book it put in the pack is removed
+again with "It is nailed down." The nailed reference is never touched and the
+server sees neither the copy nor the pack change.
+
+Not opened, and labelled Admire: writings (blank or written, `AldWritingBlank`
+and `AldWritable`; a written one cannot be dropped, so only blanks can lie
+nailed), spell tomes and skill books (`Book.getSpell`, `Book.getSkill` 6 to
+23), which would teach on the copy. A book that is not nailed is still taken
+by a tap.
+
+skyrim-platform.log: `ItemService: nailed book <base> opened <n> ms after the
+press, on the copy <id>`, or `nailed book <base> did not open within 2000 ms
+of activating the copy <id>` when the menu never came (the copy is deleted
+then too). The copy's activation also prints one `localIdToRemoteId returned 0
+(target)` line to the in-game console from `ActivationService`, which drops
+it there, so nothing reaches the server.
 
 ## Switches and verification
 

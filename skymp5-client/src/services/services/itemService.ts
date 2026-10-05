@@ -1,12 +1,14 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import * as sp from "skyrimPlatform";
-import { ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
-import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
+import { Book, ButtonEvent, DxScanCode, Menu, ObjectReference } from "skyrimPlatform";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { buttonEventKeyCode } from "./widgetMenuUtil";
 import { formProp, localIdToRemoteId, pluginRefs, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { FormTypeEx } from "../../extensions/formTypeEx";
 import { RemoteServer } from "./remoteServer";
 import { ActivationService } from "./activationService";
+import { WritingService } from "./writingService";
+import { TimersService } from "./timersService";
 import { logToPlatformLog } from "../../logging";
 import { setAdminGhostShader } from "../../view/adminGhostLook";
 
@@ -18,6 +20,15 @@ const HOLD_MS = 400;
 const PLACE_REACH = 350;
 // Degrees one mouse wheel step turns a carried item
 const TURN_STEP = 15;
+// Actor values of the skills a book can teach, One-Handed to Enchanting
+const FIRST_SKILL_AV = 6;
+const LAST_SKILL_AV = 23;
+// The Book Menu follows the activation within a few frames; without it the copy is removed after this long
+const READ_OPEN_MS = 2000;
+// PlacedItemSystem's own words for a refused pickup
+const NAILED_NOTICE = "It is nailed down.";
+// How far under the nailed book its copy waits, out of sight and out of the crosshair's reach
+const COPY_DEPTH = 4000;
 
 interface Look {
   how: string;
@@ -46,7 +57,16 @@ interface Carry {
   ghosted: boolean;
 }
 
-// Tap Activate to take a world item, hold it (or Move) to carry it on the surface in view; only the release is sent
+// A nailed book being read on a copy only this client has: the copy, its base, how many the pack held, when it was asked and whether the Book Menu came up
+interface Reading {
+  copyId: number;
+  baseId: number;
+  held: number;
+  at: number;
+  opened: boolean;
+}
+
+// Tap Activate to take a world item or read a nailed book, hold it (or Move) to carry it on the surface in view; only the release is sent
 export class ItemService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -55,6 +75,14 @@ export class ItemService extends ClientListener {
     onCustomPacket(this.controller, ["itemGrabState", "itemGrabbed", "itemMoved"], (content) => this.onCustomPacketMessage(content));
     // The server ends a disconnected carry itself and cannot tell this client
     this.controller.emitter.on("connectionDisconnect", () => this.controller.once("update", () => this.reset()));
+    this.controller.on("menuOpen", (e) => {
+      if (e.name !== Menu.Book || !this.reading || this.reading.opened) return;
+      this.reading.opened = true;
+      logToPlatformLog(this, `nailed book ${this.reading.baseId.toString(16)} opened ${Date.now() - this.reading.at} ms after the press, on the copy ${this.reading.copyId.toString(16)}`);
+    });
+    this.controller.on("menuClose", (e) => {
+      if (e.name === Menu.Book && this.reading?.opened) this.controller.once("update", () => this.endReading());
+    });
   }
 
   isItem(ref: ObjectReference): boolean {
@@ -66,12 +94,75 @@ export class ItemService extends ClientListener {
     return formProp(remoteId, NAILED_PROP) === true;
   }
 
+  // A nailed book or note the engine can show: no writing, whose text is the server's, and nothing that teaches when read
+  isReadable(ref: ObjectReference): boolean {
+    const base = ref.getBaseObject();
+    const baseId = base ? base.getFormID() : 0;
+    let readable = this.readableBases.get(baseId);
+    if (readable === undefined) {
+      const book = Book.from(base);
+      const skill = book ? book.getSkill() : 0;
+      readable = !!book && !book.getSpell() && !(skill >= FIRST_SKILL_AV && skill <= LAST_SKILL_AV) && !this.controller.lookupListener(WritingService).isWriting(book);
+      this.readableBases.set(baseId, readable);
+    }
+    return readable;
+  }
+
   // True when the press is ours; the tap's pickup is sent once the key is let go in time
   onActivatePress(ref: ObjectReference, remoteId: number): boolean {
     if (!this.isItem(ref)) return false;
-    if (this.carry || this.isNailed(remoteId)) return true;
+    if (this.carry) return true;
+    if (this.isNailed(remoteId)) {
+      this.readNailed(ref);
+      return true;
+    }
     this.pending = { localId: ref.getFormID(), remoteId, at: Date.now() };
     return true;
+  }
+
+  // The Book Menu's Take picks its reference up whatever blocks it (BookMenu::ProcessMessage calls PickUpObject), so the menu opens on a copy placed for the read
+  private readNailed(ref: ObjectReference): void {
+    const stale = !!this.reading && !this.sp.Ui.isMenuOpen(Menu.Book) && Date.now() - this.reading.at >= READ_OPEN_MS;
+    if (!this.isReadable(ref) || (this.reading && !stale)) return;
+    this.endReading();
+    const reading: Reading = { copyId: 0, baseId: ref.getBaseObject()!.getFormID(), held: 0, at: Date.now(), opened: false };
+    const nailedId = ref.getFormID();
+    this.reading = reading;
+    this.controller.once("update", () => {
+      if (this.reading !== reading) return;
+      const nailed = ObjectReference.from(this.sp.Game.getFormEx(nailedId));
+      const player = this.sp.Game.getPlayer();
+      const book = this.sp.Game.getFormEx(reading.baseId);
+      const copy = nailed && player && book ? nailed.placeAtMe(book, 1, false, false) : null;
+      if (!copy || !player) {
+        this.reading = null;
+        return;
+      }
+      reading.copyId = copy.getFormID();
+      reading.held = player.getItemCount(book);
+      copy.setPosition(copy.getPositionX(), copy.getPositionY(), copy.getPositionZ() - COPY_DEPTH);
+      copy.activate(player, true);
+      this.controller.lookupListener(TimersService).setTimeoutOnUpdate(() => {
+        if (this.reading === reading && !reading.opened) this.endReading();
+      }, READ_OPEN_MS);
+    });
+  }
+
+  // Removes the copy, or the book a Take made of it, and says so when the Book Menu never came
+  private endReading(): void {
+    const reading = this.reading;
+    this.reading = null;
+    if (!reading || !reading.copyId) return;
+    const player = this.sp.Game.getPlayer();
+    const book = this.sp.Game.getFormEx(reading.baseId);
+    const taken = player && book ? player.getItemCount(book) - reading.held : 0;
+    if (player && taken > 0) {
+      player.removeItem(book, taken, true, null);
+      notifyNextUpdate(this.controller, this.sp, NAILED_NOTICE);
+    }
+    const copy = ObjectReference.from(this.sp.Game.getFormEx(reading.copyId));
+    if (copy && !copy.isDeleted() && copy.getBaseObject()?.getFormID() === reading.baseId) copy.delete();
+    if (!reading.opened) logToPlatformLog(this, `nailed book ${reading.baseId.toString(16)} did not open within ${READ_OPEN_MS} ms of activating the copy ${reading.copyId.toString(16)}`);
   }
 
   startMove(ref: ObjectReference): void {
@@ -237,4 +328,6 @@ export class ItemService extends ClientListener {
 
   private pending: { localId: number; remoteId: number; at: number } | null = null;
   private carry: Carry | null = null;
+  private reading: Reading | null = null;
+  private readableBases = new Map<number, boolean>();
 }
