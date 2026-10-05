@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { System, Log, SystemContext, AFTERLIFE_EVENT, AFTERLIFE_REVIVED_EVENT } from "./system";
+import { System, Log, SystemContext, AFTERLIFE_EVENT, AFTERLIFE_REVIVED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
 import { addItemTo, addSpellTo, chainMpHook, hex, holdsItem, isAlive, isPlayerActor, notifyActor, removeSpellFrom, userOf } from "./actorUtil";
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { readInventory, sameExtras, withoutCondition } from "./inventoryExtras";
@@ -190,9 +190,16 @@ export class AfterlifeSystem implements System {
       this.confine(mp, actorId >>> 0);
       this.syncLook(mp, actorId >>> 0);
       const realm = afterlifeOf(mp, actorId >>> 0);
-      if (realm) setTimeout(() => this.dress(mp, actorId >>> 0, realm), DRESS_DELAY_MS);
+      if (!realm) return;
+      this.onlineFallen.add(actorId >>> 0);
+      setTimeout(() => this.dress(mp, actorId >>> 0, realm), DRESS_DELAY_MS);
     });
+    ctx.gm.on(USER_MENU_QUIT_EVENT, (_userId: number, actorId: number) => this.onlineFallen.delete(actorId >>> 0));
     every("afterlife", CONFINE_POLL_MS, () => this.poll(ctx));
+  }
+
+  disconnect(userId: number, ctx: SystemContext): void {
+    try { this.onlineFallen.delete(ctx.svr.getUserActor(userId) >>> 0); } catch { /* form vanished */ }
   }
 
   // Editor ids, descs and hex ids of the look and the outfit per realm, each set field over its default; misses are logged
@@ -249,9 +256,11 @@ export class AfterlifeSystem implements System {
 
   poll(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
-    let players: unknown[] = [];
-    try { players = mp.get(0, "onlinePlayers") ?? []; } catch { return; }
-    for (const id of players) this.confine(mp, Number(id) >>> 0);
+    for (const actorId of this.onlineFallen) {
+      // A character left at character select without a menu quit has no user any more
+      if (userOf(mp, actorId) < 0) this.onlineFallen.delete(actorId);
+      else this.confine(mp, actorId);
+    }
   }
 
   sendToSovngarde(actorId: number, reason: string): boolean {
@@ -282,6 +291,7 @@ export class AfterlifeSystem implements System {
       this.log(`[afterlife] reviving ${hex(actorId)} failed: ${e}`);
       return "Revive failed, see server log";
     }
+    this.onlineFallen.delete(actorId);
     this.clearLook(mp, actorId);
     this.undress(mp, actorId);
     notifyActor(mp, actorId, "You have been returned to the living.");
@@ -306,6 +316,7 @@ export class AfterlifeSystem implements System {
       this.log(`[afterlife] sending ${hex(actorId)} to ${label} failed: ${e}`);
       return false;
     }
+    this.onlineFallen.add(actorId);
     this.syncLook(mp, actorId);
     if (alive) this.dress(mp, actorId, realm);
     notifyActor(mp, actorId, `Your soul passes to ${label}.`);
@@ -473,6 +484,8 @@ export class AfterlifeSystem implements System {
   }
 
   private ctx: SystemContext | null = null;
+  // Fallen characters played by a connected user, the only ones the poll confines
+  private onlineFallen = new Set<number>();
   private limits = readCharacterLimits(null);
   private settleWear: SettleWear = () => { };
   private looks: Record<RealmId, RealmLook> = { sovngarde: NO_LOOK, soulCairn: NO_LOOK };
