@@ -9,7 +9,7 @@ type Mp = any;
 
 // Gold watch: samples online characters' gold and flags a rise above the threshold between two samples
 // (looting, trades, console spawns and dupes alike) as a goldSpawn alert in the manager's Security tab.
-// Every 10 s it samples the characters that crafted, ate, put, took, dropped, activated or sent a trade or bounty packet
+// Every 10 s it samples the characters that crafted, ate, put, took, dropped, activated, traded or sent a trade or bounty packet
 // since the last poll and those without a baseline yet; every sixth poll (about 60 s) samples every online character.
 // The first sample of a character only sets its baseline, so logging in rich flags nothing.
 // Inventory watch (B14, B24): the same samples log every drop of gold and every drop of Salt Pile the actor's own
@@ -58,6 +58,14 @@ export const packSummary = (entries: unknown): { gold: number; items: string[] }
   return { gold, items };
 };
 
+// Actors with inventory activity since the last poll
+const dirtyActors = new Set<number>();
+
+// For server-side inventory writes no hook sees, such as the trade swap
+export const noteInventoryActivity = (...actorIds: number[]): void => {
+  for (const actorId of actorIds) dirtyActors.add(actorId >>> 0);
+};
+
 export class GoldWatchSystem implements System {
   systemName = "GoldWatchSystem";
   constructor(private log: Log) { }
@@ -76,8 +84,7 @@ export class GoldWatchSystem implements System {
   private inputCache = new Map<number, Map<number, number>>();
   // actorId -> the last item the actor ate
   private lastEat = new Map<number, { baseId: number; at: number }>();
-  // Actors with inventory activity since the last poll
-  private dirty = new Set<number>();
+  private dirty = dirtyActors;
   private polls = 0;
 
   async initAsync(ctx: SystemContext): Promise<void> {

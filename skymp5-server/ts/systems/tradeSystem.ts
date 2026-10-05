@@ -6,6 +6,7 @@ import {
 } from "./inventoryExtras";
 import { isBleedingOut, isIntroduced } from "./actorUtil";
 import { SettleWear, wearSettler } from "./durabilityNative";
+import { noteInventoryActivity } from "./goldWatchSystem";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -649,9 +650,11 @@ export class TradeSystem implements System {
       mp.set(aId, 'inventory', newA);
       wroteA = true;
       mp.set(bId, 'inventory', newB);
+      noteInventoryActivity(aId, bId);
     } catch (err: any) {
       this.log('[trade] swap write failed: ' + (err && err.message));
       if (wroteA) {
+        noteInventoryActivity(aId);
         try {
           mp.set(aId, 'inventory', preSwapA);
           this.log('[trade] rolled back ' + this.nameOf(mp, s.a) + "'s inventory after failed swap");
