@@ -46,6 +46,7 @@ enum class AuthorityCheck
   ActivateDistance,
   MeleeReach,
   ShotDistance,
+  SpellHitWindow,
   Count
 };
 

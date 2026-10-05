@@ -116,7 +116,15 @@ private:
     bool isScroll = false;
     // Last cast or keep-alive that passed every check, a stop clears it
     std::optional<std::chrono::steady_clock::time_point> validatedAt;
-    std::chrono::steady_clock::time_point lastCastAt;
+    // Hits of the spell, or of a spell it grants, are expected until then
+    std::chrono::steady_clock::time_point hitWindowEnd;
+  };
+
+  struct SpellHitTime
+  {
+    uint32_t targetId = 0;
+    uint32_t spellId = 0;
+    std::chrono::steady_clock::time_point at;
   };
 
   CastRecord* FindCastRecord(uint32_t casterId, uint32_t spellId);
@@ -126,6 +134,16 @@ private:
     std::chrono::steady_clock::time_point now);
   void RecordCast(uint32_t casterId, uint32_t spellId, bool isScroll,
                   bool validated, std::chrono::steady_clock::time_point now);
+  // Hosted NPCs never disconnect, so their stale entries go once a minute
+  void SweepCasterMaps(std::chrono::steady_clock::time_point now);
+
+  // Logs a spell hit without a cast of the spell, or of a cloak or hazard spell that grants it, inside the cast's window; false only while enforced
+  bool IsSpellHitCastLinked(Networking::UserId userId, const MpActor& aggressor,
+                            const MpObjectReference& target,
+                            uint32_t spellId);
+  // At most one hit per aggressor, target and spell per kSpellHitInterval
+  bool AllowSpellHit(uint32_t aggressorId, uint32_t targetId,
+                     uint32_t spellId);
 
   void UpdateWardChannel(uint32_t casterId,
                          const SpellCastData& spellCastData);
@@ -229,7 +247,8 @@ private:
   uint32_t restorationChannelGeneration = 0;
   std::unordered_map<uint32_t, WardChannel> wardChannels;
   std::unordered_map<uint32_t, std::vector<CastRecord>> castRecords;
-  std::chrono::steady_clock::time_point castRecordsSweptAt;
+  std::unordered_map<uint32_t, std::vector<SpellHitTime>> spellHitTimes;
+  std::chrono::steady_clock::time_point casterMapsSweptAt;
   std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
     paralyzedUntil;
   std::unordered_map<uint32_t, BlockedHitGuard> blockedHitGuards;

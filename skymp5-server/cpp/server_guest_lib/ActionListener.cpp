@@ -68,6 +68,7 @@ struct CombatEspmCache
     hitPoisons;
   std::unordered_map<uint32_t, bool> wardSpells;
   std::unordered_map<uint32_t, uint32_t> paralysisSeconds;
+  std::unordered_map<uint32_t, uint32_t> longestEffectSeconds;
   std::unordered_map<uint32_t, std::vector<espm::Effects::Effect>>
     restorativeEffects;
   std::unordered_map<uint32_t, std::vector<espm::Effects::Effect>>
@@ -262,6 +263,27 @@ uint32_t GetParalysisSeconds(CombatEspmCache& cache, WorldState* worldState,
     return EvaluateParalysisSeconds(worldState, spellId);
   });
 }
+
+// 0 for a record that is not a SPEL
+uint32_t GetLongestEffectSeconds(CombatEspmCache& cache,
+                                 WorldState* worldState, uint32_t spellId)
+{
+  return Cached(cache.longestEffectSeconds, spellId, [&] {
+    uint32_t seconds = 0;
+    ForEachSpellEffectData(
+      worldState, spellId,
+      [&](const espm::SPEL::EFIT* effectItem, const espm::MGEF::DATA&,
+          const espm::LookupResult&) {
+        if (effectItem) {
+          seconds = std::max(seconds, effectItem->duration);
+        }
+      });
+    return seconds;
+  });
+}
+
+// The client sends one spell hit per aggressor and target per 100 ms
+constexpr auto kSpellHitInterval = std::chrono::milliseconds(90);
 
 // The aggressor's poisoned copy of the weapon that hit, the twin of the worn entry when several differ
 std::optional<Inventory::Entry> FindPoisonedEntry(const MpActor& aggressor,
@@ -1878,12 +1900,24 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
     sourceInEspm.rec && sourceInEspm.rec->GetType() == espm::SPEL::kType;
 
   if (isSourceSpell) {
-    if (CanHitWithSpell(*combatEspmCache, *aggressor, hitData.source)) {
-      OnSpellHit(aggressor, targetRef, hitData);
-    } else {
+    if (!CanHitWithSpell(*combatEspmCache, *aggressor, hitData.source)) {
       spdlog::debug("ActionListener::OnHit - {:x} cannot hit with spell {:x}",
                     hitData.aggressor, hitData.source);
+      return;
     }
+    if (!IsSpellHitCastLinked(rawMsgData.userId, *aggressor, *targetRef,
+                              hitData.source)) {
+      return;
+    }
+    if (!AllowSpellHit(aggressor->GetFormId(), targetRef->GetFormId(),
+                       hitData.source)) {
+      spdlog::debug("ActionListener::OnHit - {:x} hit {:x} with spell {:x} "
+                    "again within {} ms, dropped",
+                    aggressor->GetFormId(), targetRef->GetFormId(),
+                    hitData.source, kSpellHitInterval.count());
+      return;
+    }
+    OnSpellHit(aggressor, targetRef, hitData);
     return;
   }
 
@@ -2855,21 +2889,11 @@ void ActionListener::RecordCast(uint32_t casterId, uint32_t spellId,
                                 bool isScroll, bool validated,
                                 std::chrono::steady_clock::time_point now)
 {
-  const auto isStale = [&](const CastRecord& record) {
-    return now - record.lastCastAt > kCastRefreshTimeout;
-  };
-  // Hosted NPCs never disconnect, so casters that stopped casting are dropped once a minute
-  if (now - castRecordsSweptAt > std::chrono::minutes(1)) {
-    castRecordsSweptAt = now;
-    std::erase_if(castRecords, [&](auto& entry) {
-      std::erase_if(entry.second, isStale);
-      return entry.second.empty();
-    });
-  }
+  SweepCasterMaps(now);
 
   auto& records = castRecords[casterId];
   std::erase_if(records, [&](const CastRecord& record) {
-    return record.spellId != spellId && isStale(record);
+    return record.spellId != spellId && now > record.hitWindowEnd;
   });
   CastRecord* record = FindCastRecord(casterId, spellId);
   if (!record) {
@@ -2877,10 +2901,91 @@ void ActionListener::RecordCast(uint32_t casterId, uint32_t spellId,
     record->spellId = spellId;
   }
   record->isScroll = isScroll;
-  record->lastCastAt = now;
   if (validated) {
     record->validatedAt = now;
   }
+
+  const uint32_t effectSeconds = isScroll
+    ? 0
+    : GetLongestEffectSeconds(*combatEspmCache, &partOne.worldState, spellId);
+  const auto hitWindow =
+    std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+      std::chrono::seconds(effectSeconds) +
+      std::chrono::duration<float>(partOne.worldState.spellHitWindow.max));
+  record->hitWindowEnd = now +
+    std::max<std::chrono::steady_clock::duration>(kCastRefreshTimeout,
+                                                  hitWindow);
+}
+
+void ActionListener::SweepCasterMaps(std::chrono::steady_clock::time_point now)
+{
+  if (now - casterMapsSweptAt < std::chrono::minutes(1)) {
+    return;
+  }
+  casterMapsSweptAt = now;
+  std::erase_if(castRecords, [&](auto& entry) {
+    std::erase_if(entry.second, [&](const CastRecord& record) {
+      return now > record.hitWindowEnd;
+    });
+    return entry.second.empty();
+  });
+  std::erase_if(spellHitTimes, [&](const auto& entry) {
+    return std::all_of(
+      entry.second.begin(), entry.second.end(),
+      [&](const SpellHitTime& hit) { return now - hit.at >= kSpellHitInterval; });
+  });
+}
+
+bool ActionListener::IsSpellHitCastLinked(Networking::UserId userId,
+                                          const MpActor& aggressor,
+                                          const MpObjectReference& target,
+                                          uint32_t spellId)
+{
+  const auto now = std::chrono::steady_clock::now();
+  const auto castRecently = [&](uint32_t castSpellId) {
+    const CastRecord* record =
+      FindCastRecord(aggressor.GetFormId(), castSpellId);
+    return record && now <= record->hitWindowEnd;
+  };
+  if (castRecently(spellId)) {
+    return true;
+  }
+  for (uint32_t parentId :
+       GetGrantingSpells(*combatEspmCache, &partOne.worldState, spellId)) {
+    if (castRecently(parentId)) {
+      return true;
+    }
+  }
+
+  const auto& bound = partOne.worldState.spellHitWindow;
+  if (auto held = partOne.serverState.AllowAuthorityLog(
+        userId, AuthorityCheck::SpellHitWindow)) {
+    spdlog::warn("ActionListener::OnHit - {:x} hits {:x} with spell {:x} "
+                 "without a cast of it or of a spell that grants it within "
+                 "its longest effect plus spellHitWindow {} s, {} ({} more "
+                 "since the last line)",
+                 aggressor.GetFormId(), target.GetFormId(), spellId, bound.max,
+                 bound.enforce ? "refused" : "logged only", *held);
+  }
+  return !bound.enforce;
+}
+
+bool ActionListener::AllowSpellHit(uint32_t aggressorId, uint32_t targetId,
+                                   uint32_t spellId)
+{
+  const auto now = std::chrono::steady_clock::now();
+  SweepCasterMaps(now);
+  auto& hits = spellHitTimes[aggressorId];
+  std::erase_if(hits, [&](const SpellHitTime& hit) {
+    return now - hit.at >= kSpellHitInterval;
+  });
+  for (const auto& hit : hits) {
+    if (hit.targetId == targetId && hit.spellId == spellId) {
+      return false;
+    }
+  }
+  hits.push_back({ targetId, spellId, now });
+  return true;
 }
 
 // Ward casts and keep-alives refresh the caster's ward, its stop ends it
@@ -3087,6 +3192,7 @@ void ActionListener::ForgetActor(uint32_t actorId)
   wardChannels.erase(actorId);
   restorationChannels.erase(actorId);
   castRecords.erase(actorId);
+  spellHitTimes.erase(actorId);
 }
 
 // A lower health reported inside the guard is the blocked hit's poison, so the server keeps its value for up to that poison's damage

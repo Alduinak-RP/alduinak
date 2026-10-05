@@ -292,6 +292,8 @@ public:
   AuthorityBound meleeSlack{ 400.f };
   // Units from the shooter to the target of a bow or crossbow hit
   AuthorityBound shotDistance{ 8192.f };
+  // Seconds a spell hit may land after the longest effect of the aggressor's last cast of it, or of a spell that grants it
+  AuthorityBound spellHitWindow{ 10.f };
 
   // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
   std::shared_ptr<ItemRowResolver> itemRowResolver;

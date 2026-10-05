@@ -303,6 +303,8 @@ TEST_CASE("An active ward blocks a frontal spell hit like a shield", "[Hit]")
   hitMsg.data.source = kFlames;
 
   auto healthLostToHit = [&] {
+    // One spell hit per aggressor, target and spell lands per 90 ms
+    std::this_thread::sleep_for(100ms);
     target.SetPercentages({ 1.f, 1.f, 1.f });
     p.GetActionListener().OnHit(rawMsgData, hitMsg);
     return 1.f - target.GetChangeForm().actorValues.healthPercentage;
@@ -361,6 +363,8 @@ TEST_CASE("A learned spell is cast even when no spell slot names it",
   hitMsg.data.source = kFlames;
 
   auto healthLostToHit = [&] {
+    // One spell hit per aggressor, target and spell lands per 90 ms
+    std::this_thread::sleep_for(100ms);
     target.SetPercentages({ 1.f, 1.f, 1.f });
     p.GetActionListener().OnHit(rawMsgData, hitMsg);
     return 1.f - target.GetChangeForm().actorValues.healthPercentage;

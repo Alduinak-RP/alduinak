@@ -1320,6 +1320,7 @@ native server at boot; it logs `<limit> is <n> and <switch> is <true|false>: ...
 | `maxActivateDistance` | `enforceActivateDistance` | `1024` | Units from the player, or the hosted NPC, to the object it activates (doors, containers, items, seats). Closing a container or leaving a seat is never checked, and an object in another cell or worldspace is left to the activation's own worldspace check. Logs `ActionListener::OnActivate - <caster> activates <target> from <n> units, farther than maxActivateDistance <max>, logged only\|refused`. Very large objects such as gates have far origins. Papyrus activations, lever links and activation children are not checked. |
 | `meleeSlack` | `enforceMeleeReach` | `400` | Units a player's melee hit (fists, any weapon but a staff, a bow bash) may land beyond its reach, measured between the two origins. The reach is the weapon's reach times `fCombatDistance`, or the race's unarmed reach for fists; the slack covers body size and movement lag. Logs `ActionListener::OnHit - <attacker> hits <target> with <weapon> from <n> units, beyond its reach <r> plus meleeSlack <slack>, logged only\|refused`. Hosted NPCs are never checked, because creatures (giants, mammoths, dragons) hit from far-off origins. Large targets have far origins too. |
 | `maxShotDistance` | `enforceShotDistance` | `8192` | Units from the shooter, a player or a hosted NPC, to the target of a bow or crossbow hit (not a bash). Logs `ActionListener::OnHit - <shooter> shoots <target> with <weapon> from <n> units, farther than maxShotDistance <max>, logged only\|refused`. Other hits stay bounded by the fixed 4096 units. |
+| `spellHitWindow` | `enforceSpellHitWindow` | `10` | Seconds a spell hit may land after the longest effect duration of the attacker's last cast or keep-alive of that spell, or of a cloak or hazard spell that grants it (at least the 8 s keep-alive timeout). Players and hosted NPCs are checked. Logs `ActionListener::OnHit - <attacker> hits <target> with spell <spell> without a cast of it or of a spell that grants it within its longest effect plus spellHitWindow <s> s, logged only\|refused`. Runes triggered long after their cast and creature breath or spit attacks that send no cast can fall outside it. Separately, a second hit by the same attacker on the same target with the same spell within 90 ms is always dropped; the client sends at most one per 100 ms. |
 
 ```json5
 {
@@ -1331,7 +1332,9 @@ native server at boot; it logs `<limit> is <n> and <switch> is <true|false>: ...
   "meleeSlack": 400,
   "enforceMeleeReach": false,
   "maxShotDistance": 8192,
-  "enforceShotDistance": false
+  "enforceShotDistance": false,
+  "spellHitWindow": 10,
+  "enforceSpellHitWindow": false
   // ...
 }
 ```
