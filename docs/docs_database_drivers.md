@@ -35,35 +35,4 @@ We recommend [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) as a cloud dat
 }
 ```
 
-## zip
-
-Similar to `file` driver, but uses zip archive instead of directory. Default `databaseName` is `world`. The server would use `world.zip` for data storage in this case.
-
-```json5
-{
-  // ...
-  "databaseDriver": "zip",
-  "databaseName": "world"
-  // ...
-}
-```
-
-## migration
-
-A special database driver is used to move from one type of database to another on the fly. Do not forget to backup everything before using this.
-
-```json5
-{
-  // ...
-  "databaseDriver": "migration",
-  "databaseOld": {
-    "databaseDriver": "file",
-    "databaseName": "world"
-  },
-  "databaseNew": {
-    "databaseDriver": "mongodb"
-    // ...
-  }
-  // ...
-}
-```
+The `zip` and `migration` drivers were removed in the syncing Stage 2 native build N1 (`plans/syncing-stage2.md`, L1-18).

@@ -55,6 +55,9 @@ db.createUser({
 
 ## 2. Run the one-shot migration
 
+History: the live move ran in 2026-09; the `migration` driver this section uses was
+removed in the syncing Stage 2 native build N1, so a new move needs a script instead.
+
 Stop the game service, then set `databaseDriver` to `migration` in
 `build/dist/server/server-settings.json`. The migration driver reads the old
 (file) DB, upserts everything into the new (mongo) DB in chunks, then exits the

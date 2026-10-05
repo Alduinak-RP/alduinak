@@ -115,8 +115,6 @@ if(NOT APPLE AND NOT EMSCRIPTEN)
   find_package(bsa CONFIG REQUIRED)
 endif()
 
-find_package(libzippp REQUIRED)
-
 find_package(antigo REQUIRED)
 
 foreach(target ${VCPKG_DEPENDENT})
@@ -144,7 +142,6 @@ foreach(target ${VCPKG_DEPENDENT})
   else()
     target_compile_definitions(${target} PUBLIC NO_BSA=1)
   endif()
-  target_link_libraries(${target} PUBLIC libzippp::libzippp)
 
   if(APPLE)
     target_link_libraries(${target} PUBLIC pthread resolv m)

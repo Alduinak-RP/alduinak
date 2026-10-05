@@ -3,7 +3,6 @@
 #include "FormDesc.h"
 #include "MpChangeForms.h"
 #include "database_drivers/FileDatabase.h"
-#include "database_drivers/ZipDatabase.h"
 #include "save_storages/AsyncSaveStorage.h"
 #include <filesystem>
 
@@ -23,27 +22,11 @@ MakeSaveStorageFile()
     spdlog::default_logger(), "file");
 }
 
-std::shared_ptr<
-  Viet::ISaveStorage<MpChangeForm, FormDesc, std::vector<FormDesc>>>
-MakeSaveStorageZip()
-{
-  auto archivePath = "world.zip";
-
-  if (std::filesystem::exists(archivePath)) {
-    std::filesystem::remove(archivePath);
-  }
-
-  return std::make_shared<
-    Viet::AsyncSaveStorage<MpChangeForm, FormDesc, std::vector<FormDesc>>>(
-    std::make_shared<ZipDatabase>(archivePath, spdlog::default_logger()),
-    spdlog::default_logger(), "zip");
-}
-
 std::vector<std::shared_ptr<
   Viet::ISaveStorage<MpChangeForm, FormDesc, std::vector<FormDesc>>>>
 MakeSaveStorages()
 {
-  return { MakeSaveStorageFile(), MakeSaveStorageZip() };
+  return { MakeSaveStorageFile() };
 }
 
 MpChangeForm CreateChangeForm(const char* descStr)

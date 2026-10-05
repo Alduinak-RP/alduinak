@@ -9,7 +9,6 @@
 #include "Inventory.h"
 #include "LocationalData.h"
 #include "NiPoint3.h"
-#include "Quest.h"
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -131,9 +130,6 @@ public:
 
   // Used for Faction (FACT) synchronization
   std::optional<std::vector<Faction>> factions;
-
-  // Used for Quest (QUST) synchronization
-  std::optional<std::vector<Quest>> quests;
 
   // Please update 'ActorTest.cpp' when adding new Actor-related rows
 
