@@ -1,4 +1,4 @@
-import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
+import { Actor, ActorBase, createText, destroyText, FormType, Game, Keyword, NetImmerse, ObjectReference, once, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
 import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, getWornLight, resyncHandGraph, wearsExactly } from "../sync/equipment";
@@ -142,123 +142,139 @@ export class FormView {
 
     const refId =
       model.refrId && model.refrId < 0xff000000 ? model.refrId : undefined;
-    if (refId) {
-      if (this.refrId !== refId) {
-        this.destroy();
-        this.refrId = model.refrId as number;
-        this.ready = true;
-        // dealWithRef waits in applyAll until the ref exists (spawn, teleport: cells attach after the server streams them)
-        this.dealtWithRef = false;
-      }
-    } else {
-      let base = Game.getFormEx(model.baseId || NaN);
-      if (base === null) {
-        base = Game.getFormEx(this.getAppearanceBasedBase());
-      }
-      if (base === null) {
-        return;
-      }
-
-      let refr = ObjectReference.from(Game.getFormEx(this.refrId));
-
-      let respawnRequired = false;
-      if (!refr) {
-        respawnRequired = true;
-      } else if (!refr.getBaseObject()) {
-        respawnRequired = true;
-      } else if ((refr.getBaseObject() as Form).getFormID() !== base.getFormID()) {
-        respawnRequired = true;
-      }
-
-      if (respawnRequired) {
-        this.destroy();
-
-        if (model.movement) {
-          refr = (Game.getPlayer() as Actor).placeAtMe(base, 1, true, true) as ObjectReference;
-        }
-
-        this.state = {};
-        if (base.getType() !== FormType.NPC) {
-          refr?.setAngle(
-            model.movement?.rot[0] || 0,
-            model.movement?.rot[1] || 0,
-            model.movement?.rot[2] || 0
-          );
-        } else {
-          const actor = Actor.from(refr);
-          if (actor) {
-            this.applyHostility(actor, model);
-          }
-        }
-
-        if (refr !== null) {
-          SpApiInteractor.getControllerInstance().lookupListener(WorldCleanerService).modWcProtection(refr.getFormID(), 1);
-        }
-
-        // TODO: reset all states?
-        this.eqState = this.getDefaultEquipState();
-        this.torchState.numChanges = -1;
-        this.animState = this.getDefaultAnimState();
-
-        this.ready = false;
-
-        const spawnPos = model.movement ? model.movement.pos : ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
-
-        if (refr) {
-          new SpawnProcess(model.appearance || null, spawnPos, refr.getFormID(), () => {
-            this.ready = true;
-            this.spawnMoment = Date.now();
-          }, !!model.isDead);
-        }
-
-        if (model.appearance && model.appearance.name) {
-          refr?.setDisplayName("" + model.appearance.name, true);
-        }
-        const spawned = Actor.from(refr);
-        if (spawned) {
-          spawned.setActorValue("attackDamageMult", 0);
-          // Immortal from the first frame: a copy dying while its collision still loads would have its host report a death the server never saw
-          spawned.startDeferredKill();
-          spawned.setActorValue("health", 1000000);
-          spawned.setActorValue("magicka", 1000000);
-          this.localImmortal = true;
-        }
-      }
-      this.refrId = (refr as ObjectReference).getFormID();
+    if (refId && this.refrId !== refId) {
+      this.destroy();
+      this.refrId = refId;
+      this.ready = true;
+      // dealWithRef waits in applyAll until the ref exists (spawn, teleport: cells attach after the server streams them)
+      this.dealtWithRef = false;
     }
 
-    if (!this.ready) {
+    let refr = ObjectReference.from(Game.getFormEx(this.refrId));
+    if (!refId && (!refr || !this.isBaseChecked(model))) {
+      const checked = this.spawnIfNeeded(refr, model);
+      if (!checked) {
+        return;
+      }
+      refr = checked;
+    }
+
+    if (!this.ready || !refr) {
       return;
     }
 
-    const refr = ObjectReference.from(Game.getFormEx(this.refrId));
-    if (refr) {
-      const actor = this.isActor === false ? null : Actor.from(refr);
-      if (this.isActor === undefined) {
-        this.isActor = !!actor;
-        // Blocked once per copy, so a world NPC that PetService unblocks stays talkable
-        actor?.blockActivation(true);
+    const loaded = refr.is3DLoaded();
+    const loadedNow = loaded && !this.was3DLoaded;
+    this.was3DLoaded = loaded;
+    // A freed FF id can go to another ref, which loads its own 3D, so the base is compared again
+    if (loadedNow && !refId) {
+      this.checkedModelBaseId = null;
+    }
+
+    const actor = this.isActor === false ? null : Actor.from(refr);
+    if (this.isActor === undefined) {
+      this.isActor = !!actor;
+      // Blocked once per copy, so a world NPC that PetService unblocks stays talkable
+      actor?.blockActivation(true);
+    }
+    if (actor && !this.localImmortal) {
+      actor.startDeferredKill();
+      actor.setActorValue("health", 1000000);
+      actor.setActorValue("magicka", 1000000);
+      this.localImmortal = true;
+    }
+    if (actor && !refId) {
+      this.applyHostility(actor, model);
+    }
+    this.applyAll(refr, actor, model, loaded, loadedNow);
+
+    const gamemodeUpdateService = SpApiInteractor.getControllerInstance().lookupListener(GamemodeUpdateService);
+    gamemodeUpdateService.updateNeighbor(refr, model, this.state);
+  }
+
+  // The model's base and the appearance base the copy was last checked against
+  private isBaseChecked(model: FormModel): boolean {
+    return model.baseId === this.checkedModelBaseId && this.appearanceBasedBaseId === this.checkedAppearanceBaseId;
+  }
+
+  // The copy, spawned again when it is gone or its base is not the chosen one; undefined while no base resolves
+  private spawnIfNeeded(existing: ObjectReference | null, model: FormModel): ObjectReference | undefined {
+    let base = Game.getFormEx(model.baseId || NaN);
+    if (base === null) {
+      base = Game.getFormEx(this.getAppearanceBasedBase());
+    }
+    if (base === null) {
+      return undefined;
+    }
+
+    let refr = existing;
+    if (!refr || refr.getBaseObject()?.getFormID() !== base.getFormID()) {
+      this.destroy();
+
+      if (model.movement) {
+        refr = (Game.getPlayer() as Actor).placeAtMe(base, 1, true, true) as ObjectReference;
       }
-      if (actor && !this.localImmortal) {
-        actor.startDeferredKill();
-        actor.setActorValue("health", 1000000);
-        actor.setActorValue("magicka", 1000000);
+
+      this.state = {};
+      if (base.getType() !== FormType.NPC) {
+        refr?.setAngle(
+          model.movement?.rot[0] || 0,
+          model.movement?.rot[1] || 0,
+          model.movement?.rot[2] || 0
+        );
+      } else {
+        const actor = Actor.from(refr);
+        if (actor) {
+          this.applyHostility(actor, model);
+        }
+      }
+
+      if (refr !== null) {
+        SpApiInteractor.getControllerInstance().lookupListener(WorldCleanerService).modWcProtection(refr.getFormID(), 1);
+      }
+
+      // TODO: reset all states?
+      this.eqState = this.getDefaultEquipState();
+      this.torchState.numChanges = -1;
+      this.animState = this.getDefaultAnimState();
+
+      this.ready = false;
+
+      const spawnPos = model.movement ? model.movement.pos : ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
+
+      if (refr) {
+        new SpawnProcess(model.appearance || null, spawnPos, refr.getFormID(), () => {
+          this.ready = true;
+          this.spawnMoment = Date.now();
+        }, !!model.isDead);
+      }
+
+      if (model.appearance && model.appearance.name) {
+        refr?.setDisplayName("" + model.appearance.name, true);
+      }
+      const spawned = Actor.from(refr);
+      if (spawned) {
+        spawned.setActorValue("attackDamageMult", 0);
+        // Immortal from the first frame: a copy dying while its collision still loads would have its host report a death the server never saw
+        spawned.startDeferredKill();
+        spawned.setActorValue("health", 1000000);
+        spawned.setActorValue("magicka", 1000000);
         this.localImmortal = true;
       }
-      if (actor && !refId) {
-        this.applyHostility(actor, model);
-      }
-      this.applyAll(refr, model);
-
-      const gamemodeUpdateService = SpApiInteractor.getControllerInstance().lookupListener(GamemodeUpdateService);
-      gamemodeUpdateService.updateNeighbor(refr, model, this.state);
     }
+    this.refrId = (refr as ObjectReference).getFormID();
+    this.checkedModelBaseId = model.baseId;
+    this.checkedAppearanceBaseId = this.appearanceBasedBaseId;
+    return refr as ObjectReference;
   }
 
   destroy(): void {
     this.redrawTints();
     this.spawnMoment = 0;
     this.loaded3DMoment = 0;
+    this.was3DLoaded = false;
+    this.checkedModelBaseId = null;
+    this.objectState = this.getDefaultObjectState();
     this.dealtWithRef = false;
     this.isActor = undefined;
     this.offsetCleared = false;
@@ -303,26 +319,33 @@ export class FormView {
     this.removeNickname();
   }
 
-  private lastHarvestedApply = 0;
-  private lastOpenApply = 0;
+  // An open or close the engine ran on its own (local AI, a script) is checked against the model at the next update
+  noteOpenClose(): void {
+    this.objectState.openCheck = true;
+  }
+
+  // A loaded game rebuilds every ref, so the next update with the 3D in counts as a 3D load
+  forgetLoaded3D(): void {
+    this.was3DLoaded = false;
+  }
+
   private dealtWithRef = false;
   private isSetNodeTextureSetApplied = false;
   private isSetNodeScaleApplied = false;
 
-  // Actors skip these; an inventory apply would also break a copy's equipment
-  private applyObjectModel(refr: ObjectReference, model: FormModel): void {
-    if (PlayerCharacterDataHolder.getCrosshairRefId() === this.refrId) {
-      this.lastHarvestedApply = 0;
-      this.lastOpenApply = 0;
-    }
-    const now = Date.now();
-    if (now - this.lastHarvestedApply > 666) {
-      this.lastHarvestedApply = now;
-      // A copy another player carries (PlacedItemSystem's ff_carried) stays hidden, however it was spawned
-      if (carriedByOther((model as Record<string, unknown>)["ff_carried"])) {
+  // Actors skip these, whose inventory apply would break a copy's equipment; open, harvested and carried state go to the engine on a model change or a 3D load
+  private applyObjectModel(refr: ObjectReference, model: FormModel, loaded: boolean, loadedNow: boolean): void {
+    const o = this.objectState;
+    // A copy another player carries (PlacedItemSystem's ff_carried) stays hidden, however it was spawned
+    const carriedAway = carriedByOther((model as Record<string, unknown>)["ff_carried"]);
+    const harvested = !!model.isHarvested;
+    if (loadedNow || carriedAway !== o.carriedAway || harvested !== o.harvested) {
+      o.carriedAway = carriedAway;
+      o.harvested = harvested;
+      if (carriedAway) {
         if (!refr.isDisabled()) refr.disable(false);
       } else {
-        ModelApplyUtils.applyModelIsHarvested(refr, !!model.isHarvested);
+        ModelApplyUtils.applyModelIsHarvested(refr, harvested);
       }
     }
     if (!this.dealtWithRef) {
@@ -332,13 +355,19 @@ export class FormView {
         this.dealtWithRef = true;
       }
     }
-    if (now - this.lastOpenApply > 133) {
-      this.lastOpenApply = now;
-      // A door set before its 3D is in can stick between open and closed, so the server's state waits for the model
-      if (refr.is3DLoaded()) {
-        ModelApplyUtils.applyModelIsOpen(refr, !!model.isOpen);
+    // A door set before its 3D is in can stick between open and closed, so the server's state waits for the 3D
+    if (loaded) {
+      const open = !!model.isOpen;
+      const now = Date.now();
+      const changed = loadedNow || open !== o.open || (o.openCheck && ModelApplyUtils.isOpenOrOpening(refr) !== open);
+      const repeat = o.openReapplyAt > 0 && now >= o.openReapplyAt;
+      if (changed || repeat) {
+        o.openReapplyAt = changed ? now + FormView.openReapplyMs : 0;
+        o.open = open;
+        ModelApplyUtils.applyModelIsOpen(refr, open);
       }
     }
+    o.openCheck = false;
     if (!this.isSetNodeScaleApplied) {
       this.isSetNodeScaleApplied = true;
       ModelApplyUtils.applyModelNodeScale(refr, model.setNodeScale);
@@ -358,11 +387,11 @@ export class FormView {
     }
   }
 
-  private applyAll(refr: ObjectReference, model: FormModel) {
+  private applyAll(refr: ObjectReference, actor: Actor | null, model: FormModel, loaded: boolean, loadedNow: boolean) {
     let forcedWeapDrawn: boolean | null = null;
 
     if (!this.isActor) {
-      this.applyObjectModel(refr, model);
+      this.applyObjectModel(refr, model, loaded, loadedNow);
     }
 
     if (model.animation) {
@@ -390,7 +419,6 @@ export class FormView {
     const movementHeld = mounted || held;
 
     if (model.movement) {
-      const ac = this.isActor ? Actor.from(refr) : null;
       if (
         this.movState.lastApply &&
         Date.now() - this.movState.lastApply > 1500
@@ -398,8 +426,8 @@ export class FormView {
         if (Date.now() - this.movState.lastRehost > 1000) {
           this.movState.lastRehost = Date.now();
           const remoteId = this.remoteRefrId;
-          if (ac && ac.is3DLoaded()) {
-            this.tryHostIfNeed(ac, remoteId as number);
+          if (actor && loaded) {
+            this.tryHostIfNeed(actor, remoteId as number);
           }
         }
       }
@@ -415,8 +443,8 @@ export class FormView {
             model.movement.isWeapDrawn = forcedWeapDrawn;
           }
           // A copy this client does not run is not drawn or sheathed while its skeleton settles
-          if (ac && !alreadyHosted && this.isSettling(ac)) {
-            model.movement.isWeapDrawn = ac.isWeaponDrawn();
+          if (actor && !alreadyHosted && this.isSettling(loaded)) {
+            model.movement.isWeapDrawn = actor.isWeaponDrawn();
           }
           // The server's death state wins over a host that never saw the death
           if (model.isDead) {
@@ -424,7 +452,7 @@ export class FormView {
           }
           try {
             // A sender silent for 2 s (paused game, Steam overlay) settles at the copy's own height instead of running in place or hanging mid-air
-            const movement: Movement = movementHeld || isNewMovement || !this.movState.everApplied || !ac
+            const movement: Movement = movementHeld || isNewMovement || !this.movState.everApplied || !actor
               ? model.movement
               : { ...model.movement, runMode: "Standing", isInJumpState: false, pos: [model.movement.pos[0], model.movement.pos[1], refr.getPositionZ()] };
             // The first apply also runs on the host, where a self offset would replace the follow its service just issued
@@ -453,15 +481,15 @@ export class FormView {
           this.movState.everApplied = true;
         } else {
           const remoteId = this.remoteRefrId;
-          if (ac && remoteId && ac.is3DLoaded()) {
-            this.releaseKeepOffset(ac);
+          if (actor && remoteId && loaded) {
+            this.releaseKeepOffset(actor);
 
             if (!alreadyHosted) {
-              if (this.tryHostIfNeed(ac, remoteId)) {
+              if (this.tryHostIfNeed(actor, remoteId)) {
 
                 // previously, we did this cleanup on each update
                 // but I guess it's too expensive and can possibly hurt FPS
-                TESModPlatform.setWeaponDrawnMode(ac, -1);
+                TESModPlatform.setWeaponDrawnMode(actor, -1);
               }
             }
           }
@@ -470,21 +498,18 @@ export class FormView {
     }
 
     // Hosts skip applyMovement, so a copy still standing after the server's death is killed here, once its 3D is in so the ragdoll finds the ground
-    if (model.isDead && refr.is3DLoaded()) {
-      const ac = Actor.from(refr);
-      if (ac && !ac.isDead()) {
-        SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor: ac, isDead: true, trigger: "model", serverPos: model.movement?.pos });
-      }
+    if (model.isDead && loaded && actor && !actor.isDead()) {
+      SpApiInteractor.getControllerInstance().emitter.emit("applyDeathStateEvent", { actor, isDead: true, trigger: "model", serverPos: model.movement?.pos });
     }
 
-    if (refr.is3DLoaded()) {
+    if (loaded) {
       if (model.animation) {
         applyAnimation(refr, model.animation, this.animState, mounted, !!model.appearance);
       }
       // Use them only once, for spawning actors with correct animations
       this.animState.useAnimOverrides = false;
       if (alreadyHosted) {
-        this.releaseKeepOffset(refr);
+        this.releaseKeepOffset(actor);
       }
     } else {
       // Cleared and read from the engine again once the 3D is back
@@ -492,11 +517,10 @@ export class FormView {
       this.appliedMovement.recheckAt = 0;
     }
 
-    this.applyAdminView(refr, model);
-    this.applyAfterlifeView(refr, model);
+    this.applyAdminView(actor, loaded, model);
+    this.applyAfterlifeView(actor, loaded, model);
 
     if (model.appearance) {
-      const actor = Actor.from(refr);
       if (actor && !PlayerCharacterDataHolder.isInJumpState()) {
         if (PlayerCharacterDataHolder.getWorldOrCell()) {
           if (
@@ -543,24 +567,23 @@ export class FormView {
 
     if (model.equipment) {
       if (this.eqState.lastNumChanges !== model.equipment.numChanges) {
-        const ac = Actor.from(refr);
         // If we do not block inventory here, we will be able to reproduce the bug:
         // 1. Place ~90 bots and force them to reequip iron swords to the left hand (rate should be ~50ms)
         // 2. Open your inventory and reequip different items fast
         // 3. After 1-2 minutes close your inventory and see that HUD disappeared
         // An apply before the 3D is in strips and re-dresses a copy without a skeleton; lastNumChanges stays unset so the next update retries
         if (
-          ac &&
-          refr.is3DLoaded() &&
+          actor &&
+          loaded &&
           !isBadMenuShown() &&
           Date.now() - this.eqState.lastEqMoment > 500 &&
           this.spawnMoment > 0
         ) {
           // Stripping and re-equipping an NPC copy races the engine's skeleton update, so a copy already wearing the set is left alone
-          if (!model.appearance && wearsExactly(ac, model.equipment)) {
+          if (!model.appearance && wearsExactly(actor, model.equipment)) {
             this.eqState.lastNumChanges = model.equipment.numChanges;
             this.eqState.resyncAt = Date.now() + FormView.handGraphCheckDelayMs;
-          } else if (applyEquipment(ac, model.equipment)) {
+          } else if (applyEquipment(actor, model.equipment)) {
             this.eqState.lastNumChanges = model.equipment.numChanges;
             this.eqState.resyncAt = Date.now() + FormView.handGraphCheckDelayMs;
             this.redrawTints();
@@ -574,21 +597,20 @@ export class FormView {
     // Once per equipment change after the apply settled: the engine drops equips from that routine, so the outfit is checked and completed,
     // and a recreated copy can hold its weapon while the graph still swings fists
     if (this.eqState.resyncAt && Date.now() >= this.eqState.resyncAt && !model.isMyClone && !mounted) {
-      const ac = Actor.from(refr);
-      if (ac && refr.is3DLoaded() && !this.isSettling(ac)) {
+      if (actor && loaded && !this.isSettling(loaded)) {
         this.eqState.resyncAt = 0;
         if (model.equipment && model.equipment.numChanges === this.eqState.verifyNumChanges) {
-          this.verifyCopyOutfit(ac, model.equipment, !!model.appearance);
+          this.verifyCopyOutfit(actor, model.equipment, !!model.appearance);
         }
         if (!alreadyHosted) {
-          resyncHandGraph(ac, (text) => logToPlatformLog("FormView", `${(this.remoteRefrId ?? 0).toString(16)} ${text}`));
+          resyncHandGraph(actor, (text) => logToPlatformLog("FormView", `${(this.remoteRefrId ?? 0).toString(16)} ${text}`));
         }
       }
     }
 
     if (model.equipment && model.appearance && !model.isMyClone && !mounted && !this.eqState.resyncAt
       && this.eqState.lastNumChanges === model.equipment.numChanges) {
-      this.keepTorch(refr, model.equipment);
+      this.keepTorch(actor, loaded, model.equipment);
     }
 
     const identifies = !!FormView.adminTagOf(model);
@@ -598,7 +620,7 @@ export class FormView {
       const maxNicknameDrawDistance = 1000;
       const playerActor = Game.getPlayer()!;
       // An admin tag shows through sneaking and invisibility
-      const isVisibleByPlayer = (identifies || (!model.movement?.isSneaking && !this.isInvisible(refr)))
+      const isVisibleByPlayer = (identifies || (!model.movement?.isSneaking && !this.isInvisible(actor)))
         && playerActor.getDistance(refr) <= maxNicknameDrawDistance
         && playerActor.hasLOS(refr)
         && FormView.adminViewOf(model) !== "hidden";
@@ -681,7 +703,7 @@ export class FormView {
   }
 
   // The engine's torch check for NPCs unequips a copy's torch where it is not dark, so a player copy's held torch is equipped again
-  private keepTorch(refr: ObjectReference, eq: Equipment): void {
+  private keepTorch(ac: Actor | null, loaded: boolean, eq: Equipment): void {
     const t = this.torchState;
     if (t.numChanges !== eq.numChanges) {
       t.numChanges = eq.numChanges;
@@ -693,10 +715,9 @@ export class FormView {
     const now = Date.now();
     if (!t.entry || now < t.checkAt) return;
     t.checkAt = now + FormView.torchCheckMs;
-    const ac = Actor.from(refr);
     const form = Game.getFormEx(t.entry.baseId);
     // On a seat or a bed the engine puts a torch away every frame
-    if (!ac || !form || !refr.is3DLoaded() || ac.isDead() || ac.getSitState() !== 0 || ac.getSleepState() !== 0 || isBadMenuShown()) return;
+    if (!ac || !form || !loaded || ac.isDead() || ac.getSitState() !== 0 || ac.getSleepState() !== 0 || isBadMenuShown()) return;
     const drawn = ac.isWeaponDrawn();
     if (drawn !== t.drawn) {
       t.drawn = drawn;
@@ -729,20 +750,19 @@ export class FormView {
     return (tier && TIER_TAG_COLORS[tier]) || DEFAULT_TAG_COLOR;
   }
 
-  private isInvisible(refr: ObjectReference): boolean {
+  private isInvisible(actor: Actor | null): boolean {
     if (magicInvisibility === undefined) {
       magicInvisibility = Keyword.getKeyword("MagicInvisibility");
     }
-    const actor = Actor.from(refr);
     return !!actor && !!magicInvisibility && actor.hasMagicEffectWithKeyword(magicInvisibility);
   }
 
   // A copy the engine runs here drops the keep-offset of its last applied packet; own companions and steered pets keep the one their service gives them
-  private releaseKeepOffset(refr: ObjectReference): void {
+  private releaseKeepOffset(actor: Actor | null): void {
     if (keepsOwnOffset(this.remoteRefrId)) {
       this.offsetCleared = false;
     } else if (!this.offsetCleared) {
-      Actor.from(refr)?.clearKeepOffsetFromActor();
+      actor?.clearKeepOffsetFromActor();
       this.offsetCleared = true;
     }
   }
@@ -790,13 +810,12 @@ export class FormView {
   }
 
   // Admin Invisible and Ghost ride the neighbor-visible ff_adminModes prop; 3D reloads reset alpha and shaders, so both are reapplied
-  private applyAdminView(refr: ObjectReference, model: FormModel): void {
+  private applyAdminView(actor: Actor | null, loaded: boolean, model: FormModel): void {
     const view = FormView.adminViewOf(model);
     if (view === "visible" && this.adminView === "visible") {
       return;
     }
-    const actor = Actor.from(refr);
-    if (!actor || !actor.is3DLoaded()) {
+    if (!actor || !loaded) {
       this.adminShaderOn = false;
       return;
     }
@@ -826,13 +845,12 @@ export class FormView {
   }
 
   // A fallen character's realm look rides the neighbor-visible ff_afterlife prop; the alpha yields to a hidden or ghost admin view
-  private applyAfterlifeView(refr: ObjectReference, model: FormModel): void {
+  private applyAfterlifeView(actor: Actor | null, loaded: boolean, model: FormModel): void {
     const { shaderId, alpha } = afterlifeLookOf(model as Record<string, unknown>);
     if (!shaderId && !this.afterlifeShaderId) {
       return;
     }
-    const actor = Actor.from(refr);
-    if (!actor || !actor.is3DLoaded()) {
+    if (!actor || !loaded) {
       this.afterlifeShaderId = 0;
       return;
     }
@@ -898,8 +916,8 @@ export class FormView {
   }
 
   // True until the copy's 3D has stayed loaded for copySettleMs
-  private isSettling(ac: Actor): boolean {
-    if (!ac.is3DLoaded()) {
+  private isSettling(loaded: boolean): boolean {
+    if (!loaded) {
       this.loaded3DMoment = 0;
       return true;
     }
@@ -926,6 +944,11 @@ export class FormView {
 
   private getDefaultAnimState() {
     return { lastNumChanges: 0, useAnimOverrides: true };
+  };
+
+  // What the engine was last given; undefined until the first apply
+  private getDefaultObjectState() {
+    return { open: undefined as boolean | undefined, harvested: undefined as boolean | undefined, carriedAway: undefined as boolean | undefined, openCheck: false, openReapplyAt: 0 };
   };
 
   private tryHostIfNeed(ac: Actor, remoteId: number) {
@@ -983,7 +1006,14 @@ export class FormView {
   private lastWorldOrCell = 0;
   private spawnMoment = 0;
   private loaded3DMoment = 0;
+  private was3DLoaded = false;
+  private objectState = this.getDefaultObjectState();
+  // null until the base was checked
+  private checkedModelBaseId: number | undefined | null = null;
+  private checkedAppearanceBaseId = 0;
   private static readonly copySettleMs = 1000;
+  // A door mid-swing or with its graph still loading can drop an apply, so each one is repeated after about a swing
+  private static readonly openReapplyMs = 2000;
   private static readonly handGraphCheckDelayMs = 1500;
   private torchState = { numChanges: -1, entry: undefined as Entry | undefined, drawn: false, checkAt: 0, tries: 0, heldSince: 0, logged: false };
   private static readonly torchCheckMs = 2000;

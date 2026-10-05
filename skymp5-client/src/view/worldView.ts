@@ -1,3 +1,4 @@
+import { OpenCloseEvent } from 'skyrimPlatform';
 import { WorldModel } from './model';
 import { FormViewArray } from './formViewArray';
 import { PlayerCharacterDataHolder } from './playerCharacterDataHolder';
@@ -14,6 +15,9 @@ export class WorldView extends ClientListener {
     controller.on("update", () => this.onUpdate());
     controller.once("update", () => this.onceUpdate());
     controller.on("crosshairRefChanged", (e) => PlayerCharacterDataHolder.setCrosshairRef(e.reference));
+    controller.on("open", (e) => this.onOpenClose(e));
+    controller.on("close", (e) => this.onOpenClose(e));
+    controller.on("loadGame", () => this.state.formViews.forgetLoaded3D());
 
     this.state = this.makeEmptyState();
 
@@ -83,6 +87,13 @@ export class WorldView extends ClientListener {
       this.resetFormViews();
     }
     this.controller.emitter.emit("playerWorldOrCellChanged", e);
+  }
+
+  private onOpenClose(e: OpenCloseEvent) {
+    const localId = e.target?.getFormID();
+    if (localId) {
+      this.state.formViews.noteOpenClose(localId);
+    }
   }
 
   // Work around showRaceMenu issue

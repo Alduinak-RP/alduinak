@@ -10,6 +10,12 @@ export class ModelApplyUtils {
     applyInventory(refr, inventory, false, true);
   }
 
+  // Open (1) or opening (2) in the engine's open state
+  static isOpenOrOpening(refr: ObjectReference): boolean {
+    const state = refr.getOpenState();
+    return state === 1 || state === 2;
+  }
+
   static applyModelIsOpen(refr: ObjectReference, isOpen: boolean) {
     refr.setOpen(isOpen);
 
@@ -20,7 +26,7 @@ export class ModelApplyUtils {
     const parentActivatorId = 0x460ca;
 
     if (refr.getBaseObject()?.getFormID() === caveGSecretDoor01) {
-      const openOrOpening = [1, 2].includes(refr.getOpenState());
+      const openOrOpening = ModelApplyUtils.isOpenOrOpening(refr);
       if (openOrOpening) {
         if (!isOpen) {
           refr.activate(ObjectReference.from(Game.getForm(parentActivatorId)), false);

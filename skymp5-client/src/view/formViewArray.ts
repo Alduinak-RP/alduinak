@@ -75,6 +75,14 @@ export class FormViewArray {
     return formView ? formView.getLocalRefrId() : 0;
   }
 
+  noteOpenClose(localId: number) {
+    this.viewByLocalId.get(localId)?.noteOpenClose();
+  }
+
+  forgetLoaded3D() {
+    this.formViews.forEach((v) => v?.forgetLoaded3D());
+  }
+
   getNthFormView(i: number): FormView | undefined {
     return this.formViews[i];
   }
@@ -83,13 +91,13 @@ export class FormViewArray {
     return this.formViews.length;
   }
 
-  // An entry is removed only while it still points at this view, so a duplicated id keeps the newer view
+  // An entry is removed only while it still points at this view, so a duplicated id keeps the newer view; plugin doors are indexed for their open and close events
   private indexLocalId(view: FormView, previous: number) {
     if (this.viewByLocalId.get(previous) === view) {
       this.viewByLocalId.delete(previous);
     }
     const id = view.getLocalRefrId();
-    if (id >= 0xff000000) {
+    if (id) {
       this.viewByLocalId.set(id, view);
     }
   }
