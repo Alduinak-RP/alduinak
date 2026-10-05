@@ -7,8 +7,8 @@ import { getMovement } from "../../sync/movementGet";
 // TODO: refactor this out
 import * as worldViewMisc from "../../view/worldViewMisc";
 
-import { getCopyAnimationSource, needsReliableSend, playerAnimationSource } from "../../sync/animation";
-import { Actor, EquipEvent, FormType, Menu } from "skyrimPlatform";
+import { AnimationSource, getCopyAnimationSource, needsReliableSend, playerAnimationSource } from "../../sync/animation";
+import { Actor, EquipEvent, FormType, HitEvent, Menu } from "skyrimPlatform";
 import { getAppearance } from "../../sync/appearance";
 import { ActorValues, getActorValues } from "../../sync/actorvalues";
 import { countWorn, getEquipment } from "../../sync/equipment";
@@ -27,11 +27,14 @@ import { DeathService } from "./deathService";
 import { RestraintService } from "./restraintService";
 import { MountService } from "./mountService";
 import { PolymorphService } from "./polymorphService";
+import { MagicSyncService } from "./magicSyncService";
 import { Movement } from "../../sync/movement";
 import { logTrace, logToPlatformLog } from "../../logging";
 
 const playerFormId = 0x14;
-const CASTING_RECENT_MS = 500;
+const ACTOR_VALUES_READ_MS = 250;
+// Changed values go out at most this often unless a landing or death forces a report
+const ACTOR_VALUES_SEND_GAP_MS = 2000;
 
 // Menus named in a zero-worn report, the ones that undress or re-dress the player or hide the engine's equips
 const REPORT_MENUS = [Menu.Inventory, Menu.Container, Menu.Crafting, Menu.RaceSex, Menu.Loading, Menu.Favorites, Menu.Magic, Menu.Barter, Menu.Gift];
@@ -45,23 +48,24 @@ export class SendInputsService extends ClientListener {
         this.controller.on("equip", (e) => this.onEquip(e));
         this.controller.on("unequip", (e) => this.onUnequip(e));
         this.controller.on("loadGame", () => this.onLoadGame());
+        this.controller.on("hit", (e) => this.onHit(e));
         this.controller.emitter.on("connectionAccepted", () => this.lastSendMovementMoment.clear());
     }
 
     private onUpdate() {
-        if (!this.singlePlayerService.isSinglePlayer) {
-            this.sendInputs();
-
-            const player = this.sp.Game.getPlayer()!;
-            const isPlayerCasting = player.getAnimationVariableBool("IsCastingRight")
-                || player.getAnimationVariableBool("IsCastingLeft")
-                || player.getAnimationVariableBool("IsCastingDual");
-
-            if (isPlayerCasting) {
-                this.prevCastingDetectedTime = Date.now();
-            }
-
+        if (this.singlePlayerService.isSinglePlayer) {
+            return;
+        }
+        const player = this.sp.Game.getPlayer();
+        if (player) {
+            this.sendInputs(player);
             this.checkSpellEquipmentChanged(player);
+        }
+    }
+
+    private onHit(event: HitEvent) {
+        if (event.target?.getFormID() === playerFormId) {
+            this.actorValuesReadAt = 0;
         }
     }
 
@@ -128,35 +132,41 @@ export class SendInputsService extends ClientListener {
         this.sp.Utility.wait(3).then(() => (this.equipmentChanged = true));
     }
 
-    private sendInputs() {
-        const hosted =
-            typeof this.sp.storage['hosted'] === typeof [] ? this.sp.storage['hosted'] : [];
-        const targets = [undefined].concat(hosted as any);
-
+    private sendInputs(player: Actor) {
         const modelSource = this.controller.lookupListener(RemoteServer);
+        const world = modelSource.getWorldModel();
+        const playerForm = world.forms[world.playerCharacterFormIdx];
+        this.sendMovement(undefined, playerForm, () => player);
+        this.sendAnimation(playerAnimationSource);
+        this.sendAppearance(player);
+        this.sendEquipment(player);
+        this.sendActorValuePercentage(player, playerForm);
 
-        targets.forEach((target) => {
-            const targetFormModel = this.getForm(target, modelSource);
-            this.sendMovement(target, targetFormModel);
-            this.sendAnimation(target);
-            this.sendAppearance(target);
-            this.sendEquipment(target);
-            this.sendActorValuePercentage(target, targetFormModel);
-        });
+        // A hosted actor resolves through the id maps, and natively only when its movement report is due
+        const hosted = this.sp.storage['hosted'];
+        if (Array.isArray(hosted)) {
+            (hosted as number[]).forEach((remoteId) => {
+                const localId = worldViewMisc.remoteIdToLocalId(remoteId);
+                if (!localId) {
+                    return;
+                }
+                this.sendMovement(remoteId, modelSource.getFormByRefrId(remoteId), () => this.sp.Actor.from(this.sp.Game.getFormEx(localId)));
+                this.sendAnimation(getCopyAnimationSource(localId, remoteId));
+            });
+        }
         this.sendHostAttempts();
     }
 
-    private sendMovement(_refrId?: number, form?: FormModel) {
-        const owner = this.getInputOwner(_refrId);
-        if (!owner) {
-          return;
-        }
-
+    private sendMovement(_refrId: number | undefined, form: FormModel | undefined, getOwner: () => Actor | null) {
         const refrIdStr = `${_refrId}`;
         const sendMovementRateMs = 130;
         const now = Date.now();
         const last = this.lastSendMovementMoment.get(refrIdStr);
         if (!last || now - last > sendMovementRateMs) {
+            const owner = getOwner();
+            if (!owner) {
+                return;
+            }
             const movement = getMovement(owner, form);
             const message: MessageWithRefrId<UpdateMovementMessage> = {
                 t: MsgType.UpdateMovement,
@@ -178,25 +188,26 @@ export class SendInputsService extends ClientListener {
     }
 
     // The server applies ChangeValues to the sender's own actor whatever idx says, so hosted NPCs report none
-    private sendActorValuePercentage(_refrId?: number, form?: FormModel) {
-        if (_refrId) {
-          return;
-        }
+    private sendActorValuePercentage(player: Actor, form?: FormModel) {
         const canSend = form && (form.isDead ?? false) === false;
         if (!canSend) {
-          return;
-        }
-
-        const player = this.sp.Game.getPlayer();
-        if (!player) {
           return;
         }
 
         // A clone's replayed hostile spell must not lower the reported health
         this.controller.lookupListener(CloneSpellGuardService).enforce();
 
-        const av = getActorValues(player);
         const currentTime = Date.now();
+        // Nothing goes out inside the send gap, so the read waits for it
+        if (
+            currentTime < this.actorValuesReadAt ||
+            (this.actorValuesNeedUpdate === false && currentTime - this.prevActorValuesUpdateTime < ACTOR_VALUES_SEND_GAP_MS)
+        ) {
+            return;
+        }
+        this.actorValuesReadAt = currentTime + ACTOR_VALUES_READ_MS;
+
+        const av = getActorValues(player);
         if (
             this.actorValuesNeedUpdate === false &&
             this.prevValues.health === av.health &&
@@ -206,18 +217,10 @@ export class SendInputsService extends ClientListener {
             return;
         }
 
-
-        if (
-            currentTime - this.prevActorValuesUpdateTime < 2000 &&
-            this.actorValuesNeedUpdate === false
-        ) {
-            return;
-        }
-
         // Delaying actor values update due to casting
         // TODO: partial updates once the server supports it (keep health/stamina during casting, delay magicka)
         if (
-            this.isCastingRecently() &&
+            this.controller.lookupListener(MagicSyncService).isCastingRecently() &&
             av.health > 0 // don't delay death actor value update
         ) {
             return;
@@ -232,7 +235,7 @@ export class SendInputsService extends ClientListener {
         const message: MessageWithRefrId<ChangeValuesMessage> = {
             t: MsgType.ChangeValues,
             data: av,
-            _refrId
+            _refrId: undefined
         };
         // A lost report is never repeated while the values stay put
         this.controller.emitter.emit("sendMessageWithRefrId", {
@@ -245,14 +248,7 @@ export class SendInputsService extends ClientListener {
 
     }
 
-    private sendAnimation(_refrId?: number) {
-        const owner = this.getInputOwner(_refrId);
-        if (!owner) {
-          return;
-        }
-
-        // The send hook feeds a copy's source by its local id
-        const source = _refrId ? getCopyAnimationSource(owner.getFormID(), _refrId) : playerAnimationSource;
+    private sendAnimation(source: AnimationSource) {
         const anim = source.getAnimation();
 
         if (
@@ -262,11 +258,13 @@ export class SendInputsService extends ClientListener {
             // Drink potion anim from this mod https://www.nexusmods.com/skyrimspecialedition/mods/97660
             if (anim.animEventName !== '' && !anim.animEventName.startsWith("DrinkPotion_")) {
                 source.lastSent = anim;
-                this.updateActorValuesAfterAnimation(anim.animEventName);
+                if (source === playerAnimationSource) {
+                    this.updateActorValuesAfterAnimation(anim.animEventName);
+                }
                 const message: MessageWithRefrId<UpdateAnimationMessage> = {
                     t: MsgType.UpdateAnimation,
                     data: anim,
-                    _refrId
+                    _refrId: source.remoteId || undefined
                 };
                 this.controller.emitter.emit("sendMessageWithRefrId", {
                     message,
@@ -281,30 +279,23 @@ export class SendInputsService extends ClientListener {
         return this.reportedWornBases;
     }
 
-    isCastingRecently(): boolean {
-        return Date.now() - this.prevCastingDetectedTime < CASTING_RECENT_MS;
-    }
-
     relayPlayerAnimEvent(animEventName: string): void {
         playerAnimationSource.relay(animEventName);
     }
 
-    private sendAppearance(_refrId?: number) {
-        if (_refrId) {
-          return;
-        }
+    private sendAppearance(player: Actor) {
         const shown = this.sp.Ui.isMenuOpen('RaceSex Menu');
         if (shown != this.isRaceSexMenuShown) {
             this.isRaceSexMenuShown = shown;
             if (!shown) {
                 this.sp.printConsole('Exited from race menu');
 
-                const appearance = getAppearance(this.sp.Game.getPlayer() as Actor);
+                const appearance = getAppearance(player);
                 // TODO: log appearance contents to debug appearance issues?
                 const message: MessageWithRefrId<UpdateAppearanceMessage> = {
                     t: MsgType.UpdateAppearance,
                     data: appearance,
-                    _refrId
+                    _refrId: undefined
                 };
                 this.controller.emitter.emit("sendMessageWithRefrId", {
                     message,
@@ -314,12 +305,9 @@ export class SendInputsService extends ClientListener {
         }
     }
 
-    private sendEquipment(_refrId?: number) {
-        if (_refrId) {
-          return;
-        }
+    private sendEquipment(player: Actor) {
         // A report waits out the spawn outfit apply, and one follows it even when no equip event fires
-        if (settleSpawnEquipment(this.sp.Game.getPlayer() as Actor)) {
+        if (settleSpawnEquipment(player)) {
             this.equipmentChanged = true;
             this.spawnReportsToLog = 5;
             return;
@@ -335,7 +323,7 @@ export class SendInputsService extends ClientListener {
             ++this.numEquipmentChanges;
 
             const eq = getEquipment(
-                this.sp.Game.getPlayer() as Actor,
+                player,
                 this.numEquipmentChanges,
             );
             this.reportedWornBases = eq.inv.entries.filter((e) => e.worn).map((e) => e.baseId);
@@ -348,12 +336,12 @@ export class SendInputsService extends ClientListener {
                 this.spawnReportsToLog--;
                 logToPlatformLog(this, `equipment report #${eq.numChanges} after spawn: worn ${countWorn(eq.inv)} of ${eq.inv.entries.length}`);
             } else if (countWorn(eq.inv) === 0) {
-                this.logZeroWornReport(this.sp.Game.getPlayer() as Actor, eq.numChanges, eq.inv.entries.length);
+                this.logZeroWornReport(player, eq.numChanges, eq.inv.entries.length);
             }
             const message: MessageWithRefrId<UpdateEquipmentMessage> = {
                 t: MsgType.UpdateEquipment,
                 data: eq,
-                _refrId
+                _refrId: undefined
             };
 
             this.controller.emitter.emit("sendMessageWithRefrId", {
@@ -378,20 +366,6 @@ export class SendInputsService extends ClientListener {
         });
     }
 
-    private getInputOwner(_refrId?: number) {
-        return _refrId
-            ? this.sp.Actor.from(this.sp.Game.getFormEx(worldViewMisc.remoteIdToLocalId(_refrId)))
-            : this.sp.Game.getPlayer();
-    }
-
-    private getForm(refrId: number | undefined, modelSource: RemoteServer): FormModel | undefined {
-        if (refrId) {
-            return modelSource.getFormByRefrId(refrId);
-        }
-        const world = modelSource.getWorldModel();
-        return world.forms[world.playerCharacterFormIdx];
-    }
-
     private updateActorValuesAfterAnimation(animName: string) {
         if (
             animName === 'JumpLand' ||
@@ -399,6 +373,7 @@ export class SendInputsService extends ClientListener {
             animName === 'DeathAnim'
         ) {
             this.actorValuesNeedUpdate = true;
+            this.actorValuesReadAt = 0;
         }
     }
 
@@ -408,6 +383,7 @@ export class SendInputsService extends ClientListener {
 
     private lastSendMovementMoment = new Map<string, number>();
     private actorValuesNeedUpdate = false;
+    private actorValuesReadAt = 0;
     private isRaceSexMenuShown = false;
     private equipmentChanged = false;
     private lastSpellSignature?: string;
@@ -420,5 +396,4 @@ export class SendInputsService extends ClientListener {
     private lastZeroWornLog = 0;
     private prevValues: ActorValues = { health: 0, stamina: 0, magicka: 0 };
     private prevActorValuesUpdateTime = 0;
-    private prevCastingDetectedTime = 0;
 }

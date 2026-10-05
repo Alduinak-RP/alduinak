@@ -6,13 +6,16 @@ import { PlayerCharacterDataHolder } from "../../view/playerCharacterDataHolder"
 import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, Spell, Debug } from 'skyrimPlatform'
 import { ClientListener, CombinedController, Sp } from './clientListener';
 import { MountService } from './mountService';
-import { SendInputsService } from './sendInputsService';
 import { CustomPacketContent, onCustomPacket } from './customPacketUtil';
 import { logTrace, logToPlatformLog } from '../../logging';
 
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
 import { UpdateAnimVariablesMessageMsgData } from "../messages/updateAnimVariablesMessage";
+
+const CASTING_RECENT_MS = 500;
+// The player's hands are read this often while no relayed cast reads them every frame
+const CASTING_SAMPLE_MS = 100;
 
 // Racial greater powers are disabled on this server (form ids verified against Skyrim.esm on the reference install)
 export const BLOCKED_POWER_IDS = new Set([
@@ -80,7 +83,40 @@ export class MagicSyncService extends ClientListener {
 
     private onUpdate() {
         this.syncRelayedCasts();
+        this.samplePlayerCasting();
         this.syncAnimVariables();
+    }
+
+    // A charge that never casts has no relayed cast, so the sample covers it
+    private samplePlayerCasting() {
+        if (Date.now() - this.playerCastingReadAt < CASTING_SAMPLE_MS) {
+            return;
+        }
+        const player = Game.getPlayer();
+        if (player) {
+            this.readCastingVars(player, this.playerId);
+        }
+    }
+
+    // True from the first read that saw a hand casting until CASTING_RECENT_MS after the first read that saw it stop
+    isCastingRecently(): boolean {
+        return Date.now() - this.playerCastingAt < CASTING_RECENT_MS;
+    }
+
+    private readCastingVars(ac: Actor, actorId: number) {
+        const left = ac.getAnimationVariableBool("IsCastingLeft");
+        const right = ac.getAnimationVariableBool("IsCastingRight");
+        const dual = ac.getAnimationVariableBool("IsCastingDual");
+        if (actorId === this.playerId) {
+            const now = Date.now();
+            const casting = left || right || dual;
+            if (casting || this.playerCasting) {
+                this.playerCastingAt = now;
+            }
+            this.playerCasting = casting;
+            this.playerCastingReadAt = now;
+        }
+        return { left, right, dual };
     }
 
     // Observers' clones follow the player's graph only while a drawn hand casts, and the snapshot after it goes reliable
@@ -90,7 +126,7 @@ export class MagicSyncService extends ClientListener {
             return;
         }
 
-        const castingRecently = this.controller.lookupListener(SendInputsService).isCastingRecently();
+        const castingRecently = this.isCastingRecently();
         if (!castingRecently && !this.streamingAnimVariables) {
             return;
         }
@@ -243,9 +279,7 @@ export class MagicSyncService extends ClientListener {
         if (!ac || !ac.isWeaponDrawn()) {
             return false;
         }
-        const left = ac.getAnimationVariableBool("IsCastingLeft");
-        const right = ac.getAnimationVariableBool("IsCastingRight");
-        const dual = ac.getAnimationVariableBool("IsCastingDual");
+        const { left, right, dual } = this.readCastingVars(ac, cast.casterLocalId);
         const spellId = cast.msg.spell;
         // The platform reports a spell held in both hands as right-handed, so either hand counts
         const inBothHands = ac.getEquippedSpell(SpellType.Left)?.getFormID() === spellId
@@ -370,4 +404,7 @@ export class MagicSyncService extends ClientListener {
     private rationedPowers = new Map<number, RationedPower>();
     private lastSendUpdateAnimationVariables: number = 0;
     private streamingAnimVariables = false;
+    private playerCasting = false;
+    private playerCastingAt = 0;
+    private playerCastingReadAt = 0;
 }
