@@ -40,6 +40,11 @@ export class TimersService extends ClientListener {
     return this.timersArr.push(timer);
   }
 
+  // Timers may fire on tick, where natives are unsafe, so the handler waits for the next update
+  setTimeoutOnUpdate(handler: () => void, timeoutMs: number): number {
+    return this.setTimeout(() => this.controller.once("update", handler), timeoutMs);
+  }
+
   clearTimeout(id: number | undefined): void {
     if (id === undefined) {
       this.timersArr = new Array<Timer | null>();

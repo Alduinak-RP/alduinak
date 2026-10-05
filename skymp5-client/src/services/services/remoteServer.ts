@@ -848,7 +848,7 @@ export class RemoteServer extends ClientListener {
     this.resyncing = true;
     this.reportPlayerTeleport('stuck', target, at);
     notifyNextUpdate(this.controller, this.sp, 'Your position fell out of sync with the server. Returning to character select, choose your character to continue.');
-    this.controller.lookupListener(TimersService).setTimeout(() => this.controller.once('update', () => { if (this.resyncing) Game.quitToMainMenu(); }), PLAYER_TELEPORT_RESYNC_MS);
+    this.controller.lookupListener(TimersService).setTimeoutOnUpdate(() => { if (this.resyncing) Game.quitToMainMenu(); }, PLAYER_TELEPORT_RESYNC_MS);
   }
 
   private reportPlayerTeleport(outcome: 'recovered' | 'stuck', target: PlayerTeleport, at: number): void {
@@ -1004,6 +1004,9 @@ export class RemoteServer extends ClientListener {
       this.worldModel.playerCharacterRefrId = msg.refrId || 0;
       this.playerTeleport = undefined;
       this.resyncing = false;
+      storage["ownerModel"] = form;
+      storage["ownerModelSet"] = true;
+      this.controller.emitter.emit("ownerModelReset", { model: form });
     }
 
     // A failed load leaves our 'update' callbacks queued; a newer spawn of ours drops them
@@ -1338,6 +1341,7 @@ export class RemoteServer extends ClientListener {
       form.numAppearanceChanges = 0;
     }
     form.numAppearanceChanges++;
+    this.emitOwnerPropertyChanged(i, "appearance", form.appearance);
 
     const newAppearance = msg.data;
 
@@ -1442,6 +1446,7 @@ export class RemoteServer extends ClientListener {
       return;
     }
     (form as Record<string, unknown>)[msg.propName] = msgData;
+    this.emitOwnerPropertyChanged(i, msg.propName, msgData);
 
     // Sent after the race menu, whose race switch brings the new race's spells
     if (msg.propName === 'learnedSpells' && i === this.worldModel.playerCharacterFormIdx && Array.isArray(msgData)) {
@@ -1453,6 +1458,13 @@ export class RemoteServer extends ClientListener {
           syncRaceAbilities(player, msgData as number[]);
         }
       });
+    }
+  }
+
+  // Listeners may run inside a packet handler, so they defer natives to an update
+  private emitOwnerPropertyChanged(i: number, propName: string, value: unknown): void {
+    if (i === this.worldModel.playerCharacterFormIdx) {
+      this.controller.emitter.emit("ownerPropertyChanged", { propName, value });
     }
   }
 

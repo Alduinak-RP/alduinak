@@ -31,7 +31,7 @@ export class RagdollService extends ClientListener {
             },
         );
         if (deadlineMs !== undefined) {
-            this.controller.lookupListener(TimersService).setTimeout(() => this.controller.once("update", () => finish(false)), deadlineMs);
+            this.controller.lookupListener(TimersService).setTimeoutOnUpdate(() => finish(false), deadlineMs);
         }
     };
 

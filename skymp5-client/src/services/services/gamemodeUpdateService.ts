@@ -1,6 +1,5 @@
 import { FormModel } from "../../view/model";
 import { ConnectionMessage } from "../events/connectionMessage";
-import { CreateActorMessage } from "../messages/createActorMessage";
 import { GamemodeValuePair, UpdateGamemodeDataMessage } from "../messages/updateGameModeDataMessage";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RemoteServer } from "./remoteServer";
@@ -22,7 +21,6 @@ export class GamemodeUpdateService extends ClientListener {
         super();
 
         this.controller.emitter.on("updateGamemodeDataMessage", (e) => this.onUpdateGamemodeDataMessage(e));
-        this.controller.emitter.on("createActorMessage", (e) => this.onCreateActorMessage(e));
 
         this.controller.on("tick", () => this.onTick());
         this.controller.on("update", () => this.onUpdate());
@@ -134,29 +132,6 @@ export class GamemodeUpdateService extends ClientListener {
         );
     }
 
-    private onCreateActorMessage(event: ConnectionMessage<CreateActorMessage>) {
-        if (!event.message.isMe) {
-            return;
-        }
-
-        // Otherwise worldModel.playerCharacterFormIdx may be unassigned
-        this.controller.once("tick", () => {
-
-            const remoteServer = this.controller.lookupListener(RemoteServer);
-
-            const worldModel = remoteServer.getWorldModel();
-
-            const myFormModel: FormModel | undefined = worldModel.forms[worldModel.playerCharacterFormIdx];
-
-            if (!myFormModel) {
-                logError(this, `Unable to find formModel with index`, worldModel.playerCharacterFormIdx);
-                return;
-            }
-
-            this.setOwnerModel(myFormModel);
-        });
-    }
-
     private onTick() {
         const keys = this.sp.storage["updateNeighborFunctions_keys"] as Array<string>;
         if (keys && Array.isArray(keys)) {
@@ -215,11 +190,6 @@ export class GamemodeUpdateService extends ClientListener {
             }
         }
     }
-
-    private setOwnerModel(ownerModel: FormModel) {
-        this.sp.storage["ownerModel"] = ownerModel;
-        this.sp.storage["ownerModelSet"] = true;
-    };
 
     private updateGamemodeUpdateFunctions(
         storageVar: string,

@@ -9,10 +9,17 @@ import { EmoteService } from "./emoteService";
 import { PlayerActionService } from "./playerActionService";
 import { BrowserService } from "./browserService";
 import { VoiceService } from "./voiceService";
+import { TimersService } from "./timersService";
+import { OwnerPropertyChangedEvent } from "../events/ownerPropertyChangedEvent";
+import { FormModel } from "../../view/model";
 
 declare const window: any;
 
 const CHAT_MSG_PROP = 'ff_chatMsg';
+// Matches the widget's own history length
+const PENDING_LINES_CAP = 100;
+const BUBBLE_MS = 6000;
+const SYSTEM_OVERLAY_MS = 15000;
 
 // Skyrim world units per meter ~69.99.
 const UNITS_PER_METER = 70;
@@ -329,8 +336,10 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
 export class ChatService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.on("update", () => this.onUpdate());
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.emitter.on("ownerModelReset", (e) => this.onOwnerModelReset(e.model));
+    this.controller.emitter.on("ownerPropertyChanged", (e) => this.onOwnerPropertyChanged(e));
+    if (this.sp.storage["ownerModelSet"] === true) this.onOwnerModelReset(this.sp.storage["ownerModel"] as FormModel | undefined);
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
@@ -448,23 +457,40 @@ export class ChatService extends ClientListener {
     } catch (e) {}
   }
 
-  private onUpdate(): void {
-    this.expireBubbles();
-    this.expireSystemOverlay();
+  // A new owner model (login, respawn, character switch) carries the last persisted ff_chatMsg; it counts as seen so it is not replayed
+  private onOwnerModelReset(model: FormModel | undefined): void {
+    const persisted = (model as Record<string, unknown> | undefined)?.[CHAT_MSG_PROP];
+    this.lastMsg = typeof persisted === "string" ? persisted : null;
+    this.queueSync();
+  }
 
+  private onOwnerPropertyChanged(e: OwnerPropertyChangedEvent): void {
+    if (e.propName === CHAT_MSG_PROP) {
+      const msg = e.value;
+      if (typeof msg !== "string" || msg === "" || msg === this.lastMsg) return;
+      this.lastMsg = msg;
+      this.pendingLines.push(msg);
+      if (this.pendingLines.length > PENDING_LINES_CAP) this.pendingLines.shift();
+    } else if (e.propName !== "isAdmin" && e.propName !== "appearance") {
+      return;
+    }
+    this.queueSync();
+  }
+
+  // Owner events arrive inside packet handlers, so the CEF and native work waits for the next update
+  private queueSync(): void {
+    if (this.syncQueued) return;
+    this.syncQueued = true;
+    this.controller.once("update", () => this.sync());
+  }
+
+  private sync(): void {
+    this.syncQueued = false;
     if (this.sp.storage["ownerModelSet"] !== true) return;
     const owner = this.sp.storage["ownerModel"] as Record<string, unknown> | undefined;
     if (!owner) return;
 
     const appearance = owner["appearance"] as { name?: string } | undefined;
-
-    // A new owner model (login, respawn, character switch) carries the last
-    // persisted ff_chatMsg; treat it as already seen so it is not replayed.
-    if (owner !== this.lastOwner) {
-      this.lastOwner = owner;
-      const persisted = owner[CHAT_MSG_PROP];
-      this.lastMsg = typeof persisted === "string" ? persisted : null;
-    }
 
     if (!this.mounted) {
       this.mounted = true;
@@ -489,9 +515,7 @@ export class ChatService extends ClientListener {
       this.sp.browser.executeJavaScript(`window.__alduinakSetNames && window.__alduinakSetNames(${JSON.stringify(liveName)});`);
     }
 
-    const msg = owner[CHAT_MSG_PROP];
-    if (typeof msg === "string" && msg !== "" && msg !== this.lastMsg) {
-      this.lastMsg = msg;
+    for (const msg of this.pendingLines.splice(0)) {
       const dist = this.senderDistanceMeters(msg);
       this.sp.browser.executeJavaScript(`window.__alduinakAddChat && window.__alduinakAddChat(${JSON.stringify(msg)}, ${dist});`);
       this.maybeShowSystemOverlay(msg);
@@ -507,24 +531,23 @@ export class ChatService extends ClientListener {
       if (s.indexOf("[[S]]") !== 0) return;
       const text = s.slice(5).replace(/#\{[0-9a-fA-F]{6}\}/g, "").trim();
       if (!text) return;
-      if (this.systemOverlay) {
-        this.sp.destroyText(this.systemOverlay.id);
-        this.systemOverlay = null;
-      }
+      this.hideSystemOverlay();
       const { width, height } = getScreenResolution();
-      const id = this.sp.createText(width / 2, height / 3, text, [0.93, 0.66, 0.25, 1]);
-      this.sp.setTextSize(id, 0.5);
-      this.systemOverlay = { id, expiresAt: Date.now() + 15000 };
+      const overlay = { id: this.sp.createText(width / 2, height / 3, text, [0.93, 0.66, 0.25, 1]) };
+      this.sp.setTextSize(overlay.id, 0.5);
+      this.systemOverlay = overlay;
+      this.controller.lookupListener(TimersService).setTimeoutOnUpdate(() => {
+        if (this.systemOverlay === overlay) this.hideSystemOverlay();
+      }, SYSTEM_OVERLAY_MS);
     } catch (e) {
       // overlay is best-effort
     }
   }
 
-  private expireSystemOverlay(): void {
-    if (this.systemOverlay && Date.now() >= this.systemOverlay.expiresAt) {
-      this.sp.destroyText(this.systemOverlay.id);
-      this.systemOverlay = null;
-    }
+  private hideSystemOverlay(): void {
+    if (!this.systemOverlay) return;
+    this.sp.destroyText(this.systemOverlay.id);
+    this.systemOverlay = null;
   }
 
   private senderDistanceMeters(raw: string): number {
@@ -559,24 +582,15 @@ export class ChatService extends ClientListener {
     this.sp.setTextRefr(id, refrId);
     this.sp.setTextRefrNode(id, "NPC Head [Head]");
     this.sp.setTextRefrOffset(id, [0, 0, 40]);
-    this.bubbles.push({ id, expiresAt: Date.now() + 6000 });
-  }
-
-  private expireBubbles(): void {
-    const now = Date.now();
-    this.bubbles = this.bubbles.filter((b) => {
-      if (now < b.expiresAt) return true;
-      this.sp.destroyText(b.id);
-      return false;
-    });
+    this.controller.lookupListener(TimersService).setTimeoutOnUpdate(() => this.sp.destroyText(id), BUBBLE_MS);
   }
 
   private mounted = false;
+  private syncQueued = false;
+  private pendingLines: string[] = [];
   private lastMsg: string | null = null;
   private lastName: string | null = null;
   private lastAdmin = false;
-  private lastOwner: unknown = null;
-  private bubbles: { id: number; expiresAt: number }[] = [];
-  private systemOverlay: { id: number; expiresAt: number } | null = null;
+  private systemOverlay: { id: number } | null = null;
   private readonly pluginChatSettingsName = "chat-settings-no-load";
 }

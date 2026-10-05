@@ -42,6 +42,8 @@ import { AnyRawMessageEvent } from "./anyRawMessageEvent";
 import { NicknameCreateEvent } from "./nicknameCreateEvent";
 import { NicknameDestroyEvent } from "./nicknameDestroyEvent";
 import { PlayerWorldOrCellChangedEvent } from "./playerWorldOrCellChangedEvent";
+import { OwnerPropertyChangedEvent } from "./ownerPropertyChangedEvent";
+import { OwnerModelResetEvent } from "./ownerModelResetEvent";
 
 type EventTypes = {
     'gameLoad': [GameLoadEvent],
@@ -89,7 +91,9 @@ type EventTypes = {
     'uiHiddenChanged': [UiHiddenChangedEvent],
     'nicknameCreate': [NicknameCreateEvent],
     'nicknameDestroy': [NicknameDestroyEvent],
-    'playerWorldOrCellChanged': [PlayerWorldOrCellChangedEvent]
+    'playerWorldOrCellChanged': [PlayerWorldOrCellChangedEvent],
+    'ownerPropertyChanged': [OwnerPropertyChangedEvent],
+    'ownerModelReset': [OwnerModelResetEvent]
 }
 
 // https://blog.makerx.com.au/a-type-safe-event-emitter-in-node-js/
