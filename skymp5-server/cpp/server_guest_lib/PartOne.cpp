@@ -746,25 +746,23 @@ FormCallbacks PartOne::CreateFormCallbacks()
 
   FormCallbacks::SendToUserFn sendToUser =
     [this, st](MpActor* actor, const IMessageBase& message, bool reliable) {
+      auto targetuserId = st->UserByActor(actor);
+      if (targetuserId == Networking::InvalidUserId ||
+          st->disconnectingUserId == targetuserId) {
+        return;
+      }
+
       SLNet::BitStream stream;
       GetMessageSerializerInstance().Serialize(message, stream);
-
-      auto targetuserId = st->UserByActor(actor);
-      if (targetuserId != Networking::InvalidUserId &&
-          st->disconnectingUserId != targetuserId) {
-        pImpl->sendTarget->Send(
-          targetuserId,
-          reinterpret_cast<Networking::PacketData>(stream.GetData()),
-          stream.GetNumberOfBytesUsed(), reliable);
-      }
+      pImpl->sendTarget->Send(
+        targetuserId,
+        reinterpret_cast<Networking::PacketData>(stream.GetData()),
+        stream.GetNumberOfBytesUsed(), reliable);
     };
 
   FormCallbacks::SendToUserDeferredFn sendToUserDeferred =
     [this, st](MpActor* actor, const IMessageBase& message, bool reliable,
                int deferredChannelId, bool overwritePreviousChannelMessages) {
-      SLNet::BitStream stream;
-      GetMessageSerializerInstance().Serialize(message, stream);
-
       if (deferredChannelId < 0 || deferredChannelId >= 100) {
         return spdlog::error(
           "sendToUserDeferred - invalid deferredChannelId {}",
@@ -783,6 +781,9 @@ FormCallbacks PartOne::CreateFormCallbacks()
         return spdlog::error("sendToUserDeferred - null userInfo for user {}",
                              targetuserId);
       }
+
+      SLNet::BitStream stream;
+      GetMessageSerializerInstance().Serialize(message, stream);
 
       DeferredMessage deferredMessage;
       deferredMessage.packetData = {

@@ -525,7 +525,7 @@ void MpObjectReference::Disable()
     [&](MpChangeFormREFR& changeForm) { changeForm.isDisabled = true; });
 
   if (!IsEspmForm() || AsActor()) {
-    RemoveFromGridAndUnsubscribeAll();
+    LeaveGrid();
   }
 }
 
@@ -1041,8 +1041,11 @@ void MpObjectReference::Subscribe(MpObjectReference* emitter,
   listener->InitListenersAndEmitters();
 
   auto [it, inserted] = emitter->listeners->insert(listener);
+  if (!inserted) {
+    return;
+  }
 
-  if (actorListener && inserted) {
+  if (actorListener) {
     emitter->actorListenerArray.push_back(actorListener);
   }
 
@@ -1825,6 +1828,13 @@ void MpObjectReference::UnsubscribeFromAll()
   auto emittersCopy = GetEmitters();
   for (auto emitter : emittersCopy)
     Unsubscribe(emitter, this);
+}
+
+void MpObjectReference::LeaveGrid()
+{
+  RemoveFromGridAndUnsubscribeAll();
+  UnsubscribeFromAll();
+  primitivesWeAreInside.reset();
 }
 
 void MpObjectReference::InitScripts()
