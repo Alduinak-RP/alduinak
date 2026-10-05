@@ -265,7 +265,7 @@ number counts as 1. The lines name what is in force: cost lines end `, race x0.7
 `hunger drain race x0.85, fatigue costs race x0.85, fatigue refill survival x0.5`, the offline line adds
 `refill survival x0.5`, and a scaled meal logs `[needs] <id> ate <editor id>: hunger -50 of 100, survival x0.5, hunger N`.
 Every hunger or fatigue stage change of an online character, and every minute tick, emits `needsStage` (actorId, hunger
-stage, fatigue stage) on the gamemode bus for the survival afflictions.
+stage, fatigue stage) on the gamemode bus; survival reads the hunger stage for Weakened.
 
 Every action costs a share of the bar by the character's rank **in the profession the action belongs to**; a character
 of another profession or none pays the Free price (`FATIGUE_COST` and `fatigueCost` in `needsSystem.ts`):
@@ -492,7 +492,7 @@ spend shows nothing on the HUD, and the stage notice from stage 2 and the "too t
 NeedsSystem. The client half is `SurvivalService` (`skymp5-client/src/services/services/survivalService.ts`). It covers
 the owner's survival list of r27: cold and warmth, clothing warmth, the race cold rules, raw meat, freezing water, slow
 health regeneration (a full bar in about 30 minutes) with a 1 health point respawn, carry weight 150, creature
-diseases, Oblivion diseases, contagion, the three
+diseases, Oblivion diseases, contagion, the two
 afflictions and shrines that no longer cure.
 
 No Survival Mode script runs on a client (SkyrimPlatform drops every Papyrus event but `OnUpdate`, and the plugin keeps
@@ -659,16 +659,19 @@ they weigh nothing again.
 
 Survival Mode's conditions: at a need's stage 5 a character not holding the affliction rolls at most once per interval,
 as Survival's need update does. The first roll comes on reaching stage 5 when the last one is an interval old, and a
-need that leaves stage 5 and comes back inside the interval (fatigue resting just above Debilitated between crafts)
-rolls nothing new.
+need that leaves stage 5 and comes back inside the interval rolls nothing new.
 
 | Affliction | Need at stage 5 | Chance, interval | Effect (Survival's spell) |
 |---|---|---|---|
 | Weakened | hunger Starving | 20%, 15 min | one-handed, two-handed and block -30% |
-| Addled | fatigue Debilitated | 30%, 30 min | magicka and stamina regeneration -30% |
 | Frostbitten | cold Numb | 16%, 5 min | lockpicking, pickpocketing and archery -30 |
 
-Hunger and fatigue stages come from NeedsSystem's `needsStage` event. An affliction lasts `survivalAfflictionHours` (24)
+Addled (fatigue Debilitated, magicka and stamina regeneration -30%) was removed on 2026-10-05 at the owner's request:
+fatigue gives no affliction, an `addled` entry in `survivalAfflictions` is ignored, and a character that still holds
+it loses the ability and the stored entry at its next login (`[survival] <id> body: ..., removed
+Survival_AfflictionAddled, ...`).
+
+The hunger stage comes from NeedsSystem's `needsStage` event. An affliction lasts `survivalAfflictionHours` (24)
 real hours, offline included, or until cured; none rolls in creation, dead or in the realms. Weakened's melee and block
 part and Frostbitten's archery show in Active Effects but change no damage until the effect modifiers of the damage
 formula (NV4a, in the native source since `ea63f69a`) run: a native server build with it, and

@@ -48,11 +48,11 @@ type Mp = any;
 // water) and the race's coldRateMult; above the cap it falls unless the character fought in the last FIGHT_MS. Standing at a heat source
 // (heatSources.ts) warms, frost spells and venom chill, fire spells and hot food warm. The stage ability Survival_ColdStage0..5 follows
 // the stage and the client takes the maximum health penalty from survivalState. Cold falls while logged out and starts over at a respawn.
-// Afflictions, Survival's conditions: at a need's stage 5 (hunger Starving and fatigue Debilitated from NEEDS_STAGE_EVENT, cold Numb) a
+// Afflictions, Survival's conditions: at a need's stage 5 (hunger Starving from NEEDS_STAGE_EVENT, cold Numb) a
 // character not holding its affliction rolls at most once per tickMinutes, like Survival's need update, so leaving stage 5 and coming
-// back inside that time rolls nothing: Weakened (hunger, 20% every 15 min),
-// Addled (fatigue, 30% every 30 min), Frostbitten (cold, 16% every 5 min). The affliction ability lasts survivalAfflictionHours of wall
-// clock, offline included, or until cured like food poisoning.
+// back inside that time rolls nothing: Weakened (hunger, 20% every 15 min), Frostbitten (cold, 16% every 5 min). The affliction ability
+// lasts survivalAfflictionHours of wall clock, offline included, or until cured like food poisoning. A stored affliction that has no
+// definition (Addled, which fatigue gave) is taken back at login.
 // Diseases (survivalDiseases.ts): a weapon or unarmed hit a player takes from a carrier creature (the attacker's race editor id holds a
 // survivalDiseaseCarriers fragment; never a player, a pet, a blocked hit or a spell) rolls the carrier's chance x (1 - disease resist / 100)
 // once and gives one of its diseases the character lacks, at most survivalMaxDiseases at once; each is the plugin's AldDisease_<Id>1..3 at
@@ -128,8 +128,8 @@ type Mp = any;
 //   survivalColdMaxHealthPenalty  largest share of maximum health cold takes, default 0.8
 //   survivalColdHealthScale       true also writes private.healthScale, so the native counts damage and healing against the shrunk maximum, default false
 //   survivalFreezingWaterWorlds   worldspace editor ids whose water always freezes, default ["DLC1HunterHQWorld"]
-//   survivalAfflictions           { weakened, addled, frostbitten: { chance, tickMinutes } | false } over the defaults, or false for none, default
-//                                 { weakened: { 0.2, 15 }, addled: { 0.3, 30 }, frostbitten: { 0.16, 5 } }
+//   survivalAfflictions           { weakened, frostbitten: { chance, tickMinutes } | false } over the defaults, or false for none, default
+//                                 { weakened: { 0.2, 15 }, frostbitten: { 0.16, 5 } }
 //   survivalAfflictionHours       real hours an affliction lasts, offline included, default 24
 //   survivalDiseasesEnabled       false gives no disease and removes those held at login, default true
 //   survivalDiseases              { "<id>": false | { name, contagious, stageHours } } over the catalog of survivalDiseases.ts
@@ -179,10 +179,9 @@ const DEFAULT_POISON_HOURS = 24;
 const DEFAULT_CURE_MIN_HEALTH = 25;
 const FOOD_POISONING_SPELL = "Survival_DiseaseFoodPoisoning";
 const FOOD_POISONING_NAME = "Food poisoning";
-// Survival_AfflictionHungerChance, ...ExhaustionChance and ...ColdChance; the need update intervals at our 1:1 clock
+// Survival_AfflictionHungerChance and ...ColdChance; the need update intervals at our 1:1 clock
 const AFFLICTION_DEFS = [
   { key: "weakened", spell: "Survival_AfflictionWeakened", name: "Weakened", worst: "starving", chance: 0.2, tickMinutes: 15, notice: "Starving has weakened you: your one-handed, two-handed and block skills suffer" },
-  { key: "addled", spell: "Survival_AfflictionAddled", name: "Addled", worst: "debilitated", chance: 0.3, tickMinutes: 30, notice: "Exhaustion has addled you: your magicka and stamina recover more slowly" },
   { key: "frostbitten", spell: "Survival_AfflictionFrostbitten", name: "Frostbitten", worst: "numb", chance: 0.16, tickMinutes: 5, notice: "The cold has frostbitten you: your archery, lockpicking and pickpocketing suffer" },
 ];
 const DEFAULT_AFFLICTION_HOURS = 24;
@@ -408,7 +407,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     ctx.gm.on(AFTERLIFE_REVIVED_EVENT, (actorId: number) => this.wake(ctx.svr as Mp, actorId >>> 0, "revived"));
     ctx.gm.on(SURVIVAL_RESET_EVENT, (actorId: number, by: string, done?: (ok: boolean) => void) => done?.(this.resetBy(ctx, actorId >>> 0, by)));
     ctx.gm.on(SURVIVAL_ADMIN_EVENT, (actorId: number, by: string, request: SurvivalAdminRequest, done?: (result: SurvivalAdminResult) => void) => done?.(this.adminRequest(ctx, actorId >>> 0, by, request)));
-    ctx.gm.on(NEEDS_STAGE_EVENT, (actorId: number, hunger: number, fatigue: number) => this.onNeedsStage(ctx, actorId >>> 0, hunger, fatigue));
+    ctx.gm.on(NEEDS_STAGE_EVENT, (actorId: number, hunger: number) => this.onNeedsStage(ctx, actorId >>> 0, hunger));
     this.installHooks(ctx);
     const heat = this.buildHeatIndex(ctx.svr as Mp);
     const bodyLine = this.body.map((b) => `${b.label} ${!b.name ? "off" : b.id ? `${b.name} (${hex(b.id)})` : `${b.name} not in the load order, skipped`}`).join(", ");
@@ -835,6 +834,10 @@ export class SurvivalSystem implements System, NeedsModifierSource {
         if (id) removed.push(this.edidOf(mp, id));
       }
     }
+    for (const key of Object.keys(rec.afflictions).filter((k) => !this.afflictions.some((a) => a.key === k))) {
+      const id = this.dropAffliction(mp, entry, { key, id: 0 });
+      removed.push(id ? this.edidOf(mp, id) : key);
+    }
     removed.push(...this.dropDiseases(mp, entry, (d) => !(this.enabled && this.dis.enabled && this.hasDisease(d.id))));
     this.publishContagious(mp, entry);
     const heldCold = this.idOfDesc(mp, rec.coldSpell);
@@ -922,7 +925,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   }
 
   // Removes a held affliction's ability and record; returns the spell removed, 0 when none was held
-  private dropAffliction(mp: Mp, entry: Online, a: Affliction): number {
+  private dropAffliction(mp: Mp, entry: Online, a: Pick<Affliction, "key" | "id">): number {
     const held = entry.rec.afflictions[a.key];
     if (!held) return 0;
     const id = this.idOfDesc(mp, held.spell) || a.id;
@@ -931,16 +934,12 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     return id;
   }
 
-  // NEEDS_STAGE_EVENT: Weakened at hunger stage 5, Addled at fatigue stage 5
-  private onNeedsStage(ctx: SystemContext, actorId: number, hunger: number, fatigue: number): void {
+  // NEEDS_STAGE_EVENT: Weakened at hunger stage 5
+  private onNeedsStage(ctx: SystemContext, actorId: number, hunger: number): void {
     const entry = this.online.get(actorId);
     if (!entry || !entry.coldAt) return;
     setImmediate(() => {
-      if (this.online.get(actorId) !== entry) return;
-      const mp = ctx.svr as Mp;
-      const now = Date.now();
-      this.rollAffliction(mp, entry, "weakened", Number(hunger) >= WORST_STAGE, now);
-      this.rollAffliction(mp, entry, "addled", Number(fatigue) >= WORST_STAGE, now);
+      if (this.online.get(actorId) === entry) this.rollAffliction(ctx.svr as Mp, entry, "weakened", Number(hunger) >= WORST_STAGE, Date.now());
     });
   }
 
@@ -1839,11 +1838,11 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       const cold = Number(raw.cold);
       const afflictions: Record<string, { until: number; spell: string }> = {};
       const lastRoll: Record<string, number> = {};
-      for (const { key } of AFFLICTION_DEFS) {
-        const held = raw.afflictions?.[key];
-        if (held && Number(held.until) > 0 && typeof held.spell === "string") afflictions[key] = { until: Number(held.until), spell: held.spell };
-        if (Number(raw.lastRoll?.[key]) > 0) lastRoll[key] = Number(raw.lastRoll[key]);
+      // A key without a definition is kept for applyBody to take back
+      for (const [key, held] of Object.entries(isObject(raw.afflictions) ? raw.afflictions : {})) {
+        if (isObject(held) && Number(held.until) > 0 && typeof held.spell === "string") afflictions[key] = { until: Number(held.until), spell: held.spell };
       }
+      for (const { key } of AFFLICTION_DEFS) if (Number(raw.lastRoll?.[key]) > 0) lastRoll[key] = Number(raw.lastRoll[key]);
       const diseases: HeldDisease[] = [];
       for (const d of Array.isArray(raw.diseases) ? raw.diseases : []) {
         const stage = Number(d?.stage);

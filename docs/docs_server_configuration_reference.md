@@ -1701,11 +1701,11 @@ Cold and warmth:
 | `survivalColdHealthScale` | `false` | `false`: the cold penalty only shrinks the client's health bar, and the server counts damage and healing against the full base maximum, so a hit takes the same share of the bar warm or cold. `true` also writes `private.healthScale` (1 - the penalty) on the character, and the native (`scam_native.node` from `feb6f390`, no other setting needed) counts weapon, spell and poison damage, potions, food, restoration and Papyrus health changes against the base maximum times it: a Numb character of base 100 (penalty 0.8) has 20 health points, so 20 damage takes the whole bar and a 30 point potion fills it; the 45 cap stays in points. The value is kept between 0.01 and 100, anything that is not a number counts as 1, and a respawn or a login with the switch off writes 1 again. A revive counts its `survivalRespawnHealthPoints` against the scaled maximum. Logs `CalculateCurrentHealthPercentage - <id> takes 20 damage against 20 health (100 base x private.healthScale 0.2)`. Untested in game |
 | `survivalFreezingWaterWorlds` | `["DLC1HunterHQWorld"]` | Worldspaces whose water always freezes, besides freezing areas and cold interiors |
 
-Afflictions (Weakened at Starving, Addled at Debilitated, Frostbitten at Numb):
+Afflictions (Weakened at Starving, Frostbitten at Numb; Addled was removed, its key is ignored and a character holding it loses it at login):
 
 | Key | Default | Meaning |
 |---|---|---|
-| `survivalAfflictions` | `{ "weakened": { "chance": 0.2, "tickMinutes": 15 }, "addled": { "chance": 0.3, "tickMinutes": 30 }, "frostbitten": { "chance": 0.16, "tickMinutes": 5 } }` | Chance rolled at the need's stage 5, at most once every `tickMinutes` (leaving stage 5 and coming back inside that time rolls nothing); merged over the defaults; `false` for one or for the whole key turns it off |
+| `survivalAfflictions` | `{ "weakened": { "chance": 0.2, "tickMinutes": 15 }, "frostbitten": { "chance": 0.16, "tickMinutes": 5 } }` | Chance rolled at the need's stage 5, at most once every `tickMinutes` (leaving stage 5 and coming back inside that time rolls nothing); merged over the defaults; `false` for one or for the whole key turns it off |
 | `survivalAfflictionHours` | `24` | Real hours an affliction lasts, offline included |
 
 Diseases:

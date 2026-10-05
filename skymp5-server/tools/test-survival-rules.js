@@ -241,7 +241,7 @@ const setup = (settings = { survivalEnabled: true }, cold = false, plugin = true
   const ids = { Survival_abLowerCarryWeightSpell: CARRY, AldSurvival_AbNoHealthRegen: REGEN, AldSurvival_FreezingWaterDamage: WATER }
   for (const b of sys.body) b.id = b.name ? ids[b.name] || 0 : 0
   sys.foodPoison = FOOD_POISON
-  const afflictionIds = { Survival_AfflictionWeakened: WEAKENED, Survival_AfflictionAddled: ADDLED, Survival_AfflictionFrostbitten: FROSTBITTEN }
+  const afflictionIds = { Survival_AfflictionWeakened: WEAKENED, Survival_AfflictionFrostbitten: FROSTBITTEN }
   for (const a of sys.afflictions) a.id = afflictionIds[a.spell]
   sys.rawMeat = new Set([VENISON])
   sys.altars = new Set([ALTAR])
@@ -1122,16 +1122,16 @@ async function main() {
 
   await test('afflictions: the vanilla chances and intervals by default, a key or the whole setting false turns them off, bad values are named', () => {
     const t = setup({ survivalEnabled: true })
-    assert.deepEqual(t.sys.afflictions.map((a) => [a.key, a.chance, a.tickMs / 60000]), [['weakened', 0.2, 15], ['addled', 0.3, 30], ['frostbitten', 0.16, 5]])
+    assert.deepEqual(t.sys.afflictions.map((a) => [a.key, a.chance, a.tickMs / 60000]), [['weakened', 0.2, 15], ['frostbitten', 0.16, 5]])
     assert.equal(t.sys.afflictionMs, 24 * HOUR)
     const u = setup({ survivalEnabled: true, survivalAfflictions: { addled: false, weakened: { chance: 2, tickMinutes: 10 }, frostbitten: 'no' }, survivalAfflictionHours: 0 })
-    assert.deepEqual(u.sys.afflictions.map((a) => [a.chance, a.tickMs / 60000]), [[0.2, 10], [0, 30], [0.16, 5]])
+    assert.deepEqual(u.sys.afflictions.map((a) => [a.chance, a.tickMs / 60000]), [[0.2, 10], [0.16, 5]], 'the retired addled key is ignored')
     assert.deepEqual(u.problems, [
       'survivalAfflictionHours 0 is out of range, 24 is used',
       'survivalAfflictions.weakened.chance 2 is not between 0 and 1, 0.2 is used',
       'survivalAfflictions.frostbitten "no" is not an object or false, the default is used',
     ])
-    assert.deepEqual(setup({ survivalEnabled: true, survivalAfflictions: false }).sys.afflictions.map((a) => a.chance), [0, 0, 0])
+    assert.deepEqual(setup({ survivalEnabled: true, survivalAfflictions: false }).sys.afflictions.map((a) => a.chance), [0, 0])
   })
 
   await test('afflictions: starving rolls Weakened on reaching stage 5 and every 15 minutes there, never while held', async () => {
@@ -1144,19 +1144,19 @@ async function main() {
     t.logs.length = 0
     t.mp.calls.length = 0
     Math.random = () => 0.5
-    t.sys.onNeedsStage(t.ctx, a, 4, 1)
+    t.sys.onNeedsStage(t.ctx, a, 4)
     await tick()
     assert.deepEqual(t.logs, [])
-    t.sys.onNeedsStage(t.ctx, a, 5, 1)
+    t.sys.onNeedsStage(t.ctx, a, 5)
     await tick()
     assert.deepEqual(t.logs, [`[survival] ${h} starving: weakened 20%, roll 0.500, spared`])
     later(60000)
-    t.sys.onNeedsStage(t.ctx, a, 5, 1)
+    t.sys.onNeedsStage(t.ctx, a, 5)
     await tick()
     assert.equal(t.logs.length, 1, 'the next roll waits 15 minutes')
     later(14 * 60000)
     Math.random = () => 0.1
-    t.sys.onNeedsStage(t.ctx, a, 5, 1)
+    t.sys.onNeedsStage(t.ctx, a, 5)
     await tick()
     const until = clock.now + 24 * HOUR
     assert.equal(t.logs.pop(), `[survival] ${h} starving: weakened 20%, roll 0.100, weakened for 24 h until ${hhmm(until)}`)
@@ -1165,13 +1165,13 @@ async function main() {
     assert.equal(t.notices(a).pop(), 'Starving has weakened you: your one-handed, two-handed and block skills suffer for 24 hours. A Cure Disease potion or a healing potion cures it.')
     assert.deepEqual(t.states(a).pop().afflictions, ['Weakened'])
     later(20 * 60000)
-    t.sys.onNeedsStage(t.ctx, a, 5, 1)
+    t.sys.onNeedsStage(t.ctx, a, 5)
     await tick()
     assert.deepEqual(t.mp.calls, [`${h} +910`], 'no roll while weakened')
   })
 
-  await test('afflictions: debilitated rolls Addled at most once per 30 min even when fatigue leaves stage 5 and comes back, nothing rolls in creation, dead or with the chance at 0', async () => {
-    const t = setup({ survivalEnabled: true, survivalAfflictions: { weakened: { chance: 0 } } })
+  await test('afflictions: hunger that leaves stage 5 and comes back rolls at most once per 15 min, nothing rolls in creation, dead or with the chance at 0, and Debilitated gives none', async () => {
+    const t = setup({ survivalEnabled: true })
     const [a, b, c] = [actor(), actor(), actor()]
     t.join(a, NORD_RACE)
     t.join(b, NORD_RACE)
@@ -1180,38 +1180,52 @@ async function main() {
     await t.update()
     const h = a.toString(16)
     t.logs.length = 0
-    Math.random = () => 0.5
-    t.sys.onNeedsStage(t.ctx, a, 5, 5)
+    t.mp.calls.length = 0
+    Math.random = () => 0.1
+    t.sys.onNeedsStage(t.ctx, a, 1, 5)
     await tick()
-    assert.deepEqual(t.logs, [`[survival] ${h} debilitated: addled 30%, roll 0.500, spared`], 'weakened at chance 0 never rolls')
+    assert.deepEqual([t.logs, t.mp.calls], [[], []], 'fatigue stage 5 rolls nothing')
+    Math.random = () => 0.5
+    t.sys.onNeedsStage(t.ctx, a, 5)
+    await tick()
+    assert.deepEqual(t.logs, [`[survival] ${h} starving: weakened 20%, roll 0.500, spared`])
     later(30000)
-    t.sys.onNeedsStage(t.ctx, a, 5, 4)
+    t.sys.onNeedsStage(t.ctx, a, 4)
     later(20000)
-    t.sys.onNeedsStage(t.ctx, a, 5, 5)
+    t.sys.onNeedsStage(t.ctx, a, 5)
     await tick()
     assert.equal(t.logs.length, 1, 'back at stage 5 within a minute of the last roll')
     later(60000)
-    t.sys.onNeedsStage(t.ctx, a, 5, 4)
+    t.sys.onNeedsStage(t.ctx, a, 4)
     later(1000)
-    Math.random = () => 0.2
-    t.sys.onNeedsStage(t.ctx, a, 5, 5)
+    Math.random = () => 0.1
+    t.sys.onNeedsStage(t.ctx, a, 5)
     await tick()
-    assert.equal(t.logs.length, 1, 'back at stage 5 two minutes after the last roll: the rest-then-work loop rolls nothing')
-    later(30 * 60000 - 111000 - 1)
-    t.sys.onNeedsStage(t.ctx, a, 5, 5)
+    assert.equal(t.logs.length, 1, 'back at stage 5 two minutes after the last roll rolls nothing')
+    later(15 * 60000 - 111000 - 1)
+    t.sys.onNeedsStage(t.ctx, a, 5)
     await tick()
-    assert.equal(t.logs.length, 1, 'still inside the 30 min interval')
+    assert.equal(t.logs.length, 1, 'still inside the 15 min interval')
     later(1)
-    t.sys.onNeedsStage(t.ctx, a, 5, 5)
+    t.sys.onNeedsStage(t.ctx, a, 5)
     await tick()
-    assert.equal(t.logs.pop(), `[survival] ${h} debilitated: addled 30%, roll 0.200, addled for 24 h until ${hhmm(clock.now + 24 * HOUR)}`)
-    assert.ok(t.mp.calls.includes(`${h} +911`))
+    assert.equal(t.logs.pop(), `[survival] ${h} starving: weakened 20%, roll 0.100, weakened for 24 h until ${hhmm(clock.now + 24 * HOUR)}`)
+    assert.ok(t.mp.calls.includes(`${h} +910`))
     t.mp.set(b, 'private.creationPending', true)
     t.mp.set(c, 'isDead', true)
-    t.sys.onNeedsStage(t.ctx, b, 5, 5)
-    t.sys.onNeedsStage(t.ctx, c, 5, 5)
+    t.sys.onNeedsStage(t.ctx, b, 5)
+    t.sys.onNeedsStage(t.ctx, c, 5)
     await tick()
     assert.deepEqual([t.rec(b).afflictions, t.rec(c).afflictions], [{}, {}])
+    const off = setup({ survivalEnabled: true, survivalAfflictions: { weakened: { chance: 0 } } })
+    const d = actor()
+    off.join(d, NORD_RACE)
+    later()
+    await off.update()
+    off.logs.length = 0
+    off.sys.onNeedsStage(off.ctx, d, 5)
+    await tick()
+    assert.deepEqual(off.logs, [], 'weakened at chance 0 never rolls')
   })
 
   await test('afflictions: Numb rolls Frostbitten every 5 minutes in the cold step', async () => {
@@ -1250,6 +1264,10 @@ async function main() {
     await t.update()
     const [ha, hb, hc] = [a, b, c].map((id) => id.toString(16))
     assert.ok(t.logs.some((l) => l.startsWith(`[survival] ${ha} body:`) && l.includes(`no food poisoning, weakened until ${hhmm(clock.now - 5000 + HOUR)}; cold 55`)), t.logs.join('\n'))
+    // Addled is retired: a stored one is taken back at login with its ability
+    assert.ok(t.mp.calls.includes(`${hc} -911`), t.mp.calls.join(' '))
+    assert.ok(t.logs.some((l) => l.startsWith(`[survival] ${hc} body:`) && l.includes(', removed Survival_AfflictionAddled, ')), t.logs.join('\n'))
+    assert.deepEqual(Object.keys(t.rec(c).afflictions), ['weakened'])
     assert.ok(t.mp.calls.includes(`${hb} -910`))
     assert.ok(t.logs.includes(`[survival] ${hb} weakened ran out at ${hhmm(clock.now - 5001)}`), t.logs.join('\n'))
     assert.deepEqual(t.rec(b).afflictions, {})
@@ -1262,7 +1280,7 @@ async function main() {
     t.logs.length = 0
     t.mp.onEatItem(c, CURE)
     await tick()
-    assert.deepEqual(t.logs, [`[survival] ${hc} cured by CureDisease (Cure Disease): Survival_AfflictionWeakened, Survival_AfflictionAddled, the native cure took every Disease spell`])
+    assert.deepEqual(t.logs, [`[survival] ${hc} cured by CureDisease (Cure Disease): Survival_AfflictionWeakened, the native cure took every Disease spell`])
     assert.deepEqual(t.rec(c).afflictions, {})
     const d = actor()
     t.join(d, NORD_RACE, coldRecord(55, { afflictions: weakened(clock.now + HOUR), lastRoll: { weakened: clock.now } }))
@@ -1276,6 +1294,15 @@ async function main() {
     await off.update()
     assert.deepEqual(off.logs, [`[survival] ${e.toString(16)} body rules off: respawn 100% (already), abilities removed: Survival_AfflictionWeakened`])
     assert.deepEqual(off.rec(e).afflictions, {})
+    // With survival off a character holding only the retired Addled is still followed and loses it
+    const f = actor()
+    off.join(f, NORD_RACE, coldRecord(55, { afflictions: { addled: { until: clock.now + HOUR, spell: desc(ADDLED) } } }))
+    off.mp.learned(f).add(ADDLED)
+    off.logs.length = 0
+    later()
+    await off.update()
+    assert.deepEqual(off.logs, [`[survival] ${f.toString(16)} body rules off: respawn 100% (already), abilities removed: Survival_AfflictionAddled`])
+    assert.deepEqual([off.rec(f).afflictions, off.mp.learned(f).has(ADDLED)], [{}, false])
   })
 
   const mmdd = (ms) => { const d = new Date(ms); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hhmm(ms)}` }
