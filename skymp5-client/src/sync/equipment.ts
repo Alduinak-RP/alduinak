@@ -69,6 +69,12 @@ const filterWorn = (inv: Inventory): Inventory => {
 
 export const countWorn = (inv: Inventory): number => filterWorn(inv).entries.length;
 
+// Worn entries plus the unworn copies of a worn base, whose tags the server reads to tell the worn copy from its spares
+const filterWornAndTwins = (inv: Inventory): Inventory => {
+  const wornBases = new Set(filterWorn(inv).entries.map((e) => e.baseId));
+  return { entries: inv.entries.filter((e) => wornBases.has(e.baseId)) };
+};
+
 // The carryable light an equipment record holds in hand, such as a torch
 export const getWornLight = (eq: Equipment): Entry | undefined =>
   filterWorn(eq.inv).entries.find((e) => Game.getFormEx(e.baseId)?.getType() === FormType.Light);
@@ -183,7 +189,7 @@ export const getEquipment = (ac: Actor, numChanges: number): Equipment => {
   // Removed base container items read as negative counts the server's uint32 count refuses
   const inv = getInventory(ac, sameTaggedCopy);
   return {
-    inv: { entries: inv.entries.filter((e) => e.count > 0) },
+    inv: filterWornAndTwins({ entries: inv.entries.filter((e) => e.count > 0) }),
     leftSpell: getEquipedSpell(ac, SpellType.Left),
     rightSpell: getEquipedSpell(ac, SpellType.Right),
     voiceSpell: getEquipedSpell(ac, SpellType.Voice),
