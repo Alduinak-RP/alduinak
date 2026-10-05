@@ -1160,14 +1160,12 @@ void ActionListener::OnActivate(const RawMessageData& rawMsgData,
     partOne.worldState.hosters.find(static_cast<uint32_t>(msg.data.caster));
   auto hosterId = it == partOne.worldState.hosters.end() ? 0 : it->second;
 
-  if (msg.data.caster != 0x14) {
-    if (hosterId != ac->GetFormId()) {
-      std::stringstream ss;
-      ss << std::hex << "Bad hoster is attached to caster 0x"
-         << msg.data.caster << ", expected 0x" << ac->GetFormId()
-         << ", but found 0x" << hosterId;
-      throw std::runtime_error(ss.str());
-    }
+  // Older clients report the activations of every NPC and clone they see
+  if (msg.data.caster != 0x14 && hosterId != ac->GetFormId()) {
+    spdlog::debug("ActionListener::OnActivate - caster {:x} is hosted by {:x}, "
+                  "not by the sender {:x}",
+                  msg.data.caster, hosterId, ac->GetFormId());
+    return;
   }
 
   if (msg.data.caster == 0x14 && IsParalyzed(*ac)) {

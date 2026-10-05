@@ -79,24 +79,23 @@ TEST_CASE("Activate without Actor attached is dropped", "[PartOne][espm]")
   DoDisconnect(partOne, 0);
 }
 
-TEST_CASE("Activate with bad hoster", "[PartOne][espm]")
+TEST_CASE("Activate with bad hoster is dropped", "[PartOne][espm]")
 {
   auto& partOne = GetPartOne();
 
   DoConnect(partOne, 0);
   partOne.CreateActor(0xff000000, { 0, 0, 0 }, 0, 0x3c);
   partOne.SetUserActor(0, 0xff000000);
+  partOne.Messages().clear();
 
-  REQUIRE_THROWS_WITH(
+  REQUIRE_NOTHROW(
     DoMessage(partOne, 0,
               nlohmann::json{ { "t", MsgType::Activate },
                               { "data",
                                 { { "caster", 0x15 },
                                   { "target", 0 },
-                                  { "isSecondActivation", false } } } }),
-    ContainsSubstring(
-      "Bad hoster is attached to caster 0x15, expected 0xff000000, but "
-      "found 0x0"));
+                                  { "isSecondActivation", false } } } }));
+  REQUIRE(partOne.Messages().empty());
 
   DoDisconnect(partOne, 0);
   partOne.DestroyActor(0xff000000);
