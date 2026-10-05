@@ -1597,6 +1597,12 @@ void MpObjectReference::ProcessActivateNormal(
   if (pickable && !IsHarvested()) {
     // A forbiddenReloot type is taken once and never respawns (RequestReloot)
     GivePickupItemsToActivationSource(activationSource, base);
+
+    if (isItem && !IsEspmForm()) {
+      spdlog::info("MpObjectReference::ProcessActivate - Deleting 0xff item");
+      return Delete();
+    }
+
     SetHarvested(true);
     RequestReloot();
 
@@ -1605,11 +1611,6 @@ void MpObjectReference::ProcessActivateNormal(
       // SendOpenContainer being used to activate the object
       // TODO: rename SendOpenContainer to SendActivate
       activationSource.SendOpenContainer(GetFormId());
-    }
-
-    if (isItem && !IsEspmForm()) {
-      spdlog::info("MpObjectReference::ProcessActivate - Deleting 0xff item");
-      Delete();
     }
   } else if (t == espm::DOOR::kType) {
     auto lookupRes = loader.GetBrowser().LookupById(GetFormId());
