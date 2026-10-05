@@ -16,8 +16,15 @@ const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'h
 // Creation Club files come from the player's own install, where the store copy may differ as well
 const CREATION_CLUB_RE = /^cc[a-z]{3}sse\d{3}-.*\.es[mlp]$/i;
 
+interface FileInfo {
+  crc32: number;
+  size: number;
+}
+
 interface State {
   statusTextId?: number;
+  // A plugin loaded into a running game cannot change, so each one is hashed once per game process
+  fileInfos?: Record<string, FileInfo>;
 };
 
 export class LoadOrderVerificationService extends ClientListener {
@@ -76,7 +83,7 @@ export class LoadOrderVerificationService extends ClientListener {
       if (!serverMod || VANILLA_MASTERS.has(lower(name)) || CREATION_CLUB_RE.test(name)) {
         continue;
       }
-      const { crc32, size } = this.getFileInfoSafe(name);
+      const { crc32, size } = this.getFileInfoCached(name);
       // Older SkyrimPlatform builds cannot hash names with spaces and return 0/0; the name check still applies
       if (crc32 === 0 && size === 0) {
         continue;
@@ -155,7 +162,18 @@ export class LoadOrderVerificationService extends ClientListener {
     }
   }
 
-  private getFileInfoSafe(filename: string) {
+  private getFileInfoCached(filename: string): FileInfo {
+    const key = filename.toLowerCase();
+    const fileInfos = this.getState().fileInfos || {};
+    if (!fileInfos[key]) {
+      const { crc32, size } = this.getFileInfoSafe(filename);
+      fileInfos[key] = { crc32, size };
+      this.setState({ fileInfos });
+    }
+    return fileInfos[key];
+  }
+
+  private getFileInfoSafe(filename: string): FileInfo {
     try {
       return this.sp.getFileInfo(filename);
     } catch (e) {
