@@ -196,8 +196,8 @@ export class FormView {
       // Blocked once per copy, so a world NPC that PetService unblocks stays talkable
       actor?.blockActivation(true);
     }
-    // The engine keeps the deferred kill in the process data an actor only has once its 3D is in, so it is set then and again after each 3D load
-    if (actor && loaded && (!this.localImmortal || loadedNow)) {
+    // The engine keeps the deferred kill in the process data an actor only has once its 3D is in, so it is set then and again after each 3D load; never on a corpse
+    if (actor && loaded && !model.isDead && (!this.localImmortal || loadedNow)) {
       FormView.makeImmortal(actor);
       this.localImmortal = true;
     }
@@ -272,7 +272,7 @@ export class FormView {
       if (spawned) {
         spawned.setActorValue("attackDamageMult", 0);
         // A copy just placed has no process data, where the deferred kill lives, so update sets it once the 3D is in
-        FormView.makeImmortal(spawned);
+        if (!model.isDead) FormView.makeImmortal(spawned);
         this.localImmortal = false;
       }
     }
