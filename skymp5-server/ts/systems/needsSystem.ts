@@ -69,7 +69,7 @@ type Mp = any;
 //   blockStaggerMagnitude         staggerMagnitude of that stagger (0.1 to 1), default 0.5
 //   alduinakDamageFormulaSettings.blockStamina   { perArmorWeight, weightCap }, defaults 0.006 and 115: while the block's enabled is true a blocked
 //                                 hit costs x (1 + perArmorWeight x min(worn armor weight, weightCap)); perArmorWeight 0 turns the rule off,
-//                                 and so does a value the native rejects the whole block for (not a number from 0)
+//                                 and so does a value that is not a number from 0 (the native leaves this key to NeedsSystem)
 
 const NEEDS_PROP = "private.needs";
 const STATE_PACKET = "needsState";
@@ -232,7 +232,7 @@ export interface BlockWeightRule {
 }
 
 // The rebalance's block stamina rule from alduinakDamageFormulaSettings; null without the block, with enabled not true or perArmorWeight 0.
-// A blockStamina value the native rejects the whole block for (Reader::Object, Reader::Number) gives null as well and is named to problem
+// A blockStamina value outside the native's number range or not an object gives null as well and is named to problem
 export const blockWeightRule = (block: unknown, problem?: (text: string) => void): BlockWeightRule | null => {
   const b = block && typeof block === "object" ? block as Record<string, unknown> : null;
   if (!b || b["enabled"] !== true) return null;
@@ -304,7 +304,7 @@ export class NeedsSystem implements System {
     this.installBlockStamina(ctx, num("blockStaminaCost", 0.1), num("blockStaminaCostWarrior", 0.05),
       all["blockStaggerWithoutStamina"] !== false ? clamp(num("blockStaggerMagnitude", 0.5), 0.1, 1) : 0,
       blockWeightRule(all["alduinakDamageFormulaSettings"], (text) =>
-        this.log(`[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.${text}; the native rejects the whole block for such a value, so a block costs its base share`)));
+        this.log(`[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.${text}, so a block costs its base share`)));
 
     if (!this.enabled) {
       this.log("[needs] disabled by needsEnabled");

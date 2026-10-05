@@ -416,7 +416,7 @@ server log says why, once per reason and server start:
 
 | Log line | Meaning |
 |---|---|
-| `[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.blockStamina.perArmorWeight should be a number from 0 to 1000000, found "0"; ...` (at boot) | `perArmorWeight` or `weightCap` is present but not a number from 0, or `blockStamina` is not an object. The native rejects the whole block for the same value and prices hits by TES5, so this rule stays off as well. Write `0` as a number to switch only this rule off |
+| `[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.blockStamina.perArmorWeight should be a number from 0 to 1000000, found "0"; ...` (at boot) | `perArmorWeight` or `weightCap` is present but not a number from 0, or `blockStamina` is not an object. Only this rule stays off; the native leaves `blockStamina` to NeedsSystem, so the rest of the block still applies. Write `0` as a number to switch the rule off on purpose |
 | `[needs] getCombatStats has no stats for <actor> (...), blocks cost their base share` | The native answered null for a blocker: it prices hits without the rebalance formula, as it does after it rejected the block at boot for a value elsewhere in it (see its `alduinakDamageFormulaSettings` error lines) |
 | `[needs] getCombatStats of <actor> failed: <error>, blocks cost their base share` | The native call threw, for example on another call shape than `getCombatStats(actorId)` |
 | `[needs] getCombatStats of <actor> carries no armor weight (fields ...), blocks cost their base share` | The stats came without `armorWeight` |

@@ -131,7 +131,7 @@ async function main() {
     assert.deepEqual(problems, [])
   })
 
-  await test('a value the native rejects the block for switches the rule off and is named', () => {
+  await test('a value outside the native number range switches the rule off and is named', () => {
     const cases = [
       [{ perArmorWeight: '0' }, ['blockStamina.perArmorWeight should be a number from 0 to 1000000, found "0"']],
       [{ perArmorWeight: -1 }, ['blockStamina.perArmorWeight should be a number from 0 to 1000000, found -1']],
@@ -453,15 +453,15 @@ async function main() {
     assert.equal(line(await boot({ alduinakDamageFormulaSettings: ENABLED, combatTrace: true }, steel)), 1)
   })
 
-  await test('boot: a blockStamina value the native rejects boots, names the value once and charges the base share', async () => {
+  await test('boot: a bad blockStamina value boots, names the value once and charges the base share', async () => {
     for (const [blockStamina, found] of [[{ perArmorWeight: '0' }, 'blockStamina.perArmorWeight should be a number from 0 to 1000000, found "0"'],
       [{ perArmorWeight: -1 }, 'blockStamina.perArmorWeight should be a number from 0 to 1000000, found -1'],
       [{ weightCap: 'x' }, 'blockStamina.weightCap should be a number from 0 to 1000000, found "x"']]) {
       const b = await boot({ alduinakDamageFormulaSettings: { enabled: true, blockStamina } }, steel)
       assert.equal(b.stamina, 1 - 0.1)
       assert.deepEqual(b.mp.calls, [])
-      assert.deepEqual(b.logs, [`[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.${found}; ` +
-        'the native rejects the whole block for such a value, so a block costs its base share', '[needs] disabled by needsEnabled'])
+      assert.deepEqual(b.logs, [`[needs] block stamina by armor weight is off: alduinakDamageFormulaSettings.${found}, so a block costs its base share`,
+        '[needs] disabled by needsEnabled'])
     }
   })
 

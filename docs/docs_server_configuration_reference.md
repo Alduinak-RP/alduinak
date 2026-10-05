@@ -1384,7 +1384,8 @@ repaired at a workbench or grindstone. The systems are described in `docs/docs_o
   number from 0 to 1000000, found "1"`, then `alduinakDamageFormulaSettings is rejected for N problem(s): the
   rebalance formula, durability and effect modifiers stay off, the server prices hits as without the block`. An
   unknown key is only a warning (`the key "x" is not one the server reads`), as is an override whose record is not
-  in the load order (the item then resolves by keyword).
+  in the load order (the item then resolves by keyword). `blockStamina` is the exception: only NeedsSystem reads it, and
+  a bad value there switches off the block stamina rule alone.
 - **Plugin.** The numbers on the item cards come from the plugin, not from this block. Plugin r28 is the rebalance
   stat pass, so with r28 loaded `enabled: false` prices hits by the vanilla formula from r28's records (an Iron Sword
   15 where it was 9) and is not a return to 1.0's numbers; that needs plugin r27 on the server and every client

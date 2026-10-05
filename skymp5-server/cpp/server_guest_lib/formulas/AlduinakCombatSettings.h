@@ -273,9 +273,6 @@ struct AlduinakCombatSettings
   // RACE form key to the natural DT of that creature
   std::map<std::string, float> naturalDT;
 
-  float blockStaminaPerArmorWeight = 0.006f;
-  float blockStaminaWeightCap = 115.f;
-
   Durability durability;
 
   [[nodiscard]] const WeaponTypeRow& TypeRow(

@@ -273,6 +273,7 @@ private:
   std::vector<std::string>& warnings;
 };
 
+// Top-level keys of the block; blockStamina is read by NeedsSystem alone
 const std::set<std::string> kKnownKeys = { "source",
                                            "enabled",
                                            "floor",
@@ -905,11 +906,6 @@ std::shared_ptr<AlduinakCombatSettings> Parse(
       r.Number(*pen, p, "other", s.npcOtherPenetration, 0.f, 1.f);
     }
     r.NumberTable(*npc, "npc.", "naturalDT", s.naturalDT, 0.f, true);
-  }
-  if (const json* stamina = r.Object(block, "", "blockStamina", false)) {
-    r.Number(*stamina, "blockStamina.", "perArmorWeight",
-             s.blockStaminaPerArmorWeight);
-    r.Number(*stamina, "blockStamina.", "weightCap", s.blockStaminaWeightCap);
   }
   ReadDurability(r, block, s);
 
