@@ -152,7 +152,7 @@ async function run(argv, col, blockerReason = null) {
   assert.deepEqual([...T.worldDescsOf([path.join(dataDir, 'Fake.esm')])], ['3c:fake.esm'])
 
   const DECOR_DOCS = [
-    // Indoor primary, outdoor partner: only the street half shows the entrance lock
+    // Indoor primary, outdoor partner: the one lock shows on both halves
     { formDesc: '166c7:Fake.esm', worldOrCellDesc: '165a7:Fake.esm', housing: { owner: 20, name: 'Test House', lockedEntrance: true, lockedExit: false, partner: 0x1a700 } },
     { formDesc: '1a700:Fake.esm', worldOrCellDesc: '3c:Fake.esm', housing: { primary: 0x166c7 } },
     // A legacy one-lock container already marked
@@ -180,11 +180,11 @@ async function run(argv, col, blockerReason = null) {
   assert.equal(col.writes[col.writes.length - 1], 'bulkWrite 3')
   assert.match(r.text, /decor: set ff_decor on 3 of 3/)
   assert.deepEqual(col.bulkOps.map(o => [o.updateOne.filter.formDesc, o.updateOne.update.$set['dynamicFields.ff_decor']]), [
-    ['166c7:Fake.esm', { name: 'Test House', locked: false }],
+    ['166c7:Fake.esm', { name: 'Test House', locked: true }],
     ['1a700:Fake.esm', { name: 'Test House', locked: true }],
     ['400:Fake.esm', { name: 'Shack', locked: true }],
   ])
-  assert.deepEqual(T.decorOf({ name: null, lockedEntrance: false, lockedExit: true }, false, true), { name: null, locked: false })
+  assert.deepEqual(T.decorOf({ name: null, lockedEntrance: false, lockedExit: true }, false, true), { name: null, locked: true })
 
   fs.rmSync(tmp, { recursive: true, force: true })
   console.log('test-trim-changeforms: all passed')

@@ -84,7 +84,7 @@ export interface HousingData {
 
 // Mirrors cleanName in the server's housingSystem.
 const NAME_CHARS = /^[A-Za-z0-9 '_-]+$/;
-// False: the menu offers no Lock Exit, as the server never locks an exit; true brings it back with housingSystem's EXIT_LOCKS
+// Only read while the server sends sides (housingSystem's SIDED_LOCKS): false offers no Lock Exit, true brings it back with EXIT_LOCKS there
 const EXIT_LOCKS = false;
 
 // Actions that ask before they go to the server

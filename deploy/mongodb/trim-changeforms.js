@@ -143,7 +143,8 @@ const indexes = {
 const HOUSING = 'private.housing'
 // The neighbour-visible marker housingSystem.write keeps on each half of a live claim
 const DECOR = 'ff_decor'
-// housingSystem.ts EXIT_LOCKS: no half shows an exit lock
+// housingSystem.ts SIDED_LOCKS and EXIT_LOCKS: one lock shuts both halves; with sided locks no half shows an exit lock
+const SIDED_LOCKS = false
 const EXIT_LOCKS = false
 const RECORD_HEADER = 24
 const RECORD_DELETED = 0x20
@@ -220,9 +221,9 @@ function claimOf(housing) {
   }
 }
 
-// housingSystem's decorOf: with one half outdoors and the other indoors, the outdoor half shows the entrance lock
+// housingSystem's decorOf: with sided locks and one half outdoors, the other indoors, the outdoor half shows the entrance lock
 function decorOf(rec, here, there) {
-  const side = here === null || there === null || here === there ? '' : here ? 'outside' : 'inside'
+  const side = !SIDED_LOCKS || here === null || there === null || here === there ? '' : here ? 'outside' : 'inside'
   const locked = side === 'outside' ? rec.lockedEntrance : side === 'inside' ? EXIT_LOCKS && rec.lockedExit : rec.lockedEntrance || rec.lockedExit
   return { name: rec.name, locked }
 }

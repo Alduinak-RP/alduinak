@@ -1,6 +1,6 @@
 'use strict'
 
-// housingSystem.ts refDecor and ff_decor against a stub mp: logins share one full list, each claim write sends only its halves and sets ff_decor on them when it changes: node tools/test-ref-decor.js
+// housingSystem.ts refDecor and ff_decor against a stub mp: logins share one full list, each claim write sends only its halves and sets ff_decor on them when it changes, a lock shuts both halves, the first login backfills older claims: node tools/test-ref-decor.js
 
 const assert  = require('node:assert/strict')
 const fs      = require('fs')
@@ -83,6 +83,7 @@ function setup () {
       packets.length = 0
       return out
     },
+    menus: () => packets.filter((p) => p.customPacketType === 'propertyMenu'),
   }
 }
 
@@ -113,7 +114,7 @@ async function main () {
     assert.equal(new Set(sent.map((p) => p.u)).size, 3)
   })
 
-  await test('the entrance lock shows only on the street half', async () => {
+  await test('a lock, asked for as the entrance lock by an older menu, shows on both halves', async () => {
     const t = setup()
     t.act(OWNER, 'claim', STREET)
     t.act(OWNER, 'rename', STREET, { name: 'Jorrvaskr' })
@@ -123,8 +124,24 @@ async function main () {
     await tick()
     const sent = t.decor()
     assert.equal(sent.length, 3)
-    assert.deepEqual(sent[0].refs, [half(STREET, 'Jorrvaskr', true), half(HALL, 'Jorrvaskr', false)])
+    assert.deepEqual(sent[0].refs, [half(STREET, 'Jorrvaskr', true), half(HALL, 'Jorrvaskr', true)])
     assert.ok(sent[0].text.length < 200)
+    const rec = t.sys.read(t.ctx, STREET)
+    assert.deepEqual([rec.lockedEntrance, rec.lockedExit], [true, true])
+    assert.equal(t.sys.onActivate(t.ctx, HALL, NEIGHBOUR), false)
+    assert.equal(t.sys.onActivate(t.ctx, STREET, NEIGHBOUR), false)
+    t.act(OWNER, 'unlock', STREET)
+    assert.equal(t.sys.onActivate(t.ctx, HALL, NEIGHBOUR), true)
+    assert.equal(t.sys.onActivate(t.ctx, STREET, NEIGHBOUR), true)
+  })
+
+  await test('the menu offers one lock on a door with two halves', async () => {
+    const t = setup()
+    t.act(OWNER, 'claim', STREET)
+    t.act(OWNER, 'lock', STREET)
+    const menu = t.menus().pop()
+    assert.equal(menu.sides, false)
+    assert.equal(menu.locked, true)
   })
 
   await test('writes in one turn go out as one packet per player', async () => {
@@ -135,7 +152,7 @@ async function main () {
     await tick()
     const sent = t.decor()
     assert.equal(sent.length, 3)
-    assert.deepEqual(sent[0].refs, [half(STREET, null, true), half(HALL, null, false), half(CHEST, null, false)])
+    assert.deepEqual(sent[0].refs, [half(STREET, null, true), half(HALL, null, true), half(CHEST, null, false)])
   })
 
   await test('giving up sends both halves unnamed and unlocked', async () => {
@@ -179,16 +196,16 @@ async function main () {
     assert.deepEqual(t.decor()[0].refs, [half(STREET, null, false), half(HALL, null, false), half(CHEST, null, true)])
   })
 
-  await test('ff_decor follows each half: claim, rename, entrance lock, give up', async () => {
+  await test('ff_decor follows each half: claim, rename, lock, give up', async () => {
     const t = setup()
     t.act(OWNER, 'claim', STREET)
     assert.deepEqual(t.decorOf(STREET), { name: null, locked: false })
     assert.deepEqual(t.decorOf(HALL), { name: null, locked: false })
     assert.deepEqual(t.decorSets().sort(), [STREET, HALL].sort())
     t.act(OWNER, 'rename', STREET, { name: 'Jorrvaskr' })
-    t.act(OWNER, 'lockentrance', STREET)
+    t.act(OWNER, 'lock', STREET)
     assert.deepEqual(t.decorOf(STREET), { name: 'Jorrvaskr', locked: true })
-    assert.deepEqual(t.decorOf(HALL), { name: 'Jorrvaskr', locked: false })
+    assert.deepEqual(t.decorOf(HALL), { name: 'Jorrvaskr', locked: true })
     t.decorSets()
     t.act(OWNER, 'abandon', STREET)
     assert.equal(t.decorOf(STREET), null)
@@ -207,6 +224,25 @@ async function main () {
     assert.equal(t.decorOf(CHEST), null)
     t.sys.write(t.ctx, CHEST, { owner: 0, ownerName: '', name: null, lockedEntrance: false, lockedExit: false, serial: 2, cut: 0, partner: 0, containers: [], faction: '' })
     assert.deepEqual(t.decorSets(), [CHEST])
+  })
+
+  await test('the first login brings ff_decor up to date on claims written before it or under another lock rule', async () => {
+    const t = setup()
+    t.act(OWNER, 'claim', STREET)
+    t.act(OWNER, 'rename', STREET, { name: 'Jorrvaskr' })
+    t.act(OWNER, 'lock', STREET)
+    t.act(NEIGHBOUR, 'claim', CHEST)
+    t.decorSets()
+    delete t.props.get(STREET).ff_decor
+    t.props.get(HALL).ff_decor = { name: 'Jorrvaskr', locked: false }
+    t.login(OWNER)
+    assert.deepEqual(t.decorSets().sort(), [STREET, HALL].sort())
+    assert.deepEqual(t.decorOf(STREET), { name: 'Jorrvaskr', locked: true })
+    assert.deepEqual(t.decorOf(HALL), { name: 'Jorrvaskr', locked: true })
+    assert.deepEqual(t.decorOf(CHEST), { name: null, locked: false })
+    delete t.props.get(CHEST).ff_decor
+    t.login(NEIGHBOUR)
+    assert.deepEqual(t.decorSets(), [])
   })
 
   await test('a login with no actor gets nothing and builds nothing', async () => {

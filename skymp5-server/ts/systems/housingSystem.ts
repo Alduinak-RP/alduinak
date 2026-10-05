@@ -21,12 +21,12 @@ type Mp = any;
 // Players claim any unowned door or container they are standing at by pressing
 // the housing key. Owners lock it, name it, cut keys, hand ownership over, or
 // give it up. A locked property refuses activation for everyone, owner included,
-// until the owner, an admin or a key holder unlocks it from the menu. A door
-// between a worldspace and an interior has two locks: the entrance refuses
-// whoever uses its outdoor half, the exit whoever uses its indoor half. Any
-// other door and every container has one lock that shuts both ways.
-// RefDecorService mirrors each half's lock into the engine as a Master lock so
-// every player sees a locked door.
+// until the owner, an admin or a key holder unlocks it from the menu. With
+// SIDED_LOCKS a door between a worldspace and an interior has two locks: the
+// entrance refuses whoever uses its outdoor half, the exit whoever uses its
+// indoor half. Without it, and on any other door and every container, one lock
+// shuts both ways. The ff_decor property on each half mirrors its name and lock
+// into the engine (a Master lock) so every player sees a locked door.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -120,7 +120,9 @@ const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ a
 // The half of a door someone uses: outdoors or indoors of a worldspace-to-interior pair, "" for a property with one lock
 type DoorSide = "outside" | "inside" | "";
 const LOCK_OF_SIDE: Record<DoorSide, string> = { outside: "entrance", inside: "exit", "": "lock" };
-// False: the exit of a door with two halves is never locked, a lock only keeps people out; true brings Lock Exit back
+// False: a door with two halves has one lock that shuts both ways, like every other door; true brings Lock Entrance and Lock Exit back
+const SIDED_LOCKS = false;
+// With SIDED_LOCKS, false keeps the exit half always open so a lock only keeps people out; true brings Lock Exit back
 const EXIT_LOCKS = false;
 
 // One claimed property. Stored on the primary reference. owner 0 is an
@@ -253,7 +255,7 @@ export class HousingSystem implements System {
     const rec = this.read(ctx, primary);
     if (!rec || rec.owner === 0) return true;
     // The native side refuses a caster outside the door's cell, so the half pressed is the half the caster stands at
-    const side = this.sideOf(ctx, primary, rec, targetId);
+    const side = this.lockSideOf(ctx, primary, rec, targetId);
     if (!this.lockedAt(rec, side)) return true;
 
     const userId = this.userOf(ctx, casterId);
@@ -299,6 +301,7 @@ export class HousingSystem implements System {
   private onActorAssigned(ctx: SystemContext, userId: number): void {
     this.menuDoors.delete(userId);
     if (!this.notesMarked) this.markPinnedNotes(ctx);
+    if (!this.decorBackfilled) this.backfillDecor(ctx);
     this.pushDecor(ctx, userId);
     const actorId = this.actorOf(ctx, userId);
     if (actorId && this.keySplitOnLogin) this.splitUncutKeys(ctx, actorId);
@@ -489,7 +492,8 @@ export class HousingSystem implements System {
   // The lock of one half, or with side "" both; a property with one lock always turns both
   private doLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, side: DoorSide, locked: boolean): void {
     const action = `${locked ? "lock" : "unlock"}${side ? LOCK_OF_SIDE[side] : ""}`;
-    if (!EXIT_LOCKS && side === "inside") {
+    const sided = this.hasSides(ctx, primary, rec);
+    if (sided && !EXIT_LOCKS && side === "inside") {
       this.refuse(ctx, userId, actorId, action, primary, "An exit is never locked. Lock the entrance to keep people out.");
       return;
     }
@@ -502,7 +506,6 @@ export class HousingSystem implements System {
       this.refuse(ctx, userId, actorId, action, primary, this.factionStanding(ctx, actorId, rec, `faction property ${action}`).refusal || "You have no key to this.");
       return;
     }
-    const sided = this.hasSides(ctx, primary, rec);
     const which: DoorSide = sided ? side : "";
     if (which !== "inside") rec.lockedEntrance = locked;
     if (which !== "outside") rec.lockedExit = locked;
@@ -1115,8 +1118,13 @@ export class HousingSystem implements System {
     return here ? "outside" : "inside";
   }
 
+  // The lock a half answers to: its own side's while SIDED_LOCKS, otherwise the one lock of the whole door
+  private lockSideOf(ctx: SystemContext, primary: number, rec: PropertyRecord, refrId: number): DoorSide {
+    return SIDED_LOCKS ? this.sideOf(ctx, primary, rec, refrId) : "";
+  }
+
   private hasSides(ctx: SystemContext, primary: number, rec: PropertyRecord): boolean {
-    return this.sideOf(ctx, primary, rec, primary) !== "";
+    return this.lockSideOf(ctx, primary, rec, primary) !== "";
   }
 
   // A property with one lock is shut by either flag
@@ -1264,7 +1272,7 @@ export class HousingSystem implements System {
     const refs: Array<Record<string, unknown>> = [];
     const count = { sided: 0, entrance: 0, exit: 0, single: 0, locked: 0 };
     for (const { primary, rec } of this.liveClaims(ctx)) {
-      const side = this.sideOf(ctx, primary, rec, primary);
+      const side = this.lockSideOf(ctx, primary, rec, primary);
       refs.push(...this.decorOf(ctx, primary, rec));
       if (side) {
         count.sided++;
@@ -1283,8 +1291,8 @@ export class HousingSystem implements System {
   }
 
   private decorOf(ctx: SystemContext, primary: number, rec: PropertyRecord): Array<Record<string, unknown>> {
-    const refs: Array<Record<string, unknown>> = [{ refId: primary, name: rec.name, locked: this.lockedAt(rec, this.sideOf(ctx, primary, rec, primary)) }];
-    if (rec.partner) refs.push({ refId: rec.partner, name: rec.name, locked: this.lockedAt(rec, this.sideOf(ctx, primary, rec, rec.partner)) });
+    const refs: Array<Record<string, unknown>> = [{ refId: primary, name: rec.name, locked: this.lockedAt(rec, this.lockSideOf(ctx, primary, rec, primary)) }];
+    if (rec.partner) refs.push({ refId: rec.partner, name: rec.name, locked: this.lockedAt(rec, this.lockSideOf(ctx, primary, rec, rec.partner)) });
     return refs;
   }
 
@@ -1437,27 +1445,40 @@ export class HousingSystem implements System {
     return true;
   }
 
-  // Each half the claim covers or covered gets its own name and lock, or null once it is no longer claimed
-  private writeDecor(ctx: SystemContext, primary: number, rec: PropertyRecord, before: PropertyRecord | null): void {
+  // Each half the claim covers or covered gets its own name and lock, or null once it is no longer claimed; the halves changed
+  private writeDecor(ctx: SystemContext, primary: number, rec: PropertyRecord, before: PropertyRecord | null): number {
     const now = rec.owner !== 0 ? this.decorOf(ctx, primary, rec) : [];
+    let changed = 0;
     for (const refId of new Set([primary, rec.partner, before?.partner ?? 0])) {
       if (!refId) continue;
       const half = now.find((r) => r.refId === refId);
-      this.setDecor(ctx, refId, half ? { name: half.name, locked: half.locked } : null);
+      if (this.setDecor(ctx, refId, half ? { name: half.name, locked: half.locked } : null)) changed++;
     }
+    return changed;
   }
 
   // mp.set sends even an unchanged value, so the stored one is read first
-  private setDecor(ctx: SystemContext, refId: number, value: { name: unknown; locked: unknown } | null): void {
+  private setDecor(ctx: SystemContext, refId: number, value: { name: unknown; locked: unknown } | null): boolean {
     const mp = ctx.svr as Mp;
     try {
       const cur = mp.get(refId, DECOR_PROP);
       const same = value === null ? cur == null : !!cur && cur.name === value.name && cur.locked === value.locked;
-      if (!same) mp.set(refId, DECOR_PROP, value);
+      if (same) return false;
+      mp.set(refId, DECOR_PROP, value);
+      return true;
     } catch (e) {
       if (!this.decorWarned) this.log(`[housing] ${DECOR_PROP} could not be set (register it in 50_properties.js and run Build gamemode): ${e}`);
       this.decorWarned = true;
+      return false;
     }
+  }
+
+  // Claims written before the property existed, or under another lock rule, get their halves' current name and lock at the first login
+  private backfillDecor(ctx: SystemContext): void {
+    this.decorBackfilled = true;
+    let changed = 0;
+    for (const { primary, rec } of this.liveClaims(ctx)) changed += this.writeDecor(ctx, primary, rec, null);
+    if (changed) this.log(`[housing] ${DECOR_PROP} brought up to date on ${changed} halves of existing claims`);
   }
 
   // A failed write must never read as success to the player
@@ -1589,6 +1610,7 @@ export class HousingSystem implements System {
   private notesMarked = false;
   private noteMarkWarned = false;
   private decorWarned = false;
+  private decorBackfilled = false;
   private unclaimableLogged = new Set<number>();
   private lastRequestMs = new Map<number, number>();
   private lastDenyMs = new Map<number, number>();

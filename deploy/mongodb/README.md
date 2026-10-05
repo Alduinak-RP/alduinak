@@ -29,9 +29,12 @@ one-shot migration.
   the game server also ensures at every start (it refuses while a formDesc is on
   more than one document); set `dynamicFields.ff_decor` (`{ name, locked }`) on
   both halves of every live housing claim, as `housingSystem.write` keeps it
-  from then on (the outdoor half of an indoor/outdoor pair shows the entrance
-  lock; it reads the worldspaces from the plugins in `dataDir` and refuses
-  without them). Test: `node deploy/mongodb/test/test-trim-changeforms.js`.
+  from then on (one lock shows on both halves; with the server's `SIDED_LOCKS`
+  the outdoor half of an indoor/outdoor pair would show the entrance lock, so it
+  reads the worldspaces from the plugins in `dataDir` and refuses without them).
+  The game server does the same for existing claims at the first login after a
+  start, so this step only saves that pass. Test:
+  `node deploy/mongodb/test/test-trim-changeforms.js`.
 - `forbidden-items.py` + `strip-inventories.js` - one-time strip of gear above
   Adept, jewelry, spell tomes, scrolls, staves, enchanted gear and learned spells
   (abilities stay) from characters and claimed containers (personal and
