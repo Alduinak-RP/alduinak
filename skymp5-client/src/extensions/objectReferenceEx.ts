@@ -1,7 +1,19 @@
-import { ObjectReference } from "skyrimPlatform";
+import { Actor, ObjectReference } from "skyrimPlatform";
 import { NiPoint3 } from "../sync/movement";
 
 export class ObjectReferenceEx {
+  // For a reference an engine event names: Actor.from throws on one whose form type has no Papyrus type, a placed hazard or projectile
+  static asActor(self: ObjectReference | null | undefined): Actor | null {
+    if (!self) {
+      return null;
+    }
+    try {
+      return Actor.from(self);
+    } catch {
+      return null;
+    }
+  }
+
   static getWorldOrCell(self: ObjectReference): number {
     let world = self.getWorldSpace();
     if (world) {

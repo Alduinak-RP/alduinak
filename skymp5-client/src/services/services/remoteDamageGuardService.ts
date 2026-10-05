@@ -4,6 +4,7 @@ import { DeathService } from "./deathService";
 import { getMaximumActorValue, setActorValuePercentage } from "../../sync/actorvalues";
 import { CASTING_CONCENTRATION, CASTING_FIRE_AND_FORGET, DELIVERY_CONTACT, DELIVERY_SELF, EFFECT_FLAG_RECOVER, isHarmfulEffect } from "../../sync/spell";
 import { isHostedByMe, remoteIdToLocalId } from "../../view/worldViewMisc";
+import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logToPlatformLog } from "../../logging";
 import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 
@@ -193,7 +194,7 @@ export class RemoteDamageGuardService extends ClientListener {
     if (!Array.from(this.guardedClones.values()).some((guard) => guard.dispelUntil > now)) {
       return false;
     }
-    if (!aggressor || !Actor.from(aggressor)) {
+    if (!aggressor || !ObjectReferenceEx.asActor(aggressor)) {
       return true;
     }
     return (this.guardedClones.get(aggressor.getFormID())?.dispelUntil ?? 0) > now;
@@ -405,7 +406,7 @@ export class RemoteDamageGuardService extends ClientListener {
   private npcAggressorId(aggressor: ObjectReference | null | undefined, targetId: number | undefined): number {
     if (targetId !== PLAYER_ID || !aggressor) return 0;
     const id = aggressor.getFormID();
-    return id >= FIRST_RUNTIME_ID && id !== PLAYER_ID && Actor.from(aggressor) ? id : 0;
+    return id >= FIRST_RUNTIME_ID && id !== PLAYER_ID && ObjectReferenceEx.asActor(aggressor) ? id : 0;
   }
 
   // The server's raised-shield rule: holding a block with the aggressor in the frontal arc, and a shield against arrows and bolts

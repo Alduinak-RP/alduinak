@@ -38,7 +38,7 @@ export class WorldCleanerService extends ClientListener {
     if (cellAttached) {
       this.sweepFast();
     }
-    const actor = this.sp.Actor.from(refr);
+    const actor = ObjectReferenceEx.asActor(refr);
     if (actor !== null) {
       this.clean(actor, actor.getFormID());
     }
