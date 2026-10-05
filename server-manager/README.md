@@ -285,7 +285,13 @@ fails it prints a direct download URL - save that zip as
     MO2 would show it; before, the lower mod overwrote it and the two mods
     flagged each other on alternate Plays, re-downloading the DynDOLOD archive
     each time (`[install] Mod Manager None: N file(s) left to a higher-priority
-    mod with the same path`). The settings sync keeps
+    mod with the same path`). On every Play the launcher also deletes, from a
+    portable game copy (`<install>\skyrim`), each file it did not put there
+    (`[game] removed stray file <path>` in `install.log`); logs, the client's
+    own files under `Data/Platform` and, in launchers after 3.0.6, `.png`
+    files are left alone (`gamecopy::is_client_own_file`), so the PrtScn
+    screenshots the game writes next to `SkyrimSE.exe` (`ScreenShotN.png`)
+    stay. The settings sync keeps
     `server-settings.json.prev`; the data sync deletes only unmodified files a
     previous manifest or sync put there, sha256-verifies copies and never
     touches vanilla masters; the purge refuses on an unreadable light flag or

@@ -406,11 +406,11 @@ pub async fn ensure_creations(manifest: &Value, game_path: &Path) -> Result<Opti
     Ok((!warnings.is_empty()).then(|| format!("Creation Club: {}", warnings.join("; "))))
 }
 
-// Launcher, Skyrim Platform and SKSE write these under Data/Platform and Data/SKSE/Plugins; no mod ships them
+// Never strays: what the launcher, Skyrim Platform and SKSE write under Data/Platform and Data/SKSE/Plugins, logs, and the game's .png screenshots
 pub fn is_client_own_file(rel: &str) -> bool {
     let l = rel.to_lowercase();
     l.starts_with("data/platform/logs/") || l.starts_with("data/platform/pluginsnoload/") || l.starts_with("data/platform/pluginsdev/")
-        || l.ends_with("skymp5-client-settings.txt") || l.ends_with(".log") || l.starts_with("data/skse/plugins/skse64_")
+        || l.ends_with("skymp5-client-settings.txt") || l.ends_with(".log") || l.ends_with(".png") || l.starts_with("data/skse/plugins/skse64_")
 }
 
 // Files in the portable game copy the launcher never installs; empty whenever a cleanup would not be safe
@@ -514,5 +514,13 @@ mod tests {
             if !bundled.exists() { continue; }
             assert_eq!(bundled_patch(v).await, Some(bundled), "{}", v.patch);
         }
+    }
+
+    // A screenshot in the game folder is not a stray, a loose dll still is
+    #[test]
+    fn screenshots_are_kept() {
+        assert!(is_client_own_file("ScreenShot12.png"));
+        assert!(is_client_own_file("Screenshots/ScreenShot0.PNG"));
+        assert!(!is_client_own_file("d3d11.dll"));
     }
 }
