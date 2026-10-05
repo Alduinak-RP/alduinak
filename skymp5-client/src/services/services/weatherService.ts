@@ -26,6 +26,7 @@ export class WeatherService extends ClientListener {
     controller.on("update", () => this.onUpdate());
     controller.on("loadGame", () => this.onLoadGame());
     controller.on("cellFullyLoaded", () => { this.recheckAt = 0; this.nextApplyAt = 0; });
+    controller.emitter.on("playerWorldOrCellChanged", (e) => this.trackInterior(e.interior));
     onCustomPacket(controller, "weather", (content) => this.onCustomPacketMessage(content));
   }
 
@@ -55,7 +56,6 @@ export class WeatherService extends ClientListener {
     if (now < this.nextApplyAt) return;
     this.nextApplyAt = now + APPLY_MS;
     try {
-      this.trackInterior();
       if (this.dirty) this.apply(now);
       if (now >= this.recheckAt) {
         this.recheckAt = now + RECHECK_MS;
@@ -68,15 +68,13 @@ export class WeatherService extends ClientListener {
   }
 
   // A door between inside and outside sets the next sky outright
-  private trackInterior(): void {
-    const cell = this.sp.Game.getPlayer()?.getParentCell();
-    if (!cell) return;
-    const indoors = cell.isInterior();
+  private trackInterior(indoors: boolean): void {
     if (indoors === this.indoors) return;
     this.indoors = indoors;
     this.fresh = true;
     this.fadeSince = 0;
     this.dirty = !!this.pending;
+    this.nextApplyAt = 0;
   }
 
   // Stays dirty while a native throws, so the next pass tries the packet again

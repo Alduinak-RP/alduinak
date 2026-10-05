@@ -1,5 +1,6 @@
 // TODO: refactor this out
 import { isHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
+import { PlayerCharacterDataHolder } from "../../view/playerCharacterDataHolder";
 
 // @ts-expect-error (TODO: Remove in 2.10.0)
 import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType, Spell, Debug } from 'skyrimPlatform'
@@ -79,10 +80,6 @@ export class MagicSyncService extends ClientListener {
         if (this.isAnyMagicStuffEquiped() === false) {
             return;
         }
-
-        // Sampled here because the spellCast event names no target
-        const crosshairRef = Game.getCurrentCrosshairRef();
-        this.crosshairActorId = crosshairRef && Actor.from(crosshairRef) ? crosshairRef.getFormID() : 0;
 
         // A rider's snapshot carries riding and locomotion state that would unseat the observers' clone
         if (this.controller.lookupListener(MountService).isMounted) {
@@ -274,11 +271,15 @@ export class MagicSyncService extends ClientListener {
 
     // The platform names the caster as every cast's target, so the player's non-self casts name the crosshair actor
     private getReplayTargetId(casterId: number, targetId: number, spell: Spell | null | undefined): number {
-        if (casterId !== this.playerId || targetId !== casterId || !this.crosshairActorId) {
+        if (casterId !== this.playerId || targetId !== casterId) {
+            return targetId;
+        }
+        const crosshairId = PlayerCharacterDataHolder.getCrosshairRefId();
+        if (!crosshairId || !Actor.from(Game.getFormEx(crosshairId))) {
             return targetId;
         }
         const isSelf = spell?.getNthEffectMagicEffect(0)?.getDeliveryType() === this.selfDelivery;
-        return isSelf ? targetId : this.crosshairActorId;
+        return isSelf ? targetId : crosshairId;
     }
 
     private getAnimationVariablesFromActorConverted(actorId: number) {
@@ -388,7 +389,6 @@ export class MagicSyncService extends ClientListener {
 
     private playerId = 0x14;
     private readonly selfDelivery = 0;
-    private crosshairActorId = 0;
     private sendUpdateAnimationVariablesRateMs = 500;
     private castKeepAliveRateMs = 3000;
     private castStartGraceMs = 250;

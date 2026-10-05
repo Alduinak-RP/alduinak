@@ -16,6 +16,7 @@ export class CellAnimationsService extends ClientListener {
     this.controller.on("cellFullyLoaded", () => this.applied.clear());
     this.controller.on("cellDetach", (e) => this.onCellDetach(e.refr?.getFormID() ?? 0));
     this.controller.on("update", () => this.onUpdate());
+    this.controller.emitter.on("playerWorldOrCellChanged", (e) => this.onPlayerWorldOrCellChanged(e.worldOrCell));
   }
 
   // The server's last animation of a ref it just created, replayed once the ref's 3D is in
@@ -27,34 +28,36 @@ export class CellAnimationsService extends ClientListener {
     this.pending.delete(refId);
   }
 
+  // CELL_ANIMATIONS keys are interior cells, where the world or cell is the cell itself
+  private onPlayerWorldOrCellChanged(worldOrCell: number): void {
+    this.cellId = worldOrCell;
+    this.applied.clear();
+    this.nextTryAt = 0;
+  }
+
   private onUpdate(): void {
     const now = Date.now();
     if (now < this.nextTryAt) return;
     this.nextTryAt = now + RETRY_MS;
     try {
-      const cellId = this.sp.Game.getPlayer()?.getParentCell()?.getFormID() ?? 0;
-      if (cellId !== this.cellId) {
-        this.cellId = cellId;
-        this.applied.clear();
-      }
       this.pending.forEach((anim, ref) => {
-        if (this.play(ref, anim, cellId)) this.pending.delete(ref);
+        if (this.play(ref, anim)) this.pending.delete(ref);
       });
-      const entries = CELL_ANIMATIONS[cellId];
+      const entries = CELL_ANIMATIONS[this.cellId];
       if (!entries) return;
       for (const entry of entries) {
         if (this.applied.has(entry.ref)) continue;
-        if (this.play(entry.ref, entry.anim, cellId)) this.applied.add(entry.ref);
+        if (this.play(entry.ref, entry.anim)) this.applied.add(entry.ref);
       }
     } catch (err) {
       logError(this, `update failed: ${err}`);
     }
   }
 
-  private play(refId: number, anim: string, cellId: number): boolean {
+  private play(refId: number, anim: string): boolean {
     const ref = this.sp.ObjectReference.from(this.sp.Game.getFormEx(refId));
     if (!ref?.is3DLoaded() || !ref.playAnimation(anim)) return false;
-    logTrace(this, `${anim} sent to ${refId.toString(16)} in cell ${cellId.toString(16)}`);
+    logTrace(this, `${anim} sent to ${refId.toString(16)} in cell ${this.cellId.toString(16)}`);
     return true;
   }
 

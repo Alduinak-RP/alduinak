@@ -41,6 +41,7 @@ import { UpdateAnimVariablesMessage } from "../messages/updateAnimVariablesMessa
 import { AnyRawMessageEvent } from "./anyRawMessageEvent";
 import { NicknameCreateEvent } from "./nicknameCreateEvent";
 import { NicknameDestroyEvent } from "./nicknameDestroyEvent";
+import { PlayerWorldOrCellChangedEvent } from "./playerWorldOrCellChangedEvent";
 
 type EventTypes = {
     'gameLoad': [GameLoadEvent],
@@ -87,7 +88,8 @@ type EventTypes = {
     'queryKeyCodeBindings': [QueryKeyCodeBindings],
     'uiHiddenChanged': [UiHiddenChangedEvent],
     'nicknameCreate': [NicknameCreateEvent],
-    'nicknameDestroy': [NicknameDestroyEvent]
+    'nicknameDestroy': [NicknameDestroyEvent],
+    'playerWorldOrCellChanged': [PlayerWorldOrCellChangedEvent]
 }
 
 // https://blog.makerx.com.au/a-type-safe-event-emitter-in-node-js/

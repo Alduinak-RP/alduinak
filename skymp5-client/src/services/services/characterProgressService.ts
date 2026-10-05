@@ -91,6 +91,7 @@ export class CharacterProgressService extends ClientListener {
     this.controller.on("loadGame", () => this.onLoadGame());
     this.controller.on("locationDiscovery", () => this.scanSoon());
     this.controller.on("cellFullyLoaded", () => this.scanSoon());
+    this.controller.emitter.on("playerWorldOrCellChanged", () => this.scanSoon());
     this.controller.on("equip", (e) => this.onEquip(e));
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.Crafting) this.trackCarried();

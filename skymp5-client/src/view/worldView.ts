@@ -1,5 +1,3 @@
-import { Form } from "skyrimPlatform";
-
 import { WorldModel } from './model';
 import { FormViewArray } from './formViewArray';
 import { PlayerCharacterDataHolder } from './playerCharacterDataHolder';
@@ -7,6 +5,7 @@ import { ClientListener, CombinedController, Sp } from '../services/services/cli
 import { logTrace } from "../logging";
 import { SinglePlayerService } from "../services/services/singlePlayerService";
 import { RemoteServer } from "../services/services/remoteServer";
+import { PlayerWorldOrCellChangedEvent } from "../services/events/playerWorldOrCellChangedEvent";
 
 export class WorldView extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -14,6 +13,7 @@ export class WorldView extends ClientListener {
 
     controller.on("update", () => this.onUpdate());
     controller.once("update", () => this.onceUpdate());
+    controller.on("crosshairRefChanged", (e) => PlayerCharacterDataHolder.setCrosshairRef(e.reference));
 
     this.state = this.makeEmptyState();
 
@@ -50,7 +50,14 @@ export class WorldView extends ClientListener {
   }
 
   private onUpdate() {
-    this.resetAllFormViewsIfPlayerChangedWorld();
+    const worldOrCellChange = PlayerCharacterDataHolder.updateData();
+    if (worldOrCellChange) {
+      this.onPlayerWorldOrCellChanged(worldOrCellChange);
+    }
+    // Copies spawn at the player, so form views wait while the player has no world or cell
+    if (!PlayerCharacterDataHolder.getWorldOrCell()) {
+      return;
+    }
 
     const singlePlayerService = this.controller.lookupListener(SinglePlayerService);
     if (!singlePlayerService.isSinglePlayer) {
@@ -60,6 +67,7 @@ export class WorldView extends ClientListener {
   }
 
   private onceUpdate() {
+    PlayerCharacterDataHolder.setCrosshairRef(this.sp.Game.getCurrentCrosshairRef());
     if (this.oldView) {
       this.oldView.destroy();
       this.oldView = undefined;
@@ -68,20 +76,13 @@ export class WorldView extends ClientListener {
     this.waitGameTimeAndAllowFormViewUpdate(1.0);
   }
 
-  private resetAllFormViewsIfPlayerChangedWorld() {
-    const state = this.state;
-    const pc = this.sp.Game.getPlayer()!;
-    const pcWorldOrCell = (
-      (pc.getWorldSpace() || pc.getParentCell()) as Form
-    ).getFormID();
-    if (state.pcWorldOrCell !== pcWorldOrCell) {
-      if (state.pcWorldOrCell) {
-        logTrace(this, 'Reset all form views');
-        state.formViews.resize(0);
-        state.cloneFormViews.resize(0);
-      }
-      state.pcWorldOrCell = pcWorldOrCell;
+  private onPlayerWorldOrCellChanged(e: PlayerWorldOrCellChangedEvent) {
+    if (e.previous) {
+      logTrace(this, 'Reset all form views');
+      this.state.formViews.resize(0);
+      this.state.cloneFormViews.resize(0);
     }
+    this.controller.emitter.emit("playerWorldOrCellChanged", e);
   }
 
   // Work around showRaceMenu issue
@@ -126,8 +127,6 @@ export class WorldView extends ClientListener {
     const showMe = settings['skymp5-client']['show-me'];
     const showClones = settings['skymp5-client']['show-clones'];
 
-    PlayerCharacterDataHolder.updateData();
-
     state.formViews.updateAll(model, !!showMe, false);
 
     if (showClones) {
@@ -142,7 +141,6 @@ export class WorldView extends ClientListener {
       formViews: new FormViewArray(),
       cloneFormViews: new FormViewArray(),
       allowUpdate: false,
-      pcWorldOrCell: 0,
       counter: false,
     }
   }
@@ -151,7 +149,6 @@ export class WorldView extends ClientListener {
     formViews: FormViewArray;
     cloneFormViews: FormViewArray;
     allowUpdate: boolean;
-    pcWorldOrCell: number;
     counter: boolean;
   };
 

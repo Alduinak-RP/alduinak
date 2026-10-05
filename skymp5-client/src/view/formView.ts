@@ -95,7 +95,7 @@ export class FormView {
 
     // Players with different worldOrCell should be invisible
     if (model.movement) {
-      const worldOrCell = ObjectReferenceEx.getWorldOrCell(Game.getPlayer() as Actor);
+      const worldOrCell = PlayerCharacterDataHolder.getWorldOrCell();
       if (
         worldOrCell !== 0 &&
         model.movement.worldOrCell !== worldOrCell
@@ -330,6 +330,9 @@ export class FormView {
     this.dealtWithRef = false;
     const refrId = this.refrId;
     forgetGroundSample(refrId);
+    if (refrId >= 0xff000000) {
+      PlayerCharacterDataHolder.forgetCrosshairRef(refrId);
+    }
     this.mountState = makeMountState();
     // Before the id can go to another copy
     releaseHold(this.carriedState.hold);
@@ -1064,10 +1067,7 @@ export class FormView {
     if (!last || Date.now() - last >= 1000) {
       lastTryHost[remoteId] = Date.now();
 
-      if (
-        ObjectReferenceEx.getWorldOrCell(ac) ===
-        ObjectReferenceEx.getWorldOrCell(Game.getPlayer() as Actor)
-      ) {
+      if (ObjectReferenceEx.getWorldOrCell(ac) === PlayerCharacterDataHolder.getWorldOrCell()) {
         tryHost(remoteId);
         return true;
       }

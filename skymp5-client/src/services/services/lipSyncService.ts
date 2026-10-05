@@ -66,6 +66,7 @@ export class LipSyncService extends ClientListener {
     this.controller.emitter.on("connectionFailed", () => this.reset());
     this.controller.emitter.on("connectionDenied", () => this.reset());
     this.controller.emitter.on("gameLoad", () => this.reset());
+    this.controller.emitter.on("playerWorldOrCellChanged", () => { this.worldOrCellChanged = true; });
   }
 
   // remote actor id -> animated mouth
@@ -87,7 +88,7 @@ export class LipSyncService extends ClientListener {
   // local id -> face this service wrote to
   private touched = new Map<number, Touched>();
   private wasFirstPerson = false;
-  private lastCellId = 0;
+  private worldOrCellChanged = false;
   // remote id -> since when the report names it without a local actor
   private unmapped = new Map<number, number>();
   // ids already logged this session, one line each
@@ -221,13 +222,12 @@ export class LipSyncService extends ClientListener {
     this.stopped.clear();
   }
 
-  // A face whose mouth is gone is closed again until trusted shut; a cell change or a camera flip re-closes every face written, a copy re-created under a new id is closed there instead, and a gone actor is forgotten after one close
+  // A face whose mouth is gone is closed again until trusted shut; a world or cell change or a camera flip re-closes every face written, a copy re-created under a new id is closed there instead, and a gone actor is forgotten after one close
   private sweep(now: number): void {
     const firstPerson = this.isFirstPerson();
-    const cellId = Game.getPlayer()?.getParentCell()?.getFormID() ?? 0;
-    const all = firstPerson !== this.wasFirstPerson || cellId !== this.lastCellId;
+    const all = firstPerson !== this.wasFirstPerson || this.worldOrCellChanged;
     this.wasFirstPerson = firstPerson;
-    this.lastCellId = cellId;
+    this.worldOrCellChanged = false;
     this.touched.forEach((face, localId) => {
       const present = !!this.actorOf(localId);
       const current = this.localIdFor(face.remoteId);
