@@ -1329,6 +1329,14 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
 
   const auto& currentValues = actor->GetActorValues();
 
+  std::optional<BaseActorValues> baseValues;
+  auto getBaseValues = [&]() -> const BaseActorValues& {
+    if (!baseValues) {
+      baseValues = actor->GetBaseValues();
+    }
+    return *baseValues;
+  };
+
   ChangeValuesMessage outMsg;
   outMsg.idx = actor->GetIdx();
   bool sendOutMsg = false;
@@ -1363,16 +1371,18 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
         return;
       }
       const float reported = newVal;
-      newVal = CropHealthRegeneration(newVal, timeAfterRegeneration, actor);
+      newVal = CropHealthRegeneration(newVal, timeAfterRegeneration, actor,
+                                      getBaseValues());
       if (partOne.worldState.healthRegenerationMultiplier &&
           newVal < reported && !MathUtils::IsNearlyEqual(newVal, reported)) {
         NoteRefusedHealthIncrease(*actor, reported - newVal, now);
       }
     } else if (av == espm::ActorValue::Magicka) {
-      newVal = CropMagickaRegeneration(newVal, timeAfterRegeneration, actor);
+      newVal = CropMagickaRegeneration(newVal, timeAfterRegeneration, actor,
+                                       getBaseValues());
     } else if (av == espm::ActorValue::Stamina) {
-      newVal =
-        CropStaminaRegeneration(newVal, timeAfterStaminaRegeneration, actor);
+      newVal = CropStaminaRegeneration(newVal, timeAfterStaminaRegeneration,
+                                       actor, getBaseValues());
     }
 
     if (!MathUtils::IsNearlyEqual(newVal, *inputVal)) {
@@ -1408,13 +1418,9 @@ float CalculateCurrentHealthPercentage(const MpActor& actor, float damage,
                                        float* outMaxHealth,
                                        bool logScale = true)
 {
-  const uint32_t baseId = actor.GetBaseId();
-  const uint32_t raceId = actor.GetRaceId();
   WorldState* espmProvider = actor.GetParent();
 
-  const float baseHealth =
-    GetBaseActorValues(espmProvider, baseId, raceId, actor.GetTemplateChain())
-      .health;
+  const float baseHealth = actor.GetBaseValues().health;
   const float healthScale = actor.GetHealthScale();
   const float maxHealth = HealthScale::Maximum(baseHealth, healthScale);
 

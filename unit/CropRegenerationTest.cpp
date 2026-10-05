@@ -121,25 +121,25 @@ TEST_CASE("CropHealthRegeneration, CropMagickaRegeneration and "
   float expectedStamina =
     baseValues.staminaRate * baseValues.staminaRateMult * time / 10000.0f;
 
-  REQUIRE_THAT(CropHealthRegeneration(1.0f, time, &ac),
+  REQUIRE_THAT(CropHealthRegeneration(1.0f, time, &ac, baseValues),
                Catch::Matchers::WithinAbs(expectedHealth, 0.000001f));
-  REQUIRE_THAT(CropMagickaRegeneration(1.0f, time, &ac),
+  REQUIRE_THAT(CropMagickaRegeneration(1.0f, time, &ac, baseValues),
                Catch::Matchers::WithinAbs(expectedMagicka, 0.000001f));
-  REQUIRE_THAT(CropStaminaRegeneration(1.0f, time, &ac),
+  REQUIRE_THAT(CropStaminaRegeneration(1.0f, time, &ac, baseValues),
                Catch::Matchers::WithinAbs(expectedStamina, 0.000001f));
 
   // healthRegenerationMultiplier takes the place of regenerationMultiplier for health only
   p.worldState.healthRegenerationMultiplier = 0.f;
-  REQUIRE(CropHealthRegeneration(1.0f, time, &ac) == 0.f);
-  REQUIRE_THAT(CropMagickaRegeneration(1.0f, time, &ac),
+  REQUIRE(CropHealthRegeneration(1.0f, time, &ac, baseValues) == 0.f);
+  REQUIRE_THAT(CropMagickaRegeneration(1.0f, time, &ac, baseValues),
                Catch::Matchers::WithinAbs(expectedMagicka, 0.000001f));
-  REQUIRE_THAT(CropStaminaRegeneration(1.0f, time, &ac),
+  REQUIRE_THAT(CropStaminaRegeneration(1.0f, time, &ac, baseValues),
                Catch::Matchers::WithinAbs(expectedStamina, 0.000001f));
   p.worldState.healthRegenerationMultiplier = 2.f;
-  REQUIRE_THAT(CropHealthRegeneration(1.0f, time, &ac),
+  REQUIRE_THAT(CropHealthRegeneration(1.0f, time, &ac, baseValues),
                Catch::Matchers::WithinAbs(expectedHealth * 2.f, 0.000001f));
   p.worldState.healthRegenerationMultiplier.reset();
-  REQUIRE_THAT(CropHealthRegeneration(1.0f, time, &ac),
+  REQUIRE_THAT(CropHealthRegeneration(1.0f, time, &ac, baseValues),
                Catch::Matchers::WithinAbs(expectedHealth, 0.000001f));
 
   p.DestroyActor(0xff000000);

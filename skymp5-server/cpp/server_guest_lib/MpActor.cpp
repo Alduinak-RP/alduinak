@@ -102,6 +102,40 @@ struct MpActor::Impl
   };
   ConsumeCooldown potionCooldown;
   ConsumeCooldown foodCooldown;
+
+  std::string appearanceDump;
+  std::shared_ptr<const Appearance> appearance;
+
+  // A value evaluated from the ESP, valid while its base, race and template chain stay the same
+  template <class T>
+  struct TemplateCache
+  {
+    uint32_t baseId = 0;
+    uint32_t raceId = 0;
+    std::vector<FormDesc> templateChain;
+    std::optional<T> value;
+
+    const T* Find(uint32_t baseId_, uint32_t raceId_,
+                  const std::vector<FormDesc>& templateChain_) const
+    {
+      return value && baseId == baseId_ && raceId == raceId_ &&
+          templateChain == templateChain_
+        ? &*value
+        : nullptr;
+    }
+
+    const T& Store(uint32_t baseId_, uint32_t raceId_,
+                   const std::vector<FormDesc>& templateChain_, T value_)
+    {
+      baseId = baseId_;
+      raceId = raceId_;
+      templateChain = templateChain_;
+      value = std::move(value_);
+      return *value;
+    }
+  };
+  TemplateCache<uint32_t> templateRaceId;
+  TemplateCache<BaseActorValues> baseValues;
 };
 
 namespace {
@@ -445,16 +479,12 @@ void MpActor::RemoveFromFaction(FormDesc factionForm, bool lazyLoad)
 void MpActor::VisitProperties(CreateActorMessage& message,
                               VisitPropertiesMode mode)
 {
-  const auto baseId = GetBaseId();
-  const uint32_t raceId = GetAppearance() ? GetAppearance()->raceId : 0;
-
   BaseActorValues baseActorValues;
   WorldState* worldState = GetParent();
   // this "if" is needed for unit testing: tests can call VisitProperties
   // without espm attached, which will cause tests to fail
   if (worldState && worldState->HasEspm()) {
-    baseActorValues = GetBaseActorValues(worldState, baseId, raceId,
-                                         ChangeForm().templateChain);
+    baseActorValues = GetBaseValues();
   }
 
   MpChangeForm changeForm = GetChangeForm();
@@ -767,8 +797,7 @@ void MpActor::ApplyChangeForm(const MpChangeForm& newChangeForm)
       if (GetParent() && GetParent()->HasEspm()) {
         EnsureTemplateChainEvaluated(GetParent()->GetEspm(),
                                      Mode::NoRequestSave);
-        changeForm.actorValues = GetBaseActorValues(
-          GetParent(), GetBaseId(), GetRaceId(), changeForm.templateChain);
+        changeForm.actorValues = GetBaseValues();
       }
     },
     Mode::NoRequestSave);
@@ -1199,18 +1228,20 @@ void MpActor::SendLearnedSpells()
              true);
 }
 
-std::unique_ptr<const Appearance> MpActor::GetAppearance() const
+std::shared_ptr<const Appearance> MpActor::GetAppearance() const
 {
-  auto& changeForm = ChangeForm();
-  if (changeForm.appearanceDump.size() > 0) {
-    simdjson::dom::parser p;
-    auto doc = p.parse(changeForm.appearanceDump).value();
-
-    std::unique_ptr<const Appearance> res;
-    res.reset(new Appearance(Appearance::FromJson(doc)));
-    return res;
+  const std::string& dump = ChangeForm().appearanceDump;
+  if (dump.empty()) {
+    return nullptr;
   }
-  return nullptr;
+  if (!pImpl->appearance || pImpl->appearanceDump != dump) {
+    simdjson::dom::parser p;
+    auto doc = p.parse(dump).value();
+    pImpl->appearance =
+      std::make_shared<const Appearance>(Appearance::FromJson(doc));
+    pImpl->appearanceDump = dump;
+  }
+  return pImpl->appearance;
 }
 
 const std::string& MpActor::GetAppearanceAsJson()
@@ -1254,17 +1285,23 @@ const Equipment& MpActor::GetEquipment() const
 
 uint32_t MpActor::GetRaceId() const
 {
-  const auto appearance = GetAppearance();
-
-  if (appearance) {
+  if (const auto appearance = GetAppearance()) {
     return appearance->raceId;
   }
 
-  return EvaluateTemplate<espm::NPC_::UseTraits>(
-    GetParent(), GetBaseId(), GetTemplateChain(),
-    [](const auto& npcLookupResult, const auto& npcData) {
-      return npcLookupResult.ToGlobalId(npcData.race);
-    });
+  const uint32_t baseId = GetBaseId();
+  const auto& templateChain = GetTemplateChain();
+  auto& cache = pImpl->templateRaceId;
+  if (auto cached = cache.Find(baseId, 0, templateChain)) {
+    return *cached;
+  }
+
+  return cache.Store(baseId, 0, templateChain,
+                     EvaluateTemplate<espm::NPC_::UseTraits>(
+                       GetParent(), baseId, templateChain,
+                       [](const auto& npcLookupResult, const auto& npcData) {
+                         return npcLookupResult.ToGlobalId(npcData.race);
+                       }));
 }
 
 bool MpActor::IsWeaponDrawn() const
@@ -1970,13 +2007,21 @@ float MpActor::GetScaledMaximum(espm::ActorValue av)
     : maximum;
 }
 
-BaseActorValues MpActor::GetBaseValues()
+BaseActorValues MpActor::GetBaseValues() const
 {
-  return GetBaseActorValues(GetParent(), GetBaseId(), GetRaceId(),
-                            ChangeForm().templateChain);
+  const uint32_t baseId = GetBaseId();
+  const uint32_t raceId = GetRaceId();
+  const auto& templateChain = GetTemplateChain();
+  auto& cache = pImpl->baseValues;
+  if (auto cached = cache.Find(baseId, raceId, templateChain)) {
+    return *cached;
+  }
+  return cache.Store(
+    baseId, raceId, templateChain,
+    GetBaseActorValues(GetParent(), baseId, raceId, templateChain));
 }
 
-BaseActorValues MpActor::GetMaximumValues()
+BaseActorValues MpActor::GetMaximumValues() const
 {
   return GetBaseValues();
 }
@@ -2185,8 +2230,7 @@ void MpActor::ApplyMagicEffect(espm::Effects::Effect& effect, bool hasSweetpie,
 
   if (isRate || isMult) {
     MpChangeForm changeForm = GetChangeForm();
-    BaseActorValues baseValues = GetBaseActorValues(
-      GetParent(), GetBaseId(), GetRaceId(), changeForm.templateChain);
+    BaseActorValues baseValues = GetBaseValues();
     const ActiveMagicEffectsMap& activeEffects = changeForm.activeMagicEffects;
     const float baseValue = baseValues.GetValue(av);
     const uint32_t formId = GetFormId();
@@ -2266,9 +2310,7 @@ void MpActor::ApplyMagicEffects(std::vector<espm::Effects::Effect>& effects,
 void MpActor::RemoveMagicEffect(const espm::ActorValue actorValue)
 {
   try {
-    const ActorValues baseActorValues = GetBaseActorValues(
-      GetParent(), GetBaseId(), GetRaceId(), ChangeForm().templateChain);
-    const float baseActorValue = baseActorValues.GetValue(actorValue);
+    const float baseActorValue = GetBaseValues().GetValue(actorValue);
     SetActorValue(actorValue, baseActorValue);
     EditChangeForm([actorValue](MpChangeForm& changeForm) {
       changeForm.activeMagicEffects.Remove(actorValue);
@@ -2282,9 +2324,7 @@ void MpActor::RemoveMagicEffect(const espm::ActorValue actorValue)
 void MpActor::RemoveAllMagicEffects()
 {
   try {
-    const ActorValues baseActorValues = GetBaseActorValues(
-      GetParent(), GetBaseId(), GetRaceId(), ChangeForm().templateChain);
-    SetActorValues(baseActorValues);
+    SetActorValues(GetBaseValues());
     EditChangeForm(
       [](MpChangeForm& changeForm) { changeForm.activeMagicEffects.Clear(); });
   } catch (std::exception& e) {

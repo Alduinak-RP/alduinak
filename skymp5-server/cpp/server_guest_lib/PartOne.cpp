@@ -308,7 +308,8 @@ void PartOne::SendCustomPacket(Networking::UserId userId,
 std::string PartOne::GetActorName(uint32_t actorFormId)
 {
   auto& ac = worldState.GetFormAt<MpActor>(actorFormId);
-  return ac.GetAppearance() ? ac.GetAppearance()->name : "Prisoner";
+  const auto appearance = ac.GetAppearance();
+  return appearance ? appearance->name : "Prisoner";
 }
 
 NiPoint3 PartOne::GetActorPos(uint32_t actorFormId)

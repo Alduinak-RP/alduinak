@@ -47,7 +47,8 @@ public:
   std::vector<uint32_t> GetLearnedAndBaseSpells() const;
   void SendLearnedSpells();
 
-  std::unique_ptr<const Appearance> GetAppearance() const;
+  // Parsed once per appearance dump
+  std::shared_ptr<const Appearance> GetAppearance() const;
   const std::string& GetAppearanceAsJson();
   std::string GetLastAnimEventAsJson() const;
   const Equipment& GetEquipment() const;
@@ -186,8 +187,9 @@ public:
   // rewritten
   void SetActorValues(const ActorValues& actorValues);
 
-  BaseActorValues GetBaseValues();
-  BaseActorValues GetMaximumValues();
+  // Cached per base, race and template chain
+  BaseActorValues GetBaseValues() const;
+  BaseActorValues GetMaximumValues() const;
   // private.healthScale, 1 unless the gamemode set a number
   float GetHealthScale() const;
   // Points a full value stands for, health scaled by private.healthScale

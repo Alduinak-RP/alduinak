@@ -24,8 +24,8 @@ public:
 
   friend bool operator==(const FormDesc& left, const FormDesc& right)
   {
-    return std::make_tuple(left.shortFormId, left.file) ==
-      std::make_tuple(right.shortFormId, right.file);
+    return std::tie(left.shortFormId, left.file) ==
+      std::tie(right.shortFormId, right.file);
   }
 
   friend bool operator!=(const FormDesc& left, const FormDesc& right)
@@ -35,8 +35,8 @@ public:
 
   friend bool operator<(const FormDesc& left, const FormDesc& right)
   {
-    return std::make_tuple(left.shortFormId, left.file) <
-      std::make_tuple(right.shortFormId, right.file);
+    return std::tie(left.shortFormId, left.file) <
+      std::tie(right.shortFormId, right.file);
   }
 
   static FormDesc Tamriel();

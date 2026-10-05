@@ -7,16 +7,6 @@
 
 namespace {
 
-BaseActorValues GetValues(MpActor* actor)
-{
-  uint32_t baseId = actor->GetBaseId();
-  auto appearance = actor->GetAppearance();
-  uint32_t raceId = appearance ? appearance->raceId : 0;
-  auto worldState = actor->GetParent();
-  return GetBaseActorValues(worldState, baseId, raceId,
-                            actor->GetTemplateChain());
-}
-
 float GetServerRegenMultiplier(MpActor* actor)
 {
   auto worldState = actor->GetParent();
@@ -81,9 +71,9 @@ float CropRegeneration(float newAttributeValue, float secondsAfterLastRegen,
 }
 
 float CropHealthRegeneration(float newAttributeValue,
-                             float secondsAfterLastRegen, MpActor* actor)
+                             float secondsAfterLastRegen, MpActor* actor,
+                             const BaseActorValues& baseValues)
 {
-  const BaseActorValues baseValues = GetValues(actor);
   const ActorValues& actorValues = actor->GetActorValues();
   const float rate = std::max(baseValues.healRate, actorValues.healRate) *
     GetServerHealthRegenMultiplier(actor);
@@ -96,9 +86,9 @@ float CropHealthRegeneration(float newAttributeValue,
 }
 
 float CropMagickaRegeneration(float newAttributeValue,
-                              float secondsAfterLastRegen, MpActor* actor)
+                              float secondsAfterLastRegen, MpActor* actor,
+                              const BaseActorValues& baseValues)
 {
-  const BaseActorValues baseValues = GetValues(actor);
   const ActorValues& actorValues = actor->GetActorValues();
   const float rate =
     std::max(baseValues.magickaRate, actorValues.magickaRate) *
@@ -112,9 +102,9 @@ float CropMagickaRegeneration(float newAttributeValue,
 }
 
 float CropStaminaRegeneration(float newAttributeValue,
-                              float secondsAfterLastRegen, MpActor* actor)
+                              float secondsAfterLastRegen, MpActor* actor,
+                              const BaseActorValues& baseValues)
 {
-  const BaseActorValues baseValues = GetValues(actor);
   const ActorValues& actorValues = actor->GetActorValues();
   const float rate = (actor->IsBlockActive()
     ? actorValues.staminaRate

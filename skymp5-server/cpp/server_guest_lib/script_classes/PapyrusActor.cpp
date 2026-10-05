@@ -5,7 +5,6 @@
 #include "script_objects/EspmGameObject.h"
 #include "script_objects/MpFormGameObject.h"
 
-#include "EvaluateTemplate.h"
 #include "papyrus-vm/CIString.h"
 #include <algorithm>
 
@@ -648,17 +647,7 @@ VarValue PapyrusActor::GetRace(VarValue self,
     return VarValue::None();
   }
 
-  uint32_t raceId = 0;
-
-  if (auto appearance = actor->GetAppearance()) {
-    raceId = appearance->raceId;
-  } else {
-    raceId = EvaluateTemplate<espm::NPC_::UseTraits>(
-      actor->GetParent(), actor->GetBaseId(), actor->GetTemplateChain(),
-      [](const auto& npcLookupResult, const auto& npcData) {
-        return npcLookupResult.ToGlobalId(npcData.race);
-      });
-  }
+  const uint32_t raceId = actor->GetRaceId();
 
   auto lookupRes =
     actor->GetParent()->GetEspm().GetBrowser().LookupById(raceId);

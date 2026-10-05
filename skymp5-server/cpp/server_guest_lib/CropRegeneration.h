@@ -1,17 +1,23 @@
 #pragma once
 #include "WorldState.h"
+
+struct BaseActorValues;
+
 float CropRegeneration(float newAttributeValue, float secondsAfterLastRegen,
                        float attributeRate, float attributeRateMult,
                        float oldAttributeValue, bool hasActiveMagicEffects);
 
 float CropHealthRegeneration(float newAttributeValue,
-                             float secondsAfterLastRegen, MpActor* actor);
+                             float secondsAfterLastRegen, MpActor* actor,
+                             const BaseActorValues& baseValues);
 
 float CropMagickaRegeneration(float newAttributeValue,
-                              float secondsAfterLastRegen, MpActor* actor);
+                              float secondsAfterLastRegen, MpActor* actor,
+                              const BaseActorValues& baseValues);
 
 float CropStaminaRegeneration(float newAttributeValue,
-                              float secondsAfterLastRegen, MpActor* actor);
+                              float secondsAfterLastRegen, MpActor* actor,
+                              const BaseActorValues& baseValues);
 
 float CropPeriodAfterLastRegen(float secondsAfterLastRegen,
                                float maxValidPeriod = 2.0f,
