@@ -10,6 +10,7 @@
 #include "libespm/Loader.h"
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -108,6 +109,24 @@ private:
     std::chrono::steady_clock::time_point lastRefresh;
   };
 
+  // A caster's accepted casts and keep-alives of one spell
+  struct CastRecord
+  {
+    uint32_t spellId = 0;
+    bool isScroll = false;
+    // Last cast or keep-alive that passed every check, a stop clears it
+    std::optional<std::chrono::steady_clock::time_point> validatedAt;
+    std::chrono::steady_clock::time_point lastCastAt;
+  };
+
+  CastRecord* FindCastRecord(uint32_t casterId, uint32_t spellId);
+  // The record of a keep-alive whose spell passed every check within kCastRefreshTimeout, else null
+  const CastRecord* FindValidatedCast(
+    uint32_t casterId, uint32_t spellId,
+    std::chrono::steady_clock::time_point now);
+  void RecordCast(uint32_t casterId, uint32_t spellId, bool isScroll,
+                  bool validated, std::chrono::steady_clock::time_point now);
+
   void UpdateWardChannel(uint32_t casterId,
                          const SpellCastData& spellCastData);
   bool IsWardBlocking(const MpActor& aggressor, const MpActor& target);
@@ -204,6 +223,8 @@ private:
   std::unordered_map<uint32_t, RestorationChannel> restorationChannels;
   uint32_t restorationChannelGeneration = 0;
   std::unordered_map<uint32_t, WardChannel> wardChannels;
+  std::unordered_map<uint32_t, std::vector<CastRecord>> castRecords;
+  std::chrono::steady_clock::time_point castRecordsSweptAt;
   std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
     paralyzedUntil;
   std::unordered_map<uint32_t, BlockedHitGuard> blockedHitGuards;

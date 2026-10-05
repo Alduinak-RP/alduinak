@@ -1942,6 +1942,10 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   if (spellCastData.interruptCast) {
     SendToNeighbours(myActor->idx, rawMsgData, true, kSkipSender);
     UpdateWardChannel(caster->GetFormId(), spellCastData);
+    if (auto record =
+          FindCastRecord(caster->GetFormId(), spellCastData.spell)) {
+      record->validatedAt.reset();
+    }
     // Only the stopped spell's channel ends, the other hand may still heal
     auto channelIt = restorationChannels.find(caster->GetFormId());
     const bool hadChannel = channelIt != restorationChannels.end() &&
@@ -1971,20 +1975,15 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
-  // The gamemode can forbid a caster to fight (a carrier)
-  if (!FireGamemodeEvent(partOne.worldState, caster->GetFormId(),
-                         "onSpellCastAttempt",
-                         nlohmann::json::array({ spellCastData.spell }))) {
-    if (!spellCastData.keepAlive) {
-      spdlog::info("ActionListener::OnSpellCast - gamemode refused spell {:x} "
-                   "of {:x}",
-                   spellCastData.spell, caster->GetFormId());
-    }
-    return;
-  }
-
-  const bool isScroll = IsHeldScroll(*caster, spellCastData.spell);
-  if (!isScroll &&
+  const auto now = std::chrono::steady_clock::now();
+  // Observers start real casts from keep-alives, so only a spell the caster fully cast skips the checks
+  const CastRecord* validated = spellCastData.keepAlive
+    ? FindValidatedCast(caster->GetFormId(), spellCastData.spell, now)
+    : nullptr;
+  const bool fastPath = validated != nullptr;
+  const bool isScroll = fastPath ? validated->isScroll
+                                 : IsHeldScroll(*caster, spellCastData.spell);
+  if (!fastPath && !isScroll &&
       !CanCastSpell(*combatEspmCache, *caster, spellCastData.spell)) {
     spdlog::info("ActionListener::OnSpellCast - spell {0:x} not "
                  "found in equipment of {1:x}",
@@ -2000,6 +1999,21 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
+  // The gamemode can forbid a caster to fight (a carrier)
+  if (!FireGamemodeEvent(partOne.worldState, caster->GetFormId(),
+                         "onSpellCastAttempt",
+                         nlohmann::json::array({ spellCastData.spell }))) {
+    if (!spellCastData.keepAlive) {
+      spdlog::info("ActionListener::OnSpellCast - gamemode refused spell {:x} "
+                   "of {:x}",
+                   spellCastData.spell, caster->GetFormId());
+    }
+    return;
+  }
+
+  RecordCast(caster->GetFormId(), spellCastData.spell, isScroll, !fastPath,
+             now);
+
   // A clone replay would cast the scroll again on every observer
   if (!isScroll) {
     SendToNeighbours(myActor->idx, rawMsgData, true, kSkipSender);
@@ -2011,13 +2025,14 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
                  caster->GetFormId(), spellCastData.spell);
   }
 
-  auto& browser = partOne.worldState.GetEspm().GetBrowser();
-
-  const std::array<VarValue, 1> args{ VarValue(
-    std::make_shared<EspmGameObject>(
-      browser.LookupById(spellCastData.spell))) };
-
-  caster->SendPapyrusEvent("OnSpellCast", args.data(), args.size());
+  // Vanilla fires OnSpellCast once per cast, a keep-alive only extends it
+  if (!fastPath) {
+    auto& browser = partOne.worldState.GetEspm().GetBrowser();
+    const std::array<VarValue, 1> args{ VarValue(
+      std::make_shared<EspmGameObject>(
+        browser.LookupById(spellCastData.spell))) };
+    caster->SendPapyrusEvent("OnSpellCast", args.data(), args.size());
+  }
 
   if (!spellCastData.keepAlive) {
     spdlog::debug("ActionListener::OnSpellCast - {:x} cast spell {:x}",
@@ -2092,7 +2107,6 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
 
     // Concentration restoratives heal per second until a stop, a failed check or a missed keep-alive
     if (isConcentration) {
-      const auto now = std::chrono::steady_clock::now();
       RestorationChannel channel;
       channel.spellId = spellCastData.spell;
       channel.aimed = aimed;
@@ -2762,6 +2776,64 @@ void ActionListener::SendPapyrusOnHitEvent(MpActor* aggressor,
   target->SendPapyrusEvent("OnHit", args.data(), args.size());
 }
 
+ActionListener::CastRecord* ActionListener::FindCastRecord(uint32_t casterId,
+                                                           uint32_t spellId)
+{
+  auto it = castRecords.find(casterId);
+  if (it == castRecords.end()) {
+    return nullptr;
+  }
+  for (auto& record : it->second) {
+    if (record.spellId == spellId) {
+      return &record;
+    }
+  }
+  return nullptr;
+}
+
+const ActionListener::CastRecord* ActionListener::FindValidatedCast(
+  uint32_t casterId, uint32_t spellId,
+  std::chrono::steady_clock::time_point now)
+{
+  const CastRecord* record = FindCastRecord(casterId, spellId);
+  return record && record->validatedAt &&
+      now - *record->validatedAt <= kCastRefreshTimeout
+    ? record
+    : nullptr;
+}
+
+void ActionListener::RecordCast(uint32_t casterId, uint32_t spellId,
+                                bool isScroll, bool validated,
+                                std::chrono::steady_clock::time_point now)
+{
+  const auto isStale = [&](const CastRecord& record) {
+    return now - record.lastCastAt > kCastRefreshTimeout;
+  };
+  // Hosted NPCs never disconnect, so casters that stopped casting are dropped once a minute
+  if (now - castRecordsSweptAt > std::chrono::minutes(1)) {
+    castRecordsSweptAt = now;
+    std::erase_if(castRecords, [&](auto& entry) {
+      std::erase_if(entry.second, isStale);
+      return entry.second.empty();
+    });
+  }
+
+  auto& records = castRecords[casterId];
+  std::erase_if(records, [&](const CastRecord& record) {
+    return record.spellId != spellId && isStale(record);
+  });
+  CastRecord* record = FindCastRecord(casterId, spellId);
+  if (!record) {
+    record = &records.emplace_back();
+    record->spellId = spellId;
+  }
+  record->isScroll = isScroll;
+  record->lastCastAt = now;
+  if (validated) {
+    record->validatedAt = now;
+  }
+}
+
 // Ward casts and keep-alives refresh the caster's ward, its stop ends it
 void ActionListener::UpdateWardChannel(uint32_t casterId,
                                        const SpellCastData& spellCastData)
@@ -2965,6 +3037,7 @@ void ActionListener::ForgetActor(uint32_t actorId)
   unblockedPoisonUntil.erase(actorId);
   wardChannels.erase(actorId);
   restorationChannels.erase(actorId);
+  castRecords.erase(actorId);
 }
 
 // A lower health reported inside the guard is the blocked hit's poison, so the server keeps its value for up to that poison's damage
