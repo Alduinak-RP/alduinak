@@ -5,8 +5,6 @@
 // node tools/test-inventory-condition.js
 
 const assert  = require('node:assert/strict')
-const fs      = require('fs')
-const os      = require('os')
 const path    = require('path')
 const Module  = require('module')
 const esbuild = require('esbuild')
@@ -564,8 +562,6 @@ test('a PK body takes the pack after the wear is settled, keeps worn and pristin
   ({ extras, native, TradeSystem, tradeTest, CraftedExtrasSystem, craftedTest, AfterlifeSystem, HuntingSystem, BodySystem, SearchSystem } = await load())
   // Invite expiry and the victim's respawn would keep the process alive
   global.setTimeout = () => 0
-  // bodies.json goes where no server reads it
-  process.chdir(fs.mkdtempSync(path.join(os.tmpdir(), 'test-inventory-condition-')))
   for (const run of pending) await run()
   for (const [ok, name, err] of results) {
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}`)

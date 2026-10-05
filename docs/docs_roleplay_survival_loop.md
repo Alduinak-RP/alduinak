@@ -392,7 +392,7 @@ behaviour-graph events — no ESP required.**
   so `SearchSystem.bodyTakesOf` (`isPlayerCharacter` reads `profileId >= 0`)
   never applies `searchPlayerBodyTakeLimit` to it: a body gives up
   everything, except to the victim's own account. The body entry keeps the
-  victim's profile id (saved in `bodies.json`), and `SearchSystem.bodyRefusal`
+  victim's profile id (saved in `private.pkBody`), and `SearchSystem.bodyRefusal`
   refuses a search of it by any character of that profile ("You cannot loot
   the body of your own fallen character."), so an alt cannot walk over and
   undo the loss; a take needs the search's occupancy, so no take gets past
@@ -416,16 +416,13 @@ behaviour-graph events — no ESP required.**
   destroyed and nothing moved; if the body cannot take the pack the victim
   gets it back (`... failed filling the body, pack given back`), and if
   even that fails the line reads `pack NOT given back (<error>), staff must
-  restore <victim>: <base> x<count>, ...`. It
-  is registered in `bodies.json` next to `companions.json`
-  and re-adopted, and put on the grid again, after a restart while its
-  actor still exists (the clone is an ordinary `ff` actor saved in the world
-  database with `spawnDelay` 1e9, so it stays dead). The clone also carries
-  its own record (`private.pkBody`: victim, profile and time of death) and
-  index (`private.indexed.pkBody`), so a restart adopts a body that
-  `bodies.json` lost as well (`[body] N/M body(ies) of the previous run
-  kept, K more missing from ./bodies.json found by private.indexed.pkBody:
-  <ids>`). A body has no lifetime (the owner's rule of 2026-10-01;
+  restore <victim>: <base> x<count>, ...`. The
+  clone carries its own record (`private.pkBody`: victim, profile and time
+  of death) and index (`private.indexed.pkBody`). A restart finds every
+  body still standing by that index, adopts it and puts it on the grid again
+  (`[body] N body(ies) of the previous run kept: <ids>`); the clone is an
+  ordinary `ff` actor saved in the world database with `spawnDelay` 1e9,
+  so it stays dead. A body has no lifetime (the owner's rule of 2026-10-01;
   `bodyMaxSeconds` and `bodyIdleSeconds` are no longer read): every 2 s a
   body with no stack left that a search window can show and that has lain
   at least 60 s since the death is removed, one emptied later at that next

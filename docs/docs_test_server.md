@@ -25,7 +25,7 @@ manager) only receives files through the manager's **Migrate** box.
 
 - **A server is a folder.** The game server keeps every state file (`housing.json`,
   `pets.json`, `companions.json`, `zone-spawns.json`, `starter-grants.json`,
-  `gathering-picks.json`, `weather-state.json`, `bodies.json`, `writings\`) in its
+  `gathering-picks.json`, `weather-state.json`, `writings\`) in its
   working directory and its world in its own database, `skymp_test`, on the one MongoDB
   instance the box runs. `build\dist\testserver` is a separate server.
 - **Its own master key.** The SkyMP client does not use the port the launcher writes.
@@ -92,8 +92,8 @@ values the wipe tool resets them to:
 | `gathering-picks.json` | `{}` |
 | `weather-state.json` | `{}` |
 
-`bodies.json` is written by the server at its first body. `build\dist\testclient` is a
-copy of `build\dist\client`. `C:\logs\test` and `C:\Alduinak\livekit-test` are created.
+`build\dist\testclient` is a copy of `build\dist\client`. `C:\logs\test` and
+`C:\Alduinak\livekit-test` are created.
 
 ### 2.2 The settings
 

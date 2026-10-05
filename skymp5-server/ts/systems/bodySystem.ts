@@ -1,4 +1,3 @@
-import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { NEVER_RESPAWN } from "./npcPlacement";
@@ -16,8 +15,7 @@ type Mp = any;
 
 // Neighbor-visible flag (registered in the gamemode) telling clients the dead copy is a body to create
 const BODY_PROP = "ff_body";
-const REGISTRY_FILE = "./bodies.json";
-// The body's own record and index, so a restart finds every body even when bodies.json lost it
+// The body's own record and the index a restart finds every body by
 const RECORD_PROP = "private.pkBody";
 const INDEX_PROP = "private.indexed.pkBody";
 const INDEX_ON = "on";
@@ -66,7 +64,6 @@ export class BodySystem implements System {
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.mp = ctx.svr as Mp;
-    this.loadRegistry();
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.adoptLeftovers());
     this.settleWear = wearSettler(this.mp, (await Settings.get()).allSettings as Record<string, unknown> | null, this.log);
     every("body", CHECK_MS, () => this.poll());
@@ -147,7 +144,6 @@ export class BodySystem implements System {
     try { mp.set(victimId, "equipment", { ...equipment, inv: { entries: [] }, numChanges: 0 }); } catch { }
     this.bodies.set(cloneId, { id: cloneId, victimId, profileId, at });
     this.packSigs.set(cloneId, packSig(loot));
-    this.save();
     setTimeout(() => {
       try {
         if (!isAlive(mp, victimId)) mp.respawnActor(victimId);
@@ -275,38 +271,28 @@ export class BodySystem implements System {
     this.bodies.delete(body.id);
     this.packSigs.delete(body.id);
     try { destroyRef(this.mp, body.id); } catch { }
-    this.save();
     this.log(`[body] ${hex(body.id)} of ${hex(body.victimId)} removed: ${reason}${entries && stacksOf(entries).length ? `, went with it: ${itemList(entries)}` : ""}`);
-  }
-
-  private loadRegistry(): void {
-    let saved: { bodies?: unknown } = {};
-    try { saved = JSON.parse(fs.readFileSync(REGISTRY_FILE, "utf8")) ?? {}; } catch { }
-    this.leftovers = (Array.isArray(saved.bodies) ? saved.bodies : [])
-      .map((b: any) => ({ id: Number(b?.id) >>> 0, victimId: Number(b?.victimId) >>> 0, profileId: Number.isInteger(b?.profileId) ? b.profileId : -1, at: Number(b?.at) || 0 }))
-      .filter((b: Body) => b.id > 0);
   }
 
   private exists(id: number): boolean {
     try { return this.mp.get(id, "type") === "MpActor"; } catch { return false; }
   }
 
-  // Bodies bodies.json lost, found by their index; one without a readable record counts from now
-  private unregisteredBodies(known: Body[]): Body[] {
+  // Bodies still standing, found by their index; one without a readable record counts from now
+  private standingBodies(): Body[] {
     let ids: number[] = [];
     try { ids = (this.mp.findFormsByPropertyValue(INDEX_PROP, INDEX_ON) as unknown[]).map((id) => Number(id) >>> 0); } catch (e) { this.log(`[body] ${INDEX_PROP} lookup failed: ${e}`); }
-    return ids.filter((id) => !known.some((b) => b.id === id) && this.exists(id)).map((id) => {
+    return ids.filter((id) => this.exists(id)).map((id) => {
       let rec: any = null;
       try { rec = this.mp.get(id, RECORD_PROP); } catch { }
       return { id, victimId: Number(rec?.victimId) >>> 0, profileId: Number.isInteger(rec?.profileId) ? rec.profileId : -1, at: Number(rec?.at) || Date.now() };
     });
   }
 
-  // The world DB loads after every system's init (attachSaveStorage in index.ts); bodies still standing are watched again, the rest are forgotten
+  // The world DB loads after every system's init (attachSaveStorage in index.ts); bodies still standing are watched again
   private adoptLeftovers(): void {
-    const leftovers = this.leftovers.filter((b) => this.exists(b.id));
-    const found = this.unregisteredBodies(leftovers);
-    for (const body of leftovers.concat(found)) {
+    const found = this.standingBodies();
+    for (const body of found) {
       try {
         this.placeOnGrid(body.id, this.mp.get(body.id, "locationalData"));
       } catch (e) {
@@ -316,17 +302,7 @@ export class BodySystem implements System {
       const entries = this.entriesOf(body.id);
       if (entries) this.packSigs.set(body.id, packSig(entries));
     }
-    if (this.leftovers.length || found.length) {
-      this.log(`[body] ${leftovers.length}/${this.leftovers.length} body(ies) of the previous run kept${found.length ? `, ${found.length} more missing from ${REGISTRY_FILE} found by ${INDEX_PROP}: ${found.map((b) => hex(b.id)).join(", ")}` : ""}`);
-    }
-    this.leftovers = [];
-    this.save();
-  }
-
-  private save(): void {
-    const registry = { bodies: Array.from(this.bodies.values()).concat(this.leftovers) };
-    try { fs.writeFileSync(REGISTRY_FILE, JSON.stringify(registry)); }
-    catch (e) { this.log(`[body] ${REGISTRY_FILE} write failed: ${e}`); }
+    if (found.length) this.log(`[body] ${found.length} body(ies) of the previous run kept: ${found.map((b) => hex(b.id)).join(", ")}`);
   }
 
   private mp: Mp = null;
@@ -337,6 +313,4 @@ export class BodySystem implements System {
   private bodies = new Map<number, Body>();
   // bodyId -> the pack as last checked
   private packSigs = new Map<number, string>();
-  // Registry entries of the previous run, adopted once the world loads
-  private leftovers: Body[] = [];
 }

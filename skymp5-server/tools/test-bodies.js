@@ -169,12 +169,10 @@ async function setup (settings = {}, s = stubMp()) {
   await t.poll()
   assert.equal(t.lines.length, shownBefore)
 
-  // Persistence: a restart adopts the body from bodies.json and puts it on the grid again
-  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'bodies.json'), 'utf8'))
-  assert.equal(saved.bodies.length, 1)
+  // Persistence: a restart finds the body by its index and puts it on the grid again
   t.order.length = 0
   let r = await setup({}, t)
-  assert.equal(r.lines.at(-1), '[body] 1/1 body(ies) of the previous run kept')
+  assert.equal(r.lines.at(-1), '[body] 1 body(ies) of the previous run kept: ff100000')
   assert.deepEqual(t.order, ['body.locationalData'])
 
   // No expiry: a body with anything left in it lies on, however long nobody touches it
@@ -190,7 +188,6 @@ async function setup (settings = {}, s = stubMp()) {
   await r.poll()
   assert.equal(r.props.has(bodyId), false)
   assert.equal(r.lines.at(-1), '[body] ff100000 of ff000d66 removed: emptied')
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'bodies.json'), 'utf8')).bodies, [])
 
   // A body emptied just before a restart goes at the first check after it
   t = await setup()
@@ -198,17 +195,15 @@ async function setup (settings = {}, s = stubMp()) {
   t.props.get(id3).inventory.entries = []
   seconds(61)
   r = await setup({}, t)
-  assert.equal(r.lines.at(-1), '[body] 1/1 body(ies) of the previous run kept')
+  assert.equal(r.lines.at(-1), `[body] 1 body(ies) of the previous run kept: ${id3.toString(16)}`)
   await r.poll()
   assert.equal(r.lines.at(-1), `[body] ${id3.toString(16)} of ff000d66 removed: emptied`)
 
-  // bodies.json lost the body: the restart finds it by its index and keeps the victim's account from its record
+  // A restart keeps the victim's account from the body's own record
   t = await setup()
   const id4 = t.sys.leaveBody(VICTIM, 'soul trapped by ff000011')
-  fs.writeFileSync(path.join(dir, 'bodies.json'), '{"bodies":[]}')
   r = await setup({}, t)
-  assert.equal(r.lines.at(-1), `[body] 0/0 body(ies) of the previous run kept, 1 more missing from ./bodies.json found by private.indexed.pkBody: ${id4.toString(16)}`)
-  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'bodies.json'), 'utf8')).bodies.length, 1)
+  assert.equal(r.lines.at(-1), `[body] 1 body(ies) of the previous run kept: ${id4.toString(16)}`)
   t.props.set(ALT, { type: 'MpActor', profileId: 7 })
   assert.equal(r.sys.refusalFor(ALT, id4), 'You cannot loot the body of your own fallen character.')
   t.props.delete(ALT)
@@ -221,7 +216,6 @@ async function setup (settings = {}, s = stubMp()) {
   assert.equal(r.lines.at(-1), `[body] ${id4.toString(16)} of ff000d66 removed: emptied, went with it: 7f00001 x3`)
 
   // ff_body unregistered: no body, the victim keeps everything
-  fs.rmSync(path.join(dir, 'bodies.json'))
   t = await setup({}, stubMp({ ff_body: true }))
   t.v.actorNeighbors = [VICTIM, KILLER]
   assert.equal(t.sys.leaveBody(VICTIM, 'executed by ff000011'), 0)
@@ -281,5 +275,6 @@ async function setup (settings = {}, s = stubMp()) {
   assert.equal(countOf(t.props.get(id6).inventory, KEY), 1)
   assert.equal(t.lines.at(-1), `[body] ${id6.toString(16)} of ff000d66 skinned: moving the pack to ff000a01 failed, the body keeps it: Error: refused`)
 
+  assert.deepEqual(fs.readdirSync(dir), [], 'no registry file is written')
   console.log('test-bodies: all passed')
 })().catch((e) => { console.error(e); process.exit(1) })

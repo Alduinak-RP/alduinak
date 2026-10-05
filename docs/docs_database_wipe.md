@@ -19,11 +19,10 @@ server start gate again.
 
 | Store | What happens |
 |---|---|
-| MongoDB `skymp.changeForms` | **Dropped**, then created again empty with its `formDesc_1` index (`docs/docs_write_load.md`). This removes characters, inventories, spells, mastery, knowledge, stored pets, housing claim records, bounty notes, container and flora state, runtime NPCs, and every per-character dynamic field (`private.jobs` trip counters, the `private.writings` counter, faction stamps). |
+| MongoDB `skymp.changeForms` | **Dropped**, then created again empty with its `formDesc_1` index (`docs/docs_write_load.md`). This removes characters, inventories, spells, mastery, knowledge, stored pets, housing claim records, bounty notes, container and flora state, runtime NPCs, the bodies PKs left, and every per-character dynamic field (`private.jobs` trip counters, the `private.writings` counter, faction stamps). |
 | `build/dist/server/housing.json`, `zone-spawns.json` | Reset to `[]` |
 | `build/dist/server/companions.json` | Reset to `{"active":[],"corpses":[],"stored":[]}` |
 | `build/dist/server/pets.json` | Reset to `{"active":[],"released":[]}` |
-| `build/dist/server/bodies.json` | Reset to `{"bodies":[]}`. It lists the bodies PKs left; a stale entry is dropped at boot anyway |
 | `build/dist/server/starter-grants.json` | Reset to `{}`. The starting kit is the clothes and the gold comes with the first profession, so the ledger only matters when `startingItems` carries gold |
 | `build/dist/server/gathering-picks.json` | Reset to `{}`. It lists picked nirnroot and critters waiting to grow back, and their hidden state goes with the dropped changeForms |
 | `build/dist/server/weather-state.json` | Reset to `{}`, so every region rolls a fresh weather on the next boot |
