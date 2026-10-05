@@ -255,14 +255,15 @@ logs `[take] <actor> take of <base> x<n> from <source> refused natively: ...`
 instead, a put the same way after its `[put]` line, and the mover's pack is
 resynced from the server.
 
-Before sending, each put and drop passes the `SweetCantDrop` keyword check.
-No plugin of this load order defines that keyword, and the engine's
-`hasKeyword(null)` on an ingredient or food is true whenever one of its magic
-effects is a Peak Value Modifier without an associated keyword (Weakness to
-Magic on Salt Pile, Fortify Stamina on Beef Stew and every other Weakness to X,
-Waterbreathing and Fortify food effect), so the check now skips a missing
-keyword instead of passing null. Such an item never produced a `[put]` line or
-a server error: a silent client refusal looks exactly like this.
+The client sends every put and drop without a keyword check. It used to pass
+them through a `SweetCantDrop` check, which no plugin of this load order
+defines; with the keyword null, the engine's `hasKeyword(null)` on an
+ingredient or food is true whenever one of its magic effects is a Peak Value
+Modifier without an associated keyword (Weakness to Magic on Salt Pile, Fortify
+Stamina on Beef Stew and every other Weakness to X, Waterbreathing and Fortify
+food effect), so those puts and drops were silently refused until the check
+was removed (syncing L4-40b). Such an item never produced a `[put]` line or a
+server error: a silent client refusal looks exactly like this.
 
 ### Gamemode TODO
 

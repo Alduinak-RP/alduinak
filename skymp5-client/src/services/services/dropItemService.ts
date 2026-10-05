@@ -2,7 +2,6 @@ import { Actor, ContainerChangedEvent, EquipEvent, FormType } from "skyrimPlatfo
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 
 import { MsgType } from "../../messages";
-import { SweetTaffySweetCantDropService } from "./sweetTaffySweetCantDropService";
 import { WorldCleanerService } from "./worldCleanerService";
 import { logToPlatformLog, logTrace } from "../../logging";
 import { notifyNextUpdate } from "./customPacketUtil";
@@ -32,8 +31,6 @@ export class DropItemService extends ClientListener {
     }
 
     private onContainerChanged(e: ContainerChangedEvent) {
-        const sweetCantDropService = this.controller.lookupListener(SweetTaffySweetCantDropService);
-
         const pl = this.sp.Game.getPlayer() as Actor;
         const isPlayer: boolean =
             pl && e.oldContainer && pl.getFormID() === e.oldContainer.getFormID();
@@ -43,7 +40,7 @@ export class DropItemService extends ClientListener {
             return;
         if (!this.sp.Ui.isMenuOpen("InventoryMenu"))
             return;
-        if (!isPlayer || !noContainer || !sweetCantDropService.canDropOrPutItem(e.baseObj.getFormID()))
+        if (!isPlayer || !noContainer)
             return;
         const baseId = e.baseObj.getFormID();
         const count = e.numItems;

@@ -638,8 +638,8 @@ export class FormView {
       const headPart = "NPC Head [Head]";
       const maxNicknameDrawDistance = 1000;
       const playerActor = Game.getPlayer()!;
-      // An admin tag shows through sneaking, masks and invisibility
-      const isVisibleByPlayer = (identifies || (!model.movement?.isSneaking && !this.isSweetHidePerson(refr) && !this.isInvisible(refr)))
+      // An admin tag shows through sneaking and invisibility
+      const isVisibleByPlayer = (identifies || (!model.movement?.isSneaking && !this.isInvisible(refr)))
         && playerActor.getDistance(refr) <= maxNicknameDrawDistance
         && playerActor.hasLOS(refr)
         && FormView.adminViewOf(model) !== "hidden";
@@ -778,15 +778,6 @@ export class FormView {
   private isInvisible(refr: ObjectReference): boolean {
     const actor = Actor.from(refr);
     return !!actor && actor.hasMagicEffectWithKeyword(Keyword.getKeyword('MagicInvisibility'));
-  }
-
-  private isSweetHidePerson(refr: ObjectReference): boolean {
-    const actor = Actor.from(refr)
-    if (!actor) {
-      return false;
-    }
-    const keyword = Keyword.getKeyword('SweetHidePerson');
-    return actor.wornHasKeyword(keyword);
   }
 
   // ff_hostile can arrive in an UpdateProperty after the copy spawned, so a changed flag is checked again

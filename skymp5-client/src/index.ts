@@ -33,7 +33,6 @@ import { ContainersService } from "./services/services/containersService";
 import { NetworkingService } from "./services/services/networkingService";
 import { RemoteServer } from "./services/services/remoteServer";
 import { SpSnippetService } from "./services/services/spSnippetService";
-import { SweetTaffySweetCantDropService } from "./services/services/sweetTaffySweetCantDropService";
 import { DisableSkillAdvanceService } from "./services/services/disableSkillAdvanceService";
 import { DisableFastTravelService } from "./services/services/disableFastTravelService";
 import { DisableDifficultySelectionService } from "./services/services/disableDifficultySelectionService";
@@ -150,7 +149,6 @@ const main = () => {
       new SpSnippetService(sp, controller),
       new SettingsService(sp, controller),
       new FovSettingsService(sp, controller),
-      new SweetTaffySweetCantDropService(sp, controller),
       new SweetCameraEnforcementService(sp, controller),
       new SweetTaffyEvalService(sp, controller),
       new DisableSkillAdvanceService(sp, controller),

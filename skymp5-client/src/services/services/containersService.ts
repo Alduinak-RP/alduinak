@@ -8,7 +8,6 @@ import { LastInvService } from "./lastInvService";
 
 import { PutItemMessage } from "../messages/putItemMessage";
 import { TakeItemMessage } from "../messages/takeItemMessage";
-import { SweetTaffySweetCantDropService } from "./sweetTaffySweetCantDropService";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logError, logTrace } from "../../logging";
 
@@ -79,8 +78,6 @@ export class ContainersService extends ClientListener {
     }
 
     private onContainerChanged(e: ContainerChangedEvent) {
-        const sweetCantDropService = this.controller.lookupListener(SweetTaffySweetCantDropService);
-
         if (e.oldContainer && e.newContainer) {
             if (
                 e.oldContainer.getFormID() === 0x14 ||
@@ -108,14 +105,6 @@ export class ContainersService extends ClientListener {
                     }
                     this.addMissedMove(e, diff);
                     const msgs = diff.entries
-                        .filter((entry) => {
-                            // TODO: review this condition, seems to be incorrect
-                            const allowed = entry.count > 0 ? sweetCantDropService.canDropOrPutItem(entry.baseId) : true;
-                            if (!allowed) {
-                                logTrace(this, "Not putting", entry.baseId.toString(16), "x" + entry.count);
-                            }
-                            return allowed;
-                        })
                         .filter((entry) => entry.count !== 0)
                         .map((entry) => {
                             const entryCopy = JSON.parse(JSON.stringify(entry)) as typeof entry;
