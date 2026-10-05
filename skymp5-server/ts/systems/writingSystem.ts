@@ -630,7 +630,7 @@ export class WritingSystem implements System {
     });
   }
 
-  // Names on a document under the introductions rule; staff see real names and profiles
+  // A signature reads the same to every reader, a seal follows the introductions rule; staff see real names and profiles
   private readerLines(mp: Mp, viewerId: number, doc: WritingDoc, staff: boolean) {
     const nameFor = (who: WritingPerson): string => {
       if (staff) return `${who.realName || "someone unrecorded"} (profile ${who.profileId})`;
@@ -641,11 +641,11 @@ export class WritingSystem implements System {
       const name = nameFor(seal);
       return name ? `the seal of ${name}` : "an unfamiliar seal";
     };
-    const author = doc.signed ? nameFor(doc.author) : "";
+    const signer = staff ? nameFor(doc.author) : doc.author.shownName ? titledName(doc.author.title, doc.author.shownName) : "";
     return {
       nameFor,
       sealName,
-      byline: !doc.signed ? "" : author ? `Signed, ${author}` : "Signed in an unfamiliar hand",
+      byline: !doc.signed ? "" : signer ? `Signed, ${signer}` : "Signed in an unfamiliar hand",
       brokenSeals: doc.brokenSeals.map((b) => capitalise(`${sealName(b.seal)} was broken.`)),
     };
   }

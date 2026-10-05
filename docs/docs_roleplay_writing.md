@@ -245,12 +245,15 @@ screen height: on 1080p the note reads about 860 px tall and the spread about
 
 ### Names on the page
 
-Signatures and seals follow the introductions rule (`ff_knownIds`, the same
-rule as "A stranger"):
+A signature is the written name and reads the same to everyone; seals follow
+the introductions rule (`ff_knownIds`, the same rule as "A stranger"):
 
-- A signed writing shows "Signed, <name>" to readers who know the author, the
-  name as others saw it when it was written (a mask holds), and "Signed in an
-  unfamiliar hand" to everyone else.
+- A signed writing shows "Signed, <name>" to every reader, introduced or not,
+  on letters, journals, books, copies and door notes alike (since 2026-10-05;
+  before, a reader who had not met the author read "Signed in an unfamiliar
+  hand"). The name is the one others saw when it was written (a mask holds).
+  Only a document with no recorded name still reads "Signed in an unfamiliar
+  hand". Writing with **Sign it** off is the way to stay unnamed.
 - A sealed letter shows "Closed with the seal of <name>." or "Closed with an
   unfamiliar seal." by the same rule, taken when the seal was pressed.
 - Every seal ever broken stays on the letter: "The seal of <name> was broken."
@@ -260,8 +263,11 @@ rule as "A stranger"):
   writing was made or the wax pressed (`title` on the person record, from
   `FactionSystem.titleOfActor`), the same form as chat and the floating name:
   "Signed, Jarl Sen Volun", "Closed with the seal of Jarl Sen Volun.". A
-  stranger still sees only the unfamiliar hand or seal, and documents written
-  before titles were recorded show the plain name.
+  stranger reads the titled signature too but still only the unfamiliar seal,
+  and documents written before titles were recorded show the plain name.
+
+`node tools/test-writing-rules.js` in `skymp5-server` checks who reads which
+name.
 
 ### Hold and faction marks
 
@@ -295,11 +301,11 @@ Sadras" and "Morag Tong" (army or guild type) for the marks to apply.
 
 Heraldry is public: the sealed face shows the mark and its caption ("Court of
 Haafingar") above "Closed with an unfamiliar seal.", and the opened letter
-shows a mark about a third of the page wide, centred under "Signed in an
-unfamiliar hand" (`writing__seal--sign`, width 33%, at most 240 px tall so the
+shows a mark about a third of the page wide, centred under the signature
+(`writing__seal--sign`, width 33%, at most 240 px tall so the
 portrait Legion mark is not stretched), the same way a shown
-rank title already prefixes the floating name for everyone. Only the personal
-name follows the introductions rule. An unsigned writing carries no signature
+rank title already prefixes the floating name for everyone. Only the name on a
+seal follows the introductions rule. An unsigned writing carries no signature
 mark; a copy carries the original author's. Broken seals record the faction
 but stay text-only. Documents written before the marks existed carry none.
 
@@ -398,8 +404,8 @@ and hangs on that door. Everyone who opens the housing menu at that door
 (owner, key holder, hold official, admin, stranger, claimable view) sees a
 paper card, "A note is pinned here" ("Your note is pinned here" for the
 poster), with the title and the first lines; clicking it opens the paper
-reader with the signature and the mark under the introductions rule, and
-the broken-seal lines. Escape backs out of the reader first, then closes the
+reader with the signature and the mark, and the broken-seal lines under the
+introductions rule. Escape backs out of the reader first, then closes the
 menu.
 
 - What: a written Letter only. Not a Blank Parchment, a Sealed Letter, a
@@ -568,17 +574,18 @@ In this order:
 - Seal (wax used), trade to a second player, break the seal: the break line is
   in `writing.log`, and the second reader sees the broken seal; re-seal and
   check the sealed face lists it.
-- A stranger sees "Signed in an unfamiliar hand" and "an unfamiliar seal"; after
-  an introduction the names show.
+- A stranger reads "Signed, <name>" on a signed letter, journal and book and
+  "an unfamiliar seal" on a sealed letter; after an introduction the seal
+  names its owner. An unsigned writing shows no name to anyone.
 - Titles: with Show Title on, sign and seal a letter; the writer and an
   introduced reader see "Signed, <Title> <name>" and "Closed with the seal of
-  <Title> <name>.", a stranger sees the unfamiliar lines; with Show Title off,
-  a new letter shows the plain name. `author.title` is in the document file
+  <Title> <name>.", a stranger sees the same signature and "an unfamiliar
+  seal"; with Show Title off, a new letter shows the plain name. `author.title` is in the document file
   and survives a service restart.
 - Marks: a hold citizen (Faction tab opened once after the grant) signs a
   letter: the wolf of Haafingar spans about a third of the page (about 220 px
-  of the 720 px reader), centred under "Signed, <name>" and, for a stranger,
-  under "Signed in an unfamiliar hand"; the text above still scrolls and the
+  of the 720 px reader), centred under "Signed, <name>" for an introduced
+  reader and a stranger alike; the text above still scrolls and the
   buttons stay visible. Sealed, the face shows the 96 px mark with the caption
   "Court of Haafingar" above the seal line; broken, the stamp leaves and the
   signature mark stays.
@@ -621,7 +628,7 @@ In this order:
   journal or a book, X on a claimed door shows no Pin a note. With a written
   letter, Pin a note, pick it, Pin it: it leaves the pack, the card shows, the
   `writing.log` and `[housing]` lines are there. The owner comes home to a
-  locked door, presses X, reads the card (stranger and introduced signatures),
+  locked door, presses X, reads the card (the signature names a poster they never met),
   then Unlock Entrance works as before. The owner, a key holder, the poster and
   an admin (`admin.log`) can take it down into their pack; another character
   of the poster's account and a hold official cannot. A second note on the
