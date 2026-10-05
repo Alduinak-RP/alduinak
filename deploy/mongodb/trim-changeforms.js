@@ -2,9 +2,12 @@
 
 // Migration M1 of the syncing Stage 2 native builds: each step plans in the dry run and applies in order with --apply
 
+const fs = require('fs')
 const path = require('path')
 const C = require('./strip-common')
 const config = require(path.join(C.SM, 'config'))
+const formIds = require(path.join(C.SM, 'formIds'))
+const modsync = require(path.join(C.SM, 'modsync'))
 const { gameServerBlocker } = require(path.join(C.SM, 'serviceCheck'))
 
 const USAGE = [
@@ -121,8 +124,136 @@ const indexes = {
   },
 }
 
+const HOUSING = 'private.housing'
+// The neighbour-visible marker housingSystem.write keeps on each half of a live claim
+const DECOR = 'ff_decor'
+// housingSystem.ts EXIT_LOCKS: no half shows an exit lock
+const EXIT_LOCKS = false
+const RECORD_HEADER = 24
+const RECORD_DELETED = 0x20
+
+const n = v => formIds.num(v) || 0
+const lowerDesc = (id, masters, owner) => `${(id & 0xFFFFFF).toString(16)}:${(id >>> 24) < masters.length ? masters[id >>> 24] : owner}`.toLowerCase()
+
+function mastersOf(head) {
+  const masters = []
+  for (let i = 0; i + 6 <= head.length;) {
+    const size = head.readUInt16LE(i + 4)
+    if (head.toString('latin1', i, i + 4) === 'MAST') masters.push(head.toString('latin1', i + 6, i + 6 + size).split('\0')[0])
+    i += 6 + size
+  }
+  return masters
+}
+
+// Worldspace descs of the plugins, lower case: a ref whose worldOrCellDesc is one is outdoors (holdOf.ts isOutdoors)
+function worldDescsOf(files) {
+  const worlds = new Set()
+  for (const file of files) {
+    const fd = fs.openSync(file, 'r')
+    try {
+      const read = (pos, len) => {
+        const buf = Buffer.alloc(len)
+        if (fs.readSync(fd, buf, 0, len, pos) !== len) throw new Error(`${file} ends inside a record`)
+        return buf
+      }
+      const size = fs.fstatSync(fd).size
+      const headSize = read(0, RECORD_HEADER).readUInt32LE(4)
+      const masters = mastersOf(read(RECORD_HEADER, headSize))
+      const owner = path.basename(file)
+      for (let pos = RECORD_HEADER + headSize; pos + RECORD_HEADER <= size;) {
+        const group = read(pos, RECORD_HEADER)
+        const end = pos + group.readUInt32LE(4)
+        if (end <= pos) throw new Error(`${file} has an empty top group at ${pos}`)
+        // WRLD records sit between their World Children groups, which are skipped whole
+        if (group.toString('latin1', 8, 12) === 'WRLD') {
+          for (let at = pos + RECORD_HEADER; at + RECORD_HEADER <= end;) {
+            const rec = read(at, RECORD_HEADER)
+            const type = rec.toString('latin1', 0, 4)
+            if (type === 'WRLD') {
+              const desc = lowerDesc(rec.readUInt32LE(12), masters, owner)
+              if (rec.readUInt32LE(8) & RECORD_DELETED) worlds.delete(desc)
+              else worlds.add(desc)
+            }
+            at += type === 'GRUP' ? Math.max(rec.readUInt32LE(4), RECORD_HEADER) : RECORD_HEADER + rec.readUInt32LE(4)
+          }
+        }
+        pos = end
+      }
+    } finally { fs.closeSync(fd) }
+  }
+  return worlds
+}
+
+// Slots and worldspaces of the server's load order, read from the plugins in dataDir
+function readLoadOrder(settings) {
+  const names = C.arr(settings.loadOrder).map(formIds.basename)
+  if (!names.length || !settings.dataDir) throw new Error('server-settings.json needs loadOrder and dataDir')
+  const slots = formIds.computeSlots(names, formIds.flagsOf(modsync.readPluginFlags(names, { dataDir: settings.dataDir }), 'light'))
+  return { slots, worlds: worldDescsOf(names.map(name => path.join(settings.dataDir, name))) }
+}
+
+// housingSystem's read: a record from before the entrance and exit keeps its one lock on both
+function claimOf(housing) {
+  if (!housing || typeof housing !== 'object' || n(housing.primary) || !n(housing.owner)) return null
+  const legacy = housing.locked === true
+  return {
+    name: typeof housing.name === 'string' && housing.name ? housing.name : null,
+    lockedEntrance: typeof housing.lockedEntrance === 'boolean' ? housing.lockedEntrance : legacy,
+    lockedExit: typeof housing.lockedExit === 'boolean' ? housing.lockedExit : legacy,
+    partner: n(housing.partner),
+  }
+}
+
+// housingSystem's decorOf: with one half outdoors and the other indoors, the outdoor half shows the entrance lock
+function decorOf(rec, here, there) {
+  const side = here === null || there === null || here === there ? '' : here ? 'outside' : 'inside'
+  const locked = side === 'outside' ? rec.lockedEntrance : side === 'inside' ? EXIT_LOCKS && rec.lockedExit : rec.lockedEntrance || rec.lockedExit
+  return { name: rec.name, locked }
+}
+
+const decor = {
+  name: 'decor',
+  async plan(col, ctx) {
+    const docs = await col.aggregate([
+      { $match: { recType: 0, isDeleted: { $ne: true }, dynamicFields: { $type: 'object' } } },
+      { $project: { formDesc: 1, worldOrCellDesc: 1, housing: { $getField: { field: HOUSING, input: '$dynamicFields' } }, decor: { $getField: { field: DECOR, input: '$dynamicFields' } } } },
+      { $match: { housing: { $type: 'object' } } },
+    ]).toArray()
+    const claims = docs.map(doc => ({ doc, rec: claimOf(doc.housing) })).filter(c => c.rec)
+    if (!claims.length) return { count: 0, text: 'no live claims' }
+    let order
+    try { order = readLoadOrder(ctx.settings) }
+    catch (err) { return { count: 0, text: 'not planned', blocker: `the halves of ${C.plural(claims.length, 'claim', 'claims')} cannot be told apart without the plugins: ${err.message}` } }
+    const byDesc = new Map(docs.map(d => [String(d.formDesc).toLowerCase(), d]))
+    const outdoors = doc => (typeof doc.worldOrCellDesc === 'string' && doc.worldOrCellDesc ? order.worlds.has(doc.worldOrCellDesc.toLowerCase()) : null)
+    const updates = []
+    const missing = []
+    const want = (doc, value) => {
+      const cur = doc.decor
+      if (!cur || typeof cur !== 'object' || cur.name !== value.name || cur.locked !== value.locked) updates.push({ formDesc: doc.formDesc, value })
+    }
+    for (const { doc, rec } of claims) {
+      const partnerDesc = rec.partner ? formIds.descOf(rec.partner, order.slots) : null
+      const partner = partnerDesc ? byDesc.get(partnerDesc.toLowerCase()) : null
+      if (rec.partner && !partner) missing.push(`${partnerDesc || C.hex(rec.partner)} (pair of ${doc.formDesc})`)
+      const here = outdoors(doc)
+      const there = partner ? outdoors(partner) : null
+      want(doc, decorOf(rec, here, there))
+      if (partner) want(partner, decorOf(rec, there, here))
+    }
+    const details = missing.length
+      ? [`${C.plural(missing.length, 'pair half has', 'pair halves have')} no housing document, housingSystem marks it at the next change: ${missing.slice(0, MAX_LISTED).join(', ')}${missing.length > MAX_LISTED ? ', ...' : ''}`]
+      : []
+    return { count: updates.length, text: `${C.plural(updates.length, 'claim half', 'claim halves')} to mark with ${DECOR} (${C.plural(claims.length, 'live claim', 'live claims')})`, details, updates }
+  },
+  async apply(col, plan) {
+    const res = await col.bulkWrite(plan.updates.map(u => ({ updateOne: { filter: { formDesc: u.formDesc }, update: { $set: { [`dynamicFields.${DECOR}`]: u.value } } } })), { ordered: false })
+    return `set ${DECOR} on ${res.modifiedCount} of ${plan.updates.length}`
+  },
+}
+
 // Applied in this order; a plan returns { count, text, details?, blocker? }
-const STEPS = [purge, numChanges, indexes]
+const STEPS = [purge, numChanges, indexes, decor]
 
 async function main(argv, { open, blocker = gameServerBlocker, out = console.log } = {}) {
   if (argv.includes('--help')) return out(USAGE)
@@ -134,10 +265,11 @@ async function main(argv, { open, blocker = gameServerBlocker, out = console.log
     const reason = await blocker(profile.key)
     if (reason) throw new C.Refusal(reason)
   }
+  const ctx = { settings, profile, out }
   await C.withCol(settings, async col => {
     const plans = []
     for (const step of STEPS) {
-      const plan = await step.plan(col)
+      const plan = await step.plan(col, ctx)
       plans.push(plan)
       out(`  ${step.name}: ${plan.text}`)
       for (const line of plan.details || []) out(`    ${line}`)
@@ -146,7 +278,6 @@ async function main(argv, { open, blocker = gameServerBlocker, out = console.log
     if (blocked.length) throw new C.Refusal(`nothing written, resolve first:\n  ${blocked.join('\n  ')}`)
     if (!flags.apply) return out('\n[dry run] re-run with --apply, with the game server stopped')
     if (!plans.some(p => p.count)) return out('\nnothing to do')
-    const ctx = { settings, profile, out }
     for (let i = 0; i < STEPS.length; i++) {
       if (plans[i].count) out(`  ${STEPS[i].name}: ${await STEPS[i].apply(col, plans[i], ctx)}`)
     }
@@ -154,6 +285,6 @@ async function main(argv, { open, blocker = gameServerBlocker, out = console.log
   }, open)
 }
 
-module.exports = { main, STEPS, PURGE, KEPT, NO_NUM_CHANGES, INDEXES, planIndexes, ensureIndexes }
+module.exports = { main, STEPS, PURGE, KEPT, NO_NUM_CHANGES, INDEXES, planIndexes, ensureIndexes, worldDescsOf, decorOf }
 
 if (require.main === module) C.runCli(() => main(process.argv.slice(2)), USAGE)

@@ -81,6 +81,8 @@ const HOUSING_PROP = "private.housing";
 const NOTE_PROP = "private.doorNote";
 // Neighbour-visible marker on a half with a note (50_properties.js registers it); clients add a scroll to its prompt
 const NOTE_MARK_PROP = "ff_doorNote";
+// Neighbour-visible {name, locked} on each half of a live claim (50_properties.js registers it); deploy/mongodb/trim-changeforms.js mirrors it for existing claims
+const DECOR_PROP = "ff_decor";
 const OWNER_INDEX_PROP = "private.indexed.housingOwner";
 const REGISTRY_FILE = "./housing.json";
 
@@ -1430,8 +1432,32 @@ export class HousingSystem implements System {
       } catch { }
     }
     if (rec.owner !== 0) this.remember(primary); else this.forget(primary);
+    this.writeDecor(ctx, primary, rec, before);
     this.queueDecorDelta(ctx, primary, before && before.owner !== 0 ? [primary, before.partner] : []);
     return true;
+  }
+
+  // Each half the claim covers or covered gets its own name and lock, or null once it is no longer claimed
+  private writeDecor(ctx: SystemContext, primary: number, rec: PropertyRecord, before: PropertyRecord | null): void {
+    const now = rec.owner !== 0 ? this.decorOf(ctx, primary, rec) : [];
+    for (const refId of new Set([primary, rec.partner, before?.partner ?? 0])) {
+      if (!refId) continue;
+      const half = now.find((r) => r.refId === refId);
+      this.setDecor(ctx, refId, half ? { name: half.name, locked: half.locked } : null);
+    }
+  }
+
+  // mp.set sends even an unchanged value, so the stored one is read first
+  private setDecor(ctx: SystemContext, refId: number, value: { name: unknown; locked: unknown } | null): void {
+    const mp = ctx.svr as Mp;
+    try {
+      const cur = mp.get(refId, DECOR_PROP);
+      const same = value === null ? cur == null : !!cur && cur.name === value.name && cur.locked === value.locked;
+      if (!same) mp.set(refId, DECOR_PROP, value);
+    } catch (e) {
+      if (!this.decorWarned) this.log(`[housing] ${DECOR_PROP} could not be set (register it in 50_properties.js and run Build gamemode): ${e}`);
+      this.decorWarned = true;
+    }
   }
 
   // A failed write must never read as success to the player
@@ -1562,6 +1588,7 @@ export class HousingSystem implements System {
   private lockSummaryLogged = false;
   private notesMarked = false;
   private noteMarkWarned = false;
+  private decorWarned = false;
   private unclaimableLogged = new Set<number>();
   private lastRequestMs = new Map<number, number>();
   private lastDenyMs = new Map<number, number>();
