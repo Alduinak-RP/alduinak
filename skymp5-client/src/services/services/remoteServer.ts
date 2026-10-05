@@ -28,7 +28,7 @@ import { Entry, Inventory, applyInventory, getDiff, getInventory, getPlayerInven
 import { applyDurabilityNames } from '../../sync/durabilityNames';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { aimForShot, applyWeapDrawn } from '../../sync/movementApply';
-import { describeRaceAbilities, dropUnlistedBaseSpells, isConcentration, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
+import { describeRaceAbilities, dropUnlistedBaseSpells, isConcentration, isSelfDelivered, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormView } from '../../view/formView';
 import { forgetHostAttempts, resetHostAttempts } from '../../view/hostAttempts';
@@ -81,7 +81,8 @@ import { TimeService } from './timeService';
 import { TimersService } from './timersService';
 import { clientScriptStartedAt, logTrace, logError, logToPlatformLog } from '../../logging';
 import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved, getWornOtherCopy, resyncHandGraph } from '../../sync/equipment';
-import { isRiderClone } from '../../sync/mountApply';
+import { isCloneMovementSuspended, isRiderClone } from '../../sync/mountApply';
+import { probeCopyCast } from '../../sync/castProbe';
 import { disposeCopyAnimationSources } from '../../sync/animation';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
@@ -2063,11 +2064,13 @@ export class RemoteServer extends ClientListener {
       if (spellId) {
         const hands = this.readyCloneHands(ac, spellId, msg.data.castingSource, msg.data.isDualCasting);
         // The replayed projectile takes aimAngle itself; a cast or channel the clone fires from its own graph takes its X angle
-        if (hands.length > 0) {
+        // A clone on a horse or in a paired scene is placed by the engine, and the translation that aims it would pull it out
+        if (hands.length > 0 && !isRiderClone(ac.getFormID()) && !isCloneMovementSuspended(ac.getFormID())) {
           aimForShot(ac, this.getFormByRefrId(msg.data.caster)?.movement, msg.data.aimAngle * 180 / Math.PI, `spell ${spellId.toString(16)}`);
         }
+        const targetLocalId = this.getReplayTargetLocalId(msg.data.caster, msg.data.target, spellId);
         // The platform only casts Fire Storm or Blizzard on the clone when told the observer is guarded
-        const replayedHostileSelf = castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, remoteIdToLocalId(msg.data.target),
+        const replayedHostileSelf = castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, targetLocalId,
           msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables, true) === true;
         if (replayedHostileSelf) {
           damageGuard.guardClone(ac.getFormID(), spellId);
@@ -2076,8 +2079,21 @@ export class RemoteServer extends ClientListener {
         }
         // castSpellImmediate plays no cast animation, the vanilla graph starts one on BeginCastLeft or BeginCastRight
         hands.forEach((hand) => Debug.sendAnimationEvent(ac, hand === SpellType.Left ? "BeginCastLeft" : "BeginCastRight"));
+        probeCopyCast("replay", ac, `spell ${spellId.toString(16)} replay (${channel ? "channel" : "one cast"}, source ${msg.data.castingSource}, target ${targetLocalId.toString(16)})`);
       }
     });
+  }
+
+  // The local player has no form view to map its own id through, and a target actor spell (Healing Hands, Soul Trap) replayed without its target never reaches it on the target's own screen
+  // A sender with no actor under its crosshair names itself: such a cast flies where it was aimed, only a self spell is cast on its caster
+  private getReplayTargetLocalId(casterRemoteId: number, targetRemoteId: number, spellId: number): number {
+    if (targetRemoteId === this.getMyRemoteRefrId()) {
+      return 0x14;
+    }
+    if (targetRemoteId === casterRemoteId && !isSelfDelivered(this.sp.Spell.from(Game.getFormEx(spellId)))) {
+      return 0;
+    }
+    return remoteIdToLocalId(targetRemoteId);
   }
 
   // Papyrus InterruptCast ends castSpellImmediate concentration casts FinishCast may miss, but stops every hand

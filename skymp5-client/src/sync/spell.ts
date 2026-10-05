@@ -29,6 +29,10 @@ export const isHarmfulEffect = (effect: MagicEffect): boolean =>
 export const isConcentration = (spell: Spell | null | undefined): boolean =>
   spell?.getNthEffectMagicEffect(0)?.getCastingType() === CASTING_CONCENTRATION;
 
+// By the first effect's delivery
+export const isSelfDelivered = (spell: Spell | null | undefined): boolean =>
+  spell?.getNthEffectMagicEffect(0)?.getDeliveryType() === DELIVERY_SELF;
+
 // Listed spells stay, removing and re-adding one in the same frame would dispel and recast it
 export const removeUnlistedSpells = (actor: Actor, spellsIds: Array<number>) => {
   let spellToRemove = new Array<Spell>();
