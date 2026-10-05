@@ -18,7 +18,7 @@ import { SkympClient } from "./skympClient";
 import { MessageWithRefrId } from "../events/sendMessageWithRefrIdEvent";
 import { UpdateMovementMessage } from "../messages/updateMovementMessage";
 import { ChangeValuesMessage } from "../messages/changeValuesMessage";
-import { CloneSpellGuardService } from "./cloneSpellGuardService";
+import { RemoteDamageGuardService } from "./remoteDamageGuardService";
 import { UpdateAnimationMessage } from "../messages/updateAnimationMessage";
 import { UpdateEquipmentMessage } from "../messages/updateEquipmentMessage";
 import { UpdateAppearanceMessage } from "../messages/updateAppearanceMessage";
@@ -185,7 +185,7 @@ export class SendInputsService extends ClientListener {
     // The server applies ChangeValues to the sender's own actor whatever idx says, so hosted NPCs report none
     private sendActorValuePercentage(player: Actor, form?: FormModel) {
         // A clone's replayed hostile spell must not lower the reported health
-        this.controller.lookupListener(CloneSpellGuardService).enforce();
+        this.controller.lookupListener(RemoteDamageGuardService).enforce();
 
         const canSend = form && (form.isDead ?? false) === false;
         if (!canSend) {

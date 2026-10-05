@@ -2,13 +2,15 @@ import { ActiveEffectApplyRemoveEvent, Actor, Form, Game, HitEvent, MagicEffect,
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { DeathService } from "./deathService";
 import { getMaximumActorValue, setActorValuePercentage } from "../../sync/actorvalues";
-import { CASTING_FIRE_AND_FORGET, DELIVERY_CONTACT, isHarmfulEffect } from "../../sync/spell";
+import { CASTING_CONCENTRATION, CASTING_FIRE_AND_FORGET, DELIVERY_CONTACT, DELIVERY_SELF, EFFECT_FLAG_RECOVER, isHarmfulEffect } from "../../sync/spell";
 import { isHostedByMe, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { logToPlatformLog } from "../../logging";
 import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 
 const PLAYER_ID = 0x14;
 const FIRST_RUNTIME_ID = 0xff000000;
+// Covers the longest vanilla damage projectile flight, 4 s for Firebolt and Ice Spike at full range
+const GUARD_MARGIN_SEC = 5;
 // The weapon hit and the hit spell it casts queue in the same frame, so a pair is never further apart than this
 const PAIR_WINDOW_MS = 250;
 // The server's verdict on a swing comes a round trip after its poison landed here
@@ -27,6 +29,11 @@ const FALMER_POISON_EFFECT = 0x109d7c;
 // magicEffectApply names the effect and dispelSpell needs the SPEL: the Falmer poison spells behind crFalmerFFContact
 const HIT_SPELLS_BY_EFFECT = new Map<number, number[]>([[FALMER_POISON_EFFECT, [0x109d7b, 0x109d7e, 0x109d7f, 0x109d80, 0x109d81]]]);
 const DAWNGUARD_FALMER_POISON = { id: 0x015cad, plugin: "Dawnguard.esm" };
+
+interface CloneGuard {
+  floorUntil: number;
+  dispelUntil: number;
+}
 
 interface NativeDispel {
   dispelSpellFrom?: (actorFormId: number, spellFormId: number, casterFormId: number) => void;
@@ -49,11 +56,8 @@ interface Swing {
   reason: string;
 }
 
-// Creature poison hit spells (the Falmer perk's crFalmerPoisonedWeapon, spider and chaurus bites) are cast by the victim's own engine and never reach the server,
-// so a blocked swing still poisons; a hit from a copy this client does not host is a replayed swing whose real hit the host reports.
-// Both are dispelled here and the health floored to the value before the effect, keyed to NPC aggressors and Contact-delivery poison effects only.
-// A server npcHitPoisonBlocked verdict dispels too, through dispelSpellFrom so only that NPC's copy goes.
-export class NpcHitSpellBlockService extends ClientListener {
+// Local damage the server never prices: hostile casts replayed on a remote caster's clone and creature hit poisons the player's own engine casts
+export class RemoteDamageGuardService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.on("hit", (e) => this.onHit(e));
@@ -64,15 +68,158 @@ export class NpcHitSpellBlockService extends ClientListener {
     onCustomPacket(this.controller, "npcHitPoisonBlocked", (content) => this.onCustomPacketMessage(content));
   }
 
+  // Must run before the queued replay executes, so the floor is the health before the clone's hits
+  public guardClone(cloneLocalId: number, spellId: number) {
+    this.addGuard(cloneLocalId, this.getGuardMs(spellId), true);
+  }
+
+  // Aimed, rune and concentration replays keep their slows and paralysis, only the health floor applies
+  public guardHostileReplay(cloneLocalId: number, spellId: number, channelTimeoutMs: number) {
+    // Only spell hits reach the server's OnSpellHit, scroll and staff replays stay the victim's only damage
+    const spell = Spell.from(Game.getFormEx(spellId));
+    if (!spell) {
+      return;
+    }
+    let damageSec = -1;
+    let launchedFromClone = false;
+    let concentration = false;
+    const numEffects = spell.getNumEffects();
+    for (let i = 0; i < numEffects; i++) {
+      const effect = spell.getNthEffectMagicEffect(i);
+      if (!effect) {
+        continue;
+      }
+      launchedFromClone = launchedFromClone || effect.getDeliveryType() !== DELIVERY_SELF;
+      concentration = concentration || effect.getCastingType() === CASTING_CONCENTRATION;
+      // Slows, fear and paralysis restore their value when they end and never lower health
+      if (isHarmfulEffect(effect) && !effect.isEffectFlagSet(EFFECT_FLAG_RECOVER)) {
+        damageSec = Math.max(damageSec, spell.getNthEffectDuration(i));
+      }
+    }
+    // The server applies a hit's magnitude once, so damage over time (Ignite, Chaurus spit) only lands through the replay
+    if (damageSec < 0 || damageSec > 1 || !launchedFromClone) {
+      return;
+    }
+    // A channel whose stop got lost keeps streaming until remoteServer sweeps it
+    const channelMs = concentration ? channelTimeoutMs + GUARD_MARGIN_SEC * 1000 : 0;
+    this.addGuard(cloneLocalId, Math.max((damageSec + GUARD_MARGIN_SEC) * 1000, channelMs), false);
+  }
+
+  // Server health is authoritative while a replay may still hit the player
+  public onServerHealth(health: number) {
+    if (this.healthFloor !== undefined) {
+      this.healthFloor = health;
+    }
+  }
+
+  // Undoes the clone's local damage before it can be reported, the floor follows heals and regen
+  public enforce() {
+    if (this.healthFloor === undefined) {
+      return;
+    }
+    const now = Date.now();
+    this.guardedClones.forEach((guard, cloneLocalId) => {
+      if (now >= guard.floorUntil) {
+        this.guardedClones.delete(cloneLocalId);
+      }
+    });
+    const player = Game.getPlayer();
+    if (this.guardedClones.size === 0 || !player || player.isDead()) {
+      this.guardedClones.clear();
+      this.healthFloor = undefined;
+      return;
+    }
+    if (this.controller.lookupListener(DeathService).isBusy()) {
+      return;
+    }
+    const floored = this.floorHealth(player, this.healthFloor);
+    if (!floored.restored) {
+      this.healthFloor = floored.health;
+    }
+  }
+
+  // Puts back a drop below the floor of at most maxDrop, health is the value read before
+  private floorHealth(player: Actor, floor: number, maxDrop = Infinity): { health: number; restored: boolean } {
+    const health = player.getActorValuePercentage("health");
+    const restored = health < floor && floor - health <= maxDrop;
+    if (restored) {
+      setActorValuePercentage(player, "health", floor);
+    }
+    return { health, restored };
+  }
+
+  private addGuard(cloneLocalId: number, guardMs: number, dispelHits: boolean) {
+    const player = Game.getPlayer();
+    if (!player || player.isDead()) {
+      return;
+    }
+    if (this.healthFloor === undefined) {
+      this.healthFloor = player.getActorValuePercentage("health");
+    }
+    const expiresAt = Date.now() + guardMs;
+    const guard = this.guardedClones.get(cloneLocalId) ?? { floorUntil: 0, dispelUntil: 0 };
+    guard.floorUntil = Math.max(guard.floorUntil, expiresAt);
+    if (dispelHits) {
+      guard.dispelUntil = Math.max(guard.dispelUntil, expiresAt);
+    }
+    this.guardedClones.set(cloneLocalId, guard);
+  }
+
+  private onHit(e: HitEvent): void {
+    const targetId = e.target?.getFormID();
+    if (targetId === undefined) return;
+    this.onReplayHit(e, targetId);
+    this.onNpcHit(e, this.npcAggressorId(e.aggressor, targetId));
+  }
+
+  private onReplayHit(e: HitEvent, targetId: number): void {
+    if (!this.isDispelledReplayHit(e.aggressor)) return;
+    if (targetId !== PLAYER_ID && !isHostedByMe(targetId)) return;
+    const spellId = Spell.from(e.source)?.getFormID();
+    // Dispel removes the hazard's frost damage over time and slow, event context defers it to the update
+    this.controller.once("update", () => {
+      const target = Actor.from(Game.getFormEx(targetId));
+      const spell = spellId ? Spell.from(Game.getFormEx(spellId)) : null;
+      if (target && spell) {
+        target.dispelSpell(spell);
+      }
+      this.enforce();
+    });
+  }
+
+  // Hazard ticks may be blamed on the hazard reference or on no one instead of the clone
+  private isDispelledReplayHit(aggressor: ObjectReference | null | undefined): boolean {
+    const now = Date.now();
+    if (!Array.from(this.guardedClones.values()).some((guard) => guard.dispelUntil > now)) {
+      return false;
+    }
+    if (!aggressor || !Actor.from(aggressor)) {
+      return true;
+    }
+    return (this.guardedClones.get(aggressor.getFormID())?.dispelUntil ?? 0) > now;
+  }
+
+  // Longest effect (Blizzard's hazard inherits it) plus a margin for the last ticks
+  private getGuardMs(spellId: number): number {
+    const spell = Spell.from(Game.getFormEx(spellId));
+    let seconds = 0;
+    const numEffects = spell ? spell.getNumEffects() : 0;
+    for (let i = 0; i < numEffects; i++) {
+      seconds = Math.max(seconds, spell!.getNthEffectDuration(i));
+    }
+    return (seconds + GUARD_MARGIN_SEC) * 1000;
+  }
+
   private resolveDawnguard(): void {
     const id = Game.getFormFromFile(DAWNGUARD_FALMER_POISON.id, DAWNGUARD_FALMER_POISON.plugin)?.getFormID();
     if (id) HIT_SPELLS_BY_EFFECT.get(FALMER_POISON_EFFECT)?.push(id);
   }
 
-  private onHit(e: HitEvent): void {
-    const aggressorId = this.npcAggressorId(e.aggressor, e.target);
+  // Creature hit poisons never reach the server, so a blocked swing's poison or a replayed swing's (the host reports its real hit) is dispelled here
+  private onNpcHit(e: HitEvent, aggressorId: number): void {
+    if (!aggressorId) return;
     const player = Game.getPlayer();
-    if (!aggressorId || !player) return;
+    if (!player) return;
     const now = Date.now();
     const spell = Spell.from(e.source);
     if (spell) {
@@ -88,7 +235,7 @@ export class NpcHitSpellBlockService extends ClientListener {
   }
 
   private onEffect(effect: MagicEffect | null | undefined, caster: ObjectReference | null | undefined, target: ObjectReference | null | undefined, source: string): void {
-    const aggressorId = this.npcAggressorId(caster, target);
+    const aggressorId = this.npcAggressorId(caster, target?.getFormID());
     if (!aggressorId || !effect || !this.isPoisonHitEffect(effect)) return;
     const effectId = effect.getFormID();
     const spellIds = HIT_SPELLS_BY_EFFECT.get(effectId);
@@ -170,6 +317,7 @@ export class NpcHitSpellBlockService extends ClientListener {
     this.dispel(aggressorId, unseen, "server blocked, unseen");
   }
 
+  // dispelSpellFrom takes only this NPC's copy, plain dispelSpell would take every caster's
   private dispel(aggressorId: number, entry: Landed, reason: string): void {
     const spells = entry.spellIds.map((id) => Spell.from(Game.getFormEx(id))).filter((spell): spell is Spell => !!spell);
     const byCaster = (this.sp as unknown as NativeDispel).dispelSpellFrom;
@@ -193,10 +341,8 @@ export class NpcHitSpellBlockService extends ClientListener {
         remove(player, byCaster ? spells : missed);
         // Only the poison's own first tick is undone, damage the server sent in the same frame stays
         const tick = Math.max(0, ...spells.map((spell) => this.poisonMax(spell, (i) => spell.getNthEffectMagnitude(i))));
-        const after = player.getActorValuePercentage("health");
         const maxHealth = getMaximumActorValue(player, "health") || 1;
-        const restored = after < entry.healthBefore && entry.healthBefore - after <= tick / maxHealth + 0.001;
-        if (restored) setActorValuePercentage(player, "health", entry.healthBefore);
+        const { health: after, restored } = this.floorHealth(player, entry.healthBefore, tick / maxHealth + 0.001);
         this.logThrottled(`dispel-${aggressorId}`, `dispelled ${this.spellList(entry)} from ${aggressorId.toString(16)} (${reason}), health ${entry.healthBefore.toFixed(3)} -> ${after.toFixed(3)}${restored ? ", restored" : ""}${missed.length ? `, ${missed.length} still active after the first dispel` : ""}`);
       });
     });
@@ -254,8 +400,8 @@ export class NpcHitSpellBlockService extends ClientListener {
   }
 
   // The local player hit by an NPC copy: server NPCs and other players' copies alike carry runtime ids
-  private npcAggressorId(aggressor: ObjectReference | null | undefined, target: ObjectReference | null | undefined): number {
-    if (!target || target.getFormID() !== PLAYER_ID || !aggressor) return 0;
+  private npcAggressorId(aggressor: ObjectReference | null | undefined, targetId: number | undefined): number {
+    if (targetId !== PLAYER_ID || !aggressor) return 0;
     const id = aggressor.getFormID();
     return id >= FIRST_RUNTIME_ID && id !== PLAYER_ID && Actor.from(aggressor) ? id : 0;
   }
@@ -280,6 +426,8 @@ export class NpcHitSpellBlockService extends ClientListener {
     logToPlatformLog(this, text);
   }
 
+  private guardedClones = new Map<number, CloneGuard>();
+  private healthFloor: number | undefined = undefined;
   private landed = new Map<number, Landed>();
   private swings = new Map<number, Swing>();
   private loggedAt = new Map<string, number>();

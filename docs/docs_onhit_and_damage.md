@@ -162,7 +162,7 @@ spriggan claw and the atronach and death hound melee spells are race attack spel
 are applied by the victim's own engine when the copy's swing connects: the perk hit spell raises no hit event the
 client relays, and the race attack spells the client does send are refused by `CanHitWithSpell` (the NPC neither
 holds nor learned them), so the server never sees them and its raised-shield rule cannot zero them. The client's
-`NpcHitSpellBlockService` therefore dispels a Contact-delivery poison hit spell from an NPC aggressor when the paired
+`RemoteDamageGuardService` therefore dispels a Contact-delivery poison hit spell from an NPC aggressor when the paired
 weapon hit (within 250 ms, in either order) counts as blocked by the server's own rule: the engine flagged it blocked,
 or the player held a block with the aggressor within 1 rad of their facing (with a shield against arrows and bolts),
 which the server resolves as blocked whatever the engine decided (see Blocked hits below: an NPC's blocked hit lets
@@ -180,7 +180,7 @@ another NPC's unblocked landing of the same spell is younger than its poison's d
 both; the blocked poison then lands, and the server's guard below stays shut for that time too.
 It always dispels when the aggressor is a copy this client does not host (its swing is a replay, the host reports the
 real hit), and puts the health back to the value before the effect when only the poison's own first tick was lost.
-Each verdict is logged, at most once per NPC every 5 s (`NpcHitSpellBlockService: dispelled <spells> from <npc>
+Each verdict is logged, at most once per NPC every 5 s (`RemoteDamageGuardService: dispelled <spells> from <npc>
 (<reason>, <sources>)`, `kept <spells> from <npc> (unblocked, ...)` or `left <spells> from <npc> (<reason>),
 dispelSpell would also take the unblocked poison of <other npc>`). An unblocked hit from a hosted NPC still
 poisons the player locally as before, invisible to god mode and `onHitDamageAttempt`.

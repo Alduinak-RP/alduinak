@@ -47,7 +47,7 @@ import { UpdateEquipmentMessage } from '../messages/updateEquipmentMessage';
 import { RagdollService } from './ragdollService';
 import { RestraintService } from './restraintService';
 import { MountService } from './mountService';
-import { CloneSpellGuardService } from './cloneSpellGuardService';
+import { RemoteDamageGuardService } from './remoteDamageGuardService';
 import { CellAnimationsService } from './cellAnimationsService';
 import { LastInvService } from './lastInvService';
 import { UpdateAppearanceMessage } from '../messages/updateAppearanceMessage';
@@ -1132,7 +1132,7 @@ export class RemoteServer extends ClientListener {
                   if (typeof subValue === 'number') {
                     setActorValuePercentage(player, subKey, value);
                     if (subKey === 'health') {
-                      this.controller.lookupListener(CloneSpellGuardService).onServerHealth(value);
+                      this.controller.lookupListener(RemoteDamageGuardService).onServerHealth(value);
                     }
                   }
                 } else {
@@ -1492,7 +1492,7 @@ export class RemoteServer extends ClientListener {
       if (typeof health === "number") {
         setActorValuePercentage(ac, 'health', health);
         if (isMe) {
-          this.controller.lookupListener(CloneSpellGuardService).onServerHealth(health);
+          this.controller.lookupListener(RemoteDamageGuardService).onServerHealth(health);
         }
       }
       if (typeof stamina === "number") {
@@ -1976,7 +1976,7 @@ export class RemoteServer extends ClientListener {
       // Prefer the spell id in the message; the clone's equipped spell can be stale (spell swaps fire no equip event)
       const transmitted = msg.data.spell ? Game.getFormEx(msg.data.spell) : null;
       const spellId = transmitted ? msg.data.spell : ac.getEquippedSpell(msg.data.castingSource)?.getFormID();
-      const cloneSpellGuard = this.controller.lookupListener(CloneSpellGuardService);
+      const damageGuard = this.controller.lookupListener(RemoteDamageGuardService);
 
       // Keep-alives and recasts of a running channel at any target only refresh the clone, recasting would stack concentration casts
       const watch = this.cloneCastWatch.get(key);
@@ -1985,7 +1985,7 @@ export class RemoteServer extends ClientListener {
       if (watch && (msg.data.keepAlive || sameChannel)) {
         watch.expiresAt = now + this.cloneCastTimeoutMs;
         if (spellId) {
-          cloneSpellGuard.guardHostileReplay(ac.getFormID(), spellId, this.cloneCastTimeoutMs);
+          damageGuard.guardHostileReplay(ac.getFormID(), spellId, this.cloneCastTimeoutMs);
         }
         return;
       }
@@ -2012,9 +2012,9 @@ export class RemoteServer extends ClientListener {
         const replayedHostileSelf = castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, remoteIdToLocalId(msg.data.target),
           msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables, true) === true;
         if (replayedHostileSelf) {
-          cloneSpellGuard.guardClone(ac.getFormID(), spellId);
+          damageGuard.guardClone(ac.getFormID(), spellId);
         } else {
-          cloneSpellGuard.guardHostileReplay(ac.getFormID(), spellId, this.cloneCastTimeoutMs);
+          damageGuard.guardHostileReplay(ac.getFormID(), spellId, this.cloneCastTimeoutMs);
         }
         // castSpellImmediate plays no cast animation, the vanilla graph starts one on BeginCastLeft or BeginCastRight
         hands.forEach((hand) => Debug.sendAnimationEvent(ac, hand === SpellType.Left ? "BeginCastLeft" : "BeginCastRight"));
