@@ -89,6 +89,9 @@ ActionListener::ActionListener(PartOne& partOne_)
 }
 
 namespace {
+// The sender's client already plays its own animations and casts
+constexpr bool kSkipSender = true;
+
 template <class Map, class Compute>
 const typename Map::mapped_type& Cached(Map& map,
                                         const typename Map::key_type& key,
@@ -526,7 +529,8 @@ bool CanHitWithSpell(CombatEspmCache& cache, const MpActor& actor,
 MpActor* ActionListener::SendToNeighbours(uint32_t idx,
                                           Networking::UserId userId,
                                           Networking::PacketData data,
-                                          size_t length, bool reliable)
+                                          size_t length, bool reliable,
+                                          bool skipSender)
 {
   MpActor* myActor = partOne.serverState.ActorByUser(userId);
   // The old behavior is doing nothing in that case. This is covered by tests
@@ -586,7 +590,8 @@ MpActor* ActionListener::SendToNeighbours(uint32_t idx,
 
   for (auto listener : actor->GetActorListeners()) {
     auto targetuserId = partOne.serverState.UserByActor(listener);
-    if (targetuserId != Networking::InvalidUserId) {
+    if (targetuserId != Networking::InvalidUserId &&
+        !(skipSender && targetuserId == userId)) {
       partOne.GetSendTarget().Send(targetuserId, data, length, reliable);
     }
   }
@@ -596,10 +601,10 @@ MpActor* ActionListener::SendToNeighbours(uint32_t idx,
 
 MpActor* ActionListener::SendToNeighbours(uint32_t idx,
                                           const RawMessageData& rawMsgData,
-                                          bool reliable)
+                                          bool reliable, bool skipSender)
 {
   return SendToNeighbours(idx, rawMsgData.userId, rawMsgData.unparsed,
-                          rawMsgData.unparsedLength, reliable);
+                          rawMsgData.unparsedLength, reliable, skipSender);
 }
 
 void ActionListener::OnCustomPacket(const RawMessageData& rawMsgData,
@@ -701,7 +706,7 @@ void ActionListener::OnUpdateAnimation(const RawMessageData& rawMsgData,
   }
 
   // One reliable-ordered channel so a get-up never lands after a later pose
-  auto targetActor = SendToNeighbours(msg.idx, rawMsgData, true);
+  auto targetActor = SendToNeighbours(msg.idx, rawMsgData, true, kSkipSender);
 
   if (!targetActor) {
     return;
@@ -1910,7 +1915,7 @@ void ActionListener::OnUpdateAnimVariables(
     return;
   }
 
-  SendToNeighbours(myActor->idx, rawMsgData);
+  SendToNeighbours(myActor->idx, rawMsgData, false, kSkipSender);
 }
 
 void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
@@ -1951,7 +1956,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   // Stops are relayed before the death, equipment and denylist gates so none is dropped
   // Relays are reliable so observers get casts, keep-alives and stops in order
   if (spellCastData.interruptCast) {
-    SendToNeighbours(myActor->idx, rawMsgData, true);
+    SendToNeighbours(myActor->idx, rawMsgData, true, kSkipSender);
     UpdateWardChannel(caster->GetFormId(), spellCastData);
     // Only the stopped spell's channel ends, the other hand may still heal
     auto channelIt = restorationChannels.find(caster->GetFormId());
@@ -2014,7 +2019,7 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
 
   // A clone replay would cast the scroll again on every observer
   if (!isScroll) {
-    SendToNeighbours(myActor->idx, rawMsgData, true);
+    SendToNeighbours(myActor->idx, rawMsgData, true, kSkipSender);
     UpdateWardChannel(caster->GetFormId(), spellCastData);
   } else if (!spellCastData.keepAlive) {
     // The caster's engine used one up

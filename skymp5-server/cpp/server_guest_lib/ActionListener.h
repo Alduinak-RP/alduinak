@@ -179,10 +179,10 @@ private:
   // Returns user's actor if there is attached one
   MpActor* SendToNeighbours(uint32_t idx, Networking::UserId userId,
                             Networking::PacketData data, size_t length,
-                            bool reliable);
+                            bool reliable, bool skipSender = false);
 
   MpActor* SendToNeighbours(uint32_t idx, const RawMessageData& rawMsgData,
-                            bool reliable = false);
+                            bool reliable = false, bool skipSender = false);
 
   // sanitizedMsg replaces the owner's raw report when the server changed it
   void RelayEquipment(MpActor& actor, const RawMessageData& rawMsgData,
