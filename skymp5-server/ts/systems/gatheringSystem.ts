@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
+import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { espmContainerEntries, espmFieldFormIds, espmLeveledEntries, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
 import { addItemTo, countItem, guardMpHook, hex, holdsItem, sendActionLock, takeItemFrom } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
@@ -8,7 +8,7 @@ import { FREE, LEGENDARY, MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
 import { FurnitureSeatSystem } from "./furnitureSeatSystem";
 import { writeFileAtomic } from "./fileUtil";
-import { EVERY_PASS_MS, every } from "./timers";
+import { KeyedTimers, soon } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -58,6 +58,9 @@ const PICKS_FILE = "./gathering-picks.json";
 // A ref that cannot be enabled yet (its cell not loaded) is tried again this much later
 const REGROW_RETRY_MS = 60000;
 const SEAT_CLOSE_EVENT = "onPapyrusEvent:SkympOnActivateClose";
+// FurnitureSeatSystem's packets
+const SEAT_CLAIM_PACKET = "seatClaim";
+const SEAT_RELEASE_PACKET = "seatRelease";
 // Shown by the client's masteryService; gathering is profession work.
 const NOTICE_PACKET = "masteryNotice";
 
@@ -206,10 +209,12 @@ export class GatheringSystem implements System {
     const unresolved = INSTANT_FLORA.filter((n) => !instant.has(n));
     if (unresolved.length) this.log(`[gathering] instant flora not in the load order: ${unresolved.join(", ")}`);
     this.loadPicks();
-    ctx.gm.once(WORLD_LOADED_EVENT, () => { this.worldLoaded = true; });
+    ctx.gm.once(WORLD_LOADED_EVENT, () => {
+      this.worldLoaded = true;
+      this.armRegrow(ctx);
+    });
 
     this.installHooks(ctx);
-    every("gathering", EVERY_PASS_MS, () => this.poll(ctx));
     const growth = this.regenMs ? `one collection per ${this.regenMs / 60000} min` : `whole ${this.respawnMs / 60000} min after the first strike`;
     const total = this.veinTotalOverride ? `${this.veinTotalOverride} ore per vein` : "each vein's own ore count";
     this.log(`[gathering] ready, one pickaxe strike per ${this.strikeMs / 1000} s, one swing of the axe per ${this.chopMs / 1000} s for ${this.chopYield} firewood, ${total}, veins grow back ${growth}, ${this.veinTiers.size} ore(s) need a miner rank, ${this.produceMs.size} produce container(s), picks back after ${this.pickMs / 60000} min, a harvest hoes ${CROP_MS / 1000} s for a crop (${CROP_WORDS.join("/")}) and kneels ${FLORA_MS / 1000} s for flora (nirnroot included) except at ${this.instantFlora.size} instant flora, yields x${YIELD_BY_RANK.join("/")} by rank, flora priced by the ${PICKERS.join(" or ")} rank and crops by the ${CROP_PRICERS.join(" or ")} rank, ${this.alchemistFloraDiscount > 0 ? `an alchemist pays ${Math.round(this.alchemistFloraDiscount * 100)}% less again for alchemy flora` : "no extra alchemist flora discount"}`);
@@ -304,32 +309,17 @@ export class GatheringSystem implements System {
   disconnect(userId: number, ctx: SystemContext): void {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
-    this.sessions.delete(actorId);
+    this.dropSession(actorId);
     this.harvestUntil.delete(actorId);
   }
 
-  poll(ctx: SystemContext): void {
-    // Papyrus calls run here, outside the native activation call stack.
-    for (const p of this.pendingSeats.splice(0, this.pendingSeats.length)) this.activateFor(ctx, p.markerId, p.actorId);
-    this.regrowPicks(ctx);
-    if (!this.sessions.size) return;
-    const now = Date.now();
-    for (const s of Array.from(this.sessions.values())) {
-      if (s.kind === "chop" && !this.stillSeated(ctx, s)) continue;
-      if (now < s.nextAt) continue;
-      if (!this.stillWorking(ctx, s, now)) {
-        this.sessions.delete(s.actorId);
-        continue;
-      }
-      s.nextAt = now + s.intervalMs;
-      try {
-        if (s.kind === "chop") this.chopStrike(ctx, s);
-        else this.mineStrike(ctx, s, now);
-      } catch (e) {
-        this.log(`[gathering] strike failed for ${s.actorId.toString(16)}: ${e}`);
-        this.sessions.delete(s.actorId);
-      }
-    }
+  // A chopping session hears of its seat claim at once, so standing up before the strike still ends the sitting with nothing
+  customPacket(userId: number, type: string, _content: Content, ctx: SystemContext): void {
+    if (type !== SEAT_CLAIM_PACKET && type !== SEAT_RELEASE_PACKET) return;
+    soon(() => {
+      const s = this.sessions.get(this.actorOf(ctx, userId));
+      if (s?.kind === "chop") this.stillSeated(ctx, s);
+    });
   }
 
   // â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -482,7 +472,7 @@ export class GatheringSystem implements System {
     if (!this.seatFree(ctx, blockId, actorId)) return this.deny(ctx, actorId, "Someone is already using this.");
     const resource = props["resource"] || 0;
     if (!resource || this.sessions.get(actorId)?.furnitureId === blockId) return undefined;
-    return () => this.startSession({
+    return () => this.startSession(ctx, {
       actorId, furnitureId: blockId, kind: "chop", veinId: 0, resource,
       perStrike: this.chopYield, cap: 0, given: 0, strikesPer: 1, strikesLeft: 1,
       intervalMs: this.chopMs,
@@ -497,7 +487,8 @@ export class GatheringSystem implements System {
     const markerId = espmLinkedRefId(this.lookup(ctx, veinId));
     if (!markerId) return undefined;
     this.markerVein.set(markerId, veinId);
-    return () => this.pendingSeats.push({ markerId, actorId });
+    // Papyrus calls run outside the native activation call stack
+    return () => soon(() => this.activateFor(ctx, markerId, actorId));
   }
 
   private onMiningMarker(ctx: SystemContext, markerId: number, actorId: number, markerProps: Record<string, number>): Verdict {
@@ -512,7 +503,7 @@ export class GatheringSystem implements System {
     const ore = vein.props["ore"] || 0;
     if (!ore || this.sessions.get(actorId)?.furnitureId === markerId) return undefined;
     const strikes = Math.max(1, vein.props["strikesbeforecollection"] || VEIN_DEFAULT_STRIKES);
-    return () => this.startSession({
+    return () => this.startSession(ctx, {
       actorId, furnitureId: markerId, kind: "mine", veinId, resource: ore,
       perStrike: Math.max(1, vein.props["resourcecount"] || VEIN_DEFAULT_COUNT),
       cap: this.veinTotal(vein.props), given: 0, strikesPer: strikes, strikesLeft: strikes,
@@ -535,28 +526,57 @@ export class GatheringSystem implements System {
     return undefined;
   }
 
-  // One worker per station, like the engine's own furniture occupancy.
+  // One worker per station, like the engine's own furniture occupancy; a chopper who stood up leaves it free at once.
   private seatFree(ctx: SystemContext, furnitureId: number, actorId: number): boolean {
-    for (const s of this.sessions.values()) {
-      if (s.furnitureId === furnitureId && s.actorId !== actorId && this.stillWorking(ctx, s, Date.now())) return false;
+    for (const s of Array.from(this.sessions.values())) {
+      if (s.furnitureId !== furnitureId) continue;
+      if (s.kind === "chop") this.stillSeated(ctx, s);
+      if (s.actorId !== actorId && this.sessions.has(s.actorId) && this.stillWorking(ctx, s, Date.now())) return false;
     }
     return true;
   }
 
-  private startSession(s: Session): void {
+  private startSession(ctx: SystemContext, s: Session): void {
     const now = Date.now();
     s.startedAt = now;
     s.nextAt = now + s.intervalMs;
     this.sessions.set(s.actorId, s);
+    this.armStrike(ctx, s);
+  }
+
+  private armStrike(ctx: SystemContext, s: Session): void {
+    this.strikes.set(s.actorId, s.nextAt, () => this.strike(ctx, s));
+  }
+
+  private dropSession(actorId: number): void {
+    this.sessions.delete(actorId);
+    this.strikes.clear(actorId);
   }
 
   private endSessionsAt(furnitureId: number): void {
     for (const s of Array.from(this.sessions.values())) {
-      if (s.furnitureId === furnitureId) this.sessions.delete(s.actorId);
+      if (s.furnitureId === furnitureId) this.dropSession(s.actorId);
     }
   }
 
   // â”€â”€ Work â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  // A timer that comes early, or a chopping cycle restarted by a new sitting, waits for the session's next strike time
+  private strike(ctx: SystemContext, s: Session): void {
+    const now = Date.now();
+    if ((s.kind !== "chop" || this.stillSeated(ctx, s)) && now >= s.nextAt) {
+      if (!this.stillWorking(ctx, s, now)) return this.dropSession(s.actorId);
+      s.nextAt = now + s.intervalMs;
+      try {
+        if (s.kind === "chop") this.chopStrike(ctx, s);
+        else this.mineStrike(ctx, s, now);
+      } catch (e) {
+        this.log(`[gathering] strike failed for ${s.actorId.toString(16)}: ${e}`);
+        return this.dropSession(s.actorId);
+      }
+    }
+    if (this.sessions.get(s.actorId) === s) this.armStrike(ctx, s);
+  }
 
   // False while a chopping cycle cannot land: the chopper left the block (the session ends) or a new sitting restarted the cycle
   private stillSeated(ctx: SystemContext, s: Session): boolean {
@@ -565,7 +585,7 @@ export class GatheringSystem implements System {
     if (!at) {
       // Never claimed: a client without the seat claim keeps the plain timing
       if (!s.seatedAt) return true;
-      this.sessions.delete(s.actorId);
+      this.dropSession(s.actorId);
       return false;
     }
     if (at !== s.seatedAt) {
@@ -614,7 +634,7 @@ export class GatheringSystem implements System {
 
   // Stand the worker up the way the vanilla scripts do, with the station's exit idle.
   private finish(ctx: SystemContext, s: Session, text: string): void {
-    this.sessions.delete(s.actorId);
+    this.dropSession(s.actorId);
     if (text) this.notice(ctx, this.userOf(ctx, s.actorId), text);
     const anim = this.idleEvent(ctx, s.exitIdle);
     if (!anim) return;
@@ -664,10 +684,10 @@ export class GatheringSystem implements System {
     this.setShown(ctx, refrId, false);
     this.picked.set(refrId, regrowAt);
     this.savePicks();
+    this.armRegrow(ctx);
   }
 
   private regrowPicks(ctx: SystemContext): void {
-    if (!this.worldLoaded || !this.picked.size) return;
     const now = Date.now();
     let changed = false;
     for (const [refrId, at] of this.picked) {
@@ -677,6 +697,16 @@ export class GatheringSystem implements System {
       changed = true;
     }
     if (changed) this.savePicks();
+    this.armRegrow(ctx);
+  }
+
+  // One timer at the earliest regrow, once the world is loaded
+  private armRegrow(ctx: SystemContext): void {
+    if (!this.worldLoaded) return;
+    let due = Infinity;
+    for (const at of this.picked.values()) due = Math.min(due, at);
+    if (due === Infinity) this.regrowTimer.clear("picks");
+    else this.regrowTimer.set("picks", due, () => this.regrowPicks(ctx));
   }
 
   // Papyrus Enable/Disable, unlike the isDisabled property, also tells every client that has the ref
@@ -936,7 +966,8 @@ export class GatheringSystem implements System {
   private veinTotalOverride = DEFAULT_VEIN_TOTAL;
   private veinTiers = new Map<number, number>();
   private sessions = new Map<number, Session>();
-  private pendingSeats: Array<{ markerId: number; actorId: number }> = [];
+  // Actor id -> the session's next strike
+  private strikes = new KeyedTimers<number>();
   private lastDenyMs = new Map<number, number>();
   private markerVein = new Map<number, number>();
   private stationCache = new Map<number, Station | null>();
@@ -950,6 +981,7 @@ export class GatheringSystem implements System {
   private harvestUntil = new Map<number, number>();
   // Picked nirnroot and critter refs -> epoch ms they grow back
   private picked = new Map<number, number>();
+  private regrowTimer = new KeyedTimers<"picks">();
   private worldLoaded = false;
   private produceYield = new Map<number, Array<{ baseId: number; count: number }>>();
 }
