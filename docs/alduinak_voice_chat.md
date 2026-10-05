@@ -18,8 +18,10 @@ The integration described as "future work" below has been built:
   room/rangeUnits; range falls back to `chatRanges.say`). Already built into
   `dist_back` on the box.
 - **Front (CEF)**: `skymp5-front/src/utils/VoiceManager.js` + `livekit-client`.
-  Joins the room, attaches remote audio, per-participant volume falloff by
-  distance, unsubscribes tracks beyond ~1.15x range.
+  Joins the room with `autoSubscribe` off, attaches remote audio,
+  per-participant volume falloff by distance, and subscribes only to tracks
+  within ~1.15x the speaker's range (on each `setPeers`, and on
+  `TrackPublished` for a track published later or after a full reconnect).
 - **Client**: `skymp5-client/src/services/services/voiceService.ts`. Push-to-
   talk on `voicePushToTalkKeyCode` (default V, DX 47, or the in-game rebind
   from the chat Controls tab). The game reads the key while the browser is
@@ -48,8 +50,11 @@ The integration described as "future work" below has been built:
   closes the mic on the real release. Alt+V mode cycling is game-side only;
   a Left or Right Alt bound to push-to-talk is plain push-to-talk and only
   the other Alt cycles.
-  Requests a token per actor assignment; pushes peer distances (same world
-  only) every 400ms.
+  Requests a token per actor assignment; checks peer distances (same world
+  only, from the player's engine position, in 25-unit steps) every 400ms and
+  pushes them only when they or a speaker's range change, re-sent every 3 s
+  under the page's 5 s stale failsafe and at once after `voice::ready` or a
+  game reconnect.
 - **Talk range**: V + mousewheel picks the speaker's audible range between
   chatRanges.whisper (150u) and chatRanges.shout (10000u), default say (2000u).
   The client sends the chosen mode to the server (`voiceMode`), which sets the
@@ -72,7 +77,7 @@ LiveKit server + firewall are already live on the box (`AlduinakLiveKit`).
 ### Trust model and accepted limitations
 
 - **Range gating is client-side.** Every token grants publish+subscribe to the
-  one shared room; distance-based volume and unsubscription happen in the CEF
+  one shared room; distance-based volume and subscription happen in the CEF
   page. A modified client (or the raw token in any LiveKit web client) can hear
   every speaker server-wide regardless of distance, which partially undermines
   the Stranger/mask anonymity system. Accepted for v1; the fix is a server-side

@@ -6,7 +6,7 @@
 //   setPtt(bool)              push-to-talk: open/close the mic track; ignored while voice detection opens it
 //   setPttKey(code)           KeyboardEvent.code of the push-to-talk key; the game sees no keys while a menu has focus, so the page reads it then
 //   setMode(key)              Alt+V cycles whisper/talk/shout; the game sends it to the server, whose ff_voiceRange lets listeners attenuate by the SPEAKER's loudness
-//   setPeers({ identityHex: distanceUnits }, { identityHex: rangeUnits })  refresh distances and speaker ranges ~every 400ms; peers absent from the first map are out of range
+//   setPeers({ identityHex: distanceUnits }, { identityHex: rangeUnits })  distances (25-unit steps) and speaker ranges, sent on change and at least every 3 s; peers absent from the first map are out of range
 // SkyrimPlatform dispatches 'skymp5-client:windowInactive' when the game loses the foreground; the page then closes the mic itself
 // Events back to the game (window.skyrimPlatform.sendMessage):
 //   'voice::ready', 'voice::micDenied', 'voice::error' <text>, 'voice::ptt' <'1' pressed | '0' released, from the page's own key listeners>,
@@ -223,8 +223,10 @@ class VoiceManager {
         if (participant) this.stopped(participant.identity);
         this.emitSpeaking();
       });
+      // A track published after the last setPeers, or again after a full reconnect
+      room.on(RoomEvent.TrackPublished, (publication, participant) => this.syncSubscription(publication, participant.identity));
 
-      await room.connect(url, token, { autoSubscribe: true });
+      await room.connect(url, token, { autoSubscribe: false });
       try { await room.startAudio(); } catch (e) { /* autoplay policy: unlocked by CEF switch */ }
       // Expose the room only once connected so setPtt cannot hit a not-yet-connected room and mis-report micDenied
       this.room = room;
@@ -258,6 +260,9 @@ class VoiceManager {
     }
     this.audioEls.forEach((el) => el.remove());
     this.audioEls.clear();
+    // The next room subscribes from the game's first setPeers, not from where the player stood before
+    this.distances = {};
+    this.peerRanges = {};
     this.emitSpeaking();
   }
 
@@ -344,16 +349,18 @@ class VoiceManager {
     this.lastPeersAt = Date.now();
     if (!this.room) return;
     this.audioEls.forEach((el, identity) => this.applyVolume(identity));
-    // Bandwidth: don't even receive audio from players far out of range
     this.room.remoteParticipants.forEach((participant) => {
-      const d = this.distances[participant.identity];
-      const wanted = d !== undefined && d <= this.rangeFor(participant.identity) * UNSUB_HYSTERESIS;
-      participant.audioTrackPublications.forEach((pub) => {
-        if (pub.isSubscribed !== wanted && typeof pub.setSubscribed === 'function') {
-          try { pub.setSubscribed(wanted); } catch (e) { /* transient */ }
-        }
-      });
+      participant.audioTrackPublications.forEach((pub) => this.syncSubscription(pub, participant.identity));
     });
+  }
+
+  // Bandwidth: receive audio only from speakers in range
+  syncSubscription(pub, identity) {
+    if (pub.kind !== Track.Kind.Audio || typeof pub.setSubscribed !== 'function') return;
+    const d = this.distances[identity];
+    const wanted = d !== undefined && d <= this.rangeFor(identity) * UNSUB_HYSTERESIS;
+    if (pub.isSubscribed === wanted) return;
+    try { pub.setSubscribed(wanted); } catch (e) { /* transient */ }
   }
 
   // ── Mode banner (bottom left, flashed when Alt+V changes the mode) ─────────

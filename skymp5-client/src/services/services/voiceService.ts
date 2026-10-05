@@ -13,6 +13,9 @@ import { logToPlatformLog, logTrace } from "../../logging";
 // The game sees no key events while a menu or the chat has focus, so the front reads DOM keys then and reports them as 'voice::ptt' 1/0; the rest are polled here.
 
 const PEERS_INTERVAL_MS = 400;
+// An unchanged peer map is re-sent at this age, below VoiceManager's 5 s stale failsafe
+const PEERS_KEEPALIVE_MS = 3000;
+const PEER_DISTANCE_STEP = 25;
 const TOKEN_RETRY_MS = 5000;
 // The token retry makes a down voice server report the same error every few seconds
 const VOICE_ERROR_REPEAT_LOG_MS = 600000;
@@ -84,6 +87,8 @@ export class VoiceService extends ClientListener {
   private voiceErrorRepeats = 0;
   private nextTokenAttemptAt = 0;
   private nextPeersAt = 0;
+  private lastPeersJson = "";
+  private lastPeersSentAt = 0;
   private nextAfkPingAt = 0;
 
   // A throw here would abort the shared event dispatch chain, taking input and movement processing down with it; voice must never do that
@@ -204,6 +209,8 @@ export class VoiceService extends ClientListener {
     if (kind === "voice::ready") {
       // Only the front's ack marks the session healthy; a connect call landing on an unloaded page never acks and the 5s loop retries
       this.connectedForRefrId = this.pendingRefrId;
+      // A fresh room subscribes to nobody until its first setPeers
+      this.forcePeersPush();
       if (this.lastVoiceError) {
         logToPlatformLog(this, `voice connected again after "${this.lastVoiceError}" and ${this.voiceErrorRepeats} repeats since its line`);
         this.lastVoiceError = "";
@@ -254,7 +261,13 @@ export class VoiceService extends ClientListener {
     this.pendingRefrId = 0;
     this.disabledByServer = false;
     this.nextTokenAttemptAt = 0;
+    this.forcePeersPush();
     this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.disconnect()`);
+  }
+
+  private forcePeersPush() {
+    this.lastPeersJson = "";
+    this.nextPeersAt = 0;
   }
 
   private onCustomPacketMessage(content: CustomPacketContent): void {
@@ -389,7 +402,7 @@ export class VoiceService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "afkPing" });
   }
 
-  // Distances and speaker ranges in game units keyed by refrId hex = the LiveKit identity scheme
+  // Distances and speaker ranges in game units keyed by refrId hex = the LiveKit identity scheme, sent when they change
   private pushPeers() {
     const worldModel = this.controller.lookupListener(RemoteServer).getWorldModel();
     if (!worldModel || !Array.isArray(worldModel.forms)) return;
@@ -412,12 +425,15 @@ export class VoiceService extends ClientListener {
       const dist = ObjectReferenceEx.getDistance(form.movement.pos, myPos);
       if (dist > includeWithin) continue;
       const id = form.refrId.toString(16);
-      peers[id] = Math.round(dist);
+      peers[id] = Math.round(dist / PEER_DISTANCE_STEP) * PEER_DISTANCE_STEP;
       const range = (form as Record<string, unknown>)[VOICE_RANGE_PROP];
       if (typeof range === "number" && range > 0) ranges[id] = range;
     }
-    this.sp.browser.executeJavaScript(
-      `window.__alduinakVoice && window.__alduinakVoice.setPeers(${JSON.stringify(peers)}, ${JSON.stringify(ranges)})`
-    );
+    const json = `${JSON.stringify(peers)}, ${JSON.stringify(ranges)}`;
+    const now = Date.now();
+    if (json === this.lastPeersJson && now - this.lastPeersSentAt < PEERS_KEEPALIVE_MS) return;
+    this.lastPeersJson = json;
+    this.lastPeersSentAt = now;
+    this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.setPeers(${json})`);
   }
 }
