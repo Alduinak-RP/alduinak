@@ -20,10 +20,14 @@ public:
 
   using GetUserIdFn = std::function<Networking::UserId(MpActor* actor)>;
 
+  // Marks the actor's user for one SetInventory at the next deferred flush
+  using SendInventoryUpdateFn = std::function<void(MpActor* actor)>;
+
   SubscribeCallback subscribe, unsubscribe;
   SendToUserFn sendToUser;
   SendToUserDeferredFn sendToUserDeferred;
   GetUserIdFn getUserId;
+  SendInventoryUpdateFn sendInventoryUpdate;
 
   static FormCallbacks DoNothing()
   {

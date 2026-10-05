@@ -11,6 +11,7 @@
 #include "DestroyActorMessage.h"
 #include "HostStartMessage.h"
 #include "HostStopMessage.h"
+#include "SetInventoryMessage.h"
 #include "SetRaceMenuOpenMessage.h"
 #include "UpdateGameModeDataMessage.h"
 
@@ -211,6 +212,9 @@ void PartOne::SetUserActor(Networking::UserId userId, uint32_t actorFormId)
     auto& userInfo = *serverState.userInfo[userId];
     userInfo.actorAssignedAt = std::chrono::steady_clock::now();
     userInfo.firstEquipmentReportAt.reset();
+    if (userInfo.inventoryActorIdExpected != actorFormId) {
+      userInfo.inventoryActorIdExpected = 0;
+    }
     if (actor.GetProfileId() >= 0) {
       const auto& saved = actor.GetEquipment();
       spdlog::info("PartOne::SetUserActor {} {:x} - saved outfit {} worn of "
@@ -233,6 +237,7 @@ void PartOne::SetUserActor(Networking::UserId userId, uint32_t actorFormId)
 
   } else {
     serverState.actorsMap.Erase(userId);
+    serverState.userInfo[userId]->inventoryActorIdExpected = 0;
   }
 }
 
@@ -812,7 +817,20 @@ FormCallbacks PartOne::CreateFormCallbacks()
     return st->UserByActor(actor);
   };
 
-  return { subscribe, unsubscribe, sendToUser, sendToUserDeferred, getUserId };
+  FormCallbacks::SendInventoryUpdateFn sendInventoryUpdate =
+    [st](MpActor* actor) {
+      auto targetuserId = st->UserByActor(actor);
+      if (targetuserId == Networking::InvalidUserId ||
+          st->disconnectingUserId == targetuserId) {
+        return;
+      }
+      if (auto& userInfo = st->userInfo[targetuserId]) {
+        userInfo->inventoryActorIdExpected = actor->GetFormId();
+      }
+    };
+
+  return { subscribe,          unsubscribe, sendToUser,
+           sendToUserDeferred, getUserId,   sendInventoryUpdate };
 }
 
 ActionListener& PartOne::GetActionListener()
@@ -1097,14 +1115,17 @@ void PartOne::TickDeferredMessages()
     if (!userInfo) {
       continue;
     }
+    auto actor = serverState.ActorByUser(userId);
+    const uint32_t inventoryActorId =
+      std::exchange(userInfo->inventoryActorIdExpected, 0);
+    if (actor && inventoryActorId == actor->GetFormId()) {
+      SetInventoryMessage message;
+      message.inventory = actor->GetInventory();
+      pImpl->sendTarget->Send(userId, message, true);
+    }
     for (auto& channel : userInfo->deferredChannels) {
       for (auto& message : channel) {
-        auto actor = serverState.ActorByUser(userId);
-        if (!actor) {
-          continue;
-        }
-
-        if (message.actorIdExpected != actor->GetFormId()) {
+        if (!actor || message.actorIdExpected != actor->GetFormId()) {
           continue;
         }
 

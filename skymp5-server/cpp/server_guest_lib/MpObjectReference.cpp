@@ -37,7 +37,6 @@
 #include <optional>
 
 #include "OpenContainerMessage.h"
-#include "SetInventoryMessage.h"
 #include "TeleportMessage.h"
 
 #include "script_classes/PapyrusObjectReference.h" // kOriginalNameExpression
@@ -2047,12 +2046,9 @@ void MpObjectReference::InitListenersAndEmitters()
 
 void MpObjectReference::SendInventoryUpdate()
 {
-  constexpr int kChannelSetInventory = 0;
   auto actor = AsActor();
-  if (actor) {
-    SetInventoryMessage message;
-    message.inventory = actor->GetInventory();
-    actor->SendToUserDeferred(message, true, kChannelSetInventory, true);
+  if (actor && callbacks->sendInventoryUpdate) {
+    callbacks->sendInventoryUpdate(actor);
   }
 }
 

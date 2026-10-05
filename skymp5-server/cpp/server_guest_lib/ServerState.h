@@ -50,6 +50,9 @@ struct UserInfo
 
   std::vector<std::vector<DeferredMessage>> deferredChannels;
 
+  // Actor whose SetInventory is sent at the next deferred flush, 0 for none
+  uint32_t inventoryActorIdExpected = 0;
+
   std::string guid;
 
   // Start of the spawn equipment guard, set by PartOne::SetUserActor
