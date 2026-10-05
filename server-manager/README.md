@@ -344,7 +344,7 @@ fails it prints a direct download URL - save that zip as
     any IP or HWID the banned player was ever seen with.
   - **Gold Spawning**: raised by the game server (`GoldWatchSystem`) when a
     character gains more than `goldAlertThreshold` gold (`server-settings.json`,
-    default 5000, 0 disables) within 10 s.
+    default 5000, 0 disables) between two samples, 10 to 60 s apart.
 
 Backend records (players, profiles, bans, sessions, characters, balances,
 factions) live in MongoDB. The one-time import from the old JSON files is

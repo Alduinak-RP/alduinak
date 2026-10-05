@@ -7,8 +7,10 @@ import { every } from "./timers";
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
 
-// Gold watch: samples every online character's gold and flags a rise above the threshold between two samples
+// Gold watch: samples online characters' gold and flags a rise above the threshold between two samples
 // (looting, trades, console spawns and dupes alike) as a goldSpawn alert in the manager's Security tab.
+// Every 10 s it samples the characters that crafted, ate, put, took, dropped, activated or sent a trade or bounty packet
+// since the last poll and those without a baseline yet; every sixth poll (about 60 s) samples every online character.
 // The first sample of a character only sets its baseline, so logging in rich flags nothing.
 // Inventory watch (B14, B24): the same samples log every drop of gold and every drop of Salt Pile the actor's own
 // crafts, eats, puts, drops and takes in the interval do not explain, with those tallies and the trade and bounty
@@ -22,6 +24,7 @@ type Mp = any;
 //   goldAlertThreshold  gold gained between two samples that raises an alert, 0 disables the alert; the drop lines stay (default 5000)
 
 const POLL_MS = 10000;
+const SWEEP_POLLS = 6;
 const GOLD_BASE_ID = 0xf;
 // Skyrim.esm SaltPile
 const SALT_BASE_ID = 0x00034cdf;
@@ -73,6 +76,9 @@ export class GoldWatchSystem implements System {
   private inputCache = new Map<number, Map<number, number>>();
   // actorId -> the last item the actor ate
   private lastEat = new Map<number, { baseId: number; at: number }>();
+  // Actors with inventory activity since the last poll
+  private dirty = new Set<number>();
+  private polls = 0;
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const s = await Settings.get();
@@ -95,18 +101,28 @@ export class GoldWatchSystem implements System {
       try { note(...args.map((a) => Number(a) >>> 0)); } catch (e) { this.log(`GoldWatchSystem: ${event} note failed: ${e}`); }
     });
     after("onCraft", (actorId, _craftedId, _count, recipeId) => {
+      this.dirty.add(actorId);
       for (const [baseId, count] of this.recipeInputs(recipeId)) this.tally(actorId, baseId).crafts += count;
     });
     after("onEatItem", (actorId, baseId) => {
+      this.dirty.add(actorId);
       this.lastEat.set(actorId, { baseId, at: Date.now() });
       if (this.watched(baseId)) this.tally(actorId, baseId).eats += 1;
     });
-    after("onPutItem", (_targetId, actorId, baseId, count) => { if (this.watched(baseId)) this.tally(actorId, baseId).puts += count; });
-    after("onTakeItem", (_sourceId, actorId, baseId, count) => { if (this.watched(baseId)) this.tally(actorId, baseId).takes += count; });
+    after("onPutItem", (targetId, actorId, baseId, count) => {
+      this.dirty.add(actorId).add(targetId);
+      if (this.watched(baseId)) this.tally(actorId, baseId).puts += count;
+    });
+    after("onTakeItem", (sourceId, actorId, baseId, count) => {
+      this.dirty.add(actorId).add(sourceId);
+      if (this.watched(baseId)) this.tally(actorId, baseId).takes += count;
+    });
     after("onDropItem", (actorId, baseId, count) => {
+      this.dirty.add(actorId);
       this.noteDrop(actorId, baseId, count);
       if (this.watched(baseId)) this.tally(actorId, baseId).drops += count;
     });
+    after("onActivate", (_targetId, casterId) => { this.dirty.add(casterId); });
   }
 
   disconnect(userId: number): void {
@@ -116,12 +132,14 @@ export class GoldWatchSystem implements System {
     this.tallies.delete(actorId);
     this.packets.delete(actorId);
     this.lastEat.delete(actorId);
+    this.dirty.delete(actorId);
   }
 
   customPacket(userId: number, type: string, _content: Content): void {
     if (!MOVE_PACKETS.has(type)) return;
     const actorId = this.actorOf(userId);
     if (!actorId) return;
+    this.dirty.add(actorId);
     const seen = this.packets.get(actorId) || [];
     seen.push(type);
     this.packets.set(actorId, seen);
@@ -129,7 +147,9 @@ export class GoldWatchSystem implements System {
 
   poll(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
+    const sweep = ++this.polls % SWEEP_POLLS === 0;
     for (const actorId of onlineActors(mp)) {
+      if (!sweep && !this.dirty.has(actorId) && this.lastCounts.has(actorId)) continue;
       if (isCreationPending(mp, actorId)) continue;
       const counts = this.countsOf(mp, actorId);
       const before = this.lastCounts.get(actorId);
@@ -155,6 +175,7 @@ export class GoldWatchSystem implements System {
         this.log(`[inv] ${this.who(mp, actorId)} ${label} ${was} -> ${now}${unexplained > 0 ? `, ${unexplained} unexplained` : ""} (interval: crafts ${t.crafts}, eats ${t.eats}, puts ${t.puts}, drops ${t.drops}, takes ${t.takes}${packets.length ? `, packets ${packets.join(" ")}` : ""})`);
       }
     }
+    this.dirty.clear();
   }
 
   private noteDrop(actorId: number, baseId: number, count: number): void {

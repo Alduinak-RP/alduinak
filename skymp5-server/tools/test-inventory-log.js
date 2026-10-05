@@ -1,6 +1,6 @@
 'use strict'
 
-// goldWatchSystem.ts drop lines and the pack summary spawn.ts logs at logout, despawn and login, against a stub mp: node tools/test-inventory-log.js
+// goldWatchSystem.ts drop lines and sampling, and the pack summary spawn.ts logs at logout, despawn and login, against a stub mp: node tools/test-inventory-log.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -92,6 +92,65 @@ const flush = () => { while (queued.length) queued.shift()() }
     assert.equal(refusing.svr.onDropItem(MORM, ORE, 1), false)
     flush()
     assert.equal(lines.length, count, 'a refused drop logs nothing')
+  }
+
+  {
+    const ANN = 0xff000001
+    const BO = 0xff000002
+    const gold = new Map([[ANN, 100], [BO, 100]])
+    const reads = []
+    const lines = []
+    const mp = {
+      get: (id, key) => {
+        if (key === 'onlinePlayers') return [ANN, BO]
+        if (key === 'inventory') { reads.push(id); return { entries: [{ baseId: 0xf, count: gold.get(id) }] } }
+        if (key === 'profileId') return 7
+        if (key === 'appearance') return { name: id === ANN ? 'Ann' : 'Bo' }
+        return null
+      },
+      getUserActor: (userId) => (userId === 1 ? BO : 0),
+      lookupEspmRecordById: () => null,
+    }
+    const gm = new EventEmitter()
+    const ctx = { svr: mp, gm }
+    const sys = new GoldWatchSystem((...a) => lines.push(a.join(' ')))
+    await sys.initAsync(ctx)
+    gm.emit('worldLoaded')
+
+    sys.poll(ctx)
+    assert.deepEqual(reads.splice(0), [ANN, BO], 'an actor without a baseline is sampled')
+    gold.set(ANN, 6200)
+    sys.poll(ctx)
+    sys.poll(ctx)
+    sys.poll(ctx)
+    assert.deepEqual(reads.splice(0), [], 'a sampled actor with no activity waits for the sweep')
+
+    assert.equal(mp.onActivate(0x1234, BO), true)
+    gold.set(BO, 6200)
+    sys.poll(ctx)
+    assert.deepEqual(reads.splice(0), [BO], 'an activation marks the caster')
+    assert.equal(lines.at(-1), 'GoldWatchSystem: Bo (profile 7) went from 100 to 6200 gold')
+
+    sys.poll(ctx)
+    assert.deepEqual(reads.splice(0), [ANN, BO], 'every sixth poll samples everyone')
+    assert.equal(lines.at(-1), 'GoldWatchSystem: Ann (profile 7) went from 100 to 6200 gold')
+
+    sys.customPacket(1, 'tradeAccept', {})
+    gold.set(BO, 6000)
+    sys.poll(ctx)
+    assert.deepEqual(reads.splice(0), [BO], 'a move packet marks the sender')
+    assert.equal(lines.at(-1), '[inv] Bo (ff000002, profile 7) gold 6200 -> 6000, 200 unexplained (interval: crafts 0, eats 0, puts 0, drops 0, takes 0, packets tradeAccept)')
+
+    assert.equal(mp.onTakeItem(ANN, BO, 0xf, 50), true)
+    gold.set(ANN, 6150)
+    gold.set(BO, 6050)
+    sys.poll(ctx)
+    assert.deepEqual(reads.splice(0), [ANN, BO], 'a take marks the taker and the source')
+    assert.equal(lines.at(-1), '[inv] Ann (ff000001, profile 7) gold 6200 -> 6150, 50 unexplained (interval: crafts 0, eats 0, puts 0, drops 0, takes 0)')
+
+    sys.disconnect(1)
+    sys.poll(ctx)
+    assert.deepEqual(reads.splice(0), [BO], 'a disconnect drops the baseline')
   }
 
   console.log('test-inventory-log: all checks passed')

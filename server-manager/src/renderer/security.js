@@ -4,7 +4,7 @@
 
 const ALERT_KINDS = [
   { type: 'banEvasion', label: 'Ban Evasions', hint: 'An IP address or HWID seen on more than one Discord account.' },
-  { type: 'goldSpawn', label: 'Gold Spawning', hint: 'A character gained more gold than goldAlertThreshold (default 5000) within 10 seconds: looting, a trade or a spawn.' },
+  { type: 'goldSpawn', label: 'Gold Spawning', hint: 'A character gained more gold than goldAlertThreshold (default 5000) between two samples, 10 to 60 seconds apart: looting, a trade or a spawn.' },
 ]
 let unread = {}
 let openKind = null
