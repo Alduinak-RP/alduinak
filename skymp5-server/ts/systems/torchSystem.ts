@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { chainMpHook, countItem, hex, notifyActor, recordTypeOf, takeItemFrom, unequipItemOf, userOf } from "./actorUtil";
 import { describeActor } from "./playerText";
-import { every } from "./timers";
+import { KeyedTimers, soon } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -11,15 +11,12 @@ type Mp = any;
 const DEFAULT_BURN_MINUTES = 15;
 // Milliseconds the character's torch has burned, kept across relogs until it burns out
 const BURN_PROP = "private.torchBurnMs";
-const POLL_MS = 5000;
-const SAVE_MS = 60000;
 
 interface Lit {
   userId: number;
   baseId: number;
   since: number;
   burnedMs: number;
-  savedAt: number;
 }
 
 export class TorchSystem implements System {
@@ -28,8 +25,11 @@ export class TorchSystem implements System {
 
   private limitMs = 0;
   private lit = new Map<number, Lit>();
-  // actorId -> burned milliseconds the next poll writes
+  // actorId -> the lit torch's burn-out
+  private burnOuts = new KeyedTimers<number>();
+  // actorId -> burned milliseconds the next save writes
   private unsaved = new Map<number, number>();
+  private saveQueued = false;
   private lightBases = new Map<number, boolean>();
 
   async initAsync(ctx: SystemContext): Promise<void> {
@@ -45,7 +45,8 @@ export class TorchSystem implements System {
     chainMpHook(mp, "onUpdateEquipmentAttempt", (actorId: number, equipment: unknown, isAllowed: boolean) => {
       this.onEquipment(mp, Number(actorId) >>> 0, equipment, isAllowed);
     });
-    every("torch", POLL_MS, () => this.poll(ctx));
+    // A switch to another character puts out the torch of the one left behind
+    ctx.gm.on("userAssignActor", (userId: number, actorId: number) => this.douseUser(mp, userId, actorId >>> 0));
     this.log(`[torch] a held torch burns out after ${minutes} min of use`);
   }
 
@@ -66,33 +67,19 @@ export class TorchSystem implements System {
   }
 
   disconnect(userId: number, ctx: SystemContext): void {
-    const now = Date.now();
-    for (const [actorId, lit] of Array.from(this.lit)) {
-      if (lit.userId === userId) this.douse(actorId, lit, now, "offline");
-    }
-    this.save(ctx.svr as Mp);
+    this.douseUser(ctx.svr as Mp, userId);
   }
 
-  poll(ctx: SystemContext): void {
-    const mp = ctx.svr as Mp;
+  // Every torch the user holds but the one on keepActorId
+  private douseUser(mp: Mp, userId: number, keepActorId = 0): void {
     const now = Date.now();
     for (const [actorId, lit] of Array.from(this.lit)) {
-      if (userOf(mp, actorId) !== lit.userId) {
-        this.douse(actorId, lit, now, "offline");
-        continue;
-      }
-      const burnedMs = lit.burnedMs + now - lit.since;
-      if (burnedMs >= this.limitMs) {
-        this.burnOut(mp, actorId, lit);
-      } else if (now - lit.savedAt >= SAVE_MS) {
-        lit.savedAt = now;
-        this.unsaved.set(actorId, burnedMs);
-      }
+      if (lit.userId === userId && actorId !== keepActorId) this.douse(actorId, lit, now, "offline");
     }
     this.save(mp);
   }
 
-  // Memory only, the poll writes; a refused report keeps the server's equipment
+  // Inside the native hook, so the write waits for the next turn; a refused report keeps the server's equipment
   private onEquipment(mp: Mp, actorId: number, equipment: unknown, isAllowed: boolean): void {
     let worn = equipment;
     if (!isAllowed) {
@@ -102,8 +89,10 @@ export class TorchSystem implements System {
     const lit = this.lit.get(actorId);
     const now = Date.now();
     if (lit && baseId) lit.baseId = baseId;
-    else if (lit) this.douse(actorId, lit, now, "unequipped");
-    else if (baseId) this.light(mp, actorId, baseId, now);
+    else if (lit) {
+      this.douse(actorId, lit, now, "unequipped");
+      this.saveSoon(mp);
+    } else if (baseId) this.light(mp, actorId, baseId, now);
   }
 
   // Base id of the light in hand, 0 when none; only carryable lights can be equipped
@@ -131,13 +120,15 @@ export class TorchSystem implements System {
     const userId = userOf(mp, actorId);
     if (userId < 0 || countItem(mp, actorId, baseId) <= 0) return;
     const burnedMs = this.unsaved.get(actorId) ?? this.stored(mp, actorId);
-    this.lit.set(actorId, { userId, baseId, since: now, burnedMs, savedAt: now });
+    this.lit.set(actorId, { userId, baseId, since: now, burnedMs });
+    this.burnOuts.set(actorId, now + this.limitMs - burnedMs, () => this.burnOut(mp, actorId));
     this.log(`[torch] ${hex(actorId)} lights ${hex(baseId)}, ${this.minutes(burnedMs)} burned`);
   }
 
   private douse(actorId: number, lit: Lit, now: number, why: string): void {
     const burnedMs = lit.burnedMs + now - lit.since;
     this.lit.delete(actorId);
+    this.burnOuts.clear(actorId);
     this.unsaved.set(actorId, burnedMs);
     this.log(`[torch] ${hex(actorId)} torch ${hex(lit.baseId)} ${why} at ${this.minutes(burnedMs)}`);
   }
@@ -147,8 +138,14 @@ export class TorchSystem implements System {
     return `${Math.round(ms / 6000) / 10} of ${this.limitMs / 60000} min`;
   }
 
-  // Unequipped too, since taking one of several copies would leave the hand lit
-  private burnOut(mp: Mp, actorId: number, lit: Lit): void {
+  // Unequipped too, since taking one of several copies would leave the hand lit; a body its user left is put out instead
+  private burnOut(mp: Mp, actorId: number): void {
+    const lit = this.lit.get(actorId);
+    if (!lit) return;
+    if (userOf(mp, actorId) !== lit.userId) {
+      this.goOffline(mp, actorId);
+      return;
+    }
     this.lit.delete(actorId);
     this.unsaved.set(actorId, 0);
     const held = countItem(mp, actorId, lit.baseId);
@@ -160,6 +157,7 @@ export class TorchSystem implements System {
     const taken = takeItemFrom(mp, actorId, lit.baseId, 1);
     notifyActor(mp, actorId, "Your torch burns out.");
     this.log(`[torch] ${hex(actorId)} ${describeActor(mp, actorId)}: torch ${hex(lit.baseId)} burned out after ${this.limitMs / 60000} min of use, ${taken ? `${held - 1} left` : "none in the inventory to take"}`);
+    this.save(mp);
   }
 
   private stored(mp: Mp, actorId: number): number {
@@ -180,5 +178,14 @@ export class TorchSystem implements System {
       }
     }
     this.unsaved.clear();
+  }
+
+  private saveSoon(mp: Mp): void {
+    if (this.saveQueued) return;
+    this.saveQueued = true;
+    soon(() => {
+      this.saveQueued = false;
+      this.save(mp);
+    });
   }
 }

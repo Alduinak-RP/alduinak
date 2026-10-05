@@ -1,6 +1,6 @@
 'use strict'
 
-// torchSystem.ts against a stub mp and a fake clock: lighting, putting out, relogs, character select, the burn-out and the 0 switch: node tools/test-torch.js
+// torchSystem.ts against a stub mp and a fake clock: lighting, putting out, relogs, character select and switch, the burn-out timer and the 0 switch: node tools/test-torch.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -28,7 +28,28 @@ const TYPES = { [TORCH]: 'LIGH', [DLC_TORCH]: 'LIGH', [SWORD]: 'WEAP' }
 
 let now = 1_000_000
 Date.now = () => now
-const minutes = (n) => { now += n * 60000 }
+
+// setTimeout on the fake clock, installed once the bundle is built; minutes() fires what falls due, in order
+const timers = new Set()
+const fakeTimers = () => {
+  global.setTimeout = (fn, ms = 0) => {
+    const t = { at: now + Math.max(0, Number(ms) || 0), fn, ref: () => t, unref: () => t }
+    timers.add(t)
+    return t
+  }
+  global.clearTimeout = (t) => { timers.delete(t) }
+}
+const minutes = (n) => {
+  const end = now + n * 60000
+  for (let due; (due = [...timers].filter((t) => t.at <= end).sort((a, b) => a.at - b.at)[0]);) {
+    timers.delete(due)
+    now = Math.max(now, due.at)
+    due.fn()
+  }
+  now = end
+}
+// Lets the work queued with soon() run
+const tick = () => new Promise((resolve) => setImmediate(resolve))
 
 function stubMp (user = 4) {
   const props = new Map([[ACTOR, { profileId: 7, inventory: { entries: [{ baseId: TORCH, count: 3 }, { baseId: SWORD, count: 1 }] } }], [OTHER, { profileId: 8, inventory: { entries: [] } }]])
@@ -68,8 +89,7 @@ async function setup (settings, s = stubMp()) {
   const ctx = { svr: s.mp, gm: new EventEmitter() }
   await sys.initAsync(ctx)
   const send = (eq, allowed = true) => s.mp.onUpdateEquipmentAttempt(ACTOR, eq, allowed)
-  const poll = () => sys.poll(ctx)
-  return { ...s, sys, ctx, lines, send, poll }
+  return { ...s, sys, ctx, lines, send }
 }
 
 const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).reduce((n, e) => n + e.count, 0)
@@ -79,6 +99,7 @@ const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).
   const compiled = new Module(source)
   compiled._compile(outputFiles[0].text, source)
   TorchSystem = compiled.exports.TorchSystem
+  fakeTimers()
 
   // 0 switches it off: no hook at all
   let t = await setup({ torchBurnMinutes: 0 })
@@ -95,17 +116,21 @@ const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).
   assert.deepEqual(seen, [ACTOR])
   assert.equal(t.lines.length, 1, 'no light, nothing logged')
 
-  // Lit, ten minutes, put away: saved by the next poll
+  // Lit, ten minutes, put away: nothing written while it burns or inside the equipment hook, the burn is saved on the next turn
   t.send(holding())
   assert.equal(t.lines[1], '[torch] ff000d66 lights 1d4ec, 0 of 15 min burned')
+  assert.equal(timers.size, 1, 'one burn-out timer')
   minutes(10)
-  await t.poll()
-  assert.equal(t.p['private.torchBurnMs'], 600000, 'the minute save while burning')
+  assert.equal(t.p['private.torchBurnMs'], undefined, 'no save while burning')
   t.send(holding())
   t.send(empty)
   assert.equal(t.lines[2], '[torch] ff000d66 torch 1d4ec unequipped at 10 of 15 min')
+  assert.equal(timers.size, 0, 'putting it out clears the timer')
+  assert.equal(t.p['private.torchBurnMs'], undefined, 'no write inside the equipment hook')
+  await tick()
+  assert.equal(t.p['private.torchBurnMs'], 600000)
   minutes(30)
-  await t.poll()
+  assert.equal(t.lines.length, 3)
   assert.equal(t.p['private.torchBurnMs'], 600000)
 
   // A restart reads the stored burn; a refused report reads the server's equipment
@@ -130,10 +155,8 @@ const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).
   assert.equal(t.lines[3], '[torch] ff000d66 lights 2015374, 12 of 15 min burned')
   t.send(holding())
   minutes(2.9)
-  await t.poll()
   assert.equal(t.papyrus.length, 0)
   minutes(0.1)
-  await t.poll()
   assert.deepEqual(t.papyrus, [['method', 'Actor', 'UnequipItem', { type: 'form', desc: 'ff000d66' }, [{ type: 'espm', desc: '1d4ec' }, false, true]]])
   assert.equal(torchCount(t.p), 2, 'one torch taken from the server inventory')
   assert.deepEqual(t.packets, [{ u: 5, customPacketType: 'notification', text: 'Your torch burns out.' }])
@@ -145,25 +168,28 @@ const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).
   t.send(holding())
   assert.equal(t.lines[5], '[torch] ff000d66 lights 1d4ec, 0 of 15 min burned')
 
-  // Switching character puts it out at the next poll
-  s.state.actorOfUser = OTHER
+  // Switching character puts it out at the assign
   minutes(1)
-  await t.poll()
+  s.state.actorOfUser = OTHER
+  t.ctx.gm.emit('userAssignActor', 5, OTHER)
   assert.equal(t.lines[6], '[torch] ff000d66 torch 1d4ec offline at 1 of 15 min')
   assert.equal(t.p['private.torchBurnMs'], 60000)
+  minutes(30)
+  assert.equal(t.lines.length, 7, 'the body left behind does not burn out')
   s.state.actorOfUser = ACTOR
 
   // Character select puts it out and saves at the request itself, the body still owned by the user, even when spawn's guard (a request within 10 s of the assign or 15 s of the last one) sends no park event
   const menuRequest = () => t.sys.customPacket(5, 'characterSelectMenuRequest', {}, t.ctx)
   t.send(holding())
   assert.equal(t.lines[7], '[torch] ff000d66 lights 1d4ec, 1 of 15 min burned')
+  t.ctx.gm.emit('userAssignActor', 5, ACTOR)
+  assert.equal(t.lines.length, 8, 'assigning the same body keeps it lit')
   minutes(1)
   t.sys.customPacket(5, 'chatMessage', {}, t.ctx)
   menuRequest()
   assert.equal(t.lines[8], '[torch] ff000d66 torch 1d4ec offline at 2 of 15 min')
   assert.equal(t.p['private.torchBurnMs'], 120000)
   minutes(30)
-  await t.poll()
   menuRequest()
   t.ctx.gm.emit('userMenuQuit', 5, ACTOR)
   assert.equal(t.lines.length, 9, 'nothing burning, nothing logged')
@@ -180,7 +206,6 @@ const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).
   t.p['private.torchBurnMs'] = 14.5 * 60000
   t.send(holding())
   minutes(0.5)
-  await t.poll()
   assert.equal(torchCount(t.p), 0)
   assert.match(t.lines[t.lines.length - 1], /burned out after 15 min of use, 0 left$/)
 
@@ -188,8 +213,16 @@ const torchCount = (p) => p.inventory.entries.filter((e) => e.baseId === TORCH).
   t = await setup({ torchBurnMinutes: 0.5 }, stubMp())
   t.send(holding())
   minutes(0.5)
-  await t.poll()
   assert.match(t.lines[t.lines.length - 1], /burned out after 0.5 min of use, 2 left$/)
+
+  // A body its user left unannounced is put out, not burned out, when its time comes
+  t.send(empty)
+  t.send(holding())
+  t.state.actorOfUser = OTHER
+  minutes(0.5)
+  assert.equal(t.lines[t.lines.length - 1], '[torch] ff000d66 torch 1d4ec offline at 0.5 of 0.5 min')
+  assert.equal(torchCount(t.p), 2)
+  assert.equal(t.p['private.torchBurnMs'], 30000)
 
   console.log('test-torch: all passed')
 })().catch((e) => { console.error(e); process.exit(1) })

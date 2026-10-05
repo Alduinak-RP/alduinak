@@ -274,11 +274,16 @@ allowed; `0` turns it off). `TorchSystem` counts on the server: any carryable
 light (`LIGH`) worn in the character's equipment reports is a lit torch, and
 the clock runs only while its player is connected and holds it (character
 select stops it at the menu request itself, also when the spawn guard skips the
-logout grace for a request within 10 s of the assign or 15 s of the last one).
-The burned time belongs to the character, not to one torch:
-it is saved in `private.torchBurnMs` once a minute, on unequip, on logout and
-at character select, carries over relogs and restarts, and starts again from 0
-after a burn-out. At the limit the server unequips the torch on the player's
+logout grace for a request within 10 s of the assign or 15 s of the last one;
+switching to another character stops it at the assign). Each lit torch has one
+timer, due when its burned time reaches the limit; nothing is checked or saved
+while it burns. The burned time belongs to the character, not to one torch:
+it is saved in `private.torchBurnMs` on unequip (on the next event loop turn,
+since the equipment hook runs inside the native call stack), on logout, at
+character select and switch and after a burn-out, carries over relogs and
+restarts, and starts again from 0 after a burn-out. A crash or a stop that
+skips the disconnect handlers forgets the burn since the torch was lit (at most
+`torchBurnMinutes`). At the limit the server unequips the torch on the player's
 client (Papyrus `Actor.UnequipItem`), takes one of that torch out of the
 inventory, shows "Your torch burns out." and logs
 `[torch] <actor> [profile <id>] "<name>": torch <base> burned out after 15 min of use, <n> left`.
