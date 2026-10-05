@@ -469,7 +469,8 @@ TEST_CASE("BarrelFood01 PutItem/TakeItem", "[PartOne][espm]")
   partOne.DestroyActor(0xff000000);
 }
 
-TEST_CASE("Server creates and destroys an object for user correcly",
+TEST_CASE("Server creates an object for user and sends no DestroyActor for "
+          "a non-door plugin ref",
           "[PartOne][espm]")
 {
   auto& partOne = GetPartOne();
@@ -489,8 +490,9 @@ TEST_CASE("Server creates and destroys an object for user correcly",
 
   auto& ref = partOne.worldState.GetFormAt<MpObjectReference>(refId);
 
+  // 0x01000f69 is a TREE, which the client keeps no form for
   auto res2 = FindRefrMessageIdx<DestroyActorMessage>(partOne, ref.GetIdx());
-  REQUIRE(res2.filteredMessages.size() == 1);
+  REQUIRE(res2.filteredMessages.empty());
 
   DoDisconnect(partOne, 0);
   partOne.DestroyActor(0xff000ABC);

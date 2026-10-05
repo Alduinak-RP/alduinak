@@ -970,6 +970,12 @@ void PartOne::Init()
       return;
     }
 
+    // The client keeps no form for a non-door plugin ref
+    if (emitter->IsEspmForm() && !emitter->AsActor() &&
+        emitter->GetBaseType() != "DOOR") {
+      return;
+    }
+
     auto listenerUserId = serverState.UserByActor(listenerAsActor);
     if (listenerUserId != Networking::InvalidUserId &&
         listenerUserId != serverState.disconnectingUserId) {
