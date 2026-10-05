@@ -63,10 +63,6 @@ export class MasterClient implements System {
     return (svr as any).get(0, "onlinePlayers").length;
   }
 
-  customPacket(): void {
-    return;
-  }
-
   private endpoint: string;
   private authToken = "";
   private playerSlots = 0;

@@ -16,7 +16,7 @@ sourceMapSupport.install({
 
 import * as scampNative from "./scampNative";
 import { Settings } from "./settings";
-import { System, WORLD_LOADED_EVENT } from "./systems/system";
+import { Content, System, WORLD_LOADED_EVENT } from "./systems/system";
 import { MasterClient } from "./systems/masterClient";
 import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
@@ -66,6 +66,7 @@ import { FactionSystem } from "./systems/factionSystem";
 import { JobSystem } from "./systems/jobSystem";
 import { trackConnections } from "./systems/actorUtil";
 import { trackOnline } from "./systems/onlineSnapshot";
+import { notePreLoginPacket, trackPreLogin } from "./systems/preLoginPackets";
 import { startPolls } from "./systems/timers";
 import { EventEmitter } from "events";
 import { pid } from "process";
@@ -412,6 +413,7 @@ const main = async () => {
   const ctx = { svr: server, gm: new EventEmitter() };
   trackConnections(server);
   trackOnline(ctx);
+  trackPreLogin(ctx);
 
   console.log(`Current process ID is ${pid}`);
 
@@ -460,10 +462,23 @@ const main = async () => {
     }
   });
 
-  server.on("customPacket", (userId: number, rawContent: string) => {
-    const content = JSON.parse(rawContent);
+  // The gamemode parses packets itself unless this is set
+  (globalThis as any).__alduinakTsRouter = true;
 
-    const type = `${content.customPacketType}`;
+  server.on("customPacket", (userId: number, rawContent: string) => {
+    let content: Content;
+    let type: string;
+    // Gamemode route key: customPacketType, or the chat packet's type
+    let route: string;
+    try {
+      content = JSON.parse(rawContent);
+      if (!content || typeof content !== "object" || Array.isArray(content)) return;
+      type = `${content.customPacketType}`;
+      route = content.customPacketType === undefined ? `${content.type}` : type;
+    } catch {
+      return;
+    }
+    notePreLoginPacket(userId, route);
     delete content.customPacketType;
 
     for (const system of systems) {
@@ -474,10 +489,15 @@ const main = async () => {
         console.error(e);
       }
     }
-  });
 
-  server.on("customPacket", (userId: number, content: string) => {
-    // At this moment we don't have any custom packets
+    const gamemodeRoute = (globalThis as any).__alduinakPacketRoutes?.get?.(route);
+    if (typeof gamemodeRoute === "function") {
+      try {
+        gamemodeRoute(userId, content);
+      } catch (e) {
+        console.error(e);
+      }
+    }
   });
 
   // It's important to call this before gamemode
