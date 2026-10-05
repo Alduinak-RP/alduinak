@@ -315,6 +315,17 @@ while an inventory, favourites, magic, container or crafting menu is open. The
 applies read the pack through one per-update memo (`getPlayerInventory` in
 `sync/inventory.ts`), so readers in the same update share one read.
 
+An `inventoryPatch` custom packet (`entries`) carries, for each item that
+changed, every server copy of it, matched by `sameItem` (the server's
+`SameItemAs`); a copy with count 0 only names an item now gone. The client puts
+those copies in place of its own copies of the item in the server's last full
+inventory (`patchInventory`) and handles the result as a SetInventory, so the
+spawn check, the crafted-extras check and the emote props see it the same way.
+The own CreateActor's inventory is a full one too. A patch with nothing to
+apply to (after a reconnect, before the first full inventory) is dropped with an
+`inventory patch dropped` line in the platform log. Only a server with the
+inventory patch setting on sends them.
+
 ---
 
 ## Engine crash guards

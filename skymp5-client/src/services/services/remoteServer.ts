@@ -24,7 +24,7 @@ import { nameof } from '../../lib/nameof';
 import { refreshMovement, setActorValuePercentage } from '../../sync/actorvalues';
 import { Appearance, applyAppearanceToPlayer } from '../../sync/appearance';
 import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '../../sync/equipment';
-import { Inventory, applyInventory, getDiff, getInventory, getPlayerInventory, isBoundItem, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
+import { Entry, Inventory, applyInventory, getDiff, getInventory, getPlayerInventory, isBoundItem, patchInventory, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { applyDurabilityNames } from '../../sync/durabilityNames';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
@@ -412,6 +412,7 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on("hostStartMessage", (e) => this.onHostStartMessage(e));
     this.controller.emitter.on("hostStopMessage", (e) => this.onHostStopMessage(e));
     this.controller.emitter.on("setInventoryMessage", (e) => this.onSetInventoryMessage(e));
+    onCustomPacket(this.controller, "inventoryPatch", (content) => this.onInventoryPatch(content));
     this.controller.emitter.on("openContainerMessage", (e) => this.onOpenContainerMessage(e));
     this.controller.emitter.on("updateMovementMessage", (e) => this.onUpdateMovementMessage(e));
     this.controller.emitter.on("updateAnimationMessage", (e) => this.onUpdateAnimationMessage(e));
@@ -569,6 +570,7 @@ export class RemoteServer extends ClientListener {
     this.numSetInventory++;
 
     const msg = event.message;
+    this.serverInventory = msg.inventory;
     once('update', () => {
       setPcInventory(msg.inventory);
 
@@ -579,6 +581,18 @@ export class RemoteServer extends ClientListener {
       });
       schedulePcInventoryApply(applyAt);
     });
+  }
+
+  // Rebuilds the full inventory the server would have sent, so every SetInventory listener gets it
+  private onInventoryPatch(content: CustomPacketContent): void {
+    const entries = content["entries"];
+    const valid = Array.isArray(entries) && entries.every((e) => typeof e?.baseId === "number" && typeof e.count === "number");
+    if (!valid || !this.serverInventory) {
+      logToPlatformLog(this, `inventory patch dropped: ${valid ? "no full inventory to patch" : "bad entries"}`);
+      return;
+    }
+    const inventory = patchInventory(this.serverInventory, entries as Entry[]);
+    this.controller.emitter.emit("setInventoryMessage", { message: { t: MsgType.SetInventory, inventory } });
   }
 
   // Mirror the server's removal so an apply before its SetInventory arrives can't re-add the item
@@ -989,6 +1003,7 @@ export class RemoteServer extends ClientListener {
       };
       // The previous character's pack is never applied to this one before its own arrives
       setPcInventory(undefined);
+      this.serverInventory = msg.props?.inventory;
       spawnEquipment = undefined;
       spawnTopUp = "none";
     }
@@ -1478,6 +1493,7 @@ export class RemoteServer extends ClientListener {
     this.worldModel.playerCharacterRefrId = 0;
     this.playerTeleport = undefined;
     this.resyncing = false;
+    this.serverInventory = undefined;
     // Views are indexed by these ids, so a new id must never reach an old view
     storage['idManager'] = new IdManager();
     getViewFromStorage()?.resetFormViews();
@@ -2164,6 +2180,8 @@ export class RemoteServer extends ClientListener {
   private ownAppearanceHeld = false;
   private heldOwnAppearance: Appearance | undefined = undefined;
   private numSetInventory = 0;
+  // The server's last full inventory at packet time, which its patches apply to (pcInv lags a frame); a hot reload starts from pcInv
+  private serverInventory = getPcInventory();
   private playerTeleport?: PlayerTeleport;
   private resyncing = false;
   private raceMenuSeen = false;

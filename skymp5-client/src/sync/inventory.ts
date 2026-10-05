@@ -424,6 +424,24 @@ export const removeSimpleItemsAsManyAsPossible = (
   return res;
 };
 
+// Each item the patch names (sameItem) takes the patch's copies in place of its own; a count of 0 only marks an item gone
+export const patchInventory = (inv: Inventory, patch: Entry[]): Inventory => {
+  const entries = new Array<Entry>();
+  const placed = new Set<Entry>();
+  const place = (p: Entry) => {
+    if (placed.has(p)) return;
+    placed.add(p);
+    if (p.count > 0) entries.push(p);
+  };
+  inv.entries.forEach((e) => {
+    const copies = patch.filter((p) => sameItem(p, e));
+    if (copies.length) copies.forEach(place);
+    else entries.push(e);
+  });
+  patch.forEach(place);
+  return { entries };
+};
+
 // Base ids the server refused a craft for; the player's next apply drops their unrecorded local extras
 const revertBaseIds = new Set<number>();
 
