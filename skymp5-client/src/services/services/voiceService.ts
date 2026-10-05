@@ -3,6 +3,8 @@ import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customP
 import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode, domKeyCode, readClientSettingNumber, readClientSettingString, isUiHidden } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
 import { RemoteServer } from "./remoteServer";
+import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
+import { PlayerCharacterDataHolder } from "../../view/playerCharacterDataHolder";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logToPlatformLog, logTrace } from "../../logging";
 
@@ -382,9 +384,10 @@ export class VoiceService extends ClientListener {
   private pushPeers() {
     const worldModel = this.controller.lookupListener(RemoteServer).getWorldModel();
     if (!worldModel || !Array.isArray(worldModel.forms)) return;
-    const me = worldModel.forms[worldModel.playerCharacterFormIdx];
-    const myMovement = me?.movement;
-    if (!myMovement || !Array.isArray(myMovement.pos)) return;
+    const player = this.sp.Game.getPlayer();
+    const myWorldOrCell = PlayerCharacterDataHolder.getWorldOrCell();
+    if (!player || !myWorldOrCell) return;
+    const myPos = ObjectReferenceEx.getPos(player);
 
     // Speakers pick their own mode, so feed distances out to the loudest mode: a shouter at 3000 units must still be audible
     const maxUnits = this.modes.reduce((a, m) => Math.max(a, m.units), 0) || 3150;
@@ -395,11 +398,8 @@ export class VoiceService extends ClientListener {
       const form = worldModel.forms[i];
       if (!form || typeof form.refrId !== "number" || form.refrId < PLAYER_ID_SPACE) continue;
       if (!form.appearance || !form.movement || !Array.isArray(form.movement.pos)) continue;
-      if (form.movement.worldOrCell !== myMovement.worldOrCell) continue;
-      const dx = form.movement.pos[0] - myMovement.pos[0];
-      const dy = form.movement.pos[1] - myMovement.pos[1];
-      const dz = form.movement.pos[2] - myMovement.pos[2];
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (form.movement.worldOrCell !== myWorldOrCell) continue;
+      const dist = ObjectReferenceEx.getDistance(form.movement.pos, myPos);
       if (dist <= includeWithin) peers[form.refrId.toString(16)] = Math.round(dist);
     }
     this.sp.browser.executeJavaScript(

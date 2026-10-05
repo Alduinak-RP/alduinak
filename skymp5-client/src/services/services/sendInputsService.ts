@@ -22,7 +22,7 @@ import { RemoteDamageGuardService } from "./remoteDamageGuardService";
 import { UpdateAnimationMessage } from "../messages/updateAnimationMessage";
 import { UpdateEquipmentMessage } from "../messages/updateEquipmentMessage";
 import { UpdateAppearanceMessage } from "../messages/updateAppearanceMessage";
-import { RemoteServer, settleSpawnEquipment } from "./remoteServer";
+import { RemoteServer, setFormMovement, settleSpawnEquipment } from "./remoteServer";
 import { DeathService } from "./deathService";
 import { RestraintService } from "./restraintService";
 import { MountService } from "./mountService";
@@ -153,7 +153,7 @@ export class SendInputsService extends ClientListener {
         const playerForm = world.forms[world.playerCharacterFormIdx];
         this.sendMovement(0, playerForm, () => player, playerAnimationSource);
         this.sendAnimation(playerAnimationSource);
-        this.sendEquipment(player);
+        this.sendEquipment(player, playerForm);
         this.sendActorValuePercentage(player, playerForm);
 
         // A hosted actor resolves through the id maps, and natively only when its movement probe is due
@@ -175,7 +175,7 @@ export class SendInputsService extends ClientListener {
     // A cheap probe every 130 ms; the full report is built only when the probe finds it due
     private sendMovement(remoteId: number, form: FormModel | undefined, getOwner: () => Actor | null, source: AnimationSource) {
         const idx = form?.idx;
-        if (idx === undefined) {
+        if (!form || idx === undefined) {
             return;
         }
         const now = Date.now();
@@ -219,6 +219,8 @@ export class SendInputsService extends ClientListener {
             message,
             reliability: "unreliable"
         });
+        // The own model holds each report itself, so the relay need not echo it to the sender
+        setFormMovement(form, message.data);
     }
 
     // A held pose or a saddle owns the player's locomotion, observers must not replay it on the clone
@@ -344,7 +346,7 @@ export class SendInputsService extends ClientListener {
         });
     }
 
-    private sendEquipment(player: Actor) {
+    private sendEquipment(player: Actor, form?: FormModel) {
         // A report waits out the spawn outfit apply, and one follows it even when no equip event fires
         if (settleSpawnEquipment(player)) {
             this.equipmentChanged = true;
@@ -387,6 +389,9 @@ export class SendInputsService extends ClientListener {
                 message,
                 reliability: "reliable"
             });
+            if (form) {
+                form.equipment = eq;
+            }
         }
     }
 

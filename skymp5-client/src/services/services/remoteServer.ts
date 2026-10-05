@@ -398,6 +398,12 @@ const unequipDefaultOutfit = () => {
   Game.getPlayer()?.unequipAll();
 };
 
+// The server's relay and the client's own reports both write here; FormView applies on a new count
+export const setFormMovement = (form: FormModel, movement: Movement): void => {
+  form.movement = movement;
+  form.numMovementChanges = (form.numMovementChanges || 0) + 1;
+};
+
 export class RemoteServer extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
@@ -1284,11 +1290,7 @@ export class RemoteServer extends ClientListener {
       return;
     }
 
-    form.movement = msg.data;
-    if (!form.numMovementChanges) {
-      form.numMovementChanges = 0;
-    }
-    form.numMovementChanges++;
+    setFormMovement(form, msg.data);
   }
 
   private onUpdateAnimationMessage(event: ConnectionMessage<UpdateAnimationMessage>): void {
