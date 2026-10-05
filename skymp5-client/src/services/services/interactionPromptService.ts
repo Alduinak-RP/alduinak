@@ -11,6 +11,7 @@ import { MountService } from "./mountService";
 import { JobService } from "./jobService";
 import { NAILED_PROP } from "./itemService";
 import { formProp } from "../../view/worldViewMisc";
+import { PlayerCharacterDataHolder } from "../../view/playerCharacterDataHolder";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -53,7 +54,8 @@ let prompt: Prompt = { verb: "", label: "" };
  * Replaces the vanilla activate rollover text with a CEF prompt the server
  * side of the game can phrase however it likes; the vanilla key glyph stays.
  * The rollover text is faded out via the HUD movie's GFx members every frame
- * (skyrim-platform's own cursor-hide technique); the custom prompt follows
+ * while the crosshair has a target, the only time it shows (skyrim-platform's
+ * own cursor-hide technique); the custom prompt follows
  * crosshairRefChanged. The bounty board reads "Read Notice Board", player
  * characters read "Interact" with introduction- and mask-aware names (and
  * get their engine activation blocked so the interaction menu owns the key),
@@ -83,7 +85,7 @@ export class InteractionPromptService extends ClientListener {
   private onUpdate(): void {
     // A throw here would abort the shared event dispatch chain.
     try {
-      this.hideVanillaRollover();
+      if (PlayerCharacterDataHolder.getCrosshairRefId()) this.hideVanillaRollover();
       const focused = this.sp.browser.isFocused();
       if (focused !== this.browserFocused) {
         this.browserFocused = focused;
@@ -109,6 +111,7 @@ export class InteractionPromptService extends ClientListener {
 
   private onCrosshairRefChanged(e: CrosshairRefChangedEvent): void {
     try {
+      if (e.reference) this.hideVanillaRollover();
       if (this.browserFocused) return;
       this.apply(e.reference || null);
     } catch (e) {

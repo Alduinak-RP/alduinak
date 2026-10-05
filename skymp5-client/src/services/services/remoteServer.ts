@@ -2052,6 +2052,9 @@ export class RemoteServer extends ClientListener {
   }
 
   private sweepCloneCasts(): void {
+    if (!this.cloneCastWatch.size && !this.cloneCastStoppedAt.size) {
+      return;
+    }
     const now = Date.now();
     if (now - this.lastCloneCastSweep < 250) {
       return;

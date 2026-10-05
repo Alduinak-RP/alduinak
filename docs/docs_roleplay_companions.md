@@ -76,7 +76,7 @@ companionSystem.spawn(ownerActorId, petBaseId, { kind: "companion", persistent: 
 
 The 5 minutes for reanimated bodies and ash piles follow the optional `npcCorpseSeconds` setting (default 300), the same one zone NPC corpses use.
 
-**Command limit:** the vanilla limit is one commanded actor per player, two with the Twin Souls perk (0xD5F1C), which the client reports. The newest one replaces the oldest.
+**Command limit:** the vanilla limit is one commanded actor per player, two with the Twin Souls perk (0xD5F1C), which the client reports at each spawn and load and when the Skills menu closes (while held, or once when it is lost). The newest one replaces the oldest.
 
 Commanded companions (`summon`, `reanimated`) also end when the owner dies.
 

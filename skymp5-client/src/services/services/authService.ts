@@ -717,7 +717,9 @@ export class AuthService extends ClientListener {
 
       const dot = slowCounter % 3 === 0 ? '.' : slowCounter % 3 === 1 ? '..' : '...';
 
-      browserState.comment = strings.connecting + dot;
+      const comment = strings.connecting + dot;
+      if (comment === browserState.comment) return;
+      browserState.comment = comment;
       this.refreshWidgets();
     }
   }

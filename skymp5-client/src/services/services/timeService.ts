@@ -13,7 +13,7 @@ const GAME_DAY = 0x37;
 const GAME_HOUR = 0x38;
 const GAME_DAYS_PASSED = 0x39;
 const TIME_SCALE = 0x3a;
-const SYNC_MS = 2000;
+const SYNC_MS = 10000;
 const DAY_MS = 86400000;
 const DEFAULT_YEAR = 210;
 // About five real seconds
@@ -21,12 +21,21 @@ const MAX_DRIFT_HOURS = 5 / 3600;
 const MAX_DRIFT_DAYS = MAX_DRIFT_HOURS / 24;
 // 1 Jan 1970 was a Thursday, so this counts days from a Sunday midnight (the engine's Sundas is weekday 0)
 const SUNDAY_OFFSET_DAYS = 4;
-// About 30 s of passes
-const DAYS_PASSED_SAMPLES = 15;
+// About a minute of passes
+const DAYS_PASSED_SAMPLES = 6;
 // A smaller offset sample is queueing delay unless it is this far off (the player changed their PC clock)
 const CLOCK_JUMP_MS = 30000;
 
 type CalendarApi = { setRawDaysPassed?: (days: number) => number };
+
+interface TimeGlobals {
+  year: GlobalVariable;
+  month: GlobalVariable;
+  day: GlobalVariable;
+  hour: GlobalVariable;
+  daysPassed: GlobalVariable;
+  timeScale: GlobalVariable;
+}
 
 interface ServerClock {
   offsetMs: number;
@@ -75,6 +84,7 @@ export class TimeService extends ClientListener {
 
   // The template save carries its own calendar, so the first pass after a load replaces all of it
   private onLoadGame(): void {
+    this.globals = undefined;
     this.weeks = undefined;
     this.samples = [];
     this.nextSyncAt = 0;
@@ -88,10 +98,17 @@ export class TimeService extends ClientListener {
     this.sync();
   }
 
-  private sync(): void {
+  private resolveGlobals(): TimeGlobals | undefined {
     const global = (id: number) => this.sp.GlobalVariable.from(this.sp.Game.getFormEx(id));
     const [year, month, day, hour, daysPassed, timeScale] = [GAME_YEAR, GAME_MONTH, GAME_DAY, GAME_HOUR, GAME_DAYS_PASSED, TIME_SCALE].map(global);
-    if (!year || !month || !day || !hour || !daysPassed || !timeScale) return;
+    if (!year || !month || !day || !hour || !daysPassed || !timeScale) return undefined;
+    return { year, month, day, hour, daysPassed, timeScale };
+  }
+
+  private sync(): void {
+    this.globals = this.globals ?? this.resolveGlobals();
+    if (!this.globals) return;
+    const { year, month, day, hour, daysPassed, timeScale } = this.globals;
 
     const { newGameHourValue, date } = this.getTime();
     if (timeScale.getValue() !== this.clock.timeScale) timeScale.setValue(this.clock.timeScale);
@@ -112,7 +129,7 @@ export class TimeService extends ClientListener {
     if (this.weeks === undefined) this.weeks = Math.floor((days - current) / 7);
     const target = days - 7 * this.weeks;
     if (this.samples && this.samples.push(`${current.toFixed(5)}/${target.toFixed(5)}`) >= DAYS_PASSED_SAMPLES) {
-      logToPlatformLog(this, `GameDaysPassed value/target every 2 s after the load: ${this.samples.join(" ")}`);
+      logToPlatformLog(this, `GameDaysPassed value/target every ${SYNC_MS / 1000} s after the load: ${this.samples.join(" ")}`);
       this.samples = undefined;
     }
     // Both ways, so training, jail or the DST fall back never leave it ahead
@@ -126,6 +143,8 @@ export class TimeService extends ClientListener {
   private clock: ServerClock = { offsetMs: 0, tzOffsetMin: new Date().getTimezoneOffset(), year: DEFAULT_YEAR, timeScale: 1 };
   private hasServerClock = false;
   private nextSyncAt = 0;
+  // Resolved once per load
+  private globals: TimeGlobals | undefined;
   private weeks: number | undefined;
   // Diagnostic: the first passes after a load, logged once so the engine's handling of GameDaysPassed can be checked in game
   private samples: string[] | undefined;

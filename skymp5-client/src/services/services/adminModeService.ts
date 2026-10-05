@@ -1,3 +1,4 @@
+import { CameraStateChangedEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { showSystemNotification } from "./systemNotification";
@@ -33,6 +34,8 @@ export class AdminModeService extends ClientListener {
     onCustomPacket(this.controller, "adminMode", (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("applyDeathStateEvent", (e) => this.onApplyDeathState(e));
     this.controller.on("update", () => this.onUpdate());
+    this.controller.on("cameraStateChanged", (e) => this.onCameraStateChanged(e));
+    this.controller.on("loadGame", () => this.armFreecamCheck(FREECAM_CHECK_MS));
     this.controller.emitter.on("connectionAccepted", () => this.controller.once("update", () => this.resetLocalModes()));
     this.controller.emitter.on("connectionDisconnect", () => this.controller.once("update", () => {
       for (const mode of ["speed", "freecam"]) this.apply(mode, false, false);
@@ -122,11 +125,28 @@ export class AdminModeService extends ClientListener {
     const api = this.sp as Sp & FreeCameraApi;
     const hasNative = typeof api.setFreeCameraMode === "function";
     const active = !!api.setFreeCameraMode?.(on);
-    this.freecamCheckAt = Date.now() + FREECAM_CHECK_MS;
+    this.armFreecamCheck(FREECAM_CHECK_MS);
     if (on && !active) this.reportFreecamOff();
     if (!notify) return;
     showSystemNotification(this.sp, active ? "Freecam: movement keys fly the camera, your character stays put; turn it off in Modes"
       : !on ? "Freecam off" : hasNative ? "Freecam could not start here" : "Freecam needs the updated SkyrimPlatform native build");
+  }
+
+  private onCameraStateChanged(e: CameraStateChangedEvent): void {
+    if (e.newStateId !== FREE_CAMERA_STATE) this.armFreecamCheck(0);
+  }
+
+  // A check already waiting out a toggle's grace keeps its time
+  private armFreecamCheck(delayMs: number): void {
+    if (this.localModes.has("freecam")) this.freecamCheckAt = Math.max(this.freecamCheckAt, Date.now() + delayMs);
+  }
+
+  // Pausing menus such as Tween may swap the camera state, so only a running game counts
+  private checkFreecam(now: number): void {
+    this.freecamCheckAt = 0;
+    if (!this.localModes.has("freecam")) return;
+    if (this.sp.Utility.isInMenuMode()) this.freecamCheckAt = now + FREECAM_CHECK_MS;
+    else if (!isFreeCamera(this.sp)) this.reportFreecamOff();
   }
 
   // The server records the camera's real state, so Modes and the next toggle follow it
@@ -162,11 +182,7 @@ export class AdminModeService extends ClientListener {
       if (this.ghost && player) setAdminGhostShader(player, true);
     }
     if ((this.invisible || this.ghost) && now - this.lastLookApply >= LOOK_REAPPLY_MS) this.applyAlpha(false);
-    if (this.localModes.has("freecam") && now >= this.freecamCheckAt) {
-      this.freecamCheckAt = now + FREECAM_CHECK_MS;
-      // Pausing menus such as Tween may swap the camera state, so only a running game counts
-      if (!this.sp.Utility.isInMenuMode() && !isFreeCamera(this.sp)) this.reportFreecamOff();
-    }
+    if (this.freecamCheckAt > 0 && now >= this.freecamCheckAt) this.checkFreecam(now);
   }
 
   private collisionsDisabled = false;

@@ -1,4 +1,4 @@
-import { Actor, HitEvent, storage } from "skyrimPlatform";
+import { Actor, HitEvent, Menu, storage } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { WorldCleanerService } from "./worldCleanerService";
@@ -53,13 +53,20 @@ export class CompanionService extends ClientListener {
     this.controller.emitter.on("connectionAccepted", () => this.onConnectionAccepted());
     this.controller.on("hit", (e) => this.onHit(e));
     this.controller.on("update", () => this.onUpdate());
+    // A spawn may come with a load, which replaces the perks, and perks are taken in the stats menu
+    this.controller.emitter.on("createActorMessage", (e) => {
+      if (e.message.isMe) this.perkCheckPending = true;
+    });
+    this.controller.on("loadGame", () => { this.perkCheckPending = true; });
+    this.controller.on("menuClose", (e) => {
+      if (e.name === Menu.Stats) this.perkCheckPending = true;
+    });
   }
 
   private onConnectionAccepted(): void {
     this.allyTargets = new Map();
     this.setCompanions([]);
     this.sentTwinSouls = false;
-    this.lastPerkCheckMs = 0;
   }
 
   private onCustomPacketMessage(content: CustomPacketContent): void {
@@ -171,8 +178,11 @@ export class CompanionService extends ClientListener {
   }
 
   private onUpdate(): void {
+    if (this.perkCheckPending) {
+      this.perkCheckPending = false;
+      this.reportPerks();
+    }
     const now = Date.now();
-    this.reportPerks(now);
     if ((!this.companions.length && !this.extraFollowers.length) || now - this.lastApplyMs < CompanionService.applyIntervalMs) {
       return;
     }
@@ -290,12 +300,8 @@ export class CompanionService extends ClientListener {
     state.following = false;
   }
 
-  // Twin Souls raises the summon limit to two; the server only keeps the flag for a character in game, so it is repeated while true
-  private reportPerks(now: number): void {
-    if (now - this.lastPerkCheckMs < CompanionService.perkCheckMs) {
-      return;
-    }
-    this.lastPerkCheckMs = now;
+  // Twin Souls raises the summon limit to two; the server only keeps the flag for a character in game, so every spawn repeats it while true
+  private reportPerks(): void {
     const player = this.sp.Game.getPlayer();
     const perk = this.sp.Perk.from(this.sp.Game.getFormEx(TWIN_SOULS_PERK));
     const twinSouls = !!player && !!perk && player.hasPerk(perk);
@@ -313,13 +319,12 @@ export class CompanionService extends ClientListener {
   private lastApplyMs = 0;
   private lastOrderTarget = 0;
   private lastOrderMs = 0;
-  private lastPerkCheckMs = 0;
+  private perkCheckPending = false;
   private sentTwinSouls = false;
 
   private static readonly applyIntervalMs = 250;
   private static readonly orderRepeatMs = 2000;
   private static readonly cleanerBurstMs = 3000;
-  private static readonly perkCheckMs = 10000;
   private static readonly followOffsetY = -128;
   // Farther than catchUpRadius it runs to the owner; nearer it walks, so a large value left it standing or plodding
   private static readonly catchUpRadius = 256;
