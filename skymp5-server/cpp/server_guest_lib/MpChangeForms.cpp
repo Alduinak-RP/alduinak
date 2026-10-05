@@ -260,8 +260,7 @@ MpChangeForm MpChangeForm::JsonToChangeForm(simdjson::dom::element& element)
 
   simdjson::dom::element jDynamicFields;
   ReadEx(element, dynamicFields, &jDynamicFields);
-  res.dynamicFields = DynamicFields::FromJson(nlohmann::json::parse(
-    static_cast<std::string>(simdjson::minify(jDynamicFields))));
+  res.dynamicFields = DynamicFields::FromJson(jDynamicFields);
 
   ReadEx(element, spawnPointPos, &jTmp);
   for (int i = 0; i < 3; ++i) {

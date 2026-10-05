@@ -1,11 +1,8 @@
 #include "DynamicFields.h"
 
-#include <unordered_map>
-
 void DynamicFields::SetValueDump(const std::string& propName,
                                  const std::string& valueDump)
 {
-  jsonCache.reset();
   propDumps[propName] = valueDump;
 }
 
@@ -22,32 +19,22 @@ const std::string& DynamicFields::GetValueDump(
   return it->second;
 }
 
-const nlohmann::json& DynamicFields::GetAsJson() const
+nlohmann::json DynamicFields::GetAsJson() const
 {
-  if (!jsonCache.has_value()) {
-
-    auto obj = nlohmann::json::object();
-
-    for (auto& [key, valueDump] : propDumps) {
-      obj[key] = nlohmann::json::parse(valueDump);
-    }
-
-    jsonCache = std::move(obj);
+  auto obj = nlohmann::json::object();
+  for (const auto& [key, valueDump] : propDumps) {
+    obj[key] = nlohmann::json::parse(valueDump);
   }
-
-  return *jsonCache;
+  return obj;
 }
 
-DynamicFields DynamicFields::FromJson(const nlohmann::json& j)
+// simdjson prints scalars like nlohmann's dump; objects keep the stored key order
+DynamicFields DynamicFields::FromJson(const simdjson::dom::element& element)
 {
   DynamicFields res;
-
-  res.jsonCache = j;
-
-  for (auto it = j.begin(); it != j.end(); ++it) {
-    res.propDumps[it.key()] = it.value().dump();
+  for (auto [key, value] : element.get_object()) {
+    res.propDumps[std::string(key)] = simdjson::minify(value);
   }
-
   return res;
 }
 
