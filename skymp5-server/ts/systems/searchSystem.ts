@@ -3,7 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { isNamedItemBase } from "./inventoryExtras";
 import { isBound, isRestrained } from "./captureSystem";
-import { baseIdOf, isAlive, isBleedingOut, isPlayerActor, nameShownTo } from "./actorUtil";
+import { baseIdOf, guardMpHook, isAlive, isBleedingOut, isPlayerActor, nameShownTo } from "./actorUtil";
 import { fieldData, view } from "./espmMagic";
 import { HostingSystem } from "./hostingSystem";
 import { SettleWear, wearSettler } from "./durabilityNative";
@@ -145,9 +145,7 @@ export class SearchSystem implements System {
 
   // Chains mp.onTakeItem like the other systems' activation hooks; a refused take never leaves the body
   private installTakeHook(ctx: SystemContext): void {
-    const mp = ctx.svr as Mp;
-    const previous = typeof mp.onTakeItem === "function" ? mp.onTakeItem : null;
-    mp.onTakeItem = (sourceId: number, actorId: number, baseId: number, count: number): boolean => {
+    guardMpHook(ctx.svr as Mp, "onTakeItem", (sourceId: number, actorId: number, baseId: number, count: number) => {
       if (this.stuck(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0) || this.goneFromBody(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0, count)) {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
@@ -158,18 +156,13 @@ export class SearchSystem implements System {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
-      let allowed = true;
-      if (previous) {
-        try { allowed = previous.call(mp, sourceId, actorId, baseId, count) !== false; } catch { /* keep allowed */ }
-      }
-      if (allowed && taken) {
-        this.recordTake(ctx, sourceId >>> 0, actorId >>> 0, taken, baseId >>> 0, count);
-      }
-      if (allowed && !this.watchNamedMove(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0, count, true)) {
-        this.log(`[take] ${(actorId >>> 0).toString(16)} takes ${(baseId >>> 0).toString(16)} x${count} from ${(sourceId >>> 0).toString(16)}`);
-      }
-      return allowed;
-    };
+      return () => {
+        if (taken) this.recordTake(ctx, sourceId >>> 0, actorId >>> 0, taken, baseId >>> 0, count);
+        if (!this.watchNamedMove(ctx, sourceId >>> 0, actorId >>> 0, baseId >>> 0, count, true)) {
+          this.log(`[take] ${(actorId >>> 0).toString(16)} takes ${(baseId >>> 0).toString(16)} x${count} from ${(sourceId >>> 0).toString(16)}`);
+        }
+      };
+    });
   }
 
   // The native side finds a PK body's key or writing by its name alone, so a move whose client sent none fails there; the mover's pack is resynced either way
@@ -190,21 +183,14 @@ export class SearchSystem implements System {
 
   // The same gate on the way in, so what a searcher may not take back never reaches the target
   private installPutHook(ctx: SystemContext): void {
-    const mp = ctx.svr as Mp;
-    const previous = typeof mp.onPutItem === "function" ? mp.onPutItem : null;
-    mp.onPutItem = (targetId: number, actorId: number, baseId: number, count: number): boolean => {
+    guardMpHook(ctx.svr as Mp, "onPutItem", (targetId: number, actorId: number, baseId: number, count: number) => {
       this.log(`[put] ${(actorId >>> 0).toString(16)} puts ${(baseId >>> 0).toString(16)} x${count} into ${(targetId >>> 0).toString(16)}`);
       if (this.stuck(ctx, targetId >>> 0, actorId >>> 0, baseId >>> 0)) {
         this.resyncInventory(ctx, actorId >>> 0);
         return false;
       }
-      let allowed = true;
-      if (previous) {
-        try { allowed = previous.call(mp, targetId, actorId, baseId, count) !== false; } catch { /* keep allowed */ }
-      }
-      if (allowed) this.watchNamedMove(ctx, targetId >>> 0, actorId >>> 0, baseId >>> 0, count, false);
-      return allowed;
-    };
+      return () => { this.watchNamedMove(ctx, targetId >>> 0, actorId >>> 0, baseId >>> 0, count, false); };
+    });
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {

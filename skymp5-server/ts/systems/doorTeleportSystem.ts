@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, formIdFromConfig } from "./formIdUtil";
-import { hex, isDoorRef, userOf } from "./actorUtil";
+import { chainMpHook, hex, isDoorRef, userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -149,14 +149,7 @@ export class DoorTeleportSystem implements System {
   }
 
   private installActivationHook(ctx: SystemContext): void {
-    const mp = ctx.svr as Mp;
-    const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
-      let allowed = true;
-      if (previous) {
-        try { allowed = previous.call(mp, targetId, casterId) !== false; } catch { allowed = true; }
-      }
-      if (!allowed) return false;
+    chainMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => {
       let handled = false;
       try {
         handled = this.onActivate(ctx, targetId >>> 0, casterId >>> 0);
@@ -165,7 +158,7 @@ export class DoorTeleportSystem implements System {
       }
       // The move replaces the door's own teleport, so the native path must not run as well
       return !handled;
-    };
+    });
   }
 
   // True once the override has taken the activation over, move or no move

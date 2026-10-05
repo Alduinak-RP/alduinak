@@ -1,5 +1,5 @@
 import { Settings } from "../settings";
-import { chainMpHook, hex, isAlive, isBleedingOut, recordTypeOf, userOf, weaponAnimType } from "./actorUtil";
+import { chainMpHook, guardMpHook, hex, isAlive, isBleedingOut, recordTypeOf, userOf, weaponAnimType } from "./actorUtil";
 import {
   DurabilityTags, DurableCopy, RepairSettings, SettleWear, conditionTagPattern, durabilityTags, durableCopies, hasDurableCopies, hasSettleWear,
   nativeDurabilityOn, repairSettings, wearSettler,
@@ -277,19 +277,13 @@ export class DurabilitySystem implements System {
 
   // The repair menu takes the activation of a bench from a player carrying damaged gear of its kind, before the checks of the vanilla bench
   private installActivationHook(ctx: SystemContext): void {
-    const mp = ctx.svr as Mp;
-    const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
-      let taken = false;
+    guardMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => {
       try {
-        taken = this.onActivate(ctx, targetId >>> 0, casterId >>> 0);
+        if (this.onActivate(ctx, targetId >>> 0, casterId >>> 0)) return false;
       } catch (e) {
         this.log(`[durability] activation check failed: ${e}`);
       }
-      if (taken) return false;
-      if (!previous) return true;
-      return previous.call(mp, targetId, casterId) !== false;
-    };
+    });
   }
 
   private onActivate(ctx: SystemContext, targetId: number, casterId: number): boolean {

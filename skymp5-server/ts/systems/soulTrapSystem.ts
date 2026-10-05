@@ -1,6 +1,6 @@
 import { System, Log, SystemContext } from "./system";
 import { espmFieldFormIds, readFormIdField } from "./formIdUtil";
-import { hex, notifyActor } from "./actorUtil";
+import { guardMpHook, hex, notifyActor } from "./actorUtil";
 import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
 import { every } from "./timers";
@@ -79,17 +79,14 @@ export class SoulTrapSystem implements System {
   ) { }
 
   async initAsync(ctx: SystemContext): Promise<void> {
-    const mp = ctx.svr as Mp;
-    const previousHit = typeof mp[HIT_EVENT] === "function" ? mp[HIT_EVENT] : null;
-    mp[HIT_EVENT] = (...args: unknown[]) => {
+    guardMpHook(ctx.svr as Mp, HIT_EVENT, (...args: unknown[]) => {
       try {
         // A blocked hit (abHitBlocked) applies no soul trap
         if (args[7] !== true) this.onHit(ctx, Number(args[0]) >>> 0, args[1], args[2]);
       } catch (e) {
         this.log(`[soultrap] hit check failed: ${e}`);
       }
-      return previousHit ? previousHit.apply(mp, args) : undefined;
-    };
+    });
     every("soulTrap", DEATH_POLL_MS, () => this.poll(ctx));
   }
 

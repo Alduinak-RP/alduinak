@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId } from "./formIdUtil";
 import { resolveEditorIds } from "./espmEditorIds";
-import { hex, isIntroduced, onlineActors } from "./actorUtil";
+import { guardMpHook, hex, isIntroduced, onlineActors } from "./actorUtil";
 import { adminAudit } from "./discordAlerts";
 import { AdminRoleConfig, adminTierOf, missingCap, readAdminRoleConfig } from "./adminRoles";
 import { FactionSystem } from "./factionSystem";
@@ -256,16 +256,7 @@ export class WritingSystem implements System {
 
   // Dropped items vanish after two minutes and lose their name on a restart, so named items stay in the pack
   private installDropHook(mp: Mp): void {
-    const previous = typeof mp.onDropItem === "function" ? mp.onDropItem : null;
-    mp.onDropItem = (actorId: number, baseId: number, count: number): boolean => {
-      if (isNamedItemBase(baseId >>> 0)) return false;
-      if (!previous) return true;
-      try {
-        return previous.call(mp, actorId, baseId, count) !== false;
-      } catch {
-        return true;
-      }
-    };
+    guardMpHook(mp, "onDropItem", (_actorId: number, baseId: number) => isNamedItemBase(baseId >>> 0) ? false : undefined);
   }
 
   // ── Opening ─────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { espmContainerEntries, espmFieldFormIds, espmLeveledEntries, espmLinkedRefId, readVmadScripts } from "./formIdUtil";
-import { addItemTo, countItem, hex, holdsItem, sendActionLock, takeItemFrom } from "./actorUtil";
+import { addItemTo, countItem, guardMpHook, hex, holdsItem, sendActionLock, takeItemFrom } from "./actorUtil";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { FREE, LEGENDARY, MasterySystem, RANK_NAMES } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
@@ -291,28 +291,14 @@ export class GatheringSystem implements System {
   // session only starts once every other handler let the activation through.
   private installHooks(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
-    const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
-      let verdict: Verdict;
+    guardMpHook(mp, "onActivate", (targetId: number, casterId: number): Verdict => {
       try {
-        verdict = this.onActivate(ctx, targetId >>> 0, casterId >>> 0);
+        return this.onActivate(ctx, targetId >>> 0, casterId >>> 0);
       } catch (e) {
         this.log(`[gathering] activation check failed: ${e}`);
       }
-      if (verdict === false) return false;
-      let allowed = true;
-      if (previous) {
-        try { allowed = previous.call(mp, targetId, casterId) !== false; } catch { allowed = true; }
-      }
-      if (allowed && verdict && verdict() === false) return false;
-      return allowed;
-    };
-
-    const previousClose = typeof mp[SEAT_CLOSE_EVENT] === "function" ? mp[SEAT_CLOSE_EVENT] : null;
-    mp[SEAT_CLOSE_EVENT] = (...args: unknown[]) => {
-      this.endSessionsAt(Number(args[0]) >>> 0);
-      return previousClose ? previousClose.apply(mp, args) : undefined;
-    };
+    });
+    guardMpHook(mp, SEAT_CLOSE_EVENT, (furnitureId: number) => { this.endSessionsAt(Number(furnitureId) >>> 0); });
   }
 
   disconnect(userId: number, ctx: SystemContext): void {

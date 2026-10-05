@@ -1,7 +1,7 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
 import { toFormId, espmRefrFieldId } from "./formIdUtil";
-import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, isNear, chainMpHook, isDoorRef } from "./actorUtil";
+import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, isNear, chainMpHook, guardMpHook, isDoorRef } from "./actorUtil";
 import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -229,22 +229,13 @@ export class CaptureSystem implements System {
   // Refused or recorded before the chain: the door override installed earlier vetoes the native teleport after moving the carrier, and a locked door is refused by HousingSystem's later wrapper before this one runs
   private installDoorWatch(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
-    const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
+    guardMpHook(mp, "onActivate", (targetId: number, casterId: number) => {
       const carrier = casterId >>> 0;
       const carried = this.carrying.get(carrier);
-      if (carried !== undefined && isDoorRef(mp, targetId >>> 0)) {
-        if (this.refusedAtLoadDoor(ctx, carrier, carried, targetId >>> 0)) return false;
-        this.doorUsedAt.set(carrier, Date.now());
-      }
-      if (!previous) return true;
-      try {
-        return previous.call(mp, targetId, casterId) !== false;
-      } catch (e) {
-        this.log(`[carry] door watch chain failed: ${e}`);
-        return true;
-      }
-    };
+      if (carried === undefined || !isDoorRef(mp, targetId >>> 0)) return;
+      if (this.refusedAtLoadDoor(ctx, carrier, carried, targetId >>> 0)) return false;
+      this.doorUsedAt.set(carrier, Date.now());
+    });
   }
 
   // A carried player is not taken through a door that teleports: the press is refused, nobody is moved and the carry goes on

@@ -212,15 +212,13 @@ export class CraftedExtrasSystem implements System {
         this.noteNativeTemper(ctx, Number(actorId) >>> 0, Number(craftedId) >>> 0, Number(recipeId) >>> 0);
       });
     }
-    const previous = typeof mp.onEatItem === "function" ? mp.onEatItem : null;
-    mp.onEatItem = (...args: unknown[]) => {
-      const verdict = previous ? previous.apply(mp, args) : undefined;
+    chainMpHook(mp, "onEatItem", (rawActorId: number, rawBaseId: number) => {
       let poison = false;
       try {
-        const baseId = Number(args[1]) >>> 0;
+        const baseId = Number(rawBaseId) >>> 0;
         poison = this.isPoison(ctx, baseId);
-        if (poison && verdict !== false) {
-          const actorId = Number(args[0]) >>> 0;
+        if (poison) {
+          const actorId = Number(rawActorId) >>> 0;
           this.addPoisonCredit(actorId, baseId);
           setImmediate(() => this.applyPoisonToWorn(ctx, actorId, baseId));
         }
@@ -228,8 +226,8 @@ export class CraftedExtrasSystem implements System {
         this.log(`[crafted] poison credit failed: ${e}`);
       }
       // A blocked eat skips only the effects, OnEquip still removes the poison
-      return poison ? false : verdict;
-    };
+      return poison ? false : undefined;
+    });
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {

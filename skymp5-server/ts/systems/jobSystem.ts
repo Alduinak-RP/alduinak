@@ -4,7 +4,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
-import { addItemTo, baseTypeOf, cleanDisplayName, formatWait, GOLD_BASE_ID, hex, holdsItem, isAlive, userOf } from "./actorUtil";
+import { addItemTo, baseTypeOf, chainMpHook, cleanDisplayName, formatWait, GOLD_BASE_ID, guardMpHook, hex, holdsItem, isAlive, userOf } from "./actorUtil";
 import { CaptureSystem, isRestrained } from "./captureSystem";
 import { MasterySystem } from "./masterySystem";
 import { pick, pickKey, num, parsePos, parseIdCount } from "./npcSpawnSystem";
@@ -240,36 +240,21 @@ export class JobSystem implements System {
   // Outermost wrappers: the previous verdict comes first, so a hit refused by god mode or a capture block never drops a load
   private installHooks(mp: Mp): void {
     for (const event of ["onHitAttempt", "onHitDamageAttempt", "onSpellCastAttempt"]) {
-      const previous = typeof mp[event] === "function" ? mp[event] : null;
-      mp[event] = (actorId: number, ...rest: unknown[]): boolean => {
-        if (!this.chain(mp, previous, [actorId, ...rest])) return false;
+      chainMpHook(mp, event, (actorId: number, targetId: unknown) => {
         if (this.trips.has(actorId >>> 0)) {
           this.logRefusal(actorId >>> 0, event);
           return false;
         }
-        if (event === "onHitDamageAttempt" && this.trips.has(Number(rest[0]) >>> 0)) this.struck.add(Number(rest[0]) >>> 0);
-        return true;
-      };
+        if (event === "onHitDamageAttempt" && this.trips.has(Number(targetId) >>> 0)) this.struck.add(Number(targetId) >>> 0);
+      });
     }
     // Refused before the inner handlers run, so no furniture session starts under a load
-    const previousActivate = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
+    guardMpHook(mp, "onActivate", (targetId: number, casterId: number) => {
       const trip = this.trips.get(casterId >>> 0);
-      if (trip && baseTypeOf(mp, targetId >>> 0) === "FURN") {
-        this.deny(trip.userId, `Put the ${trip.job.draft.item} down first.`);
-        return false;
-      }
-      return this.chain(mp, previousActivate, [targetId, casterId]);
-    };
-  }
-
-  private chain(mp: Mp, previous: ((...args: unknown[]) => unknown) | null, args: unknown[]): boolean {
-    if (!previous) return true;
-    try {
-      return previous.apply(mp, args) !== false;
-    } catch {
-      return true;
-    }
+      if (!trip || baseTypeOf(mp, targetId >>> 0) !== "FURN") return;
+      this.deny(trip.userId, `Put the ${trip.job.draft.item} down first.`);
+      return false;
+    });
   }
 
   private logRefusal(actorId: number, what: string): void {

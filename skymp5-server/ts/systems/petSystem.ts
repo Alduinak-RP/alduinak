@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
 import { placeNpc, moveNpc, locationNear, locationForFollower, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, isStreamedTo, hex, destroyLeftovers, destroyRef, addItemTo, nameShownTo, cleanDisplayName, isDoorRef, formatWait } from "./actorUtil";
+import { userOf, isAlive, isNear, isStreamedTo, hex, destroyLeftovers, destroyRef, guardMpHook, addItemTo, nameShownTo, cleanDisplayName, isDoorRef, formatWait } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
 import { CompanionSystem } from "./companionSystem";
 import { HousingSystem } from "./housingSystem";
@@ -903,37 +903,23 @@ export class PetSystem implements System {
 
   private installHooks(): void {
     const mp = this.mp;
-    const chain = (previous: ((...args: unknown[]) => unknown) | null, args: unknown[]): boolean => {
-      if (!previous) return true;
-      try {
-        return previous.apply(mp, args) !== false;
-      } catch {
-        return true;
-      }
-    };
     // Only the living owner, or the rider taking it, hosts a pet; a released one is anyone's
-    const previousHost = typeof mp.onHostAttempt === "function" ? mp.onHostAttempt : null;
-    mp.onHostAttempt = (requesterId: number, actorId: number): boolean => {
+    guardMpHook(mp, "onHostAttempt", (requesterId: number, actorId: number) => {
       const a = this.active.get(actorId >>> 0);
-      if (a) {
-        const rider = a.ridingBy || a.pending?.rider || 0;
-        return requesterId >>> 0 === (rider || a.ownerId) && isAlive(mp, requesterId >>> 0);
-      }
-      return chain(previousHost, [requesterId, actorId]);
-    };
+      if (!a) return;
+      const rider = a.ridingBy || a.pending?.rider || 0;
+      return requesterId >>> 0 === (rider || a.ownerId) && isAlive(mp, requesterId >>> 0);
+    });
     // Strangers get nothing from activating a pet; the rider's forced mount activation passes
-    const previousActivate = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
+    guardMpHook(mp, "onActivate", (targetId: number, casterId: number) => {
       // A commanded pet only opens doors, like a companion
       if (this.isPetActor(casterId) && !isDoorRef(mp, targetId >>> 0)) return false;
       const a = this.active.get(targetId >>> 0);
-      if (a) {
-        const rider = a.ridingBy || a.pending?.rider || 0;
-        const caster = casterId >>> 0;
-        return caster === a.ownerId || caster === rider;
-      }
-      return chain(previousActivate, [targetId, casterId]);
-    };
+      if (!a) return;
+      const rider = a.ridingBy || a.pending?.rider || 0;
+      const caster = casterId >>> 0;
+      return caster === a.ownerId || caster === rider;
+    });
   }
 
   private onOwnerAssigned(actorId: number): void {

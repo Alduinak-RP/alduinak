@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { placeNpc, placeAtMe, moveNpc, locationNear, locationForFollower, containerDesc, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, isStreamedTo, hex, baseIdOf, destroyLeftovers, destroyRef, isDoorRef } from "./actorUtil";
+import { userOf, isAlive, isNear, isStreamedTo, hex, baseIdOf, destroyLeftovers, destroyRef, guardMpHook, isDoorRef } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
 import { every } from "./timers";
 
@@ -545,45 +545,30 @@ export class CompanionSystem implements System {
   // Only the owner hosts a companion; nothing of an owner's damages the owner's own companions or pets; a damaging hit that lands on an owner or on one of theirs calls defend
   private installHooks(): void {
     const mp = this.mp;
-    const chain = (previous: ((...args: unknown[]) => unknown) | null, args: unknown[]): boolean => {
-      if (!previous) return true;
-      try {
-        return previous.apply(mp, args) !== false;
-      } catch {
-        return true;
-      }
-    };
-
-    const previousHost = typeof mp.onHostAttempt === "function" ? mp.onHostAttempt : null;
-    mp.onHostAttempt = (requesterId: number, actorId: number): boolean => {
+    guardMpHook(mp, "onHostAttempt", (requesterId: number, actorId: number) => {
       const c = this.companions.get(actorId >>> 0);
       if (c) return requesterId >>> 0 === c.ownerId && isAlive(this.mp, c.ownerId);
-      return chain(previousHost, [requesterId, actorId]);
-    };
+    });
 
     // A companion only opens doors: pickups and containers it activates would sink into its inventory or lock players out
-    const previousActivate = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
-      if (this.companions.has(casterId >>> 0) && !isDoorRef(this.mp, targetId >>> 0)) return false;
-      return chain(previousActivate, [targetId, casterId]);
-    };
+    guardMpHook(mp, "onActivate", (targetId: number, casterId: number) =>
+      this.companions.has(casterId >>> 0) && !isDoorRef(this.mp, targetId >>> 0) ? false : undefined);
 
-    const previousHit = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
-    mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
+    guardMpHook(mp, "onHitDamageAttempt", (aggressorId: number, targetId: number, _sourceId: number, damage: number) => {
       const aggressorOwner = this.ownerOfPet(aggressorId >>> 0);
       // A hit pet is defended by the rest of its owner's, so both sides resolve through companions and allies alike
       const targetOwner = this.ownerOfPet(targetId >>> 0) || targetId >>> 0;
       if (aggressorOwner && aggressorOwner === targetOwner) return false;
       // A hit refused further down (god or ghost mode, a carrier) or dealing no damage starts no fight
-      const allowed = chain(previousHit, [aggressorId, targetId, sourceId, damage]);
-      if (!allowed || !(damage > 0)) return allowed;
-      try {
-        this.defend(targetOwner, aggressorId >>> 0);
-      } catch (e) {
-        this.log(`CompanionSystem: defend failed: ${e}`);
-      }
-      return true;
-    };
+      if (!(damage > 0)) return;
+      return () => {
+        try {
+          this.defend(targetOwner, aggressorId >>> 0);
+        } catch (e) {
+          this.log(`CompanionSystem: defend failed: ${e}`);
+        }
+      };
+    });
   }
 
   // Companions from the previous run are removed once the world loads; persistent ones wait for their owner's next login

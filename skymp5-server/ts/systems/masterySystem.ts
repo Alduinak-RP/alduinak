@@ -502,22 +502,10 @@ export class MasterySystem implements System {
   // Chain onto whatever already owns these `mp` hooks and never change their verdict.
   private hookNativeEvents(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
-    const chain = (name: string, kind: ActivityKind, pick: (args: unknown[]) => [unknown, Record<string, unknown>]) => {
-      const previous = typeof mp[name] === "function" ? mp[name] : null;
-      mp[name] = (...args: unknown[]) => {
-        const verdict = previous ? previous(...args) : undefined;
-        // A handler that returns false blocked the action, so nothing was done.
-        if (verdict !== false) {
-          const [actorId, detail] = pick(args);
-          this.enqueue(kind, actorId, detail);
-        }
-        return verdict;
-      };
-    };
     // The inputs are consumed the moment the hook returns, so ownership is read here.
-    chain("onCraft", "craft", ([actorId, , , recipeId]) =>
-      [actorId, { recipeId, held: this.holdsInputs(ctx, Number(actorId) >>> 0, Number(recipeId) >>> 0) ? 1 : 0 }]);
-    chain("onActivate", "activate", ([refrId, casterId]) => [casterId, { refrId }]);
+    chainMpHook(mp, "onCraft", (actorId: number, _craftedId: number, _count: number, recipeId: number) =>
+      this.enqueue("craft", actorId, { recipeId, held: this.holdsInputs(ctx, Number(actorId) >>> 0, Number(recipeId) >>> 0) ? 1 : 0 }));
+    chainMpHook(mp, "onActivate", (refrId: number, casterId: number) => this.enqueue("activate", casterId, { refrId }));
     chainMpHook(mp, "onSpellCast", (casterId: number, spellId: number) => this.enqueue("cast", casterId, { spellId }));
   }
 

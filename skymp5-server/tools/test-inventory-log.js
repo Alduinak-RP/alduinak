@@ -67,7 +67,7 @@ const flush = () => { while (queued.length) queued.shift()() }
     await sys.initAsync({ svr: mp, gm })
     gm.emit('worldLoaded')
 
-    assert.equal(drop(ORE, 18), undefined)
+    assert.equal(drop(ORE, 18), true)
     assert.equal(lines.at(-1), '[inv] Morm (ff000e9f, profile 149) dropped OreIron 71cf3 x18')
 
     mp.onEatItem(MORM, POTION)

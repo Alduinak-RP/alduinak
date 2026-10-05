@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
-import { onlineActors, isCreationPending, hex } from "./actorUtil";
+import { chainMpHook, onlineActors, isCreationPending, hex } from "./actorUtil";
 import { espmContainerEntries } from "./formIdUtil";
 import { every } from "./timers";
 
@@ -91,16 +91,9 @@ export class GoldWatchSystem implements System {
 
   private installHooks(): void {
     const mp = this.mp;
-    const after = (event: string, note: (...args: number[]) => void): void => {
-      const previous = typeof mp[event] === "function" ? mp[event] : null;
-      mp[event] = (...args: unknown[]): unknown => {
-        const verdict = previous ? previous.apply(mp, args) : undefined;
-        if (verdict !== false) {
-          try { note(...args.map((a) => Number(a) >>> 0)); } catch (e) { this.log(`GoldWatchSystem: ${event} note failed: ${e}`); }
-        }
-        return verdict;
-      };
-    };
+    const after = (event: string, note: (...args: number[]) => void): void => chainMpHook(mp, event, (...args: unknown[]) => {
+      try { note(...args.map((a) => Number(a) >>> 0)); } catch (e) { this.log(`GoldWatchSystem: ${event} note failed: ${e}`); }
+    });
     after("onCraft", (actorId, _craftedId, _count, recipeId) => {
       for (const [baseId, count] of this.recipeInputs(recipeId)) this.tally(actorId, baseId).crafts += count;
     });

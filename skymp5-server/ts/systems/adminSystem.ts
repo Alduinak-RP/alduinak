@@ -12,7 +12,7 @@ import { AfterlifeSystem, REALMS, fallenLabel, fallenOf, livingCount, profileMax
 import { ExecutionSystem } from "./executionSystem";
 import { kickWithReason } from "./kickUtil";
 import { MAP_MARKER_LOCATIONS } from "./adminMapMarkers";
-import { addItemTo, onlineActors, userOf } from "./actorUtil";
+import { addItemTo, chainMpHook, guardMpHook, onlineActors, userOf } from "./actorUtil";
 import { adminAudit } from "./discordAlerts";
 import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
@@ -1269,30 +1269,19 @@ export class AdminSystem implements System {
 
   // C++ fires onHitDamageAttempt before applying weapon and spell damage; returning false refuses it
   private installHitRefusalHook(mp: Mp): void {
-    const previous = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
-    mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
-      if (this.hasMode(mp, targetId, "god") || this.hasMode(mp, targetId, "ghost")) return false;
-      if (!previous) return true;
-      try {
-        return previous.call(mp, aggressorId, targetId, sourceId, damage) !== false;
-      } catch {
-        return true;
-      }
-    };
+    guardMpHook(mp, "onHitDamageAttempt", (_aggressorId: number, targetId: number) =>
+      this.hasMode(mp, targetId, "god") || this.hasMode(mp, targetId, "ghost") ? false : undefined);
   }
 
   private installRespawnHook(mp: Mp): void {
-    const previous = typeof mp.onRespawn === "function" ? mp.onRespawn : null;
-    mp.onRespawn = (...args: unknown[]) => {
-      const result = previous ? previous.apply(mp, args) : undefined;
+    chainMpHook(mp, "onRespawn", (rawId: number) => {
       try {
-        const actorId = Number(args[0]) >>> 0;
+        const actorId = Number(rawId) >>> 0;
         this.endSessionModes(mp, userOf(mp, actorId), this.profileOf(mp, actorId), "respawn");
       } catch (e) {
         this.log(`AdminSystem: mode reset on respawn failed: ${e}`);
       }
-      return result;
-    };
+    });
   }
 
   private endSessionModes(mp: Mp, userId: number, profileId: number, reason: string): void {

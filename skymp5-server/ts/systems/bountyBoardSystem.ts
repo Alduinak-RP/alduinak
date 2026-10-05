@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitize, sendJson, titledName } from "./playerText";
-import { GOLD_BASE_ID, addGold, baseIdOf, baseTypeOf, destroyRef } from "./actorUtil";
+import { GOLD_BASE_ID, addGold, baseIdOf, baseTypeOf, destroyRef, guardMpHook } from "./actorUtil";
 import { containerDesc, moveRefTo, placeAtMe } from "./npcPlacement";
 import { every } from "./timers";
 
@@ -219,24 +219,13 @@ export class BountyBoardSystem implements System {
 
   // Activating a board opens the menu instead of the vanilla activation.
   private installActivationHook(ctx: SystemContext): void {
-    const mp = ctx.svr as Mp;
-    const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
-      let isBoard = false;
+    guardMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => {
       try {
-        isBoard = this.onActivate(ctx, targetId >>> 0, casterId >>> 0);
+        if (this.onActivate(ctx, targetId >>> 0, casterId >>> 0)) return false;
       } catch (e) {
         this.log(`[bounty] activation check failed: ${e}`);
       }
-      if (isBoard) return false;
-      // Chain, so another handler still gets its say.
-      if (!previous) return true;
-      try {
-        return previous.call(mp, targetId, casterId) !== false;
-      } catch {
-        return true;
-      }
-    };
+    });
   }
 
   // True when the target is a board and the menu was taken care of, or a strongbox refused.

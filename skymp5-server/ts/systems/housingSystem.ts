@@ -4,7 +4,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { espmRefrFieldId, toFormId } from "./formIdUtil";
 import { AdminRoleConfig, readAdminRoleConfig, adminTierOf } from "./adminRoles";
 import { writeFileAtomic } from "./fileUtil";
-import { addItemTo, holdsItem, isIntroduced, onlineActors, takeItemFrom } from "./actorUtil";
+import { addItemTo, guardMpHook, holdsItem, isIntroduced, onlineActors, takeItemFrom } from "./actorUtil";
 import { FactionDef, factionLand, holdRanksOf, managesHold } from "./factionRules";
 import { Hold, holdName, holdOfRefs, isHoldLand, isOutdoors, loadHolds } from "./holdOf";
 import { describeActor, profileIdOf, realNameOf, titledName } from "./playerText";
@@ -226,24 +226,13 @@ export class HousingSystem implements System {
 
   // Locks are enforced here: a refused activation never reaches the door.
   private installActivationHook(ctx: SystemContext): void {
-    const mp = ctx.svr as Mp;
-    const previous = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
-      let allowed = true;
+    guardMpHook(ctx.svr as Mp, "onActivate", (targetId: number, casterId: number) => {
       try {
-        allowed = this.onActivate(ctx, targetId >>> 0, casterId >>> 0);
+        if (!this.onActivate(ctx, targetId >>> 0, casterId >>> 0)) return false;
       } catch (e) {
         this.log(`[housing] activation check failed: ${e}`);
       }
-      if (!allowed) return false;
-      // Chain, so another handler still gets its say.
-      if (!previous) return true;
-      try {
-        return previous.call(mp, targetId, casterId) !== false;
-      } catch {
-        return true;
-      }
-    };
+    });
   }
 
   // Faction doors and containers refuse outsiders; a shut lock on the half used is shut for everyone, access only lets a player unlock it from the menu

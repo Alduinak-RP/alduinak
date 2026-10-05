@@ -3,7 +3,7 @@ import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CREATION_FIN
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds, readVmadScripts } from "./formIdUtil";
 import { CastType, SpellType, fieldData, keywordConditionsPass, spellEffects, spellInfo, view } from "./espmMagic";
-import { formatWait, hex, chainMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
+import { formatWait, hex, chainMpHook, guardMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
 import { FREE, LEGENDARY, MasterySystem } from "./masterySystem";
 import { LOAD_PACKETS, StageAbilityTracker } from "./stageAbilities";
 import { every } from "./timers";
@@ -376,38 +376,29 @@ export class NeedsSystem implements System {
 
   private installHooks(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
-    const previousCraft = typeof mp.onCraft === "function" ? mp.onCraft : null;
-    mp.onCraft = (...args: unknown[]) => {
-      const verdict = previousCraft ? previousCraft.apply(mp, args) : undefined;
-      if (verdict === false) return false;
+    chainMpHook(mp, "onCraft", (actorId: number, _craftedId: number, _count: number, recipeId: number) => {
       try {
-        if (!this.chargeCraft(ctx, Number(args[0]) >>> 0, Number(args[3]) >>> 0)) return false;
+        if (!this.chargeCraft(ctx, Number(actorId) >>> 0, Number(recipeId) >>> 0)) return false;
       } catch (e) {
         this.log(`[needs] craft check failed: ${e}`);
       }
-      return verdict;
-    };
+    });
 
-    const previousActivate = typeof mp.onActivate === "function" ? mp.onActivate : null;
-    mp.onActivate = (targetId: number, casterId: number): boolean => {
+    guardMpHook(mp, "onActivate", (targetId: number, casterId: number) => {
       try {
         if (this.tooTiredForBench(ctx, targetId >>> 0, casterId >>> 0)) return false;
       } catch (e) {
         this.log(`[needs] bench check failed: ${e}`);
       }
-      return previousActivate ? previousActivate.call(mp, targetId, casterId) : true;
-    };
+    });
 
-    const previousEat = typeof mp.onEatItem === "function" ? mp.onEatItem : null;
-    mp.onEatItem = (...args: unknown[]) => {
-      const verdict = previousEat ? previousEat.apply(mp, args) : undefined;
+    chainMpHook(mp, "onEatItem", (actorId: number, baseId: number) => {
       try {
-        if (verdict !== false) this.eat(ctx, Number(args[0]) >>> 0, Number(args[1]) >>> 0);
+        this.eat(ctx, Number(actorId) >>> 0, Number(baseId) >>> 0);
       } catch (e) {
         this.log(`[needs] food check failed: ${e}`);
       }
-      return verdict;
-    };
+    });
 
     chainMpHook(mp, "onSpellCastAttempt", (casterId: number, spellId: number) => this.castAttempt(ctx, casterId >>> 0, spellId >>> 0));
     chainMpHook(mp, "onSpellCast", (casterId: number, spellId: number) => this.chargeCast(ctx, casterId >>> 0, spellId >>> 0));

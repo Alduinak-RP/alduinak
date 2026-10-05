@@ -1,7 +1,7 @@
 import { System, Log, SystemContext } from "./system";
 import { CompanionSystem } from "./companionSystem";
 import { spellEffects, SpellEffect, MgefArchetype, npcLevel, keywordConditionsPass, turnsToAsh } from "./espmMagic";
-import { isPlayerActor, isNear, baseIdOf, hex } from "./actorUtil";
+import { isPlayerActor, isNear, baseIdOf, guardMpHook, hex } from "./actorUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -49,9 +49,7 @@ export class ConjurationSystem implements System {
 
   // Handlers run after the native event returns: they may destroy the hit target, which the C++ hit path still uses
   private hook(event: string, handler: (...ids: number[]) => void): void {
-    const mp = this.mp;
-    const previous = typeof mp[event] === "function" ? mp[event] : null;
-    mp[event] = (...args: unknown[]) => {
+    guardMpHook(this.mp, event, (...args: unknown[]) => {
       const ids = args.map((x) => Number(x) >>> 0);
       setImmediate(() => {
         try {
@@ -60,13 +58,7 @@ export class ConjurationSystem implements System {
           this.log(`ConjurationSystem: ${event} failed: ${e}`);
         }
       });
-      if (!previous) return true;
-      try {
-        return previous.apply(mp, args) !== false;
-      } catch {
-        return true;
-      }
-    };
+    });
   }
 
   private onSpellCast(casterId: number, spellId: number): void {

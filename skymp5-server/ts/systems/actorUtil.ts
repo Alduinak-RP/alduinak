@@ -221,20 +221,35 @@ export const isCreationPending = (mp: Mp, actorId: number): boolean => {
   }
 };
 
+const runMpHook = (mp: Mp, event: string, handler: (...args: any[]) => unknown, args: unknown[]): unknown => {
+  try {
+    return handler.apply(mp, args);
+  } catch (e) {
+    console.error(`[${event}] handler failed: ${e}`);
+    return undefined;
+  }
+};
+
 // Wraps an mp.* event hook: the previous handler runs first, a false from either one vetoes, and a handler that throws is logged and never vetoes
 export const chainMpHook = (mp: Mp, event: string, fn: (...args: any[]) => unknown): void => {
   const previous = typeof mp[event] === "function" ? mp[event] : null;
-  const run = (handler: (...args: unknown[]) => unknown, args: unknown[]): unknown => {
-    try {
-      return handler.apply(mp, args);
-    } catch (e) {
-      console.error(`[${event}] handler failed: ${e}`);
-      return undefined;
-    }
-  };
   mp[event] = (...args: unknown[]): boolean => {
-    if (previous && run(previous, args) === false) return false;
-    return run(fn, args) !== false;
+    if (previous && runMpHook(mp, event, previous, args) === false) return false;
+    return runMpHook(mp, event, fn, args) !== false;
+  };
+};
+
+// What a guardMpHook handler returns: false refuses, true allows without asking the previous handler, undefined asks it, and a function runs once it allowed, a false from that refusing
+export type MpGuardVerdict = boolean | void | (() => unknown);
+
+// Wraps an mp.* event hook ahead of the previous handler, by the MpGuardVerdict rules; a handler that throws is logged and never vetoes
+export const guardMpHook = (mp: Mp, event: string, fn: (...args: any[]) => MpGuardVerdict): void => {
+  const previous = typeof mp[event] === "function" ? mp[event] : null;
+  mp[event] = (...args: unknown[]): boolean => {
+    const verdict = runMpHook(mp, event, fn, args) as MpGuardVerdict;
+    if (typeof verdict === "boolean") return verdict;
+    if (previous && runMpHook(mp, event, previous, args) === false) return false;
+    return typeof verdict !== "function" || runMpHook(mp, event, verdict, []) !== false;
   };
 };
 

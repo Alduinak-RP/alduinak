@@ -587,16 +587,13 @@ export class SurvivalSystem implements System, NeedsModifierSource {
 
   private installHooks(ctx: SystemContext): void {
     const mp = ctx.svr as Mp;
-    const previousEat = typeof mp.onEatItem === "function" ? mp.onEatItem : null;
-    mp.onEatItem = (...args: unknown[]) => {
-      const verdict = previousEat ? previousEat.apply(mp, args) : undefined;
+    chainMpHook(mp, "onEatItem", (actorId: number, baseId: number) => {
       try {
-        if (verdict !== false) this.onEat(ctx, Number(args[0]) >>> 0, Number(args[1]) >>> 0);
+        this.onEat(ctx, Number(actorId) >>> 0, Number(baseId) >>> 0);
       } catch (e) {
         this.log(`[survival] food check failed: ${e}`);
       }
-      return verdict;
-    };
+    });
     chainMpHook(mp, "onActivate", (targetId: number, casterId: number) => {
       if (this.online.has(casterId >>> 0) && this.altars.has(baseIdOf(mp, targetId >>> 0))) setImmediate(() => this.shrineNotice(ctx, casterId >>> 0, targetId >>> 0));
     });

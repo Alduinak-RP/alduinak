@@ -1,6 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
-import { isPlayerActor, isAlive, isBleedingOut, hex, userOf } from "./actorUtil";
+import { chainMpHook, guardMpHook, isPlayerActor, isAlive, isBleedingOut, hex, userOf } from "./actorUtil";
 import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -122,29 +122,14 @@ export class HostingSystem implements System {
   // Only hits the other handlers let through and that deal damage count; the companion owner veto wraps the host attempt check
   private installHooks(): void {
     const mp = this.mp;
-    const chain = (previous: ((...args: unknown[]) => unknown) | null, args: unknown[]): boolean => {
-      if (!previous) return true;
+    chainMpHook(mp, "onHitDamageAttempt", (aggressorId: number, targetId: number, _sourceId: number, damage: number) => {
+      if (!(damage > 0)) return;
       try {
-        return previous.apply(mp, args) !== false;
-      } catch {
-        return true;
-      }
-    };
-
-    const previousHit = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
-    mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
-      const allowed = chain(previousHit, [aggressorId, targetId, sourceId, damage]);
-      if (allowed && damage > 0) {
-        try {
-          this.noteHit(aggressorId >>> 0, targetId >>> 0);
-        } catch { }
-      }
-      return allowed;
-    };
-
-    const previousHost = typeof mp.onHostAttempt === "function" ? mp.onHostAttempt : null;
-    mp.onHostAttempt = (requesterId: number, actorId: number): boolean =>
-      this.mayHost(requesterId >>> 0, actorId >>> 0) && chain(previousHost, [requesterId, actorId]);
+        this.noteHit(aggressorId >>> 0, targetId >>> 0);
+      } catch { }
+    });
+    guardMpHook(mp, "onHostAttempt", (requesterId: number, actorId: number) =>
+      this.mayHost(requesterId >>> 0, actorId >>> 0) ? undefined : false);
   }
 
   // A hit between a player and an unowned NPC keeps that player engaged with the NPC

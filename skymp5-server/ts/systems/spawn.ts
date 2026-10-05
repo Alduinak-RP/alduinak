@@ -8,7 +8,7 @@ import { DEFAULT_START_LOCATIONS, INTRO_PAGES, INTRO_QUESTION, StartLocation, ar
 import { kickWithReason } from "./kickUtil";
 import { REALMS, afterlifeOf, isFallen, maxCharactersFor, profileMaxCharacters, readCharacterLimits } from "./afterlifeSystem";
 import { adminTierFor } from "./adminRoles";
-import { GOLD_BASE_ID, STARTER_GOLD_PROP, chainMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
+import { GOLD_BASE_ID, STARTER_GOLD_PROP, chainMpHook, guardMpHook, hex, isAlive, isBleedingOut, isCreationPending, isPlayerActor, userOf, weaponAnimType } from "./actorUtil";
 import { isRestrained } from "./captureSystem";
 import { packSummary } from "./goldWatchSystem";
 import { isOutsideBorder, insideSpot } from "./worldBorder";
@@ -654,45 +654,31 @@ export class Spawn implements System {
   // Vanilla race menu path: an accepted appearance (isRaceMenuOpen) is the creation-finished moment
   private installAppearanceHook(ctx: SystemContext): void {
     const mp = ctx.svr as unknown as Mp;
-    const previous = typeof mp.onUpdateAppearanceAttempt === "function" ? mp.onUpdateAppearanceAttempt : null;
-    mp.onUpdateAppearanceAttempt = (actorId: number, appearance: unknown, isAllowed: boolean): boolean => {
-      if (isAllowed && isCreationPending(mp, actorId >>> 0)) {
-        try { this.finishCreation(ctx, actorId >>> 0); }
-        catch (e) { this.log(`[spawn] finishCreation failed: ${e}`); }
-      }
-      if (!previous) return true;
-      try { return previous.call(mp, actorId, appearance, isAllowed) !== false; }
-      catch { return true; }
-    };
+    guardMpHook(mp, "onUpdateAppearanceAttempt", (actorId: number, _appearance: unknown, isAllowed: boolean) => {
+      if (!isAllowed || !isCreationPending(mp, actorId >>> 0)) return;
+      try { this.finishCreation(ctx, actorId >>> 0); }
+      catch (e) { this.log(`[spawn] finishCreation failed: ${e}`); }
+    });
   }
 
   // Unfinished characters neither take nor deal weapon and spell damage; chained like the admin god mode
   private installCreationDamageHook(ctx: SystemContext): void {
     const mp = ctx.svr as unknown as Mp;
-    const previous = typeof mp.onHitDamageAttempt === "function" ? mp.onHitDamageAttempt : null;
-    mp.onHitDamageAttempt = (aggressorId: number, targetId: number, sourceId: number, damage: number): boolean => {
-      if (isCreationPending(mp, targetId >>> 0) || isCreationPending(mp, aggressorId >>> 0)) return false;
-      if (!previous) return true;
-      try { return previous.call(mp, aggressorId, targetId, sourceId, damage) !== false; }
-      catch { return true; }
-    };
+    guardMpHook(mp, "onHitDamageAttempt", (aggressorId: number, targetId: number) =>
+      isCreationPending(mp, targetId >>> 0) || isCreationPending(mp, aggressorId >>> 0) ? false : undefined);
   }
 
   // The worn state only persists through the client's equipment report, so the kit stays pending until one shows it
   private installEquipmentHook(ctx: SystemContext): void {
     const mp = ctx.svr as unknown as Mp;
-    const previous = typeof mp.onUpdateEquipmentAttempt === "function" ? mp.onUpdateEquipmentAttempt : null;
-    mp.onUpdateEquipmentAttempt = (actorId: number, equipment: unknown, isAllowed: boolean): boolean => {
+    guardMpHook(mp, "onUpdateEquipmentAttempt", (actorId: number, equipment: unknown, isAllowed: boolean) => {
       try {
         if (isAllowed && this.isKitPending(mp, actorId >>> 0) && this.wearsKit(equipment)) {
           mp.set(actorId >>> 0, "private.kitPending", false);
         }
         if (isAllowed) this.watchZeroWorn(mp, actorId >>> 0, equipment);
       } catch (e) { this.log(`[spawn] kit check failed: ${e}`); }
-      if (!previous) return true;
-      try { return previous.call(mp, actorId, equipment, isAllowed) !== false; }
-      catch { return true; }
-    };
+    });
   }
 
   // The ragdoll death and the get-up leave the hands' behaviour graph stale while the weapon stays worn, so the weapons worn at death are unequipped through the owner's client
