@@ -227,6 +227,8 @@ private:
   void AddContainerObject(const espm::CONT::ContainerObject& containerObject,
                           std::map<uint32_t, uint32_t>* itemsToAdd);
   void InitScripts();
+  void EnsureScriptsInited();
+  bool HasOnTriggerHandler();
   void MoveOnGrid(GridImpl<MpObjectReference*>& grid);
   // Ends every subscription both ways and forgets the triggers it is inside
   void LeaveGrid();

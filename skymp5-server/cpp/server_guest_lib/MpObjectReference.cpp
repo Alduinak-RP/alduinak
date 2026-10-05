@@ -213,7 +213,8 @@ struct ScriptState
 
 struct PrimitiveData
 {
-  NiPoint3 boundsDiv2;
+  NiPoint3 center;
+  float radiusSq = 0.f;
   GeoProc::GeoPolygonProc polygonProc;
 };
 
@@ -222,6 +223,7 @@ struct MpObjectReference::Impl
 public:
   bool onInitEventSent = false;
   bool scriptsInited = false;
+  std::optional<bool> hasOnTrigger;
   std::unique_ptr<ScriptState> scriptState;
   AnimGraphHolder animGraphHolder;
   std::optional<PrimitiveData> primitive;
@@ -381,10 +383,12 @@ bool MpObjectReference::GetAnimationVariableBool(const char* name) const
 
 bool MpObjectReference::IsPointInsidePrimitive(const NiPoint3& point) const
 {
-  if (pImpl->primitive) {
-    return Primitive::IsInside(point, pImpl->primitive->polygonProc);
+  const auto& primitive = pImpl->primitive;
+  if (!primitive ||
+      (point - primitive->center).SqrLength() > primitive->radiusSq) {
+    return false;
   }
-  return false;
+  return Primitive::IsInside(point, primitive->polygonProc);
 }
 
 bool MpObjectReference::HasPrimitive() const
@@ -591,10 +595,6 @@ void MpObjectReference::SetPos(const NiPoint3& newPos, SetPosMode setPosMode)
 
   if (!IsDisabled()) {
     if (emittersWithPrimitives) {
-      if (!primitivesWeAreInside) {
-        primitivesWeAreInside.reset(new std::set<MpObjectReference*>);
-      }
-
       for (auto& [emitterRefr, wasInside] : *emittersWithPrimitives) {
         bool inside = emitterRefr->IsPointInsidePrimitive(newPos);
         if (wasInside != inside) {
@@ -622,22 +622,32 @@ void MpObjectReference::SetPos(const NiPoint3& newPos, SetPosMode setPosMode)
             });
 
           if (inside) {
+            if (!primitivesWeAreInside) {
+              primitivesWeAreInside.reset(new std::set<MpObjectReference*>);
+            }
             primitivesWeAreInside->insert(emitterRefr);
-          } else {
+          } else if (primitivesWeAreInside) {
             primitivesWeAreInside->erase(emitterRefr);
           }
         }
       }
     }
 
-    if (primitivesWeAreInside) {
-      auto me = ToVarValue();
+    if (primitivesWeAreInside && !primitivesWeAreInside->empty()) {
+      // Papyrus may edit the set, so dispatch from a copy
+      // An emitter with no OnTrigger script gets no onPapyrusEvent:OnTrigger
+      std::vector<MpObjectReference*> handlers;
+      for (MpObjectReference* emitterRefr : *primitivesWeAreInside) {
+        if (emitterRefr->HasOnTriggerHandler()) {
+          handlers.push_back(emitterRefr);
+        }
+      }
 
-      // May be modified inside loop, so copying
-      const auto set = *primitivesWeAreInside;
-
-      for (MpObjectReference* emitterRefr : set) {
-        emitterRefr->SendPapyrusEvent("OnTrigger", &me, 1);
+      if (!handlers.empty()) {
+        auto me = ToVarValue();
+        for (MpObjectReference* emitterRefr : handlers) {
+          emitterRefr->SendPapyrusEvent("OnTrigger", &me, 1);
+        }
       }
     }
   }
@@ -795,8 +805,10 @@ void MpObjectReference::ForceSubscriptionsUpdate()
 void MpObjectReference::SetPrimitive(const NiPoint3& boundsDiv2)
 {
   auto vertices = Primitive::GetVertices(GetPos(), GetAngle(), boundsDiv2);
-  pImpl->primitive =
-    PrimitiveData{ boundsDiv2, Primitive::CreateGeoPolygonProc(vertices) };
+  // The box corners lie on this sphere; 1 unit of slack for float rounding
+  const float radius = boundsDiv2.Length() + 1.f;
+  pImpl->primitive = PrimitiveData{ GetPos(), radius * radius,
+                                    Primitive::CreateGeoPolygonProc(vertices) };
 }
 
 void MpObjectReference::UpdateHoster(uint32_t newHosterId)
@@ -1374,11 +1386,30 @@ void MpObjectReference::SendPapyrusEvent(const char* eventName,
                                          const VarValue* arguments,
                                          size_t argumentsCount)
 {
+  EnsureScriptsInited();
+  return MpForm::SendPapyrusEvent(eventName, arguments, argumentsCount);
+}
+
+void MpObjectReference::EnsureScriptsInited()
+{
   if (!pImpl->scriptsInited) {
     InitScripts();
     pImpl->scriptsInited = true;
   }
-  return MpForm::SendPapyrusEvent(eventName, arguments, argumentsCount);
+}
+
+// Pex functions never change, so the answer is kept for the form's life
+bool MpObjectReference::HasOnTriggerHandler()
+{
+  if (!pImpl->hasOnTrigger) {
+    EnsureScriptsInited();
+    const auto& scripts = ListActivePexInstances();
+    pImpl->hasOnTrigger =
+      std::any_of(scripts.begin(), scripts.end(), [](const auto& script) {
+        return script->HasFunctionInAnyState("OnTrigger");
+      });
+  }
+  return *pImpl->hasOnTrigger;
 }
 
 void MpObjectReference::Init(WorldState* parent, uint32_t formId,

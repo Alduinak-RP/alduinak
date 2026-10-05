@@ -76,6 +76,27 @@ FunctionInfo ActivePexInstance::GetFunctionByName(const char* name,
   return function;
 }
 
+bool ActivePexInstance::HasFunctionInAnyState(const char* name) const
+{
+  std::shared_ptr<PexScript> pex;
+  if (sourcePex.fn) {
+    pex = sourcePex.fn();
+  }
+  if (!pex) {
+    return false;
+  }
+  for (auto& object : pex->objectTable) {
+    for (auto& state : object.states) {
+      for (auto& func : state.functions) {
+        if (!Utils::stricmp(func.name.data(), name)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 std::string ActivePexInstance::GetActiveStateName() const
 {
   VarValue* var = nullptr;

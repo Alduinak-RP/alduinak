@@ -33,6 +33,8 @@ public:
   FunctionInfo GetFunctionByName(const char* name,
                                  std::string stateName) const;
 
+  bool HasFunctionInAnyState(const char* name) const;
+
   VarValue& GetVariableValueByName(std::vector<Local>* optional,
                                    std::string name);
 
