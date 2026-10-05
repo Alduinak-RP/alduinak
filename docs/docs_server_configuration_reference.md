@@ -1304,6 +1304,29 @@ Read by the native server and NeedsSystem at boot; the native logs `combatTrace 
 }
 ```
 
+## Authority checks
+
+Checks of what a client reports, each with a limit and an `enforce...` switch. Off (the default, also when unset),
+a report over the limit is only logged, at most one line per player and check every 30 seconds, with the number held
+back since the last line. On, the report is refused as well. Run a check log-only on the Test Server until a session
+or two show no false positives (horses, mounts, Whirlwind Sprint, lag, polymorph giants), tune its limit, then turn
+it on there. The `enforce...` switches are protected: **Migrate settings** never copies them to live, so live keeps a
+log-only period after each Migrate until the owner turns them on there. The limits migrate like other keys. Read by the
+native server at boot; it logs `<limit> is <n> and <switch> is <true|false>: ...` for each check.
+
+| Limit | Switch | Default | What it bounds |
+|---|---|---|---|
+| `maxMovementSpeed` | `enforceMovementSpeed` | `2048` | Horizontal units per second a player's movement report may cover since the server last accepted one, counting at least 0.13 s, plus 256 units of slack. Logs `MovementValidation - <actor> moved <n> units in <s> s, over the <bound> units maxMovementSpeed allows, logged only\|refused`. A refused report puts the player back with Teleport2. Hosted NPCs are not checked. |
+
+```json5
+{
+  // ...
+  "maxMovementSpeed": 2048,
+  "enforceMovementSpeed": false
+  // ...
+}
+```
+
 ## regenerationMultiplier, healthRegenerationMultiplier
 
 Clients regenerate health, magicka and stamina themselves and report the values; the native server crops each

@@ -131,6 +131,20 @@ std::optional<uint32_t> ServerState::AllowRefusalLog(Networking::UserId userId,
   return std::exchange(limits->log.held, 0);
 }
 
+std::optional<uint32_t> ServerState::AllowAuthorityLog(
+  Networking::UserId userId, AuthorityCheck check)
+{
+  if (!IsConnected(userId)) {
+    return 0;
+  }
+  auto& limit = userInfo[userId]->authorityLogs[static_cast<size_t>(check)];
+  if (!limit.Allow(std::chrono::steady_clock::now(),
+                   RefusalLimits::kLogPeriod)) {
+    return std::nullopt;
+  }
+  return std::exchange(limit.held, 0);
+}
+
 void ServerState::EnsureUserExists(Networking::UserId userId)
 {
   if (userInfo.size() <= userId || !userInfo[userId]) {

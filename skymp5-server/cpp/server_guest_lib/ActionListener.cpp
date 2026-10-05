@@ -518,11 +518,8 @@ bool CanHitWithSpell(CombatEspmCache& cache, const MpActor& actor,
 }
 }
 
-MpActor* ActionListener::SendToNeighbours(uint32_t idx,
-                                          Networking::UserId userId,
-                                          Networking::PacketData data,
-                                          size_t length, bool reliable,
-                                          bool skipSender)
+MpActor* ActionListener::FindUpdatableActor(uint32_t idx,
+                                            Networking::UserId userId)
 {
   MpActor* myActor = partOne.serverState.ActorByUser(userId);
   // The old behavior is doing nothing in that case. This is covered by tests
@@ -580,14 +577,34 @@ MpActor* ActionListener::SendToNeighbours(uint32_t idx,
     }
   }
 
-  for (auto listener : actor->GetActorListeners()) {
+  return actor;
+}
+
+void ActionListener::RelayToListeners(const MpActor& actor,
+                                      Networking::UserId userId,
+                                      Networking::PacketData data,
+                                      size_t length, bool reliable,
+                                      bool skipSender)
+{
+  for (auto listener : actor.GetActorListeners()) {
     auto targetuserId = partOne.serverState.UserByActor(listener);
     if (targetuserId != Networking::InvalidUserId &&
         !(skipSender && targetuserId == userId)) {
       partOne.GetSendTarget().Send(targetuserId, data, length, reliable);
     }
   }
+}
 
+MpActor* ActionListener::SendToNeighbours(uint32_t idx,
+                                          Networking::UserId userId,
+                                          Networking::PacketData data,
+                                          size_t length, bool reliable,
+                                          bool skipSender)
+{
+  MpActor* actor = FindUpdatableActor(idx, userId);
+  if (actor) {
+    RelayToListeners(*actor, userId, data, length, reliable, skipSender);
+  }
   return actor;
 }
 
@@ -612,72 +629,75 @@ void ActionListener::OnCustomPacket(const RawMessageData& rawMsgData,
 void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
                                       const UpdateMovementMessage& msg)
 {
-  // A paralysed player stays put until it ends or the server teleports them
-  if (!paralyzedUntil.empty()) {
-    MpActor* myActor = partOne.serverState.ActorByUser(rawMsgData.userId);
-    if (myActor && myActor->GetIdx() == msg.idx && IsParalyzed(*myActor)) {
-      if (!myActor->GetTeleportFlag()) {
-        // The client is still running, so hosting keeps counting it as live
-        partOne.worldState.SetLastMovUpdate(msg.idx,
-                                            std::chrono::system_clock::now());
-        return;
-      }
-      paralyzedUntil.erase(myActor->GetFormId());
-    }
+  MpActor* actor = FindUpdatableActor(msg.idx, rawMsgData.userId);
+  if (!actor) {
+    return;
   }
+  const bool isMe = partOne.serverState.ActorByUser(rawMsgData.userId) == actor;
 
-  auto actor = SendToNeighbours(msg.idx, rawMsgData);
-  if (actor) {
-    bool teleportFlag = actor->GetTeleportFlag();
-    actor->SetTeleportFlag(false);
-
-    static const NiPoint3 kInfinityPos = {
-      std::numeric_limits<float>::infinity(),
-      std::numeric_limits<float>::infinity(),
-      std::numeric_limits<float>::infinity()
-    };
-
-    const auto& currentPos = actor->GetPos();
-    const auto& currentRot = actor->GetAngle();
-
-    if (!MovementValidation::Validate(
-          partOne, currentPos, currentRot, actor->GetCellOrWorldFormId(),
-          teleportFlag
-            ? kInfinityPos
-            : NiPoint3{ msg.data.pos[0], msg.data.pos[1], msg.data.pos[2] },
-          msg.data.worldOrCell, rawMsgData.userId, actor)) {
+  // A paralysed player stays put until it ends or the server teleports them
+  if (isMe && !paralyzedUntil.empty() && IsParalyzed(*actor)) {
+    if (!actor->GetTeleportFlag()) {
+      // The client is still running, so hosting keeps counting it as live
+      partOne.worldState.SetLastMovUpdate(msg.idx,
+                                          std::chrono::system_clock::now());
       return;
     }
-
-    // Hosted NPCs never block
-    if (partOne.serverState.ActorByUser(rawMsgData.userId) == actor) {
-      actor->ApplyBlockingReport(msg.data.isBlocking);
-    }
-
-    actor->ApplyMovementReport(
-      NiPoint3{ msg.data.pos[0], msg.data.pos[1], msg.data.pos[2] },
-      NiPoint3{ msg.data.rot[0], msg.data.rot[1], msg.data.rot[2] });
-    actor->SetAnimationVariableBool(
-      AnimationVariableBool::kVariable_bInJumpState, msg.data.isInJumpState);
-    actor->SetAnimationVariableBool(
-      AnimationVariableBool::kVariable__skymp_isWeapDrawn,
-      msg.data.isWeapDrawn);
-    actor->SetAnimationVariableBool(
-      AnimationVariableBool::kVariable_IsBlocking, msg.data.isBlocking);
-    actor->SetAnimationVariableBool(
-      AnimationVariableBool::kVariable_IsSneaking, msg.data.isSneaking);
-    if (partOne.worldState.alduinakDamageFormula) {
-      HitRules::NoteSneaking(actor->GetCombatState(), msg.data.isSneaking,
-                             HitRules::Clock::now());
-    }
-
-    if (msg.data.runMode != "Standing") {
-      actor->SetLastAnimEvent(std::nullopt);
-    }
-
-    partOne.worldState.SetLastMovUpdate(msg.idx,
-                                        std::chrono::system_clock::now());
+    paralyzedUntil.erase(actor->GetFormId());
   }
+
+  bool teleportFlag = actor->GetTeleportFlag();
+  actor->SetTeleportFlag(false);
+
+  static const NiPoint3 kInfinityPos = {
+    std::numeric_limits<float>::infinity(),
+    std::numeric_limits<float>::infinity(),
+    std::numeric_limits<float>::infinity()
+  };
+
+  const auto& currentPos = actor->GetPos();
+  const auto& currentRot = actor->GetAngle();
+
+  if (!MovementValidation::Validate(
+        partOne, currentPos, currentRot, actor->GetCellOrWorldFormId(),
+        teleportFlag
+          ? kInfinityPos
+          : NiPoint3{ msg.data.pos[0], msg.data.pos[1], msg.data.pos[2] },
+        msg.data.worldOrCell, rawMsgData.userId, actor)) {
+    return;
+  }
+
+  // Observers never see a report the server refused
+  RelayToListeners(*actor, rawMsgData.userId, rawMsgData.unparsed,
+                   rawMsgData.unparsedLength, false, false);
+
+  // Hosted NPCs never block
+  if (isMe) {
+    actor->ApplyBlockingReport(msg.data.isBlocking);
+  }
+
+  actor->ApplyMovementReport(
+    NiPoint3{ msg.data.pos[0], msg.data.pos[1], msg.data.pos[2] },
+    NiPoint3{ msg.data.rot[0], msg.data.rot[1], msg.data.rot[2] });
+  actor->SetAnimationVariableBool(
+    AnimationVariableBool::kVariable_bInJumpState, msg.data.isInJumpState);
+  actor->SetAnimationVariableBool(
+    AnimationVariableBool::kVariable__skymp_isWeapDrawn, msg.data.isWeapDrawn);
+  actor->SetAnimationVariableBool(AnimationVariableBool::kVariable_IsBlocking,
+                                  msg.data.isBlocking);
+  actor->SetAnimationVariableBool(AnimationVariableBool::kVariable_IsSneaking,
+                                  msg.data.isSneaking);
+  if (partOne.worldState.alduinakDamageFormula) {
+    HitRules::NoteSneaking(actor->GetCombatState(), msg.data.isSneaking,
+                           HitRules::Clock::now());
+  }
+
+  if (msg.data.runMode != "Standing") {
+    actor->SetLastAnimEvent(std::nullopt);
+  }
+
+  partOne.worldState.SetLastMovUpdate(msg.idx,
+                                      std::chrono::system_clock::now());
 }
 
 void ActionListener::OnUpdateAnimation(const RawMessageData& rawMsgData,

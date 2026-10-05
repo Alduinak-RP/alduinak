@@ -176,7 +176,13 @@ private:
   void SendPapyrusOnHitEvent(MpActor* aggressor, MpObjectReference* target,
                              const HitData& hitData);
 
-  // Returns user's actor if there is attached one
+  // The actor at idx when the user owns or hosts it; a refusal gets a rate-limited HostStop and log line
+  MpActor* FindUpdatableActor(uint32_t idx, Networking::UserId userId);
+  void RelayToListeners(const MpActor& actor, Networking::UserId userId,
+                        Networking::PacketData data, size_t length,
+                        bool reliable, bool skipSender);
+
+  // FindUpdatableActor, then RelayToListeners when it found one
   MpActor* SendToNeighbours(uint32_t idx, Networking::UserId userId,
                             Networking::PacketData data, size_t length,
                             bool reliable, bool skipSender = false);

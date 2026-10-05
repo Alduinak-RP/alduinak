@@ -39,6 +39,13 @@ struct RefusalLimits
   RateLimit log;
 };
 
+// Checks whose failures are logged, and refused only while the server settings enforce them
+enum class AuthorityCheck
+{
+  MovementSpeed,
+  Count
+};
+
 struct UserInfo
 {
   bool isDisconnecting = false;
@@ -58,6 +65,9 @@ struct UserInfo
   std::optional<std::chrono::steady_clock::time_point> firstEquipmentReportAt;
 
   std::unordered_map<uint32_t, RefusalLimits> refusals;
+
+  std::array<RateLimit, static_cast<size_t>(AuthorityCheck::Count)>
+    authorityLogs;
 };
 
 class ServerState
@@ -88,6 +98,10 @@ public:
   // Refusals held back since the last line, nullopt while rate-limited
   std::optional<uint32_t> AllowRefusalLog(Networking::UserId userId,
                                           uint32_t actorId);
+
+  // Failures held back since the last line, nullopt while rate-limited
+  std::optional<uint32_t> AllowAuthorityLog(Networking::UserId userId,
+                                            AuthorityCheck check);
 
 private:
   RefusalLimits* FindRefusalLimits(Networking::UserId userId, uint32_t actorId,

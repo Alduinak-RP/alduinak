@@ -74,6 +74,34 @@ bool StartsWith(const std::string& str, const char* prefix)
   return str.compare(0, strlen(prefix), prefix) == 0;
 }
 
+// A positive max and its enforce flag; a missing or bad value keeps the default
+void ReadAuthorityBound(const nlohmann::json& settings, const char* maxKey,
+                        const char* enforceKey,
+                        WorldState::AuthorityBound& bound)
+{
+  if (auto it = settings.find(maxKey); it != settings.end()) {
+    if (it->is_number() && it->get<float>() > 0.f) {
+      bound.max = it->get<float>();
+    } else {
+      spdlog::error("Unexpected value of {}, should be a positive number, "
+                    "keeping {}",
+                    maxKey, bound.max);
+    }
+  }
+  if (auto it = settings.find(enforceKey); it != settings.end()) {
+    if (it->is_boolean()) {
+      bound.enforce = it->get<bool>();
+    } else {
+      spdlog::error("Unexpected value of {}, should be true or false, "
+                    "keeping {}",
+                    enforceKey, bound.enforce);
+    }
+  }
+  GetLogger()->info("{} is {} and {} is {}: going over it is {}", maxKey,
+                    bound.max, enforceKey, bound.enforce,
+                    bound.enforce ? "refused and logged" : "logged only");
+}
+
 // Keys of the damageMultConditionalFormulaSettings entries that scale spell damage by race, joined for the log
 std::string RacialMagicEntries(const nlohmann::json& settings)
 {
@@ -510,6 +538,10 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
                  "log at {}",
                  partOne->worldState.combatTrace,
                  partOne->worldState.combatTrace ? "info" : "debug");
+
+    ReadAuthorityBound(serverSettings, "maxMovementSpeed",
+                       "enforceMovementSpeed",
+                       partOne->worldState.movementSpeed);
 
     partOne->worldState.isPapyrusHotReloadEnabled =
       serverSettings.count("isPapyrusHotReloadEnabled") != 0 &&

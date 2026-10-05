@@ -63,13 +63,13 @@ function testSettingsMerge() {
     loadOrder: ['C:/GOG Games/Skyrim Anniversary Edition - Test/Data/Skyrim.esm', 'c:/gog games/skyrim anniversary edition - test/Data/New.esp', 'D:/elsewhere/Other.esp'],
     archives: ['C:/GOG Games/Skyrim Anniversary Edition - Test/Data/Skyrim - Misc.bsa', 'C:/GOG Games/Skyrim Anniversary Edition - Test/Data/New.bsa'],
     respawnSeconds: 45, reloot: { a: 1 }, newKey: [1, 2], access: { locked: false }, enableConsoleCommandsForAll: true, isPapyrusHotReloadEnabled: true, gamemodeHotReload: true, npcCorpseWatch: true, combatTrace: true,
-    alduinakDamageFormulaSettings: { enabled: true }, survivalEnabled: true, masterySlots: 3, healthRegenerationMultiplier: 0,
+    alduinakDamageFormulaSettings: { enabled: true }, survivalEnabled: true, masterySlots: 3, healthRegenerationMultiplier: 0, enforceMovementSpeed: true,
   }
   const logs = []
   const res = m.mergeSettings({ live, test, log: t => logs.push(t) })
   assert.deepEqual(res.added, ['newKey'])
   assert.deepEqual(res.changed, ['respawnSeconds'])
-  assert.deepEqual(res.kept, ['name', 'port', 'maxPlayers', 'masterKey', 'dataDir', 'access', 'enableConsoleCommandsForAll', 'isPapyrusHotReloadEnabled', 'gamemodeHotReload', 'npcCorpseWatch', 'combatTrace', 'alduinakDamageFormulaSettings', 'survivalEnabled', 'masterySlots', 'healthRegenerationMultiplier'])
+  assert.deepEqual(res.kept, ['name', 'port', 'maxPlayers', 'masterKey', 'dataDir', 'access', 'enableConsoleCommandsForAll', 'isPapyrusHotReloadEnabled', 'gamemodeHotReload', 'npcCorpseWatch', 'combatTrace', 'alduinakDamageFormulaSettings', 'survivalEnabled', 'masterySlots', 'healthRegenerationMultiplier', 'enforceMovementSpeed'])
   const mg = res.merged
   assert.equal(mg.name, 'Alduinak')
   assert.equal(mg.port, 7777)
@@ -84,6 +84,7 @@ function testSettingsMerge() {
   assert.ok(!('enableConsoleCommandsForAll' in mg) && !('isPapyrusHotReloadEnabled' in mg) && !('gamemodeHotReload' in mg) && !('npcCorpseWatch' in mg) && !('combatTrace' in mg), 'debug toggles never migrate')
   assert.ok(!('alduinakDamageFormulaSettings' in mg) && !('survivalEnabled' in mg) && !('masterySlots' in mg), 'test-only feature switches never migrate')
   assert.equal(mg.healthRegenerationMultiplier, 1)
+  assert.ok(!('enforceMovementSpeed' in mg), 'an enforced authority check stays log-only on live')
   assert.ok(logs.includes('kept survivalEnabled (protected)'))
   // The load order follows the manifest through Migrate client, never this merge
   assert.deepEqual(mg.loadOrder, live.loadOrder)

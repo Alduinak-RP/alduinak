@@ -277,6 +277,16 @@ public:
   // The rebalance formula's per-hit lines log at info instead of debug
   bool combatTrace = false;
 
+  // An authority check's limit: a value over max is logged, and refused only while enforce is on
+  struct AuthorityBound
+  {
+    float max = 0.f;
+    bool enforce = false;
+  };
+
+  // Horizontal units per second a player's movement reports may cover
+  AuthorityBound movementSpeed{ 2048.f };
+
   // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
   std::shared_ptr<ItemRowResolver> itemRowResolver;
 
