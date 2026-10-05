@@ -23,6 +23,11 @@ const standingMaxDeltaZ = 64;
 const engineRecheckMs = 2000;
 // Smoothed health stops once the copy is this close to the reported value
 const healthConvergedDelta = 0.01;
+// translateTo's window in seconds follows the copy's packet interval, so a copy updated less often glides from one packet to the next
+const minTranslateWindow = 0.13;
+const maxTranslateWindow = 0.6;
+// Lag compensation leads by at most this speed, so a stale speed sample can't fling the clone past the target
+const maxExtrapolationSpeed = 640;
 
 // What the applies left on one copy, so an unchanged value is neither read nor sent again
 export interface AppliedMovement {
@@ -39,9 +44,23 @@ export interface AppliedMovement {
   recheckAt: number;
   // The packet the copy rests at: standing on its spot, facing its way, with nothing left to apply
   rest?: Movement;
+  // When the last new packet was applied
+  arrivedAt?: number;
+  // Seconds translateTo takes to reach the target
+  window: number;
 }
 
-export const makeAppliedMovement = (): AppliedMovement => ({ recheckAt: 0 });
+export const makeAppliedMovement = (): AppliedMovement => ({ recheckAt: 0, window: 0.2 });
+
+// A longer gap is taken at once so the copy is not left short of the next packet; a shorter one is eased in
+export const noteMovementArrival = (state: AppliedMovement): void => {
+  const now = Date.now();
+  if (state.arrivedAt !== undefined) {
+    const gap = Math.max(minTranslateWindow, Math.min(maxTranslateWindow, (now - state.arrivedAt) / 1000));
+    state.window = gap > state.window ? gap : (state.window + gap) / 2;
+  }
+  state.arrivedAt = now;
+};
 
 // A riding clone is carried by its horse, and a horse being mounted is left to the engine: no translation, offset or locomotion events reach either
 // ownOffset leaves the keep-offset to the service that drives this copy (own companions, steered pets)
@@ -72,7 +91,7 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
       SpApiInteractor.getControllerInstance().emitter.emit("newLocalLagValueCalculated", { lagUnitsNoZ });
     }
 
-    settled = translateTo(refr, m);
+    settled = translateTo(refr, m, state.window);
   }
 
   const ac = Actor.from(refr);
@@ -304,18 +323,12 @@ export const forgetGroundSample = (localId: number): void => {
 };
 
 // True when the copy already stands at the target
-const translateTo = (refr: ObjectReference, m: Movement): boolean => {
-  let time = 0.2;
-  if (m.isInJumpState || m.runMode !== "Standing") {
-    time = 0.2;
-  }
-
+const translateTo = (refr: ObjectReference, m: Movement, time: number): boolean => {
   const ground = getGroundSample(refr.getFormID(), m);
 
   // Local lag compensation
   // TODO: Remove "|| 0" hack (added to support old MpClientPlugin)
-  // Clamped so a stale speed sample can't fling the clone past the target
-  const distanceAdd = Math.min((m.speed || 0) * time, 128);
+  const distanceAdd = Math.min(m.speed || 0, maxExtrapolationSpeed) * time;
   const direction = m.rot[2] + m.direction;
   gTempTargetPos[0] = m.pos[0];
   gTempTargetPos[1] = m.pos[1];

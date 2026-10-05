@@ -6,7 +6,7 @@ import { Entry } from "../sync/inventory";
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
-import { applyMovement, forgetGroundSample, isCarrierCloneId, makeAppliedMovement } from "../sync/movementApply";
+import { applyMovement, forgetGroundSample, isCarrierCloneId, makeAppliedMovement, noteMovementArrival } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseCloneOnEvent, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
 import { Movement } from "../sync/movement";
@@ -472,6 +472,9 @@ export class FormView {
         this.movState.lastApply = Date.now();
         const hostedByOther = isModelHostedByOther(model);
         if (hostedByOther || !this.movState.everApplied) {
+          if (isNewMovement) {
+            noteMovementArrival(this.appliedMovement);
+          }
           const backup = model.movement.isWeapDrawn;
           if (forcedWeapDrawn === true || forcedWeapDrawn === false) {
             model.movement.isWeapDrawn = forcedWeapDrawn;
