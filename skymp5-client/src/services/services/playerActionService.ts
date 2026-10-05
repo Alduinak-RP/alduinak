@@ -5,7 +5,7 @@ import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
 import { isFreeCamera } from "./adminModeService";
-import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, Menu, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
+import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, Menu, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
 import { introducedName, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { ModelApplyUtils } from "../../view/modelApplyUtils";
 import { logTrace } from "../../logging";
@@ -229,7 +229,7 @@ export class PlayerActionService extends ClientListener {
     this.controller.once("update", () => {
       const form = this.controller.lookupListener(RemoteServer).getFormByRefrId(target);
       const box = ObjectReference.from(this.sp.Game.getFormEx(remoteIdToLocalId(target)));
-      if (!form?.inventory || !box) return;
+      if (!form?.inventory || box?.getBaseObject()?.getType() !== FormType.Container) return;
       ModelApplyUtils.applyModelInventory(box, form.inventory);
       form.inventory = undefined;
     });
