@@ -1271,9 +1271,9 @@ the native server at boot, which logs `npcBlockedDamageShare is <share>: ...`; e
 `docs/docs_onhit_and_damage.md`, Blocked hits.
 
 Under the rebalance formula (`alduinakDamageFormulaSettings.enabled`) the same share of the NPC's unblocked damage
-after DT lands, and a player's hit on a blocking player still lands 0. Two keys of that block can open a block
-further, for a player's hit too: a blocker's `BlockMod` (`effectModifiers`) scales the blocked part, and a broken
-shield or parrying weapon lets the larger of this share and `durability.effect.brokenBlockPass` through. The line then
+after DT lands, and a player's hit on a blocking player still lands 0. One key of that block can open a block
+further, for a player's hit too: a blocker's `BlockMod` (`effectModifiers`) scales the blocked part. A broken shield
+or parrying weapon blocks like a whole one (`durability.effect.brokenBlockPass` is not applied). The line then
 reads `OnWeaponHit - <target> blocked npc|player <aggressor> with <weapon>, <landed> of <unblocked> damage lands
 (share <share>, npcBlockedDamageShare <n>)`. These per-hit lines log at debug level, so `logLevel` `debug` shows them.
 
@@ -1418,7 +1418,7 @@ Switches:
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `false` | `true`: the rebalance formula prices every weapon hit (row damage against worn DT, crits rolled by the server) in place of the vanilla formula, inside the same wrappers (`damageMultFormulaSettings`, `damageMultConditionalFormulaSettings`); the hit rules below, the block stamina rule, the crit notice and the DT lines of `/armor` follow it. Spells are priced by the vanilla formula, then by the `magic` rules below, with the same `playerHitCap`. `false` leaves weapon and spell damage to the vanilla formula |
-| `durability.enabled` | `false` | `true`: worn weapons, bows, crossbows, armor pieces and shields of players wear on accepted weapon hits, show their condition in their name and are repaired at the benches. Independent of `enabled`: with the formula off the vanilla formula takes the same condition shares off the weapon's damage, each piece's armor rating and the block |
+| `durability.enabled` | `false` | `true`: worn weapons, bows, crossbows, armor pieces and shields of players wear on accepted weapon hits, show their condition in their name and are repaired at the benches. Independent of `enabled`. The condition is for roleplay only: under either formula it changes no damage, DT, armor rating, block or crit |
 | `effectModifiers` | `true` | The summed `OneHandedMod`, `TwoHandedMod`, `MarksmanMod` and `BlockMod` of a character's Ability and Disease spells scale weapon damage and the blocked part of a hit by clamp(1 + sum / 100, 0.25, 2), under either formula. Counts only while `enabled` or `durability.enabled` is true. The Survival hunger stage abilities carry `BlockMod` -30, -50, -70 and -90 from stage 2 to 5, so a hungry player's block leaks while this is on. `false` leaves damage and blocks alone; a value that is not true or false counts as false and logs `Unexpected value of alduinakDamageFormulaSettings.effectModifiers, should be true or false, effect modifiers stay off` |
 | `source` | generated | A text naming the generator run (plugin hash, plugin count, options). Not read |
 
@@ -1484,7 +1484,7 @@ Durability, under `durability`, in force while `durability.enabled` is true:
 | `shieldHPShare` | `0.8` | A shield's HP as a share of its row's set HP |
 | `fallbackHP` | `{ "weapon": 250, "armorSet": 300 }` | HP of a row without an entry in the tables above (a boot warning names such rows) |
 | `wear` | `{ "landedHit": 1, "powerExtra": 1, "parriedHit": 1, "bash": 1, "bowHit": 1, "shieldBlock": 1, "armorHit": 1, "armorMinPreDT": 8 }` | Wear points per event: the attacker's weapon per landed hit (plus `powerExtra` on a power attack), per swing a block stopped (`parriedHit`), per bash, a bow or crossbow per arrow that lands; the target's shield per block, or without a shield the weapon it parried with; and `armorHit` spread over the worn pieces by slot share on an unblocked hit of `armorMinPreDT` damage or more before DT |
-| `effect` | `{ "kneeCondition": 0.5, "effectAtZero": 0.75, "brokenWeaponMult": 0.25, "brokenArmorDT": 0, "brokenBlockPass": 0.5 }` | A copy keeps all of its damage or DT down to `kneeCondition`, then falls in a line to `effectAtZero` just above 0. Broken (0): a weapon deals `brokenWeaponMult` and never crits, a piece or shield gives `brokenArmorDT` of its DT, and a block with a broken shield (or a parry with a broken weapon) lets the larger of the usual share and `brokenBlockPass` through. 0 to 1 each |
+| `effect` | `{ "kneeCondition": 0.5, "effectAtZero": 0.75, "brokenWeaponMult": 0.25, "brokenArmorDT": 0, "brokenBlockPass": 0.5 }` | A copy keeps all of its damage or DT down to `kneeCondition`, then falls in a line to `effectAtZero` just above 0. Broken (0): a weapon deals `brokenWeaponMult` and never crits, a piece or shield gives `brokenArmorDT` of its DT, and a block with a broken shield (or a parry with a broken weapon) lets the larger of the usual share and `brokenBlockPass` through. 0 to 1 each. **Not applied:** the condition is for roleplay only, the code that applied these shares is commented out in the native; the values are still checked at boot |
 | `flush` | `{ "minSeconds": 5, "calmSeconds": 10 }` | Wear waits in memory and is written to the inventory when a shown percent would move and `minSeconds` passed since the last write, after `calmSeconds` without a hit, and always before an equipment change, a drop, a put, a trade, death and disconnect |
 | `npcGearWears` | `false` | `true` lets the gear NPCs wear and hold wear too |
 | `exempt` | `[]` | `["<hex id>:<plugin>"]`: bases that never wear. Staffs, clothing, jewelry, ammunition and dummy weapons never do |

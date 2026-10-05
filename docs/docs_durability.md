@@ -8,6 +8,11 @@ or grindstone repairs it. The whole feature is behind `alduinakDamageFormulaSett
 `server-settings.json`; without the block, or with that key not `true`, nothing below runs and every
 inventory, trade and craft behaves as before.
 
+The condition is for roleplay only. It changes no damage, DT, armor rating, block or crit, and a broken copy works
+like a pristine one. The shares of `durability.effect` are still read and checked at boot but nothing applies them:
+the code that did is commented out in `Durability.cpp` (`WornWeaponEffect`, `WornArmorEffect`, `BrokenBlockPass`)
+and `AlduinakDamageFormula.cpp` (`GetAttack`, `GetWornDT`). Wear, the name tag, the notices and repairs are unchanged.
+
 This document covers how the condition travels through the server TypeScript. The damage formula and the
 `/armor` readout are in `docs_onhit_and_damage.md`.
 

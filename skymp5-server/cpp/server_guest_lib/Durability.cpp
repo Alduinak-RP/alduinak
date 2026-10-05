@@ -427,31 +427,37 @@ const DurabilityRules::Settings* Durability::GetSettings(
 DurabilityRules::WeaponEffect Durability::WornWeaponEffect(
   const MpActor& aggressor, uint32_t source)
 {
-  const auto* settings = GetSettings(aggressor.GetParent());
-  const auto* worn = settings ? FindWorn(aggressor, source) : nullptr;
-  return worn ? DurabilityRules::WeaponEffectOf(*settings, worn->condition)
-              : DurabilityRules::WeaponEffect();
+  // Condition is roleplay only
+  // const auto* settings = GetSettings(aggressor.GetParent());
+  // const auto* worn = settings ? FindWorn(aggressor, source) : nullptr;
+  // return worn ? DurabilityRules::WeaponEffectOf(*settings, worn->condition)
+  //             : DurabilityRules::WeaponEffect();
+  return DurabilityRules::WeaponEffect();
 }
 
 float Durability::WornArmorEffect(const WorldState* worldState,
                                   const Inventory::Entry& worn)
 {
-  const auto* settings = GetSettings(worldState);
-  return settings ? DurabilityRules::ArmorEffectOf(*settings, worn.condition)
-                  : 1.f;
+  // Condition is roleplay only
+  // const auto* settings = GetSettings(worldState);
+  // return settings ? DurabilityRules::ArmorEffectOf(*settings, worn.condition)
+  //                 : 1.f;
+  return 1.f;
 }
 
 float Durability::BrokenBlockPass(const MpActor& blocker)
 {
-  const auto ctx = ContextOf(blocker);
-  if (!ctx) {
-    return 0.f;
-  }
-  const auto* shield = FindWornShield(blocker, *ctx);
-  const auto* held = shield ? shield : FindParryingWeapon(blocker, *ctx);
-  return held && ConditionTag::IsBroken(held->condition)
-    ? ctx->settings->effect.brokenBlockPass
-    : 0.f;
+  // Condition is roleplay only
+  // const auto ctx = ContextOf(blocker);
+  // if (!ctx) {
+  //   return 0.f;
+  // }
+  // const auto* shield = FindWornShield(blocker, *ctx);
+  // const auto* held = shield ? shield : FindParryingWeapon(blocker, *ctx);
+  // return held && ConditionTag::IsBroken(held->condition)
+  //   ? ctx->settings->effect.brokenBlockPass
+  //   : 0.f;
+  return 0.f;
 }
 
 float Durability::RecordDamage(const MpActor& aggressor, uint32_t source)

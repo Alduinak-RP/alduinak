@@ -104,8 +104,8 @@ resists magic while no entry names it.
 Spells against armor (rebalance): while `alduinakDamageFormulaSettings.enabled` is true a spell is priced as above
 and then loses `magic.dtShare` (0.5) of the target's worn DT, but never more than 1 - `magic.floor` (0.5) of its
 damage. Firebolt (25) lands 20.125 on a Steel set (DT 9.75) and 17.5 on a Daedric one (DT 15), Fireball (40) lands
-35.125 on Steel, and one hit of Flames (8) lands 4 on either. The worn DT is the one weapon hits meet (temper,
-condition and the shield included); a creature's natural DT takes nothing from a spell. The
+35.125 on Steel, and one hit of Flames (8) lands 4 on either. The worn DT is the one weapon hits meet (temper
+and the shield included); a creature's natural DT takes nothing from a spell. The
 `damageMultConditionalFormulaSettings` wrappers and the 45 cap still come last. `magic.dtShare: 0` leaves spells as
 the vanilla formula prices them. A spell hit that a resistance or the DT changed logs `AlduinakDamageFormula - spell
 <s> of <a> on <t>: <u> before resistances, <r> after, worn DT <dt> x <share> takes <n>, <d> lands` at debug level, at info with `combatTrace` on.
@@ -262,19 +262,18 @@ unarmored player reads about `for 33 ... power=1 ... preDT=16.5`: the damage is 
 what the player wears and holds, one System tab line each:
 
 ```
-Armor: DT 10.93 (taken off each weapon hit), weight 48
+Armor: DT 12.62 (taken off each weapon hit), weight 48
 Steel Armor: DT 8.34, Superior, 97% (262/270)
 Steel Helmet: DT 2.03, 100% (68/68)
-Steel Cuffed Boots: DT 0, Broken (0/56)
+Steel Cuffed Boots: DT 1.69, Broken (0/56)
 Steel Shield: DT 0.56, 50% (180/360)
 Steel Sword: damage 16.75, Fine, 88% (308/350)
 ```
 
 - The DT, the temper and the weapon lines come from the native `getCombatStats(actorId)` and exist while `enabled`
-  is true. The DT and the damage are what the piece or weapon gives now, at its temper and condition (full down to
-  `durability.effect.kneeCondition`, less below it, `brokenArmorDT` and `brokenWeaponMult` when broken); the native
-  sends no separate full value. The temper is the quality name of its step (Fine to
-  Legendary). The total is the native's `wornDT` (pieces and shield), the weight its `armorWeight`: the worn light
+  is true. The DT and the damage are what the piece or weapon gives at its temper. The condition changes neither,
+  it is for roleplay only (`docs_durability.md`), so a broken piece keeps its DT. The temper is the quality name of
+  its step (Fine to Legendary). The total is the native's `wornDT` (pieces and shield), the weight its `armorWeight`: the worn light
   and heavy pieces without the shield, which is the weight the block stamina rule charges.
 - A hit meets only the best piece of each slot group, so a second piece on the same slots adds nothing to the
   total. The native sends what each piece adds as `countedDT`, and a piece that adds less than its DT says so:

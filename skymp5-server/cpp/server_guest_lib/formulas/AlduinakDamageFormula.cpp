@@ -240,12 +240,13 @@ HitMath::Attack AlduinakDamageFormula::GetAttack(const MpActor& aggressor,
     settings, item, RecordSpeed(source, *worldState),
     worn ? WornTemperStep(aggressor, *worn) : 0,
     shoots && !bash ? ShotAmmoDamage(aggressor, source, *worldState) : -1.f);
-  if (settings.durability.enabled && worn) {
-    const auto effect =
-      DurabilityRules::WeaponEffectOf(settings.durability, worn->condition);
-    attack.conditionMult = effect.mult;
-    attack.broken = effect.broken;
-  }
+  // Condition is roleplay only
+  // if (settings.durability.enabled && worn) {
+  //   const auto effect =
+  //     DurabilityRules::WeaponEffectOf(settings.durability, worn->condition);
+  //   attack.conditionMult = effect.mult;
+  //   attack.broken = effect.broken;
+  // }
   if (attack.kind == HitMath::AttackKind::None &&
       item.kind != ItemRows::Kind::Staff &&
       item.kind != ItemRows::Kind::Dummy) {
@@ -275,9 +276,11 @@ HitMath::WornDT AlduinakDamageFormula::GetWornDT(
       continue;
     }
     const int step = WornTemperStep(target, entry);
-    const float conditionMult = settings.durability.enabled
-      ? DurabilityRules::ArmorEffectOf(settings.durability, entry.condition)
-      : 1.f;
+    // Condition is roleplay only
+    // const float conditionMult = settings.durability.enabled
+    //   ? DurabilityRules::ArmorEffectOf(settings.durability, entry.condition)
+    //   : 1.f;
+    const float conditionMult = 1.f;
     worn.Add(settings, item, step, conditionMult);
     if (pieces) {
       const bool counts = settings.durability.enabled;
