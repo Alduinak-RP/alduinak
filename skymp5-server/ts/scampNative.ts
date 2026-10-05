@@ -1,10 +1,5 @@
 const scampNativeNode = require(process.cwd() + "/scam_native.node");
 
-export declare interface Bot {
-  destroy(): void;
-  send(msg: Record<string, unknown>): void;
-}
-
 export type SendChatMessageFn = (
   formId: number,
   message: Record<string, unknown>
@@ -48,7 +43,6 @@ export interface ScampServer {
   // Milliseconds since the actor's last movement message; -1 when none arrived
   getMovementAgeMs(actorId: number): number;
   getActorsByProfileId(profileId: number): number[];
-  createBot(): Bot;
   getUserByActor(formId: number): number;
   getUserIp(userId: number): string;
   kick(userId: number): void;

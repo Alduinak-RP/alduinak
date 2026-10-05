@@ -114,11 +114,6 @@ public:
   void NotifyGamemodeApiStateChanged(
     const GamemodeApi::State& newState) noexcept;
 
-  void SetPacketHistoryRecording(Networking::UserId userId, bool value);
-  PacketHistory GetPacketHistory(Networking::UserId userId);
-  void ClearPacketHistory(Networking::UserId userId);
-  void RequestPacketHistoryPlayback(Networking::UserId userId,
-                                    const PacketHistory& history);
 
   void SendHostStop(Networking::UserId badHosterUserId,
                     MpObjectReference& remote);
@@ -146,7 +141,6 @@ private:
 
   void InitActionListener();
 
-  void TickPacketHistoryPlaybacks();
   void TickDeferredMessages();
 
   struct Impl;

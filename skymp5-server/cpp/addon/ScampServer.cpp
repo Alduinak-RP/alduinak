@@ -2,7 +2,6 @@
 
 #include <string>
 
-#include "Bot.h"
 #include "ConditionsEvaluator.h"
 #include "Durability.h"
 #include "FormCallbacks.h"
@@ -11,7 +10,6 @@
 #include "MpChangeForms.h"
 #include "NapiHelper.h"
 #include "NetworkingCombined.h"
-#include "PacketHistoryWrapper.h"
 #include "PapyrusUtils.h"
 #include "ScampServerListener.h"
 #include "condition_functions/ConditionFunctionFactory.h"
@@ -48,8 +46,6 @@ enum class CallType
 };
 
 namespace {
-
-constexpr size_t kMockServerIdx = 1;
 
 std::shared_ptr<spdlog::logger>& GetLogger()
 {
@@ -179,7 +175,6 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("getCombatStats", &ScampServer::GetCombatStats),
       InstanceMethod("settleWear", &ScampServer::SettleWear),
       InstanceMethod("getDurability", &ScampServer::GetDurability),
-      InstanceMethod("createBot", &ScampServer::CreateBot),
       InstanceMethod("getUserByActor", &ScampServer::GetUserByActor),
       InstanceMethod("getUserIp", &ScampServer::GetUserIp),
       InstanceMethod("kick", &ScampServer::Kick),
@@ -204,12 +199,6 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("registerPapyrusFunction",
                      &ScampServer::RegisterPapyrusFunction),
       InstanceMethod("sendCustomPacket", &ScampServer::SendCustomPacket),
-      InstanceMethod("setPacketHistoryRecording",
-                     &ScampServer::SetPacketHistoryRecording),
-      InstanceMethod("getPacketHistory", &ScampServer::GetPacketHistory),
-      InstanceMethod("clearPacketHistory", &ScampServer::ClearPacketHistory),
-      InstanceMethod("requestPacketHistoryPlayback",
-                     &ScampServer::RequestPacketHistoryPlayback),
       InstanceMethod("findFormsByPropertyValue",
                      &ScampServer::FindFormsByPropertyValue),
       InstanceMethod("getPrometheusMetrics",
@@ -266,8 +255,6 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
 
     std::string serverSettingsJson =
       static_cast<std::string>(info[0].As<Napi::String>());
-
-    serverMock = std::make_shared<Networking::MockServer>();
 
     std::string dataDir;
 
@@ -575,8 +562,8 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
       Networking::CreateServer(listenHost.c_str(), listenPort, maxPlayers,
                                password.data(), promRegistry);
 
-    static_assert(kMockServerIdx == 1);
-    server = Networking::CreateCombinedServer({ realServer, serverMock });
+    // The combined server keeps user id 0 free
+    server = Networking::CreateCombinedServer({ realServer });
 
     partOne->SetSendTarget(server.get());
 
@@ -802,7 +789,7 @@ Napi::Value ScampServer::Tick(const Napi::CallbackInfo& info)
   try {
     tickEnv = info.Env();
 
-    // The real server catches per packet, this covers the mock one
+    // The real server catches per packet, this covers the rest of its tick
     try {
       server->Tick(PartOne::HandlePacket, partOne.get());
     } catch (const std::exception& e) {
@@ -1210,83 +1197,6 @@ Napi::Value ScampServer::SendCustomPacket(const Napi::CallbackInfo& info)
     throw Napi::Error::New(info.Env(), (std::string)e.what());
   }
   return info.Env().Undefined();
-}
-
-Napi::Value ScampServer::CreateBot(const Napi::CallbackInfo& info)
-{
-  if (!this->serverMock) {
-    throw Napi::Error::New(info.Env(), "Bad serverMock");
-  }
-  auto serverCombined =
-    std::dynamic_pointer_cast<Networking::ServerCombined>(this->server);
-  if (!serverCombined) {
-    throw Napi::Error::New(
-      info.Env(),
-      "Expected server to be instance of Networking::ServerCombined");
-  }
-
-  auto pair = this->serverMock->CreateClient();
-  auto bot = std::make_shared<Bot>(pair.first);
-
-  auto jBot = Napi::Object::New(info.Env());
-
-  jBot.Set(
-    "getUserId",
-    Napi::Function::New(
-      info.Env(), [bot, pair, serverCombined](const Napi::CallbackInfo& info) {
-        try {
-          Networking::UserId realUserId = pair.second;
-          return Napi::Number::New(
-            info.Env(),
-            serverCombined->GetCombinedUserId(kMockServerIdx, realUserId));
-        } catch (std::exception& e) {
-          throw Napi::Error::New(info.Env(), std::string(e.what()));
-        }
-      }));
-
-  jBot.Set(
-    "destroy",
-    Napi::Function::New(info.Env(), [bot](const Napi::CallbackInfo& info) {
-      try {
-        bot->Destroy();
-        return info.Env().Undefined();
-      } catch (std::exception& e) {
-        throw Napi::Error::New(info.Env(), std::string(e.what()));
-      }
-    }));
-  jBot.Set(
-    "send",
-    Napi::Function::New(info.Env(), [bot](const Napi::CallbackInfo& info) {
-      try {
-        auto argument = info[0];
-        if (argument.IsTypedArray()) {
-          auto arr = argument.As<Napi::Uint8Array>();
-          size_t n = arr.ByteLength();
-          char* data = reinterpret_cast<char*>(arr.Data());
-          std::string s(data, n);
-          bot->Send(s);
-        } else {
-          auto standardJson =
-            info.Env().Global().Get("JSON").As<Napi::Object>();
-          auto stringify = standardJson.Get("stringify").As<Napi::Function>();
-          std::string s;
-          s += Networking::MinPacketId;
-          s += static_cast<std::string>(
-            stringify.Call({ info[0] }).As<Napi::String>());
-          bot->Send(s);
-        }
-
-        // Memory leak fix
-        // TODO: Provide tick API
-        bot->Tick();
-
-        return info.Env().Undefined();
-      } catch (std::exception& e) {
-        throw Napi::Error::New(info.Env(), std::string(e.what()));
-      }
-    }));
-
-  return jBot;
 }
 
 Napi::Value ScampServer::GetUserByActor(const Napi::CallbackInfo& info)
@@ -1871,57 +1781,6 @@ Napi::Value ScampServer::RegisterPapyrusFunction(
           jsResult, treatResultAsInt, *wst);
       });
 
-    return info.Env().Undefined();
-  } catch (std::exception& e) {
-    throw Napi::Error::New(info.Env(), std::string(e.what()));
-  }
-}
-
-Napi::Value ScampServer::SetPacketHistoryRecording(
-  const Napi::CallbackInfo& info)
-{
-  try {
-    auto userId = NapiHelper::ExtractUInt32(info[0], "userId");
-    bool isRecording = NapiHelper::ExtractBoolean(info[1], "isRecording");
-    partOne->SetPacketHistoryRecording(userId, isRecording);
-    return info.Env().Undefined();
-  } catch (std::exception& e) {
-    throw Napi::Error::New(info.Env(), std::string(e.what()));
-  }
-}
-
-Napi::Value ScampServer::GetPacketHistory(const Napi::CallbackInfo& info)
-{
-  try {
-    auto userId = NapiHelper::ExtractUInt32(info[0], "userId");
-    auto history = partOne->GetPacketHistory(userId);
-    return PacketHistoryWrapper::ToNapiValue(history, info.Env());
-  } catch (std::exception& e) {
-    throw Napi::Error::New(info.Env(), std::string(e.what()));
-  }
-}
-
-Napi::Value ScampServer::ClearPacketHistory(const Napi::CallbackInfo& info)
-{
-  try {
-    auto userId = NapiHelper::ExtractUInt32(info[0], "userId");
-    partOne->ClearPacketHistory(userId);
-    return info.Env().Undefined();
-  } catch (std::exception& e) {
-    throw Napi::Error::New(info.Env(), std::string(e.what()));
-  }
-}
-
-Napi::Value ScampServer::RequestPacketHistoryPlayback(
-  const Napi::CallbackInfo& info)
-{
-  try {
-    auto userId = NapiHelper::ExtractUInt32(info[0], "userId");
-    auto packetHistory = NapiHelper::ExtractObject(info[1], "packetHistory");
-
-    PacketHistory history = PacketHistoryWrapper::FromNapiValue(packetHistory);
-
-    partOne->RequestPacketHistoryPlayback(userId, history);
     return info.Env().Undefined();
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), std::string(e.what()));

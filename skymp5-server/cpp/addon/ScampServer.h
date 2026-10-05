@@ -2,7 +2,7 @@
 
 #include "GamemodeApi.h"
 #include "LocalizationProvider.h"
-#include "NetworkingMock.h"
+#include "NetworkingInterface.h"
 #include "PartOne.h"
 #include "ScampServerListener.h"
 
@@ -56,7 +56,6 @@ public:
   Napi::Value GetCombatStats(const Napi::CallbackInfo& info);
   Napi::Value SettleWear(const Napi::CallbackInfo& info);
   Napi::Value GetDurability(const Napi::CallbackInfo& info);
-  Napi::Value CreateBot(const Napi::CallbackInfo& info);
   Napi::Value GetUserByActor(const Napi::CallbackInfo& info);
   Napi::Value GetUserIp(const Napi::CallbackInfo& info);
   Napi::Value Kick(const Napi::CallbackInfo& info);
@@ -78,10 +77,6 @@ public:
   Napi::Value RegisterPapyrusFunction(const Napi::CallbackInfo& info);
   Napi::Value SendCustomPacket(const Napi::CallbackInfo& info);
 
-  Napi::Value SetPacketHistoryRecording(const Napi::CallbackInfo& info);
-  Napi::Value GetPacketHistory(const Napi::CallbackInfo& info);
-  Napi::Value ClearPacketHistory(const Napi::CallbackInfo& info);
-  Napi::Value RequestPacketHistoryPlayback(const Napi::CallbackInfo& info);
 
   Napi::Value GetPrometheusMetrics(const Napi::CallbackInfo& info);
 
@@ -110,7 +105,6 @@ public:
 private:
   std::shared_ptr<PartOne> partOne;
   std::shared_ptr<Networking::IServer> server;
-  std::shared_ptr<Networking::MockServer> serverMock;
   std::shared_ptr<ScampServerListener> listener;
   Napi::Env tickEnv;
   Napi::ObjectReference emitter;
