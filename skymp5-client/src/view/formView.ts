@@ -1,12 +1,12 @@
 import { Actor, ActorBase, createText, destroyText, FormType, Game, Keyword, NetImmerse, ObjectReference, once, setTextColor, setTextRefr, setTextRefrNode, setTextRefrOffset, setTextRefrScreenOffset, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
-import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
+import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving, isShotEvent } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, isBadMenuShownNow, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, getWornLight, resyncHandGraph, wearsExactly } from "../sync/equipment";
 import { Entry } from "../sync/inventory";
 import { logToPlatformLog } from "../logging";
 import { RespawnNeededError } from "../lib/errors";
 import { FormModel } from "./model";
-import { applyMovement, forgetGroundSample, isCarrierCloneId, makeAppliedMovement, noteMovementArrival, recheckTurn } from "../sync/movementApply";
+import { aimForShot, applyMovement, forgetGroundSample, isCarrierCloneId, makeAppliedMovement, noteMovementArrival, recheckTurn } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseCloneOnEvent, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
 import { Movement } from "../sync/movement";
@@ -528,6 +528,9 @@ export class FormView {
 
     if (loaded) {
       if (model.animation) {
+        if (actor && !alreadyHosted && !mounted && model.animation.numChanges !== this.animState.lastNumChanges && isShotEvent(model.animation.animEventName)) {
+          aimForShot(actor, model.movement, model.movement?.rot[0] ?? 0, model.animation.animEventName);
+        }
         applyAnimation(refr, model.animation, this.animState, mounted, !!model.appearance);
       }
       // Use them only once, for spawning actors with correct animations

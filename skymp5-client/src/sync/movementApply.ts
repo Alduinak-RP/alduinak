@@ -3,13 +3,15 @@ import {
   Actor,
   Game,
   TESModPlatform,
-  Debug
+  Debug,
+  EquippedItemType
 } from "skyrimPlatform";
 import { RespawnNeededError } from "../lib/errors";
 import { Movement, RunMode, AnimationVariables, Transform, NiPoint3 } from "./movement";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { isInSitPose } from "./animation";
+import { logToPlatformLog } from "../logging";
 
 const sqr = (x: number) => x * x;
 
@@ -30,6 +32,10 @@ const maxTranslateWindow = 0.6;
 const maxExtrapolationSpeed = 640;
 // A standing copy's self offset turns it until re-evaluated, which an idle sender's packets no longer do often enough
 const turnRecheckMs = 130;
+// A smaller pitch change is not worth moving the copy for
+const aimPitchDeadzone = 1;
+const rangedHandTypes = new Set<number>([EquippedItemType.Bow, EquippedItemType.Staff, EquippedItemType.Spell, EquippedItemType.Crossbow]);
+const aimLogIntervalMs = 10000;
 
 // What the applies left on one copy, so an unchanged value is neither read nor sent again
 export interface AppliedMovement {
@@ -53,6 +59,10 @@ export interface AppliedMovement {
   window: number;
   // The standing packet the copy still turns toward
   turn?: { m: Movement; recheckAt: number };
+  // Whether a drawn hand held a bow, crossbow, staff or spell at the last read
+  ranged?: boolean;
+  // The pitch a standing copy was given, undefined while it stands level
+  aimPitch?: number;
 }
 
 export const makeAppliedMovement = (): AppliedMovement => ({ recheckAt: 0, window: 0.2 });
@@ -131,6 +141,9 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
     if (!trusted || state.weapDrawn !== m.isWeapDrawn) {
       state.weapDrawn = applyWeapDrawn(ac, m.isWeapDrawn) ? m.isWeapDrawn : undefined;
     }
+    if (settled) {
+      applyAimPitch(ac, m, state, trusted);
+    }
   }
   if (!trusted || state.health !== m.healthPercentage) {
     state.health = applyHealthPercentage(ac, m.healthPercentage) ? m.healthPercentage : undefined;
@@ -181,6 +194,55 @@ const applyHeadTracking = (ac: Actor, m: Movement, state: AppliedMovement, trust
     ac.setLookAt(lookAt, false);
   } else {
     ac.setHeadTracking(false);
+  }
+};
+
+// GetEquippedItemType's hands are 0 left and 1 right
+const holdsRanged = (ac: Actor): boolean =>
+  rangedHandTypes.has(ac.getEquippedItemType(1)) || rangedHandTypes.has(ac.getEquippedItemType(0));
+
+// The engine fires an actor's arrows and casts at its X angle, so the copy is pitched where its player aimed; returns the angle it had
+const aimCopy = (ac: Actor, pitch: number): number => {
+  const angleX = ac.getAngleX();
+  if (wrappedAngleDiff(angleX, pitch) > aimPitchDeadzone) {
+    ac.setAngle(normalizeAngle(pitch), ac.getAngleY(), ac.getAngleZ());
+  }
+  return angleX;
+};
+
+// A copy standing at its spot with a bow, crossbow, staff or spell drawn follows its player's pitch; translateTo carries a moving one's
+const applyAimPitch = (ac: Actor, m: Movement, state: AppliedMovement, trusted: boolean): void => {
+  if (!m.isWeapDrawn) {
+    state.ranged = undefined;
+  } else if (!trusted || state.ranged === undefined) {
+    state.ranged = holdsRanged(ac);
+  }
+  if (!state.ranged) {
+    // Levelled again once the bow or spell is away, as an idle copy stands
+    if (state.aimPitch !== undefined) {
+      aimCopy(ac, 0);
+      state.aimPitch = undefined;
+    }
+    return;
+  }
+  if (!trusted || state.aimPitch === undefined || wrappedAngleDiff(state.aimPitch, m.rot[0]) > aimPitchDeadzone) {
+    aimCopy(ac, m.rot[0]);
+    state.aimPitch = m.rot[0];
+  }
+};
+
+let nextAimLogAt = 0;
+
+// Before a shot or cast leaves a standing copy; a move would cut a moving copy's translateTo, which carries the pitch already
+export const aimForShot = (ac: Actor, m: Movement | undefined, pitch: number, what: string): void => {
+  if (!m || m.runMode !== "Standing" || m.isInJumpState) {
+    return;
+  }
+  const had = aimCopy(ac, pitch);
+  const now = Date.now();
+  if (now >= nextAimLogAt) {
+    nextAimLogAt = now + aimLogIntervalMs;
+    logToPlatformLog("AimSync", `${what} by ${ac.getFormID().toString(16)}: pitch ${Math.round(pitch)}, copy had ${Math.round(had)}`);
   }
 };
 

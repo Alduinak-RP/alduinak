@@ -418,6 +418,11 @@ export const restoreSitCollisionIfMoving = (refr: ObjectReference, m: Movement):
   }
 };
 
+// A bow draw or release or a crossbow shot, which a copy's graph turns into its own arrow or bolt
+const shotEventsLowerCase = new Set<string>(["bowattackstart", "attackrelease", "crossbowattackstart"]);
+
+export const isShotEvent = (animEventName: string): boolean => shotEventsLowerCase.has(animEventName.toLowerCase());
+
 // Get-ups and forced poses are single-slot on the receiver, a lost one leaves a copy posed
 export const needsReliableSend = (animEventName: string): boolean =>
   actorGetUpAnimsLowerCase.includes(animEventName.toLowerCase()) || forcedSyncAnims.has(animEventName);

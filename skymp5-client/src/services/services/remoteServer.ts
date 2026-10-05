@@ -27,7 +27,7 @@ import { applyEquipment, isBadMenuShown, syncSpellEquipment, SpellType } from '.
 import { Entry, Inventory, applyInventory, getDiff, getInventory, getPlayerInventory, isBoundItem, patchInventory, removeSimpleItemsAsManyAsPossible } from '../../sync/inventory';
 import { applyDurabilityNames } from '../../sync/durabilityNames';
 import { Movement, NiPoint3 } from '../../sync/movement';
-import { applyWeapDrawn } from '../../sync/movementApply';
+import { aimForShot, applyWeapDrawn } from '../../sync/movementApply';
 import { describeRaceAbilities, dropUnlistedBaseSpells, isConcentration, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormView } from '../../view/formView';
@@ -2062,6 +2062,10 @@ export class RemoteServer extends ClientListener {
 
       if (spellId) {
         const hands = this.readyCloneHands(ac, spellId, msg.data.castingSource, msg.data.isDualCasting);
+        // The replayed projectile takes aimAngle itself; a cast or channel the clone fires from its own graph takes its X angle
+        if (hands.length > 0) {
+          aimForShot(ac, this.getFormByRefrId(msg.data.caster)?.movement, msg.data.aimAngle * 180 / Math.PI, `spell ${spellId.toString(16)}`);
+        }
         // The platform only casts Fire Storm or Blizzard on the clone when told the observer is guarded
         const replayedHostileSelf = castSpellImmediate(ac.getFormID(), msg.data.castingSource, spellId, remoteIdToLocalId(msg.data.target),
           msg.data.aimAngle, msg.data.aimHeading, actorAnimationVariables, true) === true;
