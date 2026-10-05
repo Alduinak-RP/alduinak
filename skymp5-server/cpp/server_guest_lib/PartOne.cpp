@@ -876,7 +876,8 @@ void PartOne::Init()
     }
 
     if (emitterAsActor) {
-      message.equipment = emitterAsActor->GetEquipment();
+      message.equipment = isMe ? emitterAsActor->GetEquipment()
+                               : emitterAsActor->GetEquipment().Worn();
     }
 
     if (emitterAsActor) {

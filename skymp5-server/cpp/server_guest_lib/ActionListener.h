@@ -189,6 +189,10 @@ private:
   MpActor* SendToNeighbours(uint32_t idx, const RawMessageData& rawMsgData,
                             bool reliable = false);
 
+  // sanitizedMsg replaces the owner's raw report when the server changed it
+  void RelayEquipment(MpActor& actor, const RawMessageData& rawMsgData,
+                      const UpdateEquipmentMessage* sanitizedMsg);
+
   PartOne& partOne;
 
   std::unordered_map<uint32_t, RestorationChannel> restorationChannels;

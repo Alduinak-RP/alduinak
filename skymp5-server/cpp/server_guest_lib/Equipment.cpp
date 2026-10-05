@@ -9,6 +9,22 @@ bool Equipment::IsSpellEquipped(const uint32_t spellFormId) const
     spellFormId == voiceSpell || spellFormId == instantSpell;
 }
 
+Equipment Equipment::Worn() const
+{
+  Equipment res;
+  res.leftSpell = leftSpell;
+  res.rightSpell = rightSpell;
+  res.voiceSpell = voiceSpell;
+  res.instantSpell = instantSpell;
+  res.numChanges = numChanges;
+  for (const auto& entry : inv.entries) {
+    if (entry.GetWorn() != Inventory::Worn::None) {
+      res.inv.entries.push_back(entry);
+    }
+  }
+  return res;
+}
+
 nlohmann::json Equipment::ToJson() const
 {
   JsonOutputArchive ar;

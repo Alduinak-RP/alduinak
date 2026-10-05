@@ -5,6 +5,9 @@ struct Equipment
 {
   [[nodiscard]] bool IsSpellEquipped(uint32_t spellFormId) const;
 
+  // The worn and worn-left entries with the spell slots, all that neighbours read
+  [[nodiscard]] Equipment Worn() const;
+
   // TODO: get rid in favor of Serialize
   nlohmann::json ToJson() const;
   static Equipment FromJson(const simdjson::dom::element& element);

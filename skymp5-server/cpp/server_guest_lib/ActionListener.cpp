@@ -10,6 +10,7 @@
 #include "HealthScale.h"
 #include "HitData.h"
 #include "MathUtils.h"
+#include "MessageSerializerFactory.h"
 #include "MovementValidation.h"
 #include "MpObjectReference.h"
 #include "MsgType.h"
@@ -27,6 +28,7 @@
 #include "script_objects/EspmGameObject.h"
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+#include <slikenet/BitStream.h>
 #include <spdlog/spdlog.h>
 #include <unordered_set>
 
@@ -648,6 +650,42 @@ void RedressSavedOutfit(MpActor& actor)
 }
 }
 
+// The owner gets its report back, neighbours the stored worn gear and spell slots
+void ActionListener::RelayEquipment(MpActor& actor,
+                                    const RawMessageData& rawMsgData,
+                                    const UpdateEquipmentMessage* sanitizedMsg)
+{
+  std::optional<SLNet::BitStream> neighbourStream;
+  for (auto listener : actor.GetActorListeners()) {
+    const auto userId = partOne.serverState.UserByActor(listener);
+    if (userId == Networking::InvalidUserId ||
+        userId == partOne.serverState.disconnectingUserId) {
+      continue;
+    }
+    if (listener == &actor) {
+      if (sanitizedMsg) {
+        partOne.GetSendTarget().Send(userId, *sanitizedMsg, true);
+      } else {
+        partOne.GetSendTarget().Send(userId, rawMsgData.unparsed,
+                                     rawMsgData.unparsedLength, true);
+      }
+      continue;
+    }
+    if (!neighbourStream) {
+      UpdateEquipmentMessage neighbourMsg;
+      neighbourMsg.idx = actor.GetIdx();
+      neighbourMsg.data = actor.GetEquipment().Worn();
+      neighbourStream.emplace();
+      PartOne::GetMessageSerializerInstance().Serialize(neighbourMsg,
+                                                        *neighbourStream);
+    }
+    partOne.GetSendTarget().Send(
+      userId,
+      reinterpret_cast<Networking::PacketData>(neighbourStream->GetData()),
+      neighbourStream->GetNumberOfBytesUsed(), true);
+  }
+}
+
 void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
                                        const UpdateEquipmentMessage& msg)
 {
@@ -868,7 +906,8 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
 
   if (isAllowed) {
     // An unlearned spell strips just that slot; weapons/armor still reach neighbours (avoids silent desync)
-    if (anySpellStripped || extrasReplaced) {
+    const bool sanitized = anySpellStripped || extrasReplaced;
+    if (sanitized) {
       if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Left)]) {
         sanitizedMsg.data.leftSpell = std::nullopt;
       }
@@ -881,14 +920,9 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
       if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Instant)]) {
         sanitizedMsg.data.instantSpell = std::nullopt;
       }
-      for (auto listener : actor->GetActorListeners()) {
-        listener->SendToUser(sanitizedMsg, true);
-      }
-      actor->SetEquipment(sanitizedMsg.data);
-    } else {
-      SendToNeighbours(msg.idx, rawMsgData, true);
-      actor->SetEquipment(sanitizedMsg.data);
     }
+    actor->SetEquipment(sanitizedMsg.data);
+    RelayEquipment(*actor, rawMsgData, sanitized ? &sanitizedMsg : nullptr);
   } else {
     actor->SendInventoryUpdate();
 
@@ -1696,8 +1730,6 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
   const bool isSourceSpell =
     sourceInEspm.rec && sourceInEspm.rec->GetType() == espm::SPEL::kType;
 
-  const auto equipment = aggressor->GetEquipment();
-
   if (isSourceSpell) {
     if (CanHitWithSpell(*aggressor, hitData.source)) {
       OnSpellHit(aggressor, targetRef, hitData);
@@ -1710,7 +1742,9 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
 
   const bool isUnarmed = IsUnarmedAttack(hitData.source);
 
-  if (equipment.inv.HasItem(hitData.source) || isUnarmed) {
+  // An equipment report holds worn copies only, and a fresh swap may not have reached the server yet
+  if (isUnarmed || aggressor->GetInventory().HasItem(hitData.source) ||
+      aggressor->GetEquipment().inv.HasItem(hitData.source)) {
     OnWeaponHit(aggressor, targetRef, hitData, isUnarmed);
     return;
   }
