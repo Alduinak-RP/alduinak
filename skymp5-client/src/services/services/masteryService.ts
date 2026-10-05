@@ -24,6 +24,25 @@ export interface MasterySlot {
   rankHours: number[];
 }
 
+// One held craft's hour clock and bank (masterySystem.ts BankSlot); times are ms left when the packet arrived
+export interface MasteryBankSlot {
+  slot: number;
+  countedMs: number;
+  banked: number;
+  payMs: number;
+  capped: boolean;
+}
+
+export interface MasteryBank {
+  max: number;
+  intervalMs: number;
+  // The pay clock also runs while logged out
+  offline: boolean;
+  slots: MasteryBankSlot[];
+  // Local epoch ms the packet arrived, the mark its countdowns run from
+  at: number;
+}
+
 // The server's masteryMenu reply, rendered by the Personal Menu's Skills tab; the top-level fields are the primary's.
 export interface MasteryInfo {
   profession: string | null;
@@ -34,6 +53,8 @@ export interface MasteryInfo {
   professions: Profession[];
   // Empty from a server without craft slots
   slots: MasterySlot[];
+  // Null from a server that sends none
+  bank: MasteryBank | null;
 }
 
 const text = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -54,18 +75,49 @@ const parseSlots = (raw: unknown): MasterySlot[] => {
   }));
 };
 
+const parseBank = (raw: unknown): MasteryBank | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const b = raw as Record<string, unknown>;
+  const slots = Array.isArray(b["slots"]) ? b["slots"] : [];
+  return {
+    max: Number(b["max"]) || 0,
+    intervalMs: Number(b["intervalMs"]) || 0,
+    offline: b["offline"] === true,
+    slots: slots.filter((s) => s && typeof s === "object" && Number.isInteger(s["slot"])).map((s: Record<string, unknown>) => ({
+      slot: s["slot"] as number,
+      countedMs: Number(s["countedMs"]) || 0,
+      banked: Number(s["banked"]) || 0,
+      payMs: Number(s["payMs"]) || 0,
+      capped: s["capped"] === true,
+    })),
+    at: Date.now(),
+  };
+};
+
+// The primary's fields, the same in masteryMenu and professionState
+const parsePrimary = (content: Record<string, unknown>) => ({
+  profession: typeof content["profession"] === "string" ? content["profession"] as string : null,
+  rank: Number(content["rank"]) || 0,
+  hours: Number(content["hours"]) || 0,
+});
+
 export function parseMasteryMenu(content: Record<string, unknown>): MasteryInfo {
   const professions = Array.isArray(content["professions"]) ? content["professions"] : [];
   const rankHours = Array.isArray(content["rankHours"]) ? content["rankHours"] : [];
   return {
-    profession: typeof content["profession"] === "string" ? content["profession"] as string : null,
-    rank: Number(content["rank"]) || 0,
-    hours: Number(content["hours"]) || 0,
+    ...parsePrimary(content),
     rankHours: rankHours as number[],
     resetsLeft: Number(content["resetsLeft"]) || 0,
     professions: professions as Profession[],
     slots: parseSlots(content["slots"]),
+    bank: parseBank(content["bank"]),
   };
+}
+
+// A professionState laid over the open menu: the hours, ranks and bank it carries
+export function applyProfessionState(info: MasteryInfo, content: Record<string, unknown>): MasteryInfo {
+  const slots = parseSlots(content["slots"]);
+  return { ...info, ...parsePrimary(content), slots: slots.length ? slots : info.slots, bank: parseBank(content["bank"]) || info.bank };
 }
 
 /**
@@ -79,13 +131,15 @@ export function parseMasteryMenu(content: Record<string, unknown>): MasteryInfo 
  *
  *   Client -> Server: { "customPacketType": "masteryInfoRequest" }
  *   Server -> Client: { "customPacketType": "masteryMenu", "profession", "rank",
- *                       "hours", "rankHours", "resetsLeft", "professions", "slots" }
+ *                       "hours", "rankHours", "resetsLeft", "professions", "slots", "bank" }
  *   Client -> Server: { "customPacketType": "masteryChoose", "profession", "slot"? }
  *   Client -> Server: { "customPacketType": "masteryResetRequest", "profession"? }
  *   Server -> Client: { "customPacketType": "masteryNotice", "text" }
  *   Server -> Client: { "customPacketType": "professionState", "profession", "rank",
- *                       "rankName", "hours", "skills": { <av>: level }, "magicka", "slots" }
+ *                       "rankName", "hours", "skills": { <av>: level }, "magicka", "slots", "bank" }
  *   skills and magicka already fold in every slot, so applyState reads no slot.
+ *   bank is each held craft's hour clock and banked hours; a professionState follows
+ *   every counted or banked hour, and AdminMenuService lays it over an open Skills tab.
  */
 export class MasteryService extends ClientListener {
   // The base Magicka applyState last wrote since the player's spawn, null when it wrote none; the racialReport carries it

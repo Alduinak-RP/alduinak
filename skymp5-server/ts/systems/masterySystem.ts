@@ -27,7 +27,8 @@ type Mp = any;
 // grants a cumulative marker spell AldProf_<Label>_<Rank>; the plugin's recipes condition on it with HasSpell.
 // A mage cannot rise above Adept without having cast an Adept spell, above Expert without an Expert one, and so on.
 // Hour bank: each extra craft of the profession inside a counted hour banks one hour, up to masteryHourBank; a banked hour
-// is counted once the character has been online for a full interval since the last counted hour and no work counted one.
+// is counted once the character has been online for a full interval since the last counted hour and no work counted one
+// (with masteryBankOffline the time logged out counts too). The Skills tab draws each held craft's hours from `bank`.
 // Multiclassing (masterySlots with more than one slot): a secondary and a tertiary craft, picked in order after the primary,
 // start at Free and earn Novice by the hours of their class's free work (an ungated recipe, or a gated one only through a
 // marker of the slot's own profession at a rank it holds), then climb to their cap on their own ladder. Every slot has its
@@ -41,11 +42,13 @@ type Mp = any;
 //                                                   at most masteryResetsPerCharacter times over all slots
 //   Server -> Client:
 //     { customPacketType: "masteryMenu", profession, rank, hours, rankHours, resetsLeft, professions: [...],
-//       slots: [{ slot, name, profession, label, rank, rankName, hours, cap, capName, rankHours }] }
+//       slots: [{ slot, name, profession, label, rank, rankName, hours, cap, capName, rankHours }], bank }
 //     { customPacketType: "masteryNotice", text }
-//     { customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka, slots: [...] }
+//     { customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka, slots: [...], bank }
 //   profession, rank and hours stay the primary's; skills are the best of the slots; magicka is the mage slot's rank value
 //   plus the race's bonus, the race's base for anyone else, null while in creation.
+//   bank: { max, intervalMs, offline, slots: [{ slot, countedMs, banked, payMs, capped }] }, one entry per held craft, times as
+//   left at sending; professionState follows every counted or banked hour, so an open Skills tab needs no poll.
 //
 // Persistence on the actor: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets, bank,
 // onlineMs } (the primary) and `private.masterySlots` = { v: 1, secondary, tertiary, granted[], kits[] }, each sub-slot a
@@ -57,6 +60,7 @@ type Mp = any;
 //   masterySlotKits              a sub-slot pick hands over that craft's kit items, never gold, once per craft, default true
 //   masteryPointIntervalMinutes  minimum gap between two hours of one slot, default 60
 //   masteryHourBank              hours extra crafts may bank per slot, default 2; 0 turns the bank off
+//   masteryBankOffline           banked hours also fall due while the character is logged out, default false
 //   masterySpells                { "<professionId>": [novice, adept, expert, master, legendary] } marker form ids
 //                                overriding the plugin's AldProf_<Label>_<Rank> spells
 //   masteryActivities            { "<professionId>": { craftKeywords, craftStations, activatePrefixes, activateTypes,
@@ -391,6 +395,27 @@ export interface SlotSummary {
   rankHours: number[];
 }
 
+// One held craft's hour clock and bank as the Skills tab draws them; times are what is left at sending
+export interface BankSlot {
+  slot: number;
+  // Ms until work counts an hour again, 0 when it counts now
+  countedMs: number;
+  // Hours waiting in the bank
+  banked: number;
+  // Ms on the pay clock until the next banked hour is counted, 0 with none banked
+  payMs: number;
+  // A sub-slot at its cap earns no more hours
+  capped: boolean;
+}
+
+export interface BankSummary {
+  max: number;
+  intervalMs: number;
+  // Whether the pay clock also runs while the character is logged out
+  offline: boolean;
+  slots: BankSlot[];
+}
+
 // What the admin panel shows for one character; the top-level fields are the primary's
 export interface MasterySummary {
   profession: string | null;
@@ -458,6 +483,9 @@ export class MasterySystem implements System {
     if (Number.isFinite(interval) && interval > 0) this.intervalMs = interval * 60000;
     const bank = Number(all?.["masteryHourBank"]);
     if (Number.isInteger(bank) && bank >= 0) this.bankMax = bank;
+    const bankOffline = all?.["masteryBankOffline"];
+    if (typeof bankOffline === "boolean") this.bankOffline = bankOffline;
+    else if (bankOffline !== undefined) this.log("[mastery] masteryBankOffline must be true or false, default kept");
 
     const spells = all?.["masterySpells"];
     if (spells && typeof spells === "object") {
@@ -477,7 +505,7 @@ export class MasterySystem implements System {
     }
 
     const configured = Object.keys(this.spells).length;
-    this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one hour per ${this.intervalMs / 60000} min, extra crafts bank up to ${hoursText(this.bankMax)}, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
+    this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one hour per ${this.intervalMs / 60000} min, extra crafts bank up to ${hoursText(this.bankMax)} paid one per interval ${this.bankOffline ? "online or not" : "of online time"}, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
     const multiclass = multiclassOn(this.slots);
     this.log(`[mastery] slots: ${describeSlots(this.slots)}${multiclass ? `; each slot has its own ${this.intervalMs / 60000} min clock and ${hoursText(this.bankMax)} bank, ${this.resetsPerCharacter} reset(s) shared, sub-slot kits ${this.slotKits ? "on (items, no gold)" : "off"}, ${this.markers.size} rank markers read as recipe gates` : ""}`);
     if (multiclass) {
@@ -561,7 +589,7 @@ export class MasterySystem implements System {
     const gates = ev.kind === "craft" ? this.recipeGates(ctx, ev.detail["recipeId"]) : [];
     for (const slot of slots) {
       const profession = slot.rec.profession || "";
-      if (slot.index > 0 && isCapped(slot.cfg!, slot.rec.points)) continue;
+      if (this.atCap(slot)) continue;
       const now = Date.now();
       const elapsed = now - slot.rec.lastPointAt;
       const counted = elapsed >= 0 && elapsed < this.intervalMs;
@@ -574,17 +602,17 @@ export class MasterySystem implements System {
     }
   }
 
-  // Points one hour; banked says it came out of the bank
-  private countHour(ctx: SystemContext, actorId: number, char: Character, slot: Slot, now: number, banked: boolean): void {
+  // Points one hour; banked says it came out of the bank, at is when it fell due
+  private countHour(ctx: SystemContext, actorId: number, char: Character, slot: Slot, now: number, banked: boolean, at = now): void {
     const rec = slot.rec;
     rec.points += 1;
-    rec.lastPointAt = now;
+    rec.lastPointAt = at;
     this.settleClock(actorId, char, now);
     rec.onlineMs = 0;
     this.save(ctx, actorId, char);
     const left = rec.bank ? `, ${hoursText(rec.bank)} still banked` : "";
     const standing = this.standingText(slot);
-    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour ${banked ? `paid from the bank after ${this.intervalMs / 60000} online min` : "counted by work"}: ${rec.points}h${slot.index > 0 ? `, ${standing}` : ""}${left}`);
+    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour ${banked ? `paid from the bank after ${this.intervalMs / 60000} ${this.payUnit()}` : "counted by work"}: ${rec.points}h${slot.index > 0 ? `, ${standing}` : ""}${left}`);
     const userId = this.userOf(ctx, actorId);
     this.notice(ctx, userId, `Your ${banked ? "banked " : ""}work as a ${this.labelOf(rec.profession || "")} is counted: ${standing}${left}.`);
     this.syncRank(ctx, actorId, char, slot, userId);
@@ -596,13 +624,42 @@ export class MasterySystem implements System {
     this.banked.add(actorId);
     this.settleClock(actorId, char, now);
     this.save(ctx, actorId, char);
-    const waitMin = Math.max(1, Math.ceil((this.intervalMs - rec.onlineMs) / 60000));
-    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour banked (${rec.bank}/${this.bankMax}), next paid in ${waitMin} online min`);
+    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour banked (${rec.bank}/${this.bankMax}), next paid in ${this.payWaitMin(actorId, slot, now)} ${this.payUnit()}`);
     const whose = slot.index > 0 ? ` for your ${this.slotNameOf(slot.index)} craft` : "";
-    this.notice(ctx, this.userOf(ctx, actorId), `Extra work banked${whose}: ${hoursText(rec.bank)} will be counted, one per hour you stay online.`);
+    const userId = this.userOf(ctx, actorId);
+    this.notice(ctx, userId, `Extra work banked${whose}: ${hoursText(rec.bank)} will be counted, ${this.bankOffline ? "one per hour, online or not" : "one per hour you stay online"}.`);
+    this.sendState(ctx, actorId, userId);
   }
 
-  // A banked hour is counted once a full interval of online time has passed since the slot's last counted hour
+  // Pay clock of a slot since its last counted hour: online time, or with masteryBankOffline all the time that passed
+  private waited(actorId: number, slot: Slot, now: number): number {
+    if (this.bankOffline) return now - slot.rec.lastPointAt;
+    const clock = this.clocks.get(actorId);
+    return slot.rec.onlineMs + (clock ? Math.max(0, now - clock.since) : 0);
+  }
+
+  private payWaitMin(actorId: number, slot: Slot, now: number): number {
+    return Math.max(1, Math.ceil((this.intervalMs - this.waited(actorId, slot, now)) / 60000));
+  }
+
+  private payUnit(): string {
+    return this.bankOffline ? "min" : "online min";
+  }
+
+  // Hour clock and bank of every slot in force, as left at now
+  private bankSummary(actorId: number, char: Character, now = Date.now()): BankSummary {
+    const slots = this.activeSlots(char).map((slot): BankSlot => {
+      const capped = this.atCap(slot);
+      const sinceHour = now - slot.rec.lastPointAt;
+      const countedMs = !capped && sinceHour >= 0 && sinceHour < this.intervalMs ? this.intervalMs - sinceHour : 0;
+      const banked = capped ? 0 : Math.min(slot.rec.bank, this.bankMax);
+      const payMs = banked ? Math.max(0, countedMs, this.intervalMs - this.waited(actorId, slot, now)) : 0;
+      return { slot: slot.index, countedMs, banked, payMs, capped };
+    });
+    return { max: this.bankMax, intervalMs: this.intervalMs, offline: this.bankOffline, slots };
+  }
+
+  // A banked hour is counted once a full interval of the pay clock has passed since the slot's last counted hour
   private payBanks(ctx: SystemContext): void {
     if (!this.banked.size) return;
     const now = Date.now();
@@ -618,10 +675,12 @@ export class MasterySystem implements System {
         let paid = false;
         for (const slot of slots) {
           if (slot.rec.bank > this.bankMax) slot.rec.bank = this.bankMax;
-          if (slot.rec.onlineMs + now - clock.since < this.intervalMs || now - slot.rec.lastPointAt < this.intervalMs) continue;
-          slot.rec.bank -= 1;
-          this.countHour(ctx, actorId, char, slot, now, true);
-          paid = true;
+          // Online time pays one; with masteryBankOffline every hour that fell due while away, each an interval after the last
+          while (slot.rec.bank > 0 && !this.atCap(slot) && this.waited(actorId, slot, now) >= this.intervalMs && now - slot.rec.lastPointAt >= this.intervalMs) {
+            slot.rec.bank -= 1;
+            this.countHour(ctx, actorId, char, slot, now, true, this.bankOffline ? slot.rec.lastPointAt + this.intervalMs : now);
+            paid = true;
+          }
         }
         if (!this.bankedSlots(char).length) this.banked.delete(actorId);
         if (paid || now - clock.savedAt < BANK_SAVE_MS) continue;
@@ -635,7 +694,12 @@ export class MasterySystem implements System {
 
   // Slots in force with an hour to pay; a sub-slot at its cap is never paid
   private bankedSlots(char: Character): Slot[] {
-    return this.activeSlots(char).filter((s) => s.rec.bank > 0 && !(s.index > 0 && isCapped(s.cfg!, s.rec.points)));
+    return this.activeSlots(char).filter((s) => s.rec.bank > 0 && !this.atCap(s));
+  }
+
+  // A sub-slot at its cap earns no more hours
+  private atCap(slot: Slot): boolean {
+    return slot.index > 0 && isCapped(slot.cfg!, slot.rec.points);
   }
 
   // Moves the online time since the clock's mark into every slot in force; the caller writes them
@@ -802,7 +866,7 @@ export class MasterySystem implements System {
       if (corrected < rec.rank) this.revokeAbove(ctx, actorId, char, primary, corrected);
       rec.rank = corrected;
       this.write(ctx, actorId, rec);
-      if (rec.bank > 0) this.log(`[mastery] ${hex(actorId)} online with ${hoursText(rec.bank)} banked, next paid in ${Math.max(1, Math.ceil((this.intervalMs - rec.onlineMs) / 60000))} online min`);
+      if (rec.bank > 0) this.log(`[mastery] ${hex(actorId)} online with ${hoursText(rec.bank)} banked, next paid in ${this.payWaitMin(actorId, primary, now)} ${this.payUnit()}`);
     }
     if (char && char.subs) this.settleSubs(ctx, actorId, char);
     if (char && this.bankedSlots(char).length) this.banked.add(actorId);
@@ -1012,6 +1076,7 @@ export class MasterySystem implements System {
       resetsLeft: Math.max(0, this.resetsPerCharacter - rec.resets),
       professions: PROFESSIONS.map(({ id, label, title, type, blurbs }) => ({ id, label, title, type, blurbs })),
       slots: this.slotSummaries(char),
+      bank: this.bankSummary(actorId, char),
     });
   }
 
@@ -1039,6 +1104,7 @@ export class MasterySystem implements System {
       skills,
       magicka,
       slots: this.slotSummaries(char),
+      bank: this.bankSummary(actorId, char),
     });
   }
 
@@ -1706,6 +1772,8 @@ export class MasterySystem implements System {
   private kitGold = DEFAULT_KIT_GOLD;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
   private bankMax = DEFAULT_HOUR_BANK;
+  // masteryBankOffline: the pay clock is all the time since the last counted hour instead of online time
+  private bankOffline = false;
   private ctx: SystemContext | null = null;
   // Online player characters and the online time not yet in their record
   private clocks = new Map<number, OnlineClock>();

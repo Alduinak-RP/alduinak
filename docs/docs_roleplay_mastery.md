@@ -76,6 +76,29 @@ banked, at the first bank check 5 minutes after the last save, so a crash loses 
 reset empties the bank, and so does a profession changed or cleared in the manager's character editor (Players
 tab), which also restarts the hour clock.
 
+**The hour bank strip.** The Skills tab shows the bank at its top, under the title: one group per held craft (its
+name and, with craft slots, the slot), each with `1 + masteryHourBank` cells. "Hour 1" is the counted hour: "Counted,
+next in N min" while the hour that was just earned runs (real time, so it also runs out while logged out), "Open, work
+counts now" otherwise. "Hour 2" and "Hour 3" are the bank: "Pending, in N min online" for a banked hour and when it
+will be counted (the second an interval after the first), "Empty" otherwise; a sub-slot at its cap shows "At its cap,
+earns no more hours". The strip's caption states the rule in force. The data is `bank` in `masteryMenu` (sent when
+the Personal Menu opens and when the Skills tab is picked) and in `professionState`:
+`{ max, intervalMs, offline, slots: [{ slot, countedMs, banked, payMs, capped }] }`, one entry per held craft,
+`countedMs` the time until work counts an hour again, `payMs` the time on the pay clock until the next banked hour
+is counted, both as left at sending and both read from the stored record (`lastPointAt`, `bank`, `onlineMs`) plus the
+online time of this session, so the strip is right after a relog or a server restart. A banked hour now sends a
+`professionState` as a counted one always did, and `AdminMenuService` lays every `professionState` over an open Skills
+tab (hours, ranks and bank), so the open tab follows each change with no poll; between two packets the front counts
+the minutes down by itself (a 15 s re-render while something is running).
+
+**Online or not.** The owner's rule of 2026-09-30 is that banked hours count only while the character is online, and
+that stays the default. `masteryBankOffline: true` changes the pay clock to all the time since the slot's last
+counted hour: a banked hour falls due one interval after it whether the character is online or not, and the hours
+that fell due while away are counted at the first bank check after login (within a minute), each dated an interval
+after the last, so two hours banked before a night's sleep are both there in the morning and the hour clock is open.
+The texts follow the rule: "one per hour, online or not", "in N min", `next paid in <M> min`, `hour paid from the bank
+after 60 min`. Nothing runs for a logged out character either way.
+
 Hours are **per character**: the record `private.mastery`
 `{ v: 2, profession, points, lastPointAt, rank, granted, spellTier, resets, bank, onlineMs }` lives on the
 actor form (the primary craft; a secondary and a tertiary live in `private.masterySlots`, see "Secondary and
@@ -92,7 +115,7 @@ Markers are cumulative: a Master holds the Novice to Master abilities.
 ### professionState
 
 Sent on actor assign, five seconds later, five seconds after creation finishes, and after every change:
-`{ customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka, slots }`.
+`{ customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka, slots, bank }`.
 `profession`, `rank` and `hours` are the primary's. `skills` names every skill of the contract table at 15, each
 craft slot's profession's at 25/40/60/80/100 by rank, the best slot winning where two set the same skill.
 `magicka` is the base magicka the client writes: for a mage of Novice or better in any slot the mage rank's value
@@ -101,7 +124,8 @@ plugin r27a, `RacialSystem.baseBonus`, the character's own race also under an ad
 plus that bonus, so a character who stops being a mage drops back at once. While the character is still in creation
 a mage gets the rank value alone and anyone else `null`. `slots` lists every configured slot,
 `[{ slot, name, profession, label, rank, rankName, hours, cap, capName, rankHours }]`, an empty one with
-`profession: null`; one entry with multiclassing off.
+`profession: null`; one entry with multiclassing off. `bank` is the hour bank state of the held crafts, see
+"The hour bank strip" above.
 
 ## The professions
 
@@ -1243,7 +1267,7 @@ refuses a primary a sub-slot already follows; the server settles the rest at log
 ```
 Client -> Server: { "customPacketType": "masteryInfoRequest" }
 Server -> Client: { "customPacketType": "masteryMenu", "profession", "rank",
-                    "hours", "rankHours", "resetsLeft", "professions", "slots" }
+                    "hours", "rankHours", "resetsLeft", "professions", "slots", "bank" }
 Client -> Server: { "customPacketType": "masteryChoose", "profession": "<id>", "slot"?: 0|1|2 }
 Client -> Server: { "customPacketType": "masteryResetRequest", "profession"?: "<id>" }
 Server -> Client: { "customPacketType": "masteryNotice", "text" }
@@ -1252,7 +1276,9 @@ Server -> Client: { "customPacketType": "masteryNotice", "text" }
 `slot` defaults to the primary and `profession` of a reset request to the primary's
 craft, so an older client keeps working with the primary alone. `slots` is the
 list `professionState` carries; the client reads a server older than r27, which
-sends none, as `[]` and keeps the one-craft Skills tab.
+sends none, as `[]` and keeps the one-craft Skills tab. `bank` is the hour bank
+state `professionState` carries too (see "Hour bank"); a server that sends none
+shows no strip.
 
 ## Settings reference
 

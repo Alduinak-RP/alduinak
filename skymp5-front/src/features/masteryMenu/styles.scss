@@ -235,6 +235,115 @@ $text-dim: rgba(232, 224, 208, 0.6);
     text-transform: uppercase;
   }
 
+  // ── Hour bank ──────────────────────────────────────────────────────────────
+
+  // A shorter title row and the bank under it; the body moves down a row
+  &__frame--bank {
+    grid-template-rows: 56px auto minmax(0, 1fr);
+
+    .mastery__list,
+    .mastery__stage,
+    .mastery__ranks,
+    .mastery__empty {
+      grid-row: 3;
+    }
+  }
+
+  // With craft slots the chips follow the bank
+  &__frame--slots.mastery__frame--bank {
+    grid-template-rows: 56px auto auto minmax(0, 1fr);
+
+    .mastery__slots {
+      grid-row: 3;
+    }
+
+    .mastery__list,
+    .mastery__stage,
+    .mastery__ranks,
+    .mastery__empty {
+      grid-row: 4;
+    }
+  }
+
+  &__bank {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    border-bottom: 1px solid $border-dim;
+  }
+
+  &__bank-rule {
+    flex: 0 0 150px;
+    padding: 6px 10px 7px 14px;
+    border-right: 1px solid $border-dim;
+    color: $text-dim;
+    font-size: 11px;
+    line-height: 1.25;
+    letter-spacing: 0.03em;
+  }
+
+  &__bank-title,
+  &__bank-name {
+    display: block;
+    margin-bottom: 4px;
+    color: $gold;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // One held craft: its name over its hours
+  &__bank-craft {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 10px 7px;
+    border-right: 1px solid $border-dim;
+
+    &:last-child {
+      border-right: 0;
+    }
+  }
+
+  &__bank-hours {
+    display: flex;
+    gap: 6px;
+  }
+
+  // Hour 1 is the counted hour, the others are the bank
+  &__bank-hour {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 3px 6px 4px;
+    border: 1px solid $border-dim;
+    color: $text-dim;
+    font-size: 12px;
+    line-height: 1.25;
+    letter-spacing: 0.03em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &--filled {
+      border-color: $gold-dim;
+      background: rgba(200, 180, 138, 0.12);
+      color: $gold;
+
+      .mastery__bank-detail {
+        color: $text;
+      }
+    }
+  }
+
+  &__bank-detail {
+    display: block;
+    color: $text-dim;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   // ── Centre stage ───────────────────────────────────────────────────────────
 
   &__stage {
@@ -456,13 +565,36 @@ $text-dim: rgba(232, 224, 208, 0.6);
       grid-template-rows: 64px minmax(0, 1fr);
     }
 
-    &__frame--slots {
+    &__frame--slots,
+    &__frame--bank {
       grid-template-rows: 48px auto minmax(0, 1fr);
+    }
+
+    &__frame--slots.mastery__frame--bank {
+      grid-template-rows: 48px auto auto minmax(0, 1fr);
     }
 
     &__slot {
       padding: 5px 10px 6px;
       font-size: 14px;
+    }
+
+    &__bank-rule {
+      flex-basis: 120px;
+      padding-left: 10px;
+    }
+
+    &__bank-craft {
+      padding: 5px 8px 6px;
+    }
+
+    &__bank-hours {
+      gap: 4px;
+    }
+
+    &__bank-hour {
+      padding: 2px 4px 3px;
+      font-size: 11px;
     }
 
     &__rank {

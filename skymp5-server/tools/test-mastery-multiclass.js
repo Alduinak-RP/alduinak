@@ -233,6 +233,63 @@ test('the bank check reads only online characters with banked hours, saves their
   assert.equal(reads, 0, 'an empty check reads no record')
 })
 
+test('the menu and every state carry each held craft\'s hour clock and bank, read from the stored record after a relog', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.choose('tailor', 1)
+  const menuBank = () => { t.sys.sendMenu(t.ctx, USER); return t.last('masteryMenu').bank }
+  const idle = (slot) => ({ slot, countedMs: 0, banked: 0, payMs: 0, capped: false })
+  assert.deepEqual(menuBank(), { max: 2, intervalMs: HOUR, offline: false, slots: [idle(0), idle(1)] })
+  t.craft(NAILS)
+  now += 10 * 60000
+  const sent = t.mp.packets.length
+  t.craft(NAILS)
+  assert.ok(t.mp.packets.slice(sent).some((p) => p.customPacketType === 'professionState'), 'a banked hour sends a new state')
+  assert.deepEqual(t.last('professionState').bank.slots, [{ slot: 0, countedMs: 50 * 60000, banked: 1, payMs: 50 * 60000, capped: false }, idle(1)])
+  now += 20 * 60000
+  t.sys.disconnect(USER, t.ctx)
+  now += 3 * HOUR
+  t.login()
+  assert.deepEqual(menuBank().slots[0], { slot: 0, countedMs: 0, banked: 1, payMs: 30 * 60000, capped: false }, 'the counted hour ran out while away, the bank still wants 30 online minutes')
+  now += 30 * 60000
+  t.sys.payBanks(t.ctx)
+  assert.equal(t.primary().points, 2)
+  assert.deepEqual(t.last('professionState').bank.slots[0], { slot: 0, countedMs: HOUR, banked: 0, payMs: 0, capped: false })
+  t.sys.grantPoints(t.ctx, ACTOR, 60, 1)
+  assert.deepEqual(menuBank().slots[1], { slot: 1, countedMs: 0, banked: 0, payMs: 0, capped: true }, 'a sub-slot at its cap')
+})
+
+test('with masteryBankOffline the hours that fell due while logged out are counted at the next bank check, an interval apart', () => {
+  const t = setup()
+  t.sys.bankOffline = true
+  t.choose('blacksmith', 0)
+  const start = now
+  for (let i = 0; i < 3; i++) t.craft(NAILS)
+  assert.deepEqual([t.primary().points, t.primary().bank], [1, 2])
+  assert.equal(t.notices().pop(), 'Extra work banked: 2 hours will be counted, one per hour, online or not.')
+  t.sys.disconnect(USER, t.ctx)
+  now += 90 * 60000
+  t.login()
+  t.sys.sendMenu(t.ctx, USER)
+  assert.deepEqual(t.last('masteryMenu').bank.slots, [{ slot: 0, countedMs: 0, banked: 2, payMs: 0, capped: false }])
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().bank, t.primary().lastPointAt], [2, 1, start + HOUR], 'one was due, counted when it fell due')
+  assert.deepEqual(t.last('professionState').bank, { max: 2, intervalMs: HOUR, offline: true, slots: [{ slot: 0, countedMs: 30 * 60000, banked: 1, payMs: 30 * 60000, capped: false }] })
+  assert.ok(t.lines.some((l) => /blacksmith hour paid from the bank after 60 min: 2h, 1 hour still banked/.test(l)))
+  now += 30 * 60000
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().bank], [3, 0], 'the other falls due online')
+  const u = setup()
+  u.sys.bankOffline = true
+  u.choose('blacksmith', 0)
+  for (let i = 0; i < 3; i++) u.craft(NAILS)
+  u.sys.disconnect(USER, u.ctx)
+  now += 5 * HOUR
+  u.login()
+  u.sys.payBanks(u.ctx)
+  assert.deepEqual([u.primary().points, u.primary().bank, u.sys.banked.size], [3, 0, 0], 'both in one check')
+})
+
 test('activity events are credited on the next turn, one drain for a burst', () => {
   const t = setup()
   t.choose('blacksmith', 0)

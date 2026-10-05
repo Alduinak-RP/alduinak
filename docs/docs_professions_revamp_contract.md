@@ -119,6 +119,9 @@ r27 additions, all optional so older clients keep working with the primary alone
 - `masteryChoose` takes `slot` (0, 1 or 2, default 0) and `masteryResetRequest` takes `profession` (default the
   primary's craft).
 - The admin panel's `masteryGrant` and `masteryReset` take a `slot` (default 0).
+- `masteryMenu` and `professionState` carry `bank: { max, intervalMs, offline, slots: [{ slot, countedMs, banked,
+  payMs, capped }] }`, the hour clock and banked hours of every held craft for the Skills tab's hour bank strip, times
+  as left at sending; optional like the rest (see `docs_roleplay_mastery.md`, "The hour bank strip").
 
 ## Starter kits
 

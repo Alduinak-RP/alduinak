@@ -2,7 +2,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, refreshFormMenu, closeFormMenu, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { RemoteServer } from "./remoteServer";
-import { parseMasteryMenu } from "./masteryService";
+import { applyProfessionState, parseMasteryMenu } from "./masteryService";
 import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
 import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { formDesc } from "../../lib/formDesc";
@@ -226,7 +226,7 @@ export class AdminMenuService extends ClientListener {
     this.controller.on("effectStart", (e) => this.onEffect(e, true));
     this.controller.on("effectFinish", (e) => this.onEffect(e, false));
     onCustomPacket(this.controller, [
-      "adminMenu", "masteryMenu", "factionMenu", "adminItems", "adminRaces", "debugInfo", "npcZones",
+      "adminMenu", "masteryMenu", "professionState", "factionMenu", "adminItems", "adminRaces", "debugInfo", "npcZones",
       "petBases", "adminJobs", "adminWeather", "adminPos", "adminMode", "adminActionResult",
     ], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
@@ -310,6 +310,11 @@ export class AdminMenuService extends ClientListener {
     } else if (content["customPacketType"] === "masteryMenu") {
       if (!this.menuOpen) return;
       panelData.skills = parseMasteryMenu(content);
+      this.pushData();
+    } else if (content["customPacketType"] === "professionState") {
+      // An hour counted or banked while the Skills tab is open
+      if (!this.menuOpen || !panelData.skills) return;
+      panelData.skills = applyProfessionState(panelData.skills, content);
       this.pushData();
     } else if (content["customPacketType"] === "factionMenu") {
       panelData.faction = content;

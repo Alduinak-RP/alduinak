@@ -37,6 +37,27 @@ export interface MasterySlot {
   rankHours: number[];
 }
 
+// One held craft's hour clock and bank (masterySystem.ts BankSlot); times are ms left at the bank's `at`
+export interface MasteryBankSlot {
+  slot: number;
+  // Until work counts an hour again, 0 when it counts now
+  countedMs: number;
+  banked: number;
+  // Until the next banked hour is counted
+  payMs: number;
+  capped?: boolean;
+}
+
+export interface MasteryBank {
+  max: number;
+  intervalMs: number;
+  // Banked hours also fall due while logged out
+  offline?: boolean;
+  slots: MasteryBankSlot[];
+  // Local epoch ms the client received it
+  at: number;
+}
+
 // The widget object the client pushes through window.skyrimPlatform.widgets.
 export interface MasteryData {
   profession: string | null;
@@ -48,10 +69,13 @@ export interface MasteryData {
   professions: Profession[];
   // Every configured craft slot, primary first; absent or a single slot keeps the one-craft view
   slots?: MasterySlot[];
+  // Absent from a server that sends none
+  bank?: MasteryBank | null;
   events: MasteryEvents;
 }
 
 const LEGENDARY = 5;
+const BANK_TICK_MS = 15000;
 
 // Artwork is keyed by profession id; the file names predate the labels.
 const ART: Record<string, string> = {
@@ -134,6 +158,81 @@ const pickText = (s: MasterySlot, label: string, resetsLeft: number): string => 
   return 'As your ' + slotWord(s) + ' craft the ' + label + ' rises no higher than ' + RANK_NAMES[s.cap] + '.' + gate + ' ' + resets;
 };
 
+const minutesText = (ms: number): string => Math.max(1, Math.ceil(ms / 60000)) + ' min';
+
+interface BankHour {
+  filled: boolean;
+  state: string;
+  detail: string;
+  title: string;
+}
+
+// The counted hour first, then one cell per bank place; left gives what remains of a countdown now
+const bankHours = (b: MasteryBankSlot, bank: MasteryBank, label: string, left: (ms: number) => number): BankHour[] => {
+  const counted = left(b.countedMs);
+  const online = bank.offline ? '' : ' online';
+  const hours: BankHour[] = [
+    counted > 0
+      ? { filled: true, state: 'Counted', detail: 'next in ' + minutesText(counted), title: `This hour as a ${label} is counted. Work counts an hour again in ${minutesText(counted)}.` }
+      : { filled: false, state: 'Open', detail: 'work counts now', title: `Your next work as a ${label} counts an hour.` },
+  ];
+  for (let i = 0; i < bank.max; i++) {
+    if (i >= b.banked) {
+      hours.push({ filled: false, state: 'Empty', detail: '', title: 'An extra craft inside a counted hour is banked here.' });
+      continue;
+    }
+    const wait = left(b.payMs) + i * bank.intervalMs;
+    const when = wait > 0 ? minutesText(wait) + online : '';
+    hours.push({ filled: true, state: 'Pending', detail: when ? 'in ' + when : 'any moment', title: `A banked hour as a ${label}, counted ${when ? 'after ' + when : 'within a minute'}.` });
+  }
+  return hours;
+};
+
+// Each held craft's counted hour and banked hours; the countdowns tick locally between the server's pushes
+const HourBank = ({ bank, slots }: { bank: MasteryBank; slots: MasterySlot[] }) => {
+  const [now, setNow] = useState(Date.now());
+  const running = bank.slots.some((b) => b.countedMs > 0 || b.banked > 0);
+  useEffect(() => {
+    setNow(Date.now());
+    if (!running) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), BANK_TICK_MS);
+    return () => clearInterval(timer);
+  }, [bank.at, running]);
+  const left = (ms: number): number => Math.max(0, ms - Math.max(0, now - bank.at));
+  return (
+    <div className="mastery__bank">
+      <div className="mastery__bank-rule">
+        <span className="mastery__bank-title">Hour bank</span>
+        Extra crafts wait here. One is counted per hour{bank.offline ? ', online or not' : ' you are online'}.
+      </div>
+      {bank.slots.map((b) => {
+        const held = slots.filter((s) => s.slot === b.slot)[0];
+        const label = held ? held.label || held.profession || '' : '';
+        return (
+          <div key={b.slot} className="mastery__bank-craft">
+            <span className="mastery__bank-name">{label + (held && slots.length > 1 ? ' \u00b7 ' + slotName(held) : '')}</span>
+            <div className="mastery__bank-hours">
+              {b.capped ? (
+                <div className="mastery__bank-hour">
+                  At its cap
+                  <span className="mastery__bank-detail">earns no more hours</span>
+                </div>
+              ) : (
+                bankHours(b, bank, label, left).map((h, i) => (
+                  <div key={i} className={'mastery__bank-hour' + (h.filled ? ' mastery__bank-hour--filled' : '')} title={h.title}>
+                    {'Hour ' + (i + 1) + ' \u00b7 ' + h.state}
+                    <span className="mastery__bank-detail">{h.detail || '\u00a0'}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // embedded renders inside the Personal Menu Skills tab: no backdrop, corner label or Close button
 const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean }) => {
   const ev = data.events || ({} as MasteryEvents);
@@ -144,6 +243,7 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
   // Craft slots show once the server configures more than one
   const slots = data.slots && data.slots.length > 1 ? data.slots : [];
   const multi = slots.length > 0;
+  const bank = data.bank && data.bank.slots.length ? data.bank : null;
 
   // The detail side stays empty until a profession is focused
   const [viewing, setViewing] = useState('');
@@ -195,9 +295,11 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
   return (
     <div className={embedded ? 'mastery mastery--embedded' : 'mastery'}>
       {embedded ? null : <div className="mastery__fade" />}
-      <div className={'mastery__frame' + (multi ? ' mastery__frame--slots' : '')}>
+      <div className={'mastery__frame' + (multi ? ' mastery__frame--slots' : '') + (bank ? ' mastery__frame--bank' : '')}>
         {embedded ? null : <div className="mastery__corner">Skills</div>}
         <h1 className="mastery__title">{current ? current.label + ' – Mastery' : 'Mastery'}</h1>
+
+        {bank ? <HourBank bank={bank} slots={data.slots || []} /> : null}
 
         {multi ? (
           <div className="mastery__slots">
