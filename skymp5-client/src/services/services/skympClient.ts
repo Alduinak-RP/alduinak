@@ -79,7 +79,8 @@ export class SkympClient extends ClientListener {
 
   private ctor() {
     // TODO: refactor into service
-    setupHooks();
+    // Next tick, after every service's own hooks
+    this.controller.once("tick", () => setupHooks());
 
     this.sp.printConsole('SkympClient ctor');
   }

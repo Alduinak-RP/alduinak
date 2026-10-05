@@ -7,7 +7,7 @@ import { getMovement } from "../../sync/movementGet";
 // TODO: refactor this out
 import * as worldViewMisc from "../../view/worldViewMisc";
 
-import { Animation, AnimationSource, needsReliableSend } from "../../sync/animation";
+import { getCopyAnimationSource, needsReliableSend, playerAnimationSource } from "../../sync/animation";
 import { Actor, EquipEvent, FormType, Menu } from "skyrimPlatform";
 import { getAppearance } from "../../sync/appearance";
 import { ActorValues, getActorValues } from "../../sync/actorvalues";
@@ -251,19 +251,17 @@ export class SendInputsService extends ClientListener {
           return;
         }
 
-        // Extermly important that it's a local id since AnimationSource depends on it
-        const refrIdStr = owner.getFormID().toString(16);
+        // The send hook feeds a copy's source by its local id
+        const source = _refrId ? getCopyAnimationSource(owner.getFormID(), _refrId) : playerAnimationSource;
+        const anim = source.getAnimation();
 
-        const anim = this.getAnimSource(owner).getAnimation();
-
-        const lastAnimationSent = this.lastAnimationSent.get(refrIdStr);
         if (
-            !lastAnimationSent ||
-            anim.numChanges !== lastAnimationSent.numChanges
+            !source.lastSent ||
+            anim.numChanges !== source.lastSent.numChanges
         ) {
             // Drink potion anim from this mod https://www.nexusmods.com/skyrimspecialedition/mods/97660
             if (anim.animEventName !== '' && !anim.animEventName.startsWith("DrinkPotion_")) {
-                this.lastAnimationSent.set(refrIdStr, anim);
+                source.lastSent = anim;
                 this.updateActorValuesAfterAnimation(anim.animEventName);
                 const message: MessageWithRefrId<UpdateAnimationMessage> = {
                     t: MsgType.UpdateAnimation,
@@ -288,20 +286,7 @@ export class SendInputsService extends ClientListener {
     }
 
     relayPlayerAnimEvent(animEventName: string): void {
-        const player = this.sp.Game.getPlayer();
-        if (player) {
-            this.getAnimSource(player).relay(animEventName);
-        }
-    }
-
-    private getAnimSource(owner: Actor): AnimationSource {
-        const refrIdStr = owner.getFormID().toString(16);
-        let animSource = this.playerAnimSource.get(refrIdStr);
-        if (!animSource) {
-            animSource = new AnimationSource(owner);
-            this.playerAnimSource.set(refrIdStr, animSource);
-        }
-        return animSource;
+        playerAnimationSource.relay(animEventName);
     }
 
     private sendAppearance(_refrId?: number) {
@@ -422,8 +407,6 @@ export class SendInputsService extends ClientListener {
     }
 
     private lastSendMovementMoment = new Map<string, number>();
-    private playerAnimSource = new Map<string, AnimationSource>(); // TODO: make service
-    private lastAnimationSent = new Map<string, Animation>();
     private actorValuesNeedUpdate = false;
     private isRaceSexMenuShown = false;
     private equipmentChanged = false;

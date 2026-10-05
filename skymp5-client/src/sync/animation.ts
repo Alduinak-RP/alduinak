@@ -8,12 +8,15 @@ import {
   Utility,
   Game,
   storage,
+  once,
+  SendAnimationEventHook,
   // @ts-expect-error (TODO: Remove in 2.10.0)
   setCollision
 } from "skyrimPlatform";
 import { Movement } from "./movement";
 import { applyWeapDrawn } from "./movementApply";
 import { isRiderClone } from "./mountApply";
+import { logToPlatformLog } from "../logging";
 
 export enum AnimationEventName {
   Ragdoll = "Ragdoll",
@@ -437,26 +440,11 @@ export const setDefaultAnimsDisabled = (
 };
 
 export class AnimationSource {
-  constructor(refr: ObjectReference) {
-    this.refrId = refr.getFormID();
-    hooks.sendAnimationEvent.add({
-      enter: () => { },
-      leave: (ctx) => {
-        if (ctx.selfId !== this.refrId) {
-          return;
-        }
+  // 0 for the player
+  constructor(readonly remoteId: number) { }
 
-        if (!ctx.animationSucceeded) {
-          // Workaround, see carryAnimSystem.ts in gamemode and forcedSyncAnims.
-          // Case-sensetive check here for better performance
-          if (!forcedSyncAnims.has(ctx.animEventName)) {
-            return;
-          }
-        }
-        this.onSendAnimationEvent(ctx.animEventName);
-      },
-    });
-  }
+  // The last animation the sender passed on
+  lastSent?: Animation;
 
   filterMovement(mov: Movement): Movement {
     if (this.weapDrawnBlocker >= Date.now()) {
@@ -520,7 +508,6 @@ export class AnimationSource {
     this.animEventName = animEventName;
   }
 
-  private refrId = 0;
   private numChanges = 0;
   private animEventName = "";
 
@@ -553,8 +540,66 @@ const forcedSyncAnims = new Set<string>([
   "bleedOutStop",
 ]);
 
+// The player's source lasts the whole session
+export const playerAnimationSource = new AnimationSource(0);
+// Hosted copies' sources by local id
+const copyAnimationSources = new Map<number, AnimationSource>();
+
+// A copy whose local id changed, or a local id another hosted actor took over, gets a fresh source
+export const getCopyAnimationSource = (localId: number, remoteId: number): AnimationSource => {
+  let source = copyAnimationSources.get(localId);
+  if (!source || source.remoteId !== remoteId) {
+    disposeCopyAnimationSources(remoteId);
+    source = new AnimationSource(remoteId);
+    copyAnimationSources.set(localId, source);
+  }
+  return source;
+};
+
+// Without a remote id, every copy's source
+export const disposeCopyAnimationSources = (remoteId?: number): void => {
+  copyAnimationSources.forEach((source, localId) => {
+    if (remoteId === undefined || source.remoteId === remoteId) copyAnimationSources.delete(localId);
+  });
+};
+
+// Offset overlays report failure but still sync; see carryAnimSystem.ts in the gamemode
+const feedSource = (source: AnimationSource | undefined, ctx: SendAnimationEventHook.LeaveContext): void => {
+  if (source && (ctx.animationSucceeded || forcedSyncAnims.has(ctx.animEventName))) {
+    source.relay(ctx.animEventName);
+  }
+};
+
+// Adding a hook throws while any thread is inside one, so a refused add is retried next tick
+const addAnimationHook = (handler: SendAnimationEventHook.Handler, minSelfId: number, maxSelfId: number, retry = false): void => {
+  try {
+    hooks.sendAnimationEvent.add(handler, minSelfId, maxSelfId);
+  } catch (e) {
+    if (!retry) logToPlatformLog("AnimationHooks", `sendAnimationEvent hook refused, retrying: ${e}`);
+    once("tick", () => addAnimationHook(handler, minSelfId, maxSelfId, true));
+  }
+};
+
+let hooksAdded = false;
+
+// Call after every service has added its own hooks, so the sources see the final event names
 export const setupHooks = (): void => {
-  hooks.sendAnimationEvent.add({
+  if (hooksAdded) {
+    return;
+  }
+  hooksAdded = true;
+
+  addAnimationHook({
+    enter: (ctx) => {
+      // ShowRaceMenu forces this anim
+      if (ctx.animEventName === "OffsetBoundStandingPlayerInstant") {
+        ctx.animEventName = "";
+      }
+    },
+    leave: (ctx) => feedSource(playerAnimationSource, ctx),
+  }, 0x14, 0x14);
+
+  addAnimationHook({
     enter: (ctx) => {
       if (refsWithDefaultAnimsDisabled.has(ctx.selfId)) {
         if (ctx.animEventName.toLowerCase().includes("attack")) {
@@ -567,15 +612,6 @@ export const setupHooks = (): void => {
         }
       }
 
-      // ShowRaceMenu forces this anim
-      if (ctx.animEventName === "OffsetBoundStandingPlayerInstant") {
-        return (ctx.animEventName = "");
-      }
-
-      // Disable idle animations for 0xff actors
-      if (ctx.selfId < 0xff000000) {
-        return;
-      }
       // The engine drives the idles of a seated rider clone
       if (isRiderClone(ctx.selfId)) {
         return;
@@ -584,6 +620,6 @@ export const setupHooks = (): void => {
         ctx.animEventName = "";
       }
     },
-    leave: () => { },
-  });
+    leave: (ctx) => feedSource(copyAnimationSources.get(ctx.selfId), ctx),
+  }, 0xff000000, 0xffffffff);
 };

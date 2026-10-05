@@ -21,33 +21,18 @@ export class AnimDebugService extends ClientListener {
       }
     }
 
-    const self = this;
+    if (!this.settings || !this.settings.isActive || !this.settings.textOutput?.isActive) {
+      return;
+    }
+
+    const queue = new AnimQueueCollection(this.sp, this.settings);
+    this.sp.storage[AnimQueueCollection.name] = queue;
     this.sp.hooks.sendAnimationEvent.add({
-      enter: (ctx) => { },
-      leave: (ctx) => {
-        self.onSendAnimationEventLeave(ctx);
-      }
+      enter: () => { },
+      leave: (ctx) => queue.push(ctx.animEventName, ctx.animationSucceeded ? animationSucceededTextColor : animationNotSucceededTextColor),
     }, playerId, playerId);
-
-    if (!this.settings || !this.settings.isActive) {
-      return;
-    }
-
-    if (this.settings.textOutput?.isActive) {
-      this.queue = new AnimQueueCollection(this.sp, this.settings);
-      this.sp.storage[AnimQueueCollection.name] = this.queue;
-    }
   }
 
-  private onSendAnimationEventLeave(ctx: { animEventName: string, animationSucceeded: boolean }) {
-    if (this.queue === undefined) {
-      return;
-    }
-
-    this.queue.push(ctx.animEventName, ctx.animationSucceeded ? animationSucceededTextColor : animationNotSucceededTextColor);
-  }
-
-  private queue?: AnimQueueCollection;
   private settings?: AnimDebugSettings;
 }
 

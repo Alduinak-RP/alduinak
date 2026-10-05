@@ -80,6 +80,7 @@ import { TimersService } from './timersService';
 import { clientScriptStartedAt, logTrace, logError, logToPlatformLog } from '../../logging';
 import { countWorn, equipEntries, Equipment, getPlayerWorn, getUnwornSaved, getWornOtherCopy, resyncHandGraph } from '../../sync/equipment';
 import { isRiderClone } from '../../sync/mountApply';
+import { disposeCopyAnimationSources } from '../../sync/animation';
 
 import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
@@ -526,6 +527,7 @@ export class RemoteServer extends ClientListener {
     if (typeof hosted === typeof []) {
       storage['hosted'] = hosted.filter((x) => x !== target);
     }
+    disposeCopyAnimationSources(target);
   }
 
   private onSetInventoryMessage(event: ConnectionMessage<SetInventoryMessage>): void {
@@ -1537,6 +1539,7 @@ export class RemoteServer extends ClientListener {
     storage['idManager'] = new IdManager();
     getViewFromStorage()?.resetFormViews();
     storage['hosted'] = [];
+    disposeCopyAnimationSources();
     resetHostAttempts();
     pluginRefProps.clear();
     pluginRefPose.clear();
