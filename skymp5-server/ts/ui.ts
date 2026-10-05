@@ -46,6 +46,7 @@ const createApp = (getOriginPort: () => number) => {
   router.get(new RegExp("/scripts/.*"), (ctx: any) => ctx.throw(403));
   router.get(new RegExp("\.es[mpl]"), (ctx: any) => ctx.throw(403));
   router.get(new RegExp("\.bsa"), (ctx: any) => ctx.throw(403));
+  router.get("/manifest-cache.json", (ctx: any) => ctx.throw(403));
 
   router.use('/metrics', (ctx: any, next: any) => {
     console.log(`Metrics requested by ${ctx.request.ip}`);
