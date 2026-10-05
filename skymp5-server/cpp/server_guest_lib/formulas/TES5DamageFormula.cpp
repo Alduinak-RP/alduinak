@@ -129,8 +129,7 @@ float TES5DamageFormulaImpl::CalcArmorRatingComponent(
 float TES5DamageFormulaImpl::CalcOpponentArmorRating() const
 {
   float combinedArmorRating = 0;
-  auto eq = target.GetEquipment();
-  for (auto& entry : eq.inv.entries) {
+  for (const auto& entry : target.GetEquipment().inv.entries) {
     combinedArmorRating += CalcArmorRatingComponent(entry);
   }
   return combinedArmorRating;

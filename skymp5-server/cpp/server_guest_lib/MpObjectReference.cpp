@@ -1070,7 +1070,7 @@ void MpObjectReference::Subscribe(MpObjectReference* emitter,
   }
 
   if (!emitter->pImpl->onInitEventSent &&
-      listener->GetChangeForm().profileId != -1) {
+      listener->ChangeForm().profileId >= 0) {
     emitter->pImpl->onInitEventSent = true;
     // Actors may take their scripts from the template chain
     auto worldState = emitter->GetParent();

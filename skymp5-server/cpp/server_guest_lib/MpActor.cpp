@@ -212,7 +212,7 @@ uint32_t MpActor::GetBlockCount() const noexcept
 
 bool MpActor::GetConsoleCommandsAllowedFlag() const
 {
-  return GetChangeForm().consoleCommandsAllowed;
+  return ChangeForm().consoleCommandsAllowed;
 }
 
 void MpActor::SetConsoleCommandsAllowedFlag(bool newValue)
@@ -413,7 +413,7 @@ bool MpActor::IsInFaction(FormDesc factionForm, bool lazyLoad)
   if (factionsLoaded == false && lazyLoad)
     LoadFactions();
 
-  const auto& factions = GetChangeForm().factions;
+  const auto& factions = ChangeForm().factions;
 
   if (!factions.has_value()) {
     return false;
@@ -442,7 +442,7 @@ std::vector<Faction> MpActor::GetFactions(int minFactionRank,
     return result;
   }
 
-  const auto& factions = GetChangeForm().factions;
+  const auto& factions = ChangeForm().factions;
 
   if (!factions.has_value()) {
     return result;
@@ -1643,7 +1643,7 @@ std::map<uint32_t, uint32_t> MpActor::EvaluateDeathItem()
 void MpActor::ModifyActorValuePercentage(espm::ActorValue av,
                                          float percentageDelta)
 {
-  ActorValues currentActorValues = GetChangeForm().actorValues;
+  ActorValues currentActorValues = GetActorValues();
   switch (av) {
     case espm::ActorValue::Health:
       currentActorValues.healthPercentage =
@@ -2123,7 +2123,7 @@ NiPoint3 MpActor::GetViewDirection() const
 
 void MpActor::SetActorValue(espm::ActorValue actorValue, float value)
 {
-  ActorValues currentActorValues = GetChangeForm().actorValues;
+  ActorValues currentActorValues = GetActorValues();
   switch (actorValue) {
     case espm::ActorValue::HealRate:
       currentActorValues.healRate = value;
@@ -2217,16 +2217,16 @@ void MpActor::ApplyMagicEffect(espm::Effects::Effect& effect, bool hasSweetpie,
   }
 
   if (isRate || isMult) {
-    MpChangeForm changeForm = GetChangeForm();
-    BaseActorValues baseValues = GetBaseValues();
-    const ActiveMagicEffectsMap& activeEffects = changeForm.activeMagicEffects;
+    const BaseActorValues baseValues = GetBaseValues();
+    const ActiveMagicEffectsMap& activeEffects =
+      ChangeForm().activeMagicEffects;
     const float baseValue = baseValues.GetValue(av);
     const uint32_t formId = GetFormId();
     auto now = std::chrono::system_clock::now();
     std::chrono::system_clock::time_point endTime;
     std::chrono::milliseconds duration;
     if (durationOverriden) {
-      std::optional effect = GetChangeForm().activeMagicEffects.Get(av);
+      std::optional effect = ChangeForm().activeMagicEffects.Get(av);
       if (!effect.has_value()) {
         spdlog::error(
           "MpActor with formId {:x} has no magic effect affecting "
@@ -2325,7 +2325,7 @@ void MpActor::ReapplyMagicEffects()
 {
   // TODO: Implement range-based for loop for MagicEffectsMap
   std::vector<espm::Effects::Effect> activeEffects =
-    GetChangeForm().activeMagicEffects.GetAllEffects();
+    ChangeForm().activeMagicEffects.GetAllEffects();
   if (activeEffects.empty()) {
     return;
   }

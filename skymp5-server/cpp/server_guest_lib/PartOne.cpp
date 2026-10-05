@@ -720,13 +720,13 @@ void PartOne::StartHosting(Networking::UserId hosterUserId,
         return;
       }
 
-      auto changeForm = actor->GetChangeForm();
+      const auto& actorValues = actor->GetActorValues();
 
       ChangeValuesMessage msg;
       msg.idx = actor->GetIdx();
-      msg.data.health = changeForm.actorValues.healthPercentage;
-      msg.data.magicka = changeForm.actorValues.magickaPercentage;
-      msg.data.stamina = changeForm.actorValues.staminaPercentage;
+      msg.data.health = actorValues.healthPercentage;
+      msg.data.magicka = actorValues.magickaPercentage;
+      msg.data.stamina = actorValues.staminaPercentage;
       actor->GetActorToSendTo().SendToUser(msg, true);
     });
 }

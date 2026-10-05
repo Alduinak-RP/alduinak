@@ -864,10 +864,12 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
                 [](uint32_t id) { return id != 0; });
 
   // Worn items show the extras the server holds, never ones a client made up
-  UpdateEquipmentMessage sanitizedMsg = msg;
+  std::vector<std::pair<size_t, Inventory::Entry>> wornFixes;
   bool extrasReplaced = false;
   std::vector<uint32_t> copiesLeft;
-  for (auto& entry : sanitizedMsg.data.inv.entries) {
+  const auto& reportedEntries = equipmentInv.entries;
+  for (size_t i = 0; i < reportedEntries.size(); ++i) {
+    const auto& entry = reportedEntries[i];
     if (entry.GetWorn() == Inventory::Worn::None) {
       continue;
     }
@@ -875,24 +877,25 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
     one.count = 1;
     // Durability: a slot keeps its copy unless the report shows that copy unworn, so a stale percent tag moves no wear to a twin
     const int copy =
-      Durability::ReportedWornCopy(*actor, one, msg.data.inv, copiesLeft);
+      Durability::ReportedWornCopy(*actor, one, equipmentInv, copiesLeft);
     const auto owned = copy >= 0
       ? std::vector<Inventory::Entry>{ inventory.entries[copy] }
       : inventory.FindEntriesFor(one);
     // The stored worn entry carries the condition of the server's copy, which the damage formulas read
-    if (owned.empty()) {
-      entry.condition.reset();
+    if (owned.empty() || owned[0].SameItemAs(entry)) {
+      const auto condition =
+        owned.empty() ? std::nullopt : owned[0].condition;
+      if (entry.condition != condition) {
+        Inventory::Entry fixed = entry;
+        fixed.condition = condition;
+        wornFixes.emplace_back(i, std::move(fixed));
+      }
       continue;
     }
-    if (owned[0].SameItemAs(entry)) {
-      entry.condition = owned[0].condition;
-      continue;
-    }
-    const auto worn = entry.GetWorn();
-    const auto count = entry.count;
-    entry = owned[0];
-    entry.count = count;
-    entry.SetWorn(worn);
+    Inventory::Entry fixed = owned[0];
+    fixed.count = entry.count;
+    fixed.SetWorn(entry.GetWorn());
+    wornFixes.emplace_back(i, std::move(fixed));
     extrasReplaced = true;
   }
 
@@ -904,24 +907,29 @@ void ActionListener::OnUpdateEquipment(const RawMessageData& rawMsgData,
                  data.numChanges, data.inv.entries.size(), msSinceAssign());
   }
 
-  if (isAllowed) {
+  if (isAllowed && wornFixes.empty() && !anySpellStripped) {
+    actor->SetEquipment(data);
+    RelayEquipment(*actor, rawMsgData, nullptr);
+  } else if (isAllowed) {
+    UpdateEquipmentMessage sanitizedMsg = msg;
+    for (auto& [index, fixed] : wornFixes) {
+      sanitizedMsg.data.inv.entries[index] = std::move(fixed);
+    }
     // An unlearned spell strips just that slot; weapons/armor still reach neighbours (avoids silent desync)
-    const bool sanitized = anySpellStripped || extrasReplaced;
-    if (sanitized) {
-      if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Left)]) {
-        sanitizedMsg.data.leftSpell = std::nullopt;
-      }
-      if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Right)]) {
-        sanitizedMsg.data.rightSpell = std::nullopt;
-      }
-      if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Voice)]) {
-        sanitizedMsg.data.voiceSpell = std::nullopt;
-      }
-      if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Instant)]) {
-        sanitizedMsg.data.instantSpell = std::nullopt;
-      }
+    if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Left)]) {
+      sanitizedMsg.data.leftSpell = std::nullopt;
+    }
+    if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Right)]) {
+      sanitizedMsg.data.rightSpell = std::nullopt;
+    }
+    if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Voice)]) {
+      sanitizedMsg.data.voiceSpell = std::nullopt;
+    }
+    if (spellIdsToRemove[static_cast<size_t>(SpellSlotId::Instant)]) {
+      sanitizedMsg.data.instantSpell = std::nullopt;
     }
     actor->SetEquipment(sanitizedMsg.data);
+    const bool sanitized = anySpellStripped || extrasReplaced;
     RelayEquipment(*actor, rawMsgData, sanitized ? &sanitizedMsg : nullptr);
   } else {
     actor->SendInventoryUpdate();
@@ -2109,7 +2117,7 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
     return; // Not an actor, damage calculation is not needed
   }
 
-  auto targetActorValues = targetActorPtr->GetChangeForm().actorValues;
+  ActorValues targetActorValues = targetActorPtr->GetActorValues();
 
   SpellCastData spellCastData{ aggressor->GetFormId(),
                                targetActorPtr->GetFormId(),
@@ -2336,7 +2344,7 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   //   return;
   // }
 
-  ActorValues currentActorValues = targetActor.GetChangeForm().actorValues;
+  ActorValues currentActorValues = targetActor.GetActorValues();
 
   float healthPercentage = currentActorValues.healthPercentage;
 
@@ -2363,9 +2371,7 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
 
       bool isBlockingByShield = false;
 
-      auto targetActorEquipmentEntries =
-        targetActor.GetEquipment().inv.entries;
-      for (auto& entry : targetActorEquipmentEntries) {
+      for (const auto& entry : targetActor.GetEquipment().inv.entries) {
         if (entry.GetWorn() != Inventory::Worn::None) {
           auto res =
             targetActor.GetParent()->GetEspm().GetBrowser().LookupById(
