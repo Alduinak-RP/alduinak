@@ -54,14 +54,6 @@ UpdatePropertyMessage MpObjectReference::PreparePropertyMessage_(
 {
   UpdatePropertyMessage res;
 
-  std::string baseRecordType;
-
-  auto& loader = self->GetParent()->GetEspm();
-  auto base = loader.GetBrowser().LookupById(GetBaseId());
-  if (base.rec) {
-    baseRecordType = base.rec->GetType().ToString();
-  }
-
   res.idx = self->GetIdx();
   res.propName = name;
   res.refrId = self->GetFormId();
@@ -69,8 +61,8 @@ UpdatePropertyMessage MpObjectReference::PreparePropertyMessage_(
 
   // See 'perf: improve game framerate #1186'
   // Client needs to know if it is DOOR or not
-  if (baseRecordType == "DOOR") {
-    res.baseRecordType = baseRecordType;
+  if (const std::string& baseType = self->GetBaseType(); baseType == "DOOR") {
+    res.baseRecordType = baseType;
   }
 
   return res;
