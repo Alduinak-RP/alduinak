@@ -1,10 +1,9 @@
-// Cold and sickness, stacked above the vanilla magicka bar (bottom left). Never interactive.
+// The cold line, above the vanilla magicka bar (bottom left). Never interactive.
 
 $gold: #c8b48a;
 $text: #e8e0d0;
 $frost: #a9cde6;
 $frost-severe: #d8ecfb;
-$sick: #b9c48a;
 
 .survivalReadout {
   position: fixed;
@@ -47,9 +46,5 @@ $sick: #b9c48a;
       color: $frost-severe;
       font-weight: bold;
     }
-  }
-
-  &__sick {
-    color: $sick;
   }
 }

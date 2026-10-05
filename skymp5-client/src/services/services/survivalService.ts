@@ -176,7 +176,6 @@ export class SurvivalService extends ClientListener {
     }
     this.controller.lookupListener(NeedsService).setSurvivalReadout({
       coldStage: state.coldStage, coldStageName: state.coldStageName, warmth: state.coldStage >= 0 ? state.warmth : -1,
-      diseases: state.diseases, afflictions: state.afflictions,
     });
     this.controller.once("update", () => this.apply());
   }

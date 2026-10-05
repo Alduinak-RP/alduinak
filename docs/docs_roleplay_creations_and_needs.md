@@ -452,9 +452,11 @@ an Expert (1/36) for 6 and then 3.5%, a Master or Legendary (1/48) for 8 and the
 half-cost benches, while 10 minutes online refill 16.7%; only a Free character (1/3) sees it from the first craft. While the
 Crafting Menu is open the magicka bar shows in the health bar's place at the bottom centre, above the menu's bottom bar, and no health bar shows (`docs_roleplay_frostfall_client.md`, Vanilla
 menus). Widget id 39 is now the survival readout (`features/survivalReadout`), fed by `needsService.ts` with what
-`SurvivalService` hands over: a `SICK` line and a `COLD <stage>` line from Chilly on with the server's `warmth <n>`
+`SurvivalService` hands over: a `COLD <stage>` line from Chilly on with the server's `warmth <n>`
 (see [Survival](#survival)), shown only while `survivalMode` is on (`needsSurvivalModeFlag`) and hidden with the rest
-of the browser (menus, hidden interface); it has no fatigue line. `needsService.ts` writes the share into the
+of the browser (menus, hidden interface); it has no fatigue line and, since 2026-10-05, no `SICK` line: the owner had
+it removed because diseases, food poisoning and afflictions already show in the Magic menu's Active Effects, so being
+sick alone no longer opens the widget. `needsService.ts` writes the share into the
 Update.esm globals the Survival `DOBJ` keys name, on the client only: `Survival_HungerAttributePenaltyPercent`
 (0x2EDF, `SRHP`) and `Survival_ExhaustionAttributePenaltyPercent` (0x2EE0, `SRSP`) as 0-100 (the penalty share times
 100, nothing else); `Survival_ColdAttributePenaltyPercent` (0x2EDE, `SRCP`) belongs to `SurvivalService` (see
@@ -774,8 +776,7 @@ regeneration. "server" factors are applied by SurvivalSystem, not by the spell.
     two), the character not settled yet in the seconds after a login or respawn, or the hit dropped natively before the
     event (a second unarmed hit within about 0.77 s).
   - On a catch the player reads "You have caught Ataxia: picking locks and pockets is harder. It worsens over the coming
-    days. A Cure Disease potion or a healing potion cures it.", the survival readout gains a Sick line and Active Effects
-    lists the disease.
+    days. A Cure Disease potion or a healing potion cures it." and Active Effects lists the disease.
   - A zone creature is an NPC_ base with no appearance. Its race is the RNAM of the first record of its base and
     evaluated template chain that keeps its own traits, so `EncSkeever` is `SkeeverRace` and a leveled base such as
     `dunFolgunthurThralls_LvlDraugrAmbushMissile` takes the race of the NPC the server picked from its list, not the
@@ -875,7 +876,8 @@ cure, cure all, the cap refusal, survival off).
 - Server -> Client: `{ customPacketType: "survivalState", cold, coldStage, coldStageName, coldPenalty, temperatureLevel,
   warmth, freezingArea, afflictions: [name], diseases: [{ name, stage }], contagion: { seconds, range } | null }` on
   change and on request (cold and coldStage -1 with cold off; while food poisoning runs, `diseases` starts with
-  `{ "name": "Food poisoning", "stage": 1 }`, so the HUD's Sick line shows it too; `contagion` is the client's check
+  `{ "name": "Food poisoning", "stage": 1 }`; the client reads `diseases` for its movement refresh and its log, the HUD
+  shows no sickness; `contagion` is the client's check
   interval and range, null while contagion is off); notices through `masteryNotice`.
 - `ff_contagious` on the character, seen by its owner and its neighbours: `["collywobbles", "chills"]` or null. It must
   be registered in the gamemode (`50_properties.js`, staged in `Desktop/alduinak-r13/live/r27-SV4b/`); without it the

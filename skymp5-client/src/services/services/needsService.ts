@@ -24,17 +24,15 @@ export const globalOf = (sp: Sp, id: number, plugin: string) => sp.GlobalVariabl
 // Read back: "none" means the form lookup failed, so the HUD never saw the value
 export const readGlobal = (sp: Sp, id: number, plugin: string): number | "none" => globalOf(sp, id, plugin)?.getValue() ?? "none";
 
-// The cold and sickness SurvivalService hands over for the readout
+// The cold SurvivalService hands over for the readout; sickness shows in Active Effects only
 export interface SurvivalReadout {
   coldStage: number;
   coldStageName: string;
   // The server's warmth total, cloaks and table pieces included; -1 with cold off
   warmth: number;
-  diseases: Array<{ name: string; stage: number }>;
-  afflictions: string[];
 }
 
-const NO_SURVIVAL_READOUT: SurvivalReadout = { coldStage: -1, coldStageName: "", warmth: -1, diseases: [], afflictions: [] };
+const NO_SURVIVAL_READOUT: SurvivalReadout = { coldStage: -1, coldStageName: "", warmth: -1 };
 // Chilly and colder show on the readout
 const READOUT_COLD_STAGE = 2;
 
@@ -50,8 +48,8 @@ interface NeedsState {
 /**
  * Hunger and fatigue on the vanilla HUD. The server (NeedsSystem) owns both values and pushes needsState whenever they
  * change; this service applies the max stamina (hunger) and max magicka (fatigue) penalty shares the server sends, shows
- * them as Survival's red meter segments, shows the cold stage, diseases and afflictions SurvivalService hands over in a
- * small HUD readout, and closes the Crafting Menu when the server refused a craft for fatigue.
+ * them as Survival's red meter segments, shows the cold stage SurvivalService hands over in a small HUD readout, and
+ * closes the Crafting Menu when the server refused a craft for fatigue.
  *
  *   Client -> Server: { "customPacketType": "needsRequest" }
  *   Server -> Client: { "customPacketType": "needsState", "hunger", "stage", "stageName", "fatigue", "fatigueStage",
@@ -125,11 +123,10 @@ export class NeedsService extends ClientListener {
     this.showSurvivalReadout();
   }
 
-  // Only with the survival HUD flag on, like the red meter segments; Chilly or colder, a disease or an affliction opens it
+  // Only with the survival HUD flag on, like the red meter segments, and from Chilly on
   private showSurvivalReadout(): void {
     const s = this.survival;
-    const lines = s.coldStage >= READOUT_COLD_STAGE || s.diseases.length > 0 || s.afflictions.length > 0;
-    const key = this.needs?.survivalMode && lines ? JSON.stringify(s) : "";
+    const key = this.needs?.survivalMode && s.coldStage >= READOUT_COLD_STAGE ? JSON.stringify(s) : "";
     if (key === this.readoutShown) return;
     this.readoutShown = key;
     if (!key) return closeWidget(this.sp, SURVIVAL_READOUT_WIDGET_ID);
@@ -140,7 +137,7 @@ export class NeedsService extends ClientListener {
   // Runs inside the CEF browser. Only injected vars + window are available; no spread syntax
   private readoutWidgetSetter = () => {
     const r = survivalReadout;
-    const widget = { type: "survivalReadout", id: SURVIVAL_READOUT_WIDGET_ID, coldStage: r.coldStage, coldStageName: r.coldStageName, warmth: r.warmth, diseases: r.diseases, afflictions: r.afflictions };
+    const widget = { type: "survivalReadout", id: SURVIVAL_READOUT_WIDGET_ID, coldStage: r.coldStage, coldStageName: r.coldStageName, warmth: r.warmth };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== SURVIVAL_READOUT_WIDGET_ID);
     window.skyrimPlatform.widgets.set(others.concat([widget]));
   };
