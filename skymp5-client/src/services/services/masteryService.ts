@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 
 export interface Profession {
   id: string;
@@ -95,17 +93,16 @@ export class MasteryService extends ClientListener {
 
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["masteryNotice", "professionState"], (content) => this.onCustomPacketMessage(content));
     // A spawn loads base values afresh
     this.controller.emitter.on("createActorMessage", (e) => { if (e.message.isMe) this.writtenMagicka = null; });
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (content && content["customPacketType"] === "masteryNotice" && typeof content["text"] === "string") {
+  private onCustomPacketMessage(content: CustomPacketContent): void {
+    if (content["customPacketType"] === "masteryNotice" && typeof content["text"] === "string") {
       notifyNextUpdate(this.controller, this.sp, content["text"]);
     }
-    if (content && content["customPacketType"] === "professionState") {
+    if (content["customPacketType"] === "professionState") {
       const skills = parseSkills(content["skills"]);
       const magicka = typeof content["magicka"] === "number" ? content["magicka"] as number : null;
       this.controller.once("update", () => this.applyState(skills, magicka));

@@ -5,10 +5,8 @@ import { isHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType, Spell, Debug } from 'skyrimPlatform'
 import { ClientListener, CombinedController, Sp } from './clientListener';
 import { MountService } from './mountService';
-import { parseCustomPacket } from './customPacketUtil';
+import { CustomPacketContent, onCustomPacket } from './customPacketUtil';
 import { logTrace, logToPlatformLog } from '../../logging';
-import { ConnectionMessage } from '../events/connectionMessage';
-import { CustomPacketMessage } from '../messages/customPacketMessage';
 
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
@@ -61,7 +59,7 @@ export class MagicSyncService extends ClientListener {
         super();
         this.controller.on("update", () => this.onUpdate());
         this.controller.on("spellCast", (e) => this.onSpellCast(e));
-        this.controller.emitter.on("customPacketMessage", (e) => this.onRacialState(e));
+        onCustomPacket(this.controller, "racialState", (content) => this.onRacialState(content));
         this.controller.emitter.on("connectionDisconnect", () => this.rationedPowers.clear());
 
         const self = this;
@@ -115,9 +113,8 @@ export class MagicSyncService extends ClientListener {
     }
 
     // Each racialState lists every rationed power of the character, so it replaces the last one
-    private onRacialState(event: ConnectionMessage<CustomPacketMessage>) {
-        const content = parseCustomPacket(event);
-        if (!content || content["customPacketType"] !== "racialState" || !Array.isArray(content["powers"])) {
+    private onRacialState(content: CustomPacketContent) {
+        if (!Array.isArray(content["powers"])) {
             return;
         }
         const now = Date.now();

@@ -1,8 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, buttonEventKeyCode } from "./widgetMenuUtil";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 
@@ -66,7 +64,7 @@ export class BountyBoardService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["bountyBoardMenu", "bountyBoardNotice"], (content) => this.onCustomPacketMessage(content));
     // A front reload drops the widget without a close message; the server
     // still holds a board session, so close that too.
     this.controller.emitter.on("browserWindowLoaded", () => {
@@ -81,10 +79,7 @@ export class BountyBoardService extends ClientListener {
     if (e.isDown && this.menuOpen && buttonEventKeyCode(e) === DxScanCode.Escape) this.closeMenu();
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       case "bountyBoardMenu": {
         const notes = Array.isArray(content["notes"]) ? content["notes"] : [];

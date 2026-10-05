@@ -1,8 +1,6 @@
 import { Actor, HitEvent, storage } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { WorldCleanerService } from "./worldCleanerService";
 import { isRemoteHostedByMe, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { normalizeAngle } from "../../sync/movementApply";
@@ -50,7 +48,7 @@ export const keepsOwnOffset = (remoteId: number | undefined): boolean => {
 export class CompanionService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "companionState", (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("connectionAccepted", () => this.onConnectionAccepted());
     this.controller.on("hit", (e) => this.onHit(e));
     this.controller.on("update", () => this.onUpdate());
@@ -63,11 +61,7 @@ export class CompanionService extends ClientListener {
     this.lastPerkCheckMs = 0;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "companionState") {
-      return;
-    }
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const list = this.readEntries(content["companions"]);
     // A new companion stands in for the engine's own summon, which the world cleaner removes
     if (list.some((c) => !this.companions.some((old) => old.id === c.id))) {

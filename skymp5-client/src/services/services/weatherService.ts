@@ -1,8 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { logError } from "../../logging";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 
 // The sky follows the server's weather packet (WeatherSystem): one weather per region, shared by everyone standing in it.
 // The first weather after a load screen is set outright, so the template save's own sky never fades over; later ones fade
@@ -28,13 +26,11 @@ export class WeatherService extends ClientListener {
     controller.on("update", () => this.onUpdate());
     controller.on("loadGame", () => this.onLoadGame());
     controller.on("cellFullyLoaded", () => { this.recheckAt = 0; this.nextApplyAt = 0; });
-    controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(controller, "weather", (content) => this.onCustomPacketMessage(content));
   }
 
   // Natives throw in the packet-handler context, so the packet is only stored here and applied on update
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "weather") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const gs = content["gameSettings"];
     this.pending = {
       region: typeof content["region"] === "string" ? content["region"] : null,

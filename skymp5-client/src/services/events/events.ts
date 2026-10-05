@@ -37,7 +37,6 @@ import { QueryKeyCodeBindings } from "./queryKeyCodeBindings";
 import { UiHiddenChangedEvent } from "./uiHiddenChangedEvent";
 import { SpellCastMessage } from "../messages/spellCastMessage";
 import { UpdateAnimVariablesMessage } from "../messages/updateAnimVariablesMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 
 import { AnyRawMessageEvent } from "./anyRawMessageEvent";
 import { NicknameCreateEvent } from "./nicknameCreateEvent";
@@ -77,7 +76,6 @@ type EventTypes = {
     'updatePropertyMessage': [ConnectionMessage<UpdatePropertyMessage>],
     'deathStateContainerMessage': [ConnectionMessage<DeathStateContainerMessage>],
     'teleportMessage2': [ConnectionMessage<TeleportMessage2>],
-    'customPacketMessage': [ConnectionMessage<CustomPacketMessage>]
 
     'browserWindowLoaded': [BrowserWindowLoadedEvent],
     'authAttempt': [AuthAttemptEvent],

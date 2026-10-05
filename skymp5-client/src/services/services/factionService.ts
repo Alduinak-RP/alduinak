@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 
 /**
  * Faction membership on the client. The Personal Menu's Faction tabs (AdminMenuService) show the columns, rosters and the Regency
@@ -17,17 +15,14 @@ import { CustomPacketMessage } from "../messages/customPacketMessage";
 export class FactionService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["factionState", "factionNotice"], (content) => this.onCustomPacketMessage(content));
   }
 
   get canRecruit(): boolean {
     return this.recruitAllowed;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       case "factionState":
         this.recruitAllowed = content["canRecruit"] === true;

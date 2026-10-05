@@ -1,7 +1,6 @@
 import { Actor } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { logToPlatformLog, logTrace } from "../../logging";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
@@ -258,7 +257,7 @@ const describeAttempt = (lock: ActionLock): string => {
 export class RestraintService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["restraintState", "carryState", "executionState", "actionLock", "stagger", "bleedoutState"], (content) => this.onCustomPacketMessage(content));
     this.controller.on("update", () => this.onUpdate());
 
     // Jumping ends the offset pose; block it while a pose is held
@@ -391,14 +390,7 @@ export class RestraintService extends ClientListener {
     return movement;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return;
-    }
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const type = content["customPacketType"];
     if (type === "restraintState") {
       if (typeof content["boundHands"] === "boolean") {

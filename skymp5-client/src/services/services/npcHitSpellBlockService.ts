@@ -4,9 +4,7 @@ import { DeathService } from "./deathService";
 import { getMaximumActorValue, setActorValuePercentage } from "../../sync/actorvalues";
 import { isHostedByMe, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { logToPlatformLog } from "../../logging";
-import { parseCustomPacket } from "./customPacketUtil";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 
 const PLAYER_ID = 0x14;
 const FIRST_RUNTIME_ID = 0xff000000;
@@ -66,7 +64,7 @@ export class NpcHitSpellBlockService extends ClientListener {
     this.controller.on("effectStart", (e: ActiveEffectApplyRemoveEvent) => this.onEffect(e.effect, e.caster, e.target, "start"));
     this.controller.on("update", () => this.expireLanded());
     this.controller.once("update", () => this.resolveDawnguard());
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "npcHitPoisonBlocked", (content) => this.onCustomPacketMessage(content));
   }
 
   private resolveDawnguard(): void {
@@ -147,9 +145,8 @@ export class NpcHitSpellBlockService extends ClientListener {
     });
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (content?.["customPacketType"] !== "npcHitPoisonBlocked" || typeof content["aggressor"] !== "number") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
+    if (typeof content["aggressor"] !== "number") return;
     const remoteId = content["aggressor"];
     this.controller.once("update", () => this.onServerBlocked(remoteId));
   }

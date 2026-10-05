@@ -1,9 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket } from "./customPacketUtil";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { applyAppearanceToPlayer } from "../../sync/appearance";
 import { syncRaceAbilities } from "../../sync/spell";
 import { Entry, getInventory } from "../../sync/inventory";
@@ -66,7 +64,7 @@ const hex = (id: number): string => (id >>> 0).toString(16);
 export class PolymorphService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "polymorph", (content) => this.onCustomPacketMessage(content));
     // A new spawn drops the orders still waiting for the old one
     this.controller.emitter.on("createActorMessage", (e) => {
       if (!e.message.isMe) return;
@@ -90,9 +88,7 @@ export class PolymorphService extends ClientListener {
     return this.gearOff;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "polymorph") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const worn = Array.isArray(content["worn"]) ? (content["worn"] as Entry[]) : [];
     const order: PolymorphOrder = {
       on: content["on"] === true,

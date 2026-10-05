@@ -1,9 +1,8 @@
 import { localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { logError, logTrace } from "../../logging";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { GamemodeApiCtx } from "../messages_gamemode/gamemodeApiCtx";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { NetworkingService } from "./networkingService";
 import { RemoteServer } from "./remoteServer";
 import { ServerJsVerificationService } from "./serverJsVerificationService";
@@ -15,25 +14,10 @@ export class SweetTaffyEvalService extends ClientListener {
         super();
 
 
-        this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+        onCustomPacket(this.controller, "eval", (content) => this.onCustomPacketMessage(content));
     }
 
-    private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-        const msg = event.message;
-
-        let msgContent: Record<string, unknown> = {};
-
-        try {
-            msgContent = JSON.parse(msg.contentJsonDump);
-        } catch (e) {
-            if (e instanceof SyntaxError) {
-                logError(this, "onCustomPacketMessage failed to parse JSON", e.message, "json:", msg.contentJsonDump);
-                return;
-            } else {
-                throw e;
-            }
-        }
-
+    private onCustomPacketMessage(msgContent: CustomPacketContent): void {
         switch (msgContent["customPacketType"]) {
             case 'eval':
                 const code = msgContent["code"];

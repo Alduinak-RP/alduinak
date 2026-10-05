@@ -1,9 +1,8 @@
 import { Actor, Menu, ObjectReference } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { SpSnippetMessage } from "../messages/spSnippetMessage";
-import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { onWidgetsCleared } from "./widgetMenuUtil";
 import { NeedsService, UPDATE_ESM, globalOf, readGlobal } from "./needsService";
 import { RemoteServer } from "./remoteServer";
@@ -117,7 +116,7 @@ const listText = (items: string[]): string => items.join(", ") || "none";
 export class SurvivalService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "survivalState", (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("spSnippetMessage", (e) => this.onSpSnippet(e));
     this.controller.emitter.on("createActorMessage", (e) => { if (e.message.isMe) this.serverSpells.clear(); });
     // A new actor starts over on the server: swimming false and no warmth compared yet
@@ -151,9 +150,7 @@ export class SurvivalService extends ClientListener {
     return `healthMax=${Math.round(player.getActorValueMax("Health"))} v04=${Math.round(player.getActorValue(COLD_PENALTY_AV))}`;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "survivalState") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const before = this.state;
     const state = parseState(content);
     this.state = state;

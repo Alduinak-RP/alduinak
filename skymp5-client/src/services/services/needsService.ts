@@ -1,8 +1,6 @@
 import { Menu } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { closeWidget, onWidgetsCleared, refreshFormMenu } from "./widgetMenuUtil";
 import { applyNeedsPenalties, EXHAUSTION_PENALTY_AV, HUNGER_PENALTY_AV } from "../../sync/attributePenalty";
 import { logToPlatformLog } from "../../logging";
@@ -62,7 +60,7 @@ interface NeedsState {
 export class NeedsService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "needsState", (content) => this.onCustomPacketMessage(content));
     // Login resets every widget, and a front reload drops them silently
     onWidgetsCleared(this.controller, () => this.controller.once("update", () => {
       this.lastHudLog = "";
@@ -85,9 +83,7 @@ export class NeedsService extends ClientListener {
     return `stamMax=${r(player.getActorValueMax("Stamina"))} magMax=${r(player.getActorValueMax("Magicka"))} v02=${r(player.getActorValue(HUNGER_PENALTY_AV))} v03=${r(player.getActorValue(EXHAUSTION_PENALTY_AV))}`;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "needsState") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     this.needs = {
       staminaPenalty: Number(content["staminaPenalty"]) || 0,
       magickaPenalty: Number(content["magickaPenalty"]) || 0,

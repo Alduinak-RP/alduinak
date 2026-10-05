@@ -2,9 +2,7 @@ import { ActivateEvent, Actor, FormType } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { MsgType } from "../../messages";
 import { getInventory } from "../../sync/inventory";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { notifyNextUpdate, parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { notifyNextUpdate, sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { RestraintService } from "./restraintService";
 
 // TODO: refactor this out
@@ -70,7 +68,7 @@ export class ActivationService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
         this.controller.on("activate", (e) => this.onActivate(e));
-        this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+        onCustomPacket(this.controller, "loadDoorAnswer", (content) => this.onCustomPacketMessage(content));
     }
 
     private firstIgnoredMs = new Map<number, number>();
@@ -232,9 +230,7 @@ export class ActivationService extends ClientListener {
         }
     }
 
-    private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>) {
-        const content = parseCustomPacket(event);
-        if (content?.["customPacketType"] !== "loadDoorAnswer") return;
+    private onCustomPacketMessage(content: CustomPacketContent) {
         const target = Number(content["target"]) >>> 0;
         const loadDoor = content["loadDoor"] === true;
         this.loadDoors.set(target, loadDoor);

@@ -1,8 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CreateActorMessage } from "../messages/createActorMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { parseCustomPacket } from "./customPacketUtil";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { applyAttributeBonus } from "../../sync/attributePenalty";
 import { logTrace } from "../../logging";
 
@@ -20,7 +19,7 @@ type Applied = Record<string, number>;
 export class AttributeBonusService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "attributeBonus", (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("createActorMessage", (e) => this.onCreateActorMessage(e));
   }
 
@@ -30,9 +29,7 @@ export class AttributeBonusService extends ClientListener {
     this.applied = {};
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "attributeBonus") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const wanted: Applied = {};
     for (const [av, key] of AVS) wanted[av] = Number(content[key]) || 0;
     this.controller.once("update", () => this.apply(wanted));

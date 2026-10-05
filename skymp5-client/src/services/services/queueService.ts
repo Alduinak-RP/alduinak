@@ -1,11 +1,9 @@
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket } from "./customPacketUtil";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuLanguage, onWidgetsCleared } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
-import { ConnectionMessage } from "../events/connectionMessage";
 import { ConnectionDenied } from "../events/connectionDenied";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { logTrace, logToPlatformLog } from "../../logging";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
@@ -55,7 +53,7 @@ export class QueueService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
 
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["queueStatus", "characterSelectMenu", "kicked"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("connectionDenied", (e) => this.onConnectionDenied(e));
     // The reconnect logs in again and the server re-sends the place, which reopens the page
     this.controller.emitter.on("connectionDisconnect", () => this.close());
@@ -70,9 +68,7 @@ export class QueueService extends ClientListener {
     }
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const type = content["customPacketType"];
     if (type === "queueStatus") {
       this.show(content);

@@ -1,9 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, refreshFormMenu, closeFormMenu, buttonEventKeyCode } from "./widgetMenuUtil";
 import { requestPcInventoryApply } from "./remoteServer";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { canRenameInPlace, getDurabilityConfig, setDurabilityConfig } from "../../sync/durabilityNames";
 import { logToPlatformLog, logTrace } from "../../logging";
@@ -79,7 +77,7 @@ export class RepairService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["durabilityConfig", "repairMenu", "repairNotice"], (content) => this.onCustomPacketMessage(content));
     // A server that never sends durabilityConfig shows no condition in any name
     this.controller.emitter.on("connectionAccepted", () => this.setConfig(null));
     // A front reload drops the widget without a close message; the server still holds the bench session
@@ -108,10 +106,7 @@ export class RepairService extends ClientListener {
     if (e.isDown && this.menuOpen && buttonEventKeyCode(e) === DxScanCode.Escape) this.closeMenu();
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       case "durabilityConfig":
         this.setConfig({

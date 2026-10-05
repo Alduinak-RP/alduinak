@@ -1,6 +1,6 @@
 import { Actor, ContainerChangedEvent, Game } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { getPcInventory, holdPcInventoryApply, requestPcInventoryApply } from "./remoteServer";
 import {
   Entry, Inventory, getDiff, getInventory, healthStep, isBoundItem, isNamedItemBase, revertLocalExtras, sameEffects, sameItem,
@@ -8,8 +8,6 @@ import {
 import { splitTag, stripTag, tagFor } from "../../sync/durabilityNames";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 
 // Reports extras the player made locally and the charge and poison hits used up, for craftedExtrasSystem.ts; souls are soul trap's
 //
@@ -115,13 +113,12 @@ export class CraftedExtrasService extends ClientListener {
       this.awaitingUntil = 0;
       this.nextCheckAt = Date.now() + AFTER_CHANGE_MS;
     });
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "craftedExtrasRefused", (content) => this.onCustomPacketMessage(content));
   }
 
   // The server kept its own copies of these items, so their unrecorded local extras go back to them
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "craftedExtrasRefused" || !Array.isArray(content["baseIds"])) {
+  private onCustomPacketMessage(content: CustomPacketContent): void {
+    if (!Array.isArray(content["baseIds"])) {
       return;
     }
     const baseIds = (content["baseIds"] as unknown[]).map(Number).filter((id) => Number.isInteger(id) && id > 0);

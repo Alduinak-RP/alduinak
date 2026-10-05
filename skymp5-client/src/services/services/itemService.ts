@@ -1,9 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import * as sp from "skyrimPlatform";
 import { ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { buttonEventKeyCode } from "./widgetMenuUtil";
 import { formProp, localIdToRemoteId, pluginRefPose, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { FormTypeEx } from "../../extensions/formTypeEx";
@@ -54,7 +52,7 @@ export class ItemService extends ClientListener {
     super();
     this.controller.on("update", () => this.onUpdate());
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["itemGrabState", "itemGrabbed", "itemMoved"], (content) => this.onCustomPacketMessage(content));
     // The server ends a disconnected carry itself and cannot tell this client
     this.controller.emitter.on("connectionDisconnect", () => this.controller.once("update", () => this.reset()));
   }
@@ -194,24 +192,23 @@ export class ItemService extends ClientListener {
     logToPlatformLog(this, `${what}: ${look.how} ref ${look.refId.toString(16)} layer ${look.layer} at ${look.pos ? look.pos.map((v) => v.toFixed(1)).join(",") : "-"}, ${away} from player`);
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    const type = content?.["customPacketType"];
-    const target = Number(content?.["target"]);
+  private onCustomPacketMessage(content: CustomPacketContent): void {
+    const type = content["customPacketType"];
+    const target = Number(content["target"]);
     const own = this.carry?.granted === true && this.carry.remoteId === target;
     if (type === "itemGrabState" && this.carry?.remoteId === target) {
-      if (content!["ok"] !== true) {
+      if (content["ok"] !== true) {
         this.carry = null;
         return;
       }
-      const tilt = content!["tilt"];
+      const tilt = content["tilt"];
       this.carry.granted = true;
       if (Array.isArray(tilt) && tilt.length === 2) this.carry.tilt = tilt.map(Number);
-      this.carry.lift = Number(content!["lift"]) || 0;
+      this.carry.lift = Number(content["lift"]) || 0;
     } else if (type === "itemGrabbed" && !own) {
       this.controller.once("update", () => ObjectReference.from(this.sp.Game.getFormEx(remoteIdToLocalId(target)))?.disable(false));
     } else if (type === "itemMoved") {
-      const pos = content!["pos"] as number[], rot = content!["rot"] as number[];
+      const pos = content["pos"] as number[], rot = content["rot"] as number[];
       if (!Array.isArray(pos) || !Array.isArray(rot)) return;
       // During a granted carry only the server ending it (time out, refusal) sends this
       const unghost = own && this.carry!.ghosted;

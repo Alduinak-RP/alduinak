@@ -1,10 +1,8 @@
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { keyLabel, openFormMenu, readMenuLanguage } from "./widgetMenuUtil";
 import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { logTrace } from "../../logging";
 import { NetworkingService } from "./networkingService";
 import { SinglePlayerService } from "./singlePlayerService";
@@ -178,7 +176,7 @@ export class CharacterSelectService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
 
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["characterSelectMenu", "characterSelectMenuClose"], (content) => this.onCustomPacketMessage(content));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     // "update" fires only in-game, so the first one marks the initial spawn.
@@ -192,10 +190,7 @@ export class CharacterSelectService extends ClientListener {
     }
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       case 'characterSelectMenu':
         characters = Array.isArray(content["characters"]) ? content["characters"] as (CharacterSlot | null)[] : [];

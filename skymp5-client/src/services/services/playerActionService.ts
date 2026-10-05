@@ -1,8 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, notifyNextUpdate, parseCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared, armHeldMenu, claimHeldMenu, closeContainerMenu } from "./widgetMenuUtil";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
@@ -133,7 +131,7 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["itemMenuState", "playerMenuState"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
     this.launcherInteractKeyCode = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
@@ -277,15 +275,15 @@ export class PlayerActionService extends ClientListener {
     this.controller.lookupListener(TimersService).setTimeout(() => this.openWaitingMenu(wait), MENU_STATE_WAIT_MS);
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (content?.["customPacketType"] === "itemMenuState" && content["target"] === this.itemTarget) {
+  private onCustomPacketMessage(content: CustomPacketContent): void {
+    if (content["customPacketType"] === "itemMenuState") {
+      if (content["target"] !== this.itemTarget) return;
       this.itemState = { nailed: content["nailed"] === true, canPry: content["canPry"] === true, canNail: content["canNail"] === true };
       const wait = this.menuWait;
       if (wait) this.controller.once("update", () => this.openWaitingMenu(wait));
       return;
     }
-    if (content?.["customPacketType"] !== "playerMenuState" || content["target"] !== this.playerTarget) return;
+    if (content["target"] !== this.playerTarget) return;
     const flags: Record<string, boolean> = {};
     for (const [id, key] of Object.entries(SERVER_FLAGS)) flags[id] = content[key] === true;
     const hasPotion = content["hasPotion"] === true;

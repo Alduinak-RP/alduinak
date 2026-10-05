@@ -1,6 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { ObjectReference } from "skyrimPlatform";
 import { logTrace } from "../../logging";
@@ -31,7 +30,7 @@ interface RefDecor {
 export class RefDecorService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "refDecor", (content) => this.onCustomPacketMessage(content));
     this.controller.on("update", () => this.onUpdate());
     this.controller.emitter.on("gameLoad", () => this.onGameLoad());
   }
@@ -42,14 +41,8 @@ export class RefDecorService extends ClientListener {
     this.updateCounter = APPLY_EVERY_N_UPDATES;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return;
-    }
-    if (content["customPacketType"] !== "refDecor" || !Array.isArray(content["refs"])) {
+  private onCustomPacketMessage(content: CustomPacketContent): void {
+    if (!Array.isArray(content["refs"])) {
       return;
     }
     // Full syncs replace the set: refs we decorated that are gone from the

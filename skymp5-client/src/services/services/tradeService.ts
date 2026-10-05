@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { sendCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { closeWidget, showUi } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { BrowserMessageEvent, FormType, ObjectReference } from "skyrimPlatform";
@@ -156,7 +154,7 @@ export class TradeService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["characterSelectMenu", "tradeInvite", "tradeState", "tradeCompleted", "tradeCancelled", "tradeNotice"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden) this.cancelTrade("hide"); });
     // A kick or a lost server ends the trade server-side; the widgets must not cover the Disconnected dialog or the reconnect forms
     this.controller.emitter.on("connectionDisconnect", () => this.closeOnDisconnect());
@@ -181,14 +179,7 @@ export class TradeService extends ClientListener {
     this.closeAll(keepFocus);
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return;
-    }
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       // The character select clears only forms and takes the focus, so the invite and the window would stay over it
       case "characterSelectMenu":

@@ -5,9 +5,7 @@ import { RemoteServer } from "./remoteServer";
 import { SinglePlayerService } from "./singlePlayerService";
 import { getInventory } from "../../sync/inventory";
 import { MAP_MARKER_REFS } from "../../data/mapMarkerRefs";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { formDesc } from "../../lib/formDesc";
 
 // Discovered map markers and learned ingredient effects per character, stored by the server's KnowledgeSystem and replayed here
@@ -88,7 +86,7 @@ export class CharacterProgressService extends ClientListener {
     this.controller.emitter.on("createActorMessage", (e) => {
       if (e.message.isMe) this.onMySpawn();
     });
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "knowledgeState", (content) => this.onCustomPacketMessage(content));
     this.controller.on("update", () => this.guarded(() => this.onUpdate()));
     this.controller.on("loadGame", () => this.onLoadGame());
     this.controller.on("locationDiscovery", () => this.scanSoon());
@@ -155,9 +153,7 @@ export class CharacterProgressService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "knowledgeRequest" });
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (content?.customPacketType !== "knowledgeState") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const actorId = Number(content.actorId) >>> 0;
     if (!actorId || actorId !== this.remoteId()) return;
     const s = this.state;

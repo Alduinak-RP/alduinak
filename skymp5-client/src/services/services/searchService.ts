@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, closeContainerMenu } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
 import { Actor, BrowserMessageEvent, Form } from "skyrimPlatform";
@@ -51,7 +49,7 @@ export class SearchService extends ClientListener {
         sendCustomPacket(this.controller, { customPacketType: "searchEnd" });
       }
     });
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["searchConsentRequest", "searchApproved", "searchClose", "searchNotice"], (content) => this.onCustomPacketMessage(content));
     // Hiding the interface dismisses the prompt unanswered, like the expiry timer
     this.controller.emitter.on("uiHiddenChanged", (e) => {
       if (e.hidden && this.promptOpen) {
@@ -61,12 +59,7 @@ export class SearchService extends ClientListener {
     });
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) {
-      return;
-    }
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       case "searchConsentRequest":
         this.pendingRequestId = typeof content["requestId"] === "number"

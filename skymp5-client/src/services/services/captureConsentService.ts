@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
 import { BrowserMessageEvent } from "skyrimPlatform";
@@ -43,7 +41,7 @@ export class CaptureConsentService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["captureConsentRequest", "captureNotice"], (content) => this.onCustomPacketMessage(content));
     // Hiding the interface dismisses the prompt unanswered, like the expiry timer
     this.controller.emitter.on("uiHiddenChanged", (e) => {
       if (e.hidden && this.promptOpen) {
@@ -53,10 +51,7 @@ export class CaptureConsentService extends ClientListener {
     });
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       case "captureConsentRequest":
         this.pendingRequestId = typeof content["requestId"] === "number"

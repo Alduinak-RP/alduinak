@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { notifyNextUpdate, parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { notifyNextUpdate, sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { isModelHostedByOther, isRemoteHostedByMe, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { Movement } from "../../sync/movement";
 import { RemoteServer } from "./remoteServer";
@@ -21,7 +19,7 @@ const DISMOUNT_WAIT_MS = 3000;
 export class MountService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["petMount", "petDismount"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("connectionAccepted", () => this.reset());
     this.controller.on("update", () => this.onUpdate());
   }
@@ -70,11 +68,7 @@ export class MountService extends ClientListener {
     logTrace(this, "dismount (key)");
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) {
-      return;
-    }
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const type = content["customPacketType"];
     const target = typeof content["target"] === "number" ? content["target"] : 0;
     // Natives cannot run from the packet handler

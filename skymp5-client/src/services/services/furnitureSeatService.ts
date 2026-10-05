@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { notifyNextUpdate, parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { notifyNextUpdate, sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { BlockedAnimationsService } from "./blockedAnimationsService";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
@@ -22,7 +20,7 @@ export class FurnitureSeatService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.on("update", () => this.onUpdate());
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "seatTaken", (content) => this.onCustomPacketMessage(content));
   }
 
   private onUpdate(): void {
@@ -54,9 +52,8 @@ export class FurnitureSeatService extends ClientListener {
     logTrace(this, `claimed seat`, furnitureId.toString(16), `marker`, marker);
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (content?.customPacketType !== "seatTaken" || content.furniture !== this.claimedFurniture) return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
+    if (content.furniture !== this.claimedFurniture) return;
     logTrace(this, `seat taken, standing up`);
     this.controller.lookupListener(BlockedAnimationsService).requestStandUp();
     notifyNextUpdate(this.controller, this.sp, "Someone is already sitting there. Try another seat.");

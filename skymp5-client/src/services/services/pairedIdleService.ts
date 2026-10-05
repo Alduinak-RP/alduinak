@@ -1,8 +1,6 @@
 import { Actor } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
@@ -57,13 +55,11 @@ const flag = (actor: Actor | null, name: string): boolean => !!actor?.getAnimati
 export class PairedIdleService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "pairedIdle", (content) => this.onCustomPacketMessage(content));
     this.controller.on("update", () => this.onUpdate());
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (content?.["customPacketType"] !== "pairedIdle") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const attacker = Number(content["attacker"]) >>> 0;
     const target = Number(content["target"]) >>> 0;
     const idle = Number(content["idle"]) >>> 0;

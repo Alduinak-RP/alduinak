@@ -1,8 +1,6 @@
 import { ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { isMenuHotkeyBlocked } from "./widgetMenuUtil";
 import { MountService } from "./mountService";
 
@@ -23,7 +21,7 @@ interface JobOffer {
 export class JobService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["jobPrompt", "jobState"], (content) => this.onCustomPacketMessage(content));
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.emitter.on("connectionDisconnect", () => {
       this.offer = null;
@@ -54,9 +52,7 @@ export class JobService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "jobPutDown" });
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     if (content["customPacketType"] === "jobPrompt") {
       const job = typeof content["job"] === "string" ? content["job"] : "";
       this.offer = job ? { job, verb: String(content["verb"] ?? ""), label: String(content["label"] ?? "") } : null;

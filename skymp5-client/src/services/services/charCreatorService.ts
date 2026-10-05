@@ -1,7 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { CreateActorMessage } from "../messages/createActorMessage";
 import { focusEventString } from "./browserService";
 import { showUi } from "./widgetMenuUtil";
@@ -31,7 +30,7 @@ const MAX_PREVIEW_JSON = 32 * 1024;
 export class CharCreatorService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["charCreatorOpen", "charCreatorClose", "charCreatorError"], (content) => this.onCustomPacketMessage(content));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.emitter.on("createActorMessage", (e) => this.onCreateActorMessage(e));
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
@@ -62,10 +61,7 @@ export class CharCreatorService extends ClientListener {
     this.close('main menu');
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       case 'charCreatorOpen':
         this.open(content["config"]);

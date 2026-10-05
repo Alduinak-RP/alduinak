@@ -1,10 +1,8 @@
 import { GlobalVariable, Menu } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { keepMenusClosed } from "./menuBlockUtil";
 import { showSystemNotification } from "./systemNotification";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 
 // Game time is the server box's local wall clock plus the server's offset at 1:1, taken from its gameTime packet (TimeSystem)
 
@@ -41,7 +39,7 @@ export class TimeService extends ClientListener {
     super();
     controller.on("update", () => this.onUpdate());
     controller.on("loadGame", () => this.onLoadGame());
-    controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(controller, "gameTime", (content) => this.onCustomPacketMessage(content));
     // Waiting or sleeping (beds included) would push this client's clock ahead of the server's
     keepMenusClosed(sp, controller, [Menu.Sleep], () => showSystemNotification(sp, "Time follows the realm's clock, so waiting and sleeping are unavailable."));
   }
@@ -58,9 +56,7 @@ export class TimeService extends ClientListener {
   }
 
   // Natives throw in the packet-handler context, so only the clock is stored here
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "gameTime") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const serverTime = Number(content["serverTime"]);
     if (!Number.isFinite(serverTime)) return;
     // Sampled when the packet is drained on tick, so queueing only ever makes it smaller

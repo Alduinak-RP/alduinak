@@ -1,8 +1,6 @@
 import { Actor, ActivateEvent, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference, storage } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, isMenuHotkeyBlocked, buttonEventKeyCode, onWidgetsCleared, claimHeldMenu } from "./widgetMenuUtil";
 import { isRemoteHostedByMe, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { CompanionService, isOwnCompanion, setDrivenPetIds } from "./companionService";
@@ -97,7 +95,7 @@ export class PetService extends ClientListener {
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("activate", (e) => this.onActivate(e));
     this.controller.on("update", () => this.onUpdate());
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["petState", "petMenu", "petCommand", "petAction"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("connectionAccepted", () => this.setPets([]));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden) this.closeAll(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.promptOpen = false; });
@@ -158,9 +156,7 @@ export class PetService extends ClientListener {
     return true;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const target = typeof content["target"] === "number" ? content["target"] as number : 0;
     switch (content["customPacketType"]) {
       case "petState":

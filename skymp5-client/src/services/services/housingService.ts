@@ -1,8 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, closeWidget, buttonEventKeyCode, onWidgetsCleared, claimHeldMenu, releaseHeldMenus } from "./widgetMenuUtil";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference } from "skyrimPlatform";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
@@ -218,7 +216,7 @@ export class HousingService extends ClientListener {
     super();
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["propertyMenu", "petList", "propertyNotice"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden) this.closeOpen(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.listOpen = false; this.promptOpen = false; });
   }
@@ -269,10 +267,7 @@ export class HousingService extends ClientListener {
     }
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     switch (content["customPacketType"]) {
       case "propertyMenu": {
         const target = Number(content["target"]) || this.target;

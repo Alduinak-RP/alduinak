@@ -1,10 +1,8 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, refreshFormMenu, closeFormMenu, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { RemoteServer } from "./remoteServer";
 import { parseMasteryMenu } from "./masteryService";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
 import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { formDesc } from "../../lib/formDesc";
@@ -227,7 +225,10 @@ export class AdminMenuService extends ClientListener {
     this.controller.on("crosshairRefChanged", () => { this.crosshairMoved = true; });
     this.controller.on("effectStart", (e) => this.onEffect(e, true));
     this.controller.on("effectFinish", (e) => this.onEffect(e, false));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, [
+      "adminMenu", "masteryMenu", "factionMenu", "adminItems", "adminRaces", "debugInfo", "npcZones",
+      "petBases", "adminJobs", "adminWeather", "adminPos", "adminMode", "adminActionResult",
+    ], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.activeTab = ""; this.clearAdminData(); });
     // Staff status arrives before the first X so a remembered Admin tab never waits on the roster fetch
@@ -271,9 +272,7 @@ export class AdminMenuService extends ClientListener {
     }
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     if (content["customPacketType"] === "adminMenu") {
       const caps = content["caps"];
       panelData = {

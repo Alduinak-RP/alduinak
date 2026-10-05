@@ -83,8 +83,7 @@ import { isRiderClone } from '../../sync/mountApply';
 import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
 import { MsgType } from '../../messages';
-import { CustomPacketMessage } from '../messages/customPacketMessage';
-import { notifyNextUpdate, parseCustomPacket, sendCustomPacket } from './customPacketUtil';
+import { notifyNextUpdate, sendCustomPacket, CustomPacketContent, onCustomPacket } from './customPacketUtil';
 
 export const getPcInventory = (): Inventory | undefined => {
   const res = storage['pcInv'];
@@ -448,11 +447,11 @@ export class RemoteServer extends ClientListener {
       }
     });
     this.controller.on("equip", (e) => this.onPlayerConsume(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onPotionRefused(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onRacialResync(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onRacialBase(e));
+    onCustomPacket(this.controller, "potionRefused", (content) => this.onPotionRefused(content));
+    onCustomPacket(this.controller, "racialResync", (content) => this.onRacialResync(content));
+    onCustomPacket(this.controller, "racialBase", (content) => this.onRacialBase(content));
     this.controller.on("update", () => this.applyRaceBase());
-    this.controller.emitter.on("customPacketMessage", (e) => this.onBodyLeft(e));
+    onCustomPacket(this.controller, "bodyLeft", (content) => this.onBodyLeft(content));
     // The engine loses worn enchantment abilities on scripted equips, inventory changes and stray dispels
     this.controller.on("equip", (e) => this.onPlayerWornChange(e.actor));
     this.controller.on("containerChanged", (e) => this.onPlayerWornChange(e.oldContainer, e.newContainer));
@@ -556,11 +555,7 @@ export class RemoteServer extends ClientListener {
   }
 
   // A PK left a body copy of this player: FormView drops their own dead copy for the ms, by when the respawn has taken them away
-  private onBodyLeft(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (content?.["customPacketType"] !== "bodyLeft") {
-      return;
-    }
+  private onBodyLeft(content: CustomPacketContent): void {
     const victim = Number(content["victim"]) >>> 0;
     const ms = Number(content["ms"]);
     const form = this.worldModel.forms.find((f) => f?.refrId === victim);
@@ -570,11 +565,7 @@ export class RemoteServer extends ClientListener {
   }
 
   // The server refunds a potion or food within 10 s of the last one of its kind and blocks its effects
-  private onPotionRefused(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "potionRefused") {
-      return;
-    }
+  private onPotionRefused(content: CustomPacketContent): void {
     const baseId = Number(content["baseId"]);
     const acceptedBaseId = Number(content["acceptedBaseId"]);
     const acceptedSecondsAgo = Number(content["acceptedSecondsAgo"]);
@@ -1674,11 +1665,7 @@ export class RemoteServer extends ClientListener {
   }
 
   // The server found the race abilities amiss (racialSystem.ts, once per spawn): a base race other than the server's gets the server's appearance again, then the race sync runs keeping the server's race spells
-  private onRacialResync(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "racialResync") {
-      return;
-    }
+  private onRacialResync(content: CustomPacketContent): void {
     const raceId = Number(content["raceId"]) >>> 0;
     const expected = Array.isArray(content["spells"]) ? (content["spells"] as unknown[]).map((id) => Number(id) >>> 0).filter((id) => id) : [];
     const problems = Array.isArray(content["problems"]) ? (content["problems"] as unknown[]).map(String).join("; ") : "";
@@ -1709,11 +1696,7 @@ export class RemoteServer extends ClientListener {
   }
 
   // The server's racialBase after an accepted race menu: the creation spawn carried the Player NPC_ race's base values
-  private onRacialBase(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "racialBase") {
-      return;
-    }
+  private onRacialBase(content: CustomPacketContent): void {
     const value = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
     this.raceBase = { raceId: Number(content["raceId"]) >>> 0, spawnSeq: this.playerSpawnSeq, health: value(content["health"]), stamina: value(content["stamina"]) };
   }

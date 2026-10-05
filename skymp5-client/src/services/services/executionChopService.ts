@@ -1,8 +1,6 @@
 import { Actor } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
@@ -89,7 +87,7 @@ const spotOf = (raw: unknown): Spot | null => {
 export class ExecutionChopService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "executionChop", (content) => this.onCustomPacketMessage(content));
     this.controller.on("update", () => this.onUpdate());
     this.sp.hooks.sendAnimationEvent.add({
       enter: () => { },
@@ -110,9 +108,7 @@ export class ExecutionChopService extends ClientListener {
     }, 0, 0xffffffff, HEADSMAN_EXIT);
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (content?.["customPacketType"] !== "executionChop") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const executor = Number(content["executor"]) >>> 0;
     const prisoner = Number(content["prisoner"]) >>> 0;
     const seq = Number(content["seq"]) || 0;

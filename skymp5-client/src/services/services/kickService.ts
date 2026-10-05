@@ -1,9 +1,7 @@
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket } from "./customPacketUtil";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, refreshFormMenu, readMenuLanguage } from "./widgetMenuUtil";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { NetworkingService } from "./networkingService";
 import { logTrace } from "../../logging";
 
@@ -48,7 +46,7 @@ export class KickService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
 
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "kicked", (content) => this.onCustomPacketMessage(content));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     // "tick" keeps firing while a pausing menu is open, unlike "update"
     this.controller.on("tick", () => this.onTick());
@@ -61,10 +59,7 @@ export class KickService extends ClientListener {
     }
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "kicked") return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const kickReason = typeof content["reason"] === "string" ? content["reason"] : "";
     logTrace(this, `Kicked by the server:`, kickReason);
     this.showDisconnectedAndExit(kickReason);

@@ -1,8 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { parseCustomPacket, sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { showSystemNotification } from "./systemNotification";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { adminGhostAlpha, setAdminGhostShader } from "../../view/adminGhostLook";
 import { refreshMovement } from "../../sync/actorvalues";
@@ -32,7 +30,7 @@ export const isFreeCamera = (sp: Sp): boolean => sp.Game.getCameraState() === FR
 export class AdminModeService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "adminMode", (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("applyDeathStateEvent", (e) => this.onApplyDeathState(e));
     this.controller.on("update", () => this.onUpdate());
     this.controller.emitter.on("connectionAccepted", () => this.controller.once("update", () => this.resetLocalModes()));
@@ -46,9 +44,7 @@ export class AdminModeService extends ClientListener {
     for (const mode of Array.from(this.localModes)) this.apply(mode, false, false);
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content || content["customPacketType"] !== "adminMode") return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     const mode = String(content["mode"] ?? "");
     const on = !!content["on"];
     // Natives throw in the packet-handler context; defer to update

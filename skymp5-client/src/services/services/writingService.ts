@@ -1,11 +1,9 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, parseCustomPacket, notifyNextUpdate } from "./customPacketUtil";
+import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { openFormMenu, closeFormMenu, buttonEventKeyCode, onWidgetsCleared } from "./widgetMenuUtil";
 import { closeGameMenu } from "./menuBlockUtil";
 import { BrowserService } from "./browserService";
 import { WRITTEN_KEYWORD } from "../../sync/inventory";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode, EquipEvent, Form, Menu } from "skyrimPlatform";
 import { logToPlatformLog } from "../../logging";
 
@@ -60,7 +58,7 @@ export class WritingService extends ClientListener {
     this.controller.on("update", () => this.onUpdate());
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, ["writingMenu", "writingClosed"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => {
       if (!this.menuOpen) return;
@@ -136,13 +134,10 @@ export class WritingService extends ClientListener {
     if (e.isDown && this.menuOpen && buttonEventKeyCode(e) === DxScanCode.Escape) this.closeMenu();
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) return;
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     if (content["customPacketType"] === "writingMenu") {
       // The front ends an edit on the reply that follows a save
-      menu = content;
-      menu["seq"] = ++this.menuSeq;
+      menu = { ...content, seq: ++this.menuSeq };
       if (this.menuOpen) this.openMenu();
       else this.pendingSince = Date.now();
     } else if (content["customPacketType"] === "writingClosed") {

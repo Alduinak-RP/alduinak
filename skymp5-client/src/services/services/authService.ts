@@ -3,6 +3,7 @@ import * as fs from "fs";
 import { AuthGameData, RemoteAuthGameData, authGameDataStorageKey } from "../../features/authModel";
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { BrowserMessageEvent, Menu, browser } from "skyrimPlatform";
 import { AuthNeededEvent } from "../events/authNeededEvent";
 import { BrowserWindowLoadedEvent } from "../events/browserWindowLoadedEvent";
@@ -129,7 +130,10 @@ export class AuthService extends ClientListener {
     this.controller.emitter.on("connectionAccepted", () => this.handleConnectionAccepted());
     this.controller.emitter.on("connectionDenied", (e) => this.handleConnectionDenied(e));
     this.controller.emitter.on("connectionFailed", () => this.setLoginComment(strings.unreachable));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, [
+      "characterSelectMenu", "queueStatus",
+      "loginFailedNotLoggedViaDiscord", "loginFailedNotInTheDiscordServer", "loginFailedBanned", "loginFailedIpMismatch",
+    ], (content) => this.onCustomPacketMessage(content));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("tick", () => this.onTick());
     this.controller.once("update", () => this.onceUpdate());
@@ -174,22 +178,7 @@ export class AuthService extends ClientListener {
     this.authAttemptProgressIndicator = false;
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const msg = event.message;
-
-    let msgContent: Record<string, unknown> = {};
-
-    try {
-      msgContent = JSON.parse(msg.contentJsonDump);
-    } catch (e) {
-      if (e instanceof SyntaxError) {
-        logError(this, "onCustomPacketMessage failed to parse JSON", e.message, "json:", msg.contentJsonDump);
-        return;
-      } else {
-        throw e;
-      }
-    }
-
+  private onCustomPacketMessage(msgContent: CustomPacketContent): void {
     switch (msgContent["customPacketType"]) {
       case 'characterSelectMenu':
       case 'queueStatus':

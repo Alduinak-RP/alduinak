@@ -1,9 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket } from "./customPacketUtil";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { readMenuKeyCode, isConsoleOpen, buttonEventKeyCode, domKeyCode, readClientSettingNumber, readClientSettingString, isUiHidden } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { RemoteServer } from "./remoteServer";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logToPlatformLog, logTrace } from "../../logging";
@@ -38,7 +36,7 @@ export class VoiceService extends ClientListener {
     this.voiceKey = this.launcherPushToTalkKeyCode;
     this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "voiceToken", (content) => this.onCustomPacketMessage(content));
     this.controller.on("update", () => this.onUpdate());
     // Fresh game connection = fresh voice session; also kills ghost rooms that would outlive a disconnect back to the main menu
     this.controller.emitter.on("connectionAccepted", () => this.resetSession());
@@ -250,15 +248,7 @@ export class VoiceService extends ClientListener {
     this.sp.browser.executeJavaScript(`window.__alduinakVoice && window.__alduinakVoice.disconnect()`);
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    let content: Record<string, unknown> = {};
-    try {
-      content = JSON.parse(event.message.contentJsonDump);
-    } catch (e) {
-      return;
-    }
-    if (content["customPacketType"] !== "voiceToken") return;
-
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     if (content["enabled"] !== true) {
       this.disabledByServer = true;
       logTrace(this, "voice disabled by server");

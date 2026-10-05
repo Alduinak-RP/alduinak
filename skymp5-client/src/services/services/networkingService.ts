@@ -7,6 +7,7 @@ import { AnyMessage } from "../messages/anyMessage";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { RemoteServer } from "./remoteServer";
 import { SendRawMessageEvent } from "../events/sendRawMessageEvent";
+import { dispatchCustomPacket, parseCustomPacket } from "./customPacketUtil";
 
 export class NetworkingService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -178,9 +179,13 @@ export class NetworkingService extends ClientListener {
             this.controller.emitter.emit("createActorMessage", event);
             this.controller.emitter.emit("anyMessage", event);
           } else if (msgAny.t === MsgType.CustomPacket) {
-            const event = { message: msgAny };
-            this.controller.emitter.emit("customPacketMessage", event);
-            this.controller.emitter.emit("anyMessage", event);
+            const content = parseCustomPacket(msgAny.contentJsonDump);
+            if (content) {
+              dispatchCustomPacket(this.controller, content);
+            } else {
+              logError(this, "Custom packet is not a JSON object:", msgAny.contentJsonDump);
+            }
+            this.controller.emitter.emit("anyMessage", { message: msgAny });
           } else if (msgAny.t === MsgType.DestroyActor) {
             const event = { message: msgAny };
             this.controller.emitter.emit("destroyActorMessage", event);

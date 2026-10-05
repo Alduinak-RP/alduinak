@@ -1,7 +1,5 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
-import { sendCustomPacket, parseCustomPacket } from "./customPacketUtil";
-import { ConnectionMessage } from "../events/connectionMessage";
-import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { showUi } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
 import { BrowserMessageEvent } from "skyrimPlatform";
@@ -23,7 +21,7 @@ const FAILSAFE_GRACE_MS = 15000;
 export class DeathScreenService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    onCustomPacket(this.controller, "deathScreen", (content) => this.onCustomPacketMessage(content));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     // The hide UI key drops focus; the buttons must be clickable again once shown
     this.controller.emitter.on("uiHiddenChanged", (e) => {
@@ -31,14 +29,7 @@ export class DeathScreenService extends ClientListener {
     });
   }
 
-  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>): void {
-    const content = parseCustomPacket(event);
-    if (!content) {
-      return;
-    }
-    if (content["customPacketType"] !== "deathScreen") {
-      return;
-    }
+  private onCustomPacketMessage(content: CustomPacketContent): void {
     if (content["hide"] === true) {
       this.hide();
     } else {

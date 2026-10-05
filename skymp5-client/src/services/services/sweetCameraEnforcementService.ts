@@ -1,9 +1,9 @@
 import { MsgType } from "../../messages";
 import { logTrace, logError } from "../../logging";
-import { ConnectionMessage } from "../events/connectionMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
 import { AnimDebugSettings } from "../messages_settings/animDebugSettings";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { ButtonEvent, DxScanCode, InputDeviceType, Menu } from "skyrimPlatform";
 import * as fs from "fs";
 
@@ -77,27 +77,11 @@ export class SweetCameraEnforcementService extends ClientListener {
             }, playerId, playerId);
 
             this.controller.on("buttonEvent", (e) => this.onButtonEvent(e));
-            this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage2(e));
+            onCustomPacket(this.controller, "invokeAnim", (content) => this.onCustomPacketMessage2(content));
         }
     }
 
-    private onCustomPacketMessage2(e: ConnectionMessage<CustomPacketMessage>) {
-        let content: Record<string, unknown> = {};
-
-        try {
-            content = JSON.parse(e.message.contentJsonDump);
-        } catch (err) {
-            if (err instanceof SyntaxError) {
-                logError(this, "Failed to parse custom packet contentJsonDump:", e.message.contentJsonDump, "Error:", err);
-                return;
-            }
-            throw err;
-        }
-
-        if (content["customPacketType"] !== "invokeAnim") {
-            return;
-        }
-
+    private onCustomPacketMessage2(content: CustomPacketContent) {
         logTrace(this, "Received custom packet with customPacketType invokeAnim");
 
         const name = content["animEventName"];
