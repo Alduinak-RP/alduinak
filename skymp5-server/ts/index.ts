@@ -165,7 +165,7 @@ const setupStreams = (scampNative: any) => {
   };
 };
 
-const setupGamemode = (server: any, gamemodePath: string) => {
+const setupGamemode = (server: any, gamemodePath: string, hotReload: boolean) => {
   // NOTE: ScampServer.on is a read-only native property, so listener stacking
   // across hot reloads cannot be fixed here by wrapping it (assignment
   // silently no-ops in sloppy mode, throws in strict). The gamemode bundle
@@ -194,6 +194,11 @@ const setupGamemode = (server: any, gamemodePath: string) => {
     requireUncached(absoluteGamemodePath, clear, server);
   } catch (e) {
     console.error(e);
+  }
+
+  if (!hotReload) {
+    console.log("Gamemode hot reload is off (gamemodeHotReload), changes load at the next start");
+    return;
   }
 
   const watcher = chokidar.watch(absoluteGamemodePath, {
@@ -504,7 +509,7 @@ const main = async () => {
     console.error("attachBackendFactionApi failed, faction sync natives unavailable:", e);
   }
 
-  setupGamemode(server, gamemodePath);
+  setupGamemode(server, gamemodePath, settingsObject.allSettings?.gamemodeHotReload === true);
 };
 
 main();

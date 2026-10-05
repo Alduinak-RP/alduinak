@@ -149,6 +149,7 @@ const serverSettings = [
   // Data & storage
   { key: 'dataDir',        label: 'Data directory', type: 'text',   group: 'Data & storage', placeholder: 'data', help: 'ESMs / ESPs / UI / scripts.' },
   { key: 'gamemodePath',   label: 'Gamemode path',  type: 'text',   group: 'Data & storage', placeholder: './gamemode.js' },
+  { key: 'gamemodeHotReload', label: 'Gamemode hot reload', type: 'bool', group: 'Data & storage', help: 'On: the server reloads gamemode.js about a second after it changes (Build gamemode only). Off (default, also when unset): gamemode.js loads only when the server starts. On for the Test Server, off on live. Protected: Migrate settings never copies it to live. Read at boot.' },
   { key: 'databaseDriver', label: 'Database driver', type: 'select', group: 'Data & storage', options: ['file', 'mongodb', 'zip', 'migration'] },
   { key: 'databaseName',   label: 'Database name',   type: 'text',   group: 'Data & storage', placeholder: 'world', help: 'File DB folder / Mongo db name. Characters live in <name>/changeForms.' },
   { key: 'databaseUri',    label: 'Database URI',    type: 'secret', group: 'Data & storage', placeholder: 'mongodb://user:pass@127.0.0.1:27017', help: 'Mongo connection string (mongodb driver only). Embeds credentials - keep it secret.' },

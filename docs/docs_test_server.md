@@ -221,7 +221,8 @@ written.
   from the Console tab. `scam_native.node` comes from a CI flatrim build applied into
   the test folder, or from the CMake checkbox (Test Server stopped).
 - **Gamemode**: edit `build\dist\testserver\gamemode_extensions`, then **Build gamemode
-  only** (or console `build gamemode`). The test server hot-reloads `gamemode.js`.
+  only** (or console `build gamemode`). The test server hot-reloads `gamemode.js`
+  (`gamemodeHotReload: true` in its settings; live has it off and loads the gamemode at start).
 - **Client** (`skymp5-client`, `skymp5-front`): Client box, set the Test version, **Build
   client** into `build\dist\testclient`. Package `testclient\Data` as the Alduinak
   Client Files mod, upload it to Nexus, install it into MO2, then the same button

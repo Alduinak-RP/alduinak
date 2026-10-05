@@ -784,6 +784,25 @@ Searches for `index.js` if a directory specified.
 }
 ```
 
+## gamemodeHotReload
+
+`true`: the server watches the gamemode file and reloads it about a second after it
+changes (**Build gamemode only** on the Test Server). `false` (default, also when
+unset): the gamemode loads once when the server starts and a changed file waits for the
+next start; the boot log says `Gamemode hot reload is off`. The Test Server's settings
+set it to `true`; live keeps it off, since live receives `gamemode.js` only through
+**Migrate server** with the Main Server stopped. Protected: **Migrate settings** never
+copies it to live. `enableGamemodeDataUpdatesBroadcast` matters only while this is on.
+Read at boot.
+
+```json5
+{
+  // ...
+  "gamemodeHotReload": false
+  // ...
+}
+```
+
 ## characterSelectMaxCharacters
 
 With `characterSelect` on, how many living characters a profile may hold (1-10, default 3; staff use `characterSelectStaffMaxCharacters` instead). A character in Sovngarde or the Soul Cairn, or a perma-dead one, no longer counts: it stays listed and one more slot opens, up to 10 slots. Deleting it closes that slot again, and so does a staff revive (admin panel Players sub-tab or the Server Manager Players tab), which is refused while the living count is at this limit. Characters never change slot, so a gap a deleted character leaves before a living one stays hidden while the living limit is reached.
