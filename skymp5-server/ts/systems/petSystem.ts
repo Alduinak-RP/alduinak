@@ -75,6 +75,7 @@ interface Active {
   pending?: { rider: number; at: number };
   carriedBy: number;
   diedAt: number;
+  deathHandled?: boolean;
   fleeSince: number;
   ownerAwaySince: number;
 }
@@ -787,7 +788,7 @@ export class PetSystem implements System {
     const now = Date.now();
     for (const a of Array.from(this.active.values())) {
       if (a.diedAt) {
-        if (now - a.diedAt >= this.cfg.petCorpseSeconds * 1000) this.forget(a, "body removed");
+        if (a.deathHandled && now - a.diedAt >= this.cfg.petCorpseSeconds * 1000) this.forget(a, "body removed");
         continue;
       }
       try {
@@ -849,6 +850,7 @@ export class PetSystem implements System {
   }
 
   private onDeath(a: Active, now: number): void {
+    a.deathHandled = true;
     a.diedAt = now;
     if (a.ridingBy) this.clearRide(a, "horse died");
     if (a.carriedBy && this.ctx) this.capture.stopCarrying(this.ctx, a.carriedBy);
