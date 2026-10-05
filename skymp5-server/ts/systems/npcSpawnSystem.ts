@@ -5,7 +5,7 @@ import { resolveEditorIds, isEditorId } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
 import { placeNpc, HOSTILE_PROP } from "./npcPlacement";
 import { Hostable } from "./hostingSystem";
-import { destroyLeftovers } from "./actorUtil";
+import { chainMpHook, destroyLeftovers } from "./actorUtil";
 import { loadNavmeshSpots, randomPointOn, NavmeshTarget, SpotKind, Spots } from "./navmeshSpots";
 import { watchFileDebounced, writeFileAtomic } from "./fileUtil";
 import { every } from "./timers";
@@ -19,6 +19,8 @@ type Mp = any;
 // The admin panel's NPCs tab (adminSystem.ts) lists, adds, resets and deletes zones through the public methods at the end of the class.
 
 const POLL_MS = 2000;
+// Living zone NPCs are read this often for a form that vanished or a death the onDeath hook missed
+const RECHECK_MS = 60000;
 const ZONES_FILE = "./NPC-Spawns.json";
 const SPAWNS_FILE = "./zone-spawns.json";
 const DESPAWN_HYSTERESIS = 1.5;
@@ -54,7 +56,7 @@ const MAX_TEMPLATE_DEPTH = 8;
 const NEVER_READY = -1;
 // A corpse is removed this long after death, whatever its zone does. Overridable via "npcCorpseSeconds".
 const DEFAULT_CORPSE_SECONDS = 300;
-// Corpse position log: a body that moved this far between polls is logged at most every CORPSE_LOG_MS, one that lies this far under the navmesh once per sinking
+// Corpse position log (npcCorpseWatch): a body that moved this far between polls is logged at most every CORPSE_LOG_MS, one that lies this far under the navmesh once per sinking
 const CORPSE_JUMP_UNITS = 64;
 const CORPSE_SINK_UNITS = 32;
 const CORPSE_LOG_MS = 10000;
@@ -267,6 +269,8 @@ export class NpcSpawnSystem implements System {
   private corpseMs = DEFAULT_CORPSE_SECONDS * 1000;
   // Dead zone NPC id -> last polled position and when it was last logged
   private corpsePos = new Map<number, { pos: number[]; loggedAt: number; sunkLogged: boolean }>();
+  // npcCorpseWatch, read at boot
+  private corpseWatch = false;
   // Navmesh spots by area for the whole run, since plugins only change with a restart
   private spotCache = new Map<string, Spots | null>();
   private scanning = new Set<string>();
@@ -276,13 +280,17 @@ export class NpcSpawnSystem implements System {
     const all = (await Settings.get()).allSettings as Record<string, unknown> | null;
     const rawCorpse = Number(all?.["npcCorpseSeconds"]);
     if (Number.isFinite(rawCorpse) && rawCorpse > 0) this.corpseMs = rawCorpse * 1000;
+    this.corpseWatch = all?.["npcCorpseWatch"] === true;
+    if (this.corpseWatch) this.log("NpcSpawnSystem: npcCorpseWatch on, zone corpses that jump or sink are logged");
     this.cleanupLeftovers(this.mp);
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.removeLeftovers());
     ctx.gm.on(CORPSE_CONSUMED_EVENT, (bodyId: number) => this.consumeCorpse(Number(bodyId) >>> 0));
+    chainMpHook(this.mp, "onDeath", (victimId: number) => this.onNpcDeath(Number(victimId) >>> 0));
     await this.queueLoad("boot");
     watchFileDebounced(ZONES_FILE, () => this.queueLoad("file changed"), (e) => this.log(`NpcSpawnSystem: watch error: ${e}`));
     this.ready = true;
     every("npcSpawn", POLL_MS, () => this.poll(ctx));
+    every("npcSpawn.recheck", RECHECK_MS, () => this.recheckLiving(this.mp));
   }
 
   private queueLoad(reason: string): Promise<void> {
@@ -555,10 +563,7 @@ export class NpcSpawnSystem implements System {
     for (const zone of this.zones) {
       this.updateInside(mp, zone, online.byCell.get(zone.cellOrWorldId));
       const occupied = zone.inside.size > 0;
-      if (zone.spawned.length) {
-        this.checkDeaths(mp, zone, now);
-        this.watchCorpses(mp, zone, now);
-      }
+      if (this.corpseWatch && zone.spawned.length) this.watchCorpses(mp, zone, now);
       if (occupied) {
         zone.emptySince = 0;
         zone.holdSince = 0;
@@ -810,18 +815,37 @@ export class NpcSpawnSystem implements System {
     return best ?? this.slotPos(zone, slot);
   }
 
-  // A death starts the slot's Respawn cooldown and the corpse's own removal timer
-  private checkDeaths(mp: Mp, zone: Zone, now: number): void {
-    for (const entry of zone.spawned) {
-      if (entry.diedAt) continue;
-      let dead = false;
-      let gone = false;
-      // A throw means the form is gone, which counts as dead
-      try { dead = mp.get(entry.id, "isDead") === true; } catch { dead = gone = true; }
-      if (dead) this.markDead(zone, entry, now, gone);
+  private findSpawned(id: number): { zone: Zone; entry: Spawned } | undefined {
+    for (const zone of this.zones) {
+      const entry = zone.spawned.find((e) => e.id === id);
+      if (entry) return { zone, entry };
+    }
+    return undefined;
+  }
+
+  // Makes no mp call, so it runs inside the native death call
+  private onNpcDeath(id: number): void {
+    const found = this.findSpawned(id);
+    if (found && !found.entry.diedAt) this.markDead(found.zone, found.entry, Date.now());
+  }
+
+  private recheckLiving(mp: Mp): void {
+    const now = Date.now();
+    for (const zone of this.zones) {
+      for (const entry of zone.spawned) {
+        if (entry.diedAt) continue;
+        let dead = false;
+        let gone = false;
+        // A throw means the form is gone, which counts as dead
+        try { dead = mp.get(entry.id, "isDead") === true; } catch { dead = gone = true; }
+        if (!dead) continue;
+        this.markDead(zone, entry, now, gone);
+        this.log(`NpcSpawnSystem: '${zone.name}' npc ${hex(entry.id)} ${gone ? "vanished" : "found dead without an onDeath"}, its slot's Respawn starts now`);
+      }
     }
   }
 
+  // A death starts the slot's Respawn cooldown and the corpse's own removal timer
   private markDead(zone: Zone, entry: Spawned, now: number, gone = false): void {
     entry.diedAt = now;
     zone.slotReadyAt[entry.slot] = zone.respawnSeconds > 0 ? now + zone.respawnSeconds * 1000 : NEVER_READY;
@@ -849,7 +873,7 @@ export class NpcSpawnSystem implements System {
     }
   }
 
-  // A corpse is left to its timer unless forced (admin reset); a death the poll has not seen yet starts its timer here
+  // A corpse is left to its timer unless forced (admin reset); an unmarked death starts its timer here
   private removeNpc(mp: Mp, id: number, force = false): void {
     if (!id) return;
     if (!force && !this.corpses.has(id)) {
@@ -887,20 +911,19 @@ export class NpcSpawnSystem implements System {
     }
   }
 
-  // A consumed (skinned) corpse this system placed goes at once, as if its timer had run out; a death the poll has not seen yet starts the slot's Respawn first
+  // A consumed (skinned) corpse this system placed goes at once, as if its timer had run out; an unmarked death starts the slot's Respawn first
   private consumeCorpse(bodyId: number): void {
     if (!bodyId) return;
-    const zone = this.zones.find((z) => z.spawned.some((e) => e.id === bodyId));
-    const entry = zone?.spawned.find((e) => e.id === bodyId);
-    if (!entry && !this.corpses.has(bodyId)) return;
-    if (zone && entry && !entry.diedAt) {
+    const found = this.findSpawned(bodyId);
+    if (!found && !this.corpses.has(bodyId)) return;
+    if (found && !found.entry.diedAt) {
       let dead = false;
       try { dead = this.mp.get(bodyId, "isDead") === true; } catch { }
       if (!dead) return;
-      this.markDead(zone, entry, Date.now());
+      this.markDead(found.zone, found.entry, Date.now());
     }
     this.destroyCorpse(this.mp, bodyId);
-    this.log(`NpcSpawnSystem: corpse ${hex(bodyId)}${zone ? ` of '${zone.name}'` : ""} consumed, removed at once`);
+    this.log(`NpcSpawnSystem: corpse ${hex(bodyId)}${found ? ` of '${found.zone.name}'` : ""} consumed, removed at once`);
     this.saveSpawns();
   }
 

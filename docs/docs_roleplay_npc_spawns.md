@@ -170,8 +170,8 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   slot as the timers expire. `Respawn: 0` leaves the slot empty until the zone
   despawns or an admin resets it. Cooldowns live in memory, so a server
   restart puts every zone back to ready.
-- A corpse is destroyed for everyone 5 minutes after the death is seen (the 2
-  second poll), independent of `Respawn`, `Despawn` and file reloads: a slot
+- A corpse is destroyed for everyone 5 minutes after the death, independent
+  of `Respawn`, `Despawn` and file reloads: a slot
   refilled sooner gets its fresh NPC while the old corpse stays, and a zone
   that despawns sooner leaves its corpses until their time is up. Only an
   admin reset and a skinning remove corpses early: once a hunter's skinning
@@ -217,14 +217,20 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   overflow the engine's timer arithmetic and the actor respawns on the next
   tick instead. The server's `onDeath` hook (`bleedoutSystem.ts`) uses the
   same `1e9` on NPC death.
-- Death is polled every 2 seconds through `isDead`; a form that has vanished
-  counts as dead. Once the slot's `Respawn` has elapsed and a player is inside,
-  a new actor is placed at the slot; the corpse goes when its own timer ends.
+- A zone NPC is marked dead the moment it dies, from the server's `onDeath`
+  hook, which starts its slot's `Respawn` and its corpse timer. Once a minute
+  the living zone NPCs are read once more: a form that has vanished counts as
+  dead (its slot's `Respawn` starts, there is no corpse), and a death the hook
+  missed is marked then. Once the slot's `Respawn` has elapsed and a player is
+  inside, a new actor is placed at the slot; the corpse goes when its own timer
+  ends.
 - With `Despawn: 0` the NPCs stay until the server restarts; leftovers from a
   crash or a restart are destroyed on boot through `zone-spawns.json` and
   through the `private.npcSpawner` tag every placed NPC carries, which catches
   the corpses of earlier runs whose file entry was lost.
-- A dead zone NPC whose body moved 64 or more units between two polls is logged
+- With `"npcCorpseWatch": true` in `server-settings.json` (default off, kept
+  off on live, read at boot, never copied to live by Migrate settings) a dead
+  zone NPC whose body moved 64 or more units between two 2 second polls is logged
   (at most every 10 s per body), and one that lies 32 or more units under the
   navmesh is logged once when it sinks, as evidence for the corpse sync reports.
 - A failed spawn (`PlaceAtMe` error) puts the slot on a 30 second cooldown
@@ -521,7 +527,8 @@ Everything goes through the server log and the manager console, prefixed
 - `'<Name>' despawned 4 npc(s)`
 - `removed a/b leftover npc(s) from previous runs (c found by their tag)` on boot, once the world DB has loaded (the ids come from `zone-spawns.json` and from a scan of every persisted `ff` form for the spawner tag)
 - `corpse ff000123 of '<Name>' consumed, removed at once` after a skinning
-- `corpse ff000123 of '<Name>' moved 200 units, now at x,y,z (navmesh z n), dead 40 s` / `lies 50 units under the navmesh` for a dead NPC whose body jumped or sank
+- `corpse ff000123 of '<Name>' moved 200 units, now at x,y,z (navmesh z n), dead 40 s` / `lies 50 units under the navmesh` for a dead NPC whose body jumped or sank, only with `npcCorpseWatch` on (boot line `npcCorpseWatch on, zone corpses that jump or sink are logged`)
+- `'<Name>' npc ff000123 vanished, its slot's Respawn starts now` from the once-a-minute check of living zone NPCs; `found dead without an onDeath` in place of `vanished` means the death hook missed a death
 - skipped entries, unreadable plugins and spawn failures, each naming the zone
 
 ## Deployment

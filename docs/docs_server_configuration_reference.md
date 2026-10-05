@@ -756,6 +756,18 @@ For this many seconds after a player and a zone NPC exchanged a damaging hit, th
 }
 ```
 
+## npcCorpseWatch
+
+`true`: every 2 s the spawn-zone poll (`npcSpawnSystem.ts`) reads the position of each dead zone NPC and, where the zone has navmesh, the navmesh height under it, and logs a body that moved 64 or more units between two polls (at most every 10 s per body) or lies 32 or more units under the navmesh (once per sinking), as evidence for corpse sync reports. `false` (default, also when unset): no corpse is read. Turn it on only on the Test Server while investigating; live keeps it off. Protected: **Migrate settings** never copies it to live. Read at boot. Zone NPC deaths themselves come from the server's `onDeath` hook whatever this says (`docs_roleplay_npc_spawns.md`).
+
+```json5
+{
+  // ...
+  "npcCorpseWatch": false
+  // ...
+}
+```
+
 ## searchStartMaxDistance, searchKeepMaxDistance
 
 How far, in game units between actor roots, a player may be from another player, a living server NPC or a body to start searching it (`searchStartMaxDistance`, default 256), and how far apart the pair may drift before the window closes with "They moved away." (`searchKeepMaxDistance`, default 512). A living NPC is refused with "They are fighting." while it exchanged a damaging hit with a player within `npcAggroHostSeconds` (the hosting aggro window, no separate search setting), and its weapons and armour move neither way: a take or a put of one snaps back. A dead NPC adds the half length of its base's bounds (the NPC_ `OBND`, at most 512) to both, so a mammoth (264) can be searched from its head or tail; a base without bounds, such as the frost atronach, adds 128. Dead player characters get no extra reach. A refused search logs `[search] <searcher> refused <target>: dead .., distance .., reach ..`, and every session end logs `[search] <searcher> stops searching <target>: <reason>`.
