@@ -253,12 +253,12 @@ test('without the block, or with durability off, nothing is installed and no pac
     await w.boot()
     assert.equal(w.mp.onActivate, hook, 'the activation hook is untouched')
     assert.equal(w.mp.onItemBroken, undefined)
+    assert.equal(w.mp.onItemWorn, undefined)
     assert.equal(globalThis.__alduinakRepairOpen, undefined)
     w.ctx.gm.emit('userAssignActor', USER, PLAYER)
     w.packet('durabilityRepair', { bench: WORKBENCH, all: true })
     w.packet('durabilityImprove', { bench: WORKBENCH })
     w.packet('durabilityClose')
-    w.system.poll(w.ctx)
     assert.deepEqual(w.packets, [])
     assert.deepEqual(w.lines, [])
     assert.equal(w.sets, 0)
@@ -512,60 +512,45 @@ test('repair.requireProfessionRank asks for the recipe rank and repair.fatigue i
   assert.deepEqual(w.menu().rows, [])
 })
 
-test('wear notices: a worn item falling below the threshold and a break, each once', async () => {
+test('wear notices: onItemWorn tells a worn copy falling below the threshold once, onItemBroken a break once per fight', async () => {
   const w = withClock(await world(durability(), { inventory: [item(SWORD, 0.3), item(HELMET, 0.2)], equipment: [item(SWORD, 0.3, { worn: true })] }).boot())
-  const wear = (condition) => {
-    w.props.get(PLAYER).inventory.entries[0].condition = c(condition)
-    w.props.get(PLAYER).equipment.inv.entries[0].condition = c(condition)
-  }
-  const poll = async () => { w.now += 11000; w.system.poll(w.ctx) }
-  await poll()
-  assert.deepEqual(w.packets, [], 'the first look only remembers')
-  wear(0.26)
-  await poll()
+  // One write of the native's Flush: [baseId, condition before, condition after, still worn]
+  const worn = (before, after, still = true, baseId = SWORD) => w.mp.onItemWorn(PLAYER, [[baseId, c(before), c(after), still]])
+  worn(0.3, 0.26)
   assert.deepEqual(w.packets, [])
-  wear(0.2499)
-  await poll()
+  worn(0.26, 0.2499)
   assert.deepEqual(w.take(), [{ userId: USER, customPacketType: 'repairNotice', text: 'Your Steel Sword is badly worn (24%).' }])
-  wear(0.1)
-  await poll()
+  worn(0.2499, 0.1)
   assert.deepEqual(w.packets, [], 'said once')
-  wear(0)
+  worn(0.1, 0)
+  assert.deepEqual(w.packets, [], 'a break is left to onItemBroken')
   w.mp.onItemBroken(PLAYER, SWORD)
   assert.deepEqual(w.take(), [{ userId: USER, customPacketType: 'repairNotice', text: 'Your Steel Sword has broken.' }])
-  await poll()
-  assert.deepEqual(w.packets, [], 'the poll does not repeat the native event')
+  w.mp.onItemBroken(PLAYER, SWORD)
+  assert.deepEqual(w.packets, [], 'once per fight')
   w.now += 60000
-  wear(0.5)
-  await poll()
-  wear(0)
-  await poll()
-  assert.deepEqual(w.notices(), ['Your Steel Sword has broken.'], 'a native without the event is covered by the poll')
+  w.mp.onItemBroken(PLAYER, SWORD)
+  assert.deepEqual(w.notices(), ['Your Steel Sword has broken.'], 'a later fight tells it again')
+  w.take()
+  worn(0.3, 0.2, false)
+  assert.deepEqual(w.packets, [], 'a copy written after it left the slot says nothing')
 })
 
-test('wear notices: drawing a more worn or broken copy of the same item says nothing, wear on that copy does', async () => {
-  const w = withClock(await world(durability(), { inventory: [item(SWORD, 0.8), item(SWORD, 0.2), item(SWORD, 0)], equipment: [item(SWORD, 0.8, { worn: true })] }).boot())
-  const draw = (condition) => { w.props.get(PLAYER).equipment.inv.entries = [item(SWORD, condition, { worn: true })] }
-  const poll = async () => { w.now += 11000; w.system.poll(w.ctx) }
-  await poll()
-  draw(0.2)
-  await poll()
-  assert.deepEqual(w.packets, [], 'the 80% sword is still in the pack, so the 20% one did not just wear')
-  draw(0)
-  await poll()
-  assert.deepEqual(w.packets, [], 'nor did the broken one just break')
-  draw(0.8)
-  await poll()
-  // The native takes the worn copy out and puts it back with its new condition, at the end of the pack
-  w.props.get(PLAYER).inventory.entries = [item(SWORD, 0.2), item(SWORD, 0), item(SWORD, 0.24)]
-  draw(0.24)
-  await poll()
-  assert.deepEqual(w.take(), [{ userId: USER, customPacketType: 'repairNotice', text: 'Your Steel Sword is badly worn (24%).' }])
-  w.now += 60000
-  w.props.get(PLAYER).inventory.entries = [item(SWORD, 0.2), item(SWORD, 0, { count: 2 })]
-  draw(0)
-  await poll()
-  assert.deepEqual(w.notices(), ['Your Steel Sword has broken.'], 'a break is told with another broken copy in the pack')
+test('wear notices: one event carries every copy written; no user, a bad payload or the event alone reads nothing', async () => {
+  const w = withClock(await world(durability(), { inventory: [item(SWORD, 0.8), item(SWORD, 0.2)], equipment: [item(SWORD, 0.8, { worn: true })] }).boot())
+  let reads = 0
+  const getDurability = w.mp.getDurability
+  w.mp.getDurability = (id) => { reads++; return getDurability(id) }
+  w.order.length = 0
+  w.mp.onItemWorn(PLAYER, [[HELMET, c(0.5), c(0.4), true], [SWORD, c(0.3), c(0.24), true], [CUIRASS, c(0.26), c(0.2), true]])
+  assert.deepEqual(w.notices(), ['Your Steel Sword is badly worn (24%).', 'Your Steel Armor is badly worn (20%).'])
+  w.take()
+  w.mp.onItemWorn(NPC, [[SWORD, c(0.3), c(0.2), true]])
+  w.mp.onItemWorn(PLAYER, 'junk')
+  w.mp.onItemWorn(PLAYER, [null, 'x', [SWORD]])
+  assert.deepEqual(w.packets, [])
+  assert.equal(reads, 0, 'no durability read')
+  assert.deepEqual(w.order, [], 'no inventory read')
 })
 
 ;(async () => {

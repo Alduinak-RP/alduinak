@@ -14,7 +14,6 @@ import { NeedsSystem } from "./needsSystem";
 import { sendJson } from "./playerText";
 import { Content, Log, System, SystemContext } from "./system";
 import { ARMOR_TABLE, FINE_STEP, SHARPENING_WHEEL, TemperRecipe, qualityName, recipesAt, temperRecipesOf } from "./temperRecipes";
-import { every } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -56,7 +55,6 @@ const BENCH_REACH = 600;
 const BYPASS_MS = 5000;
 const OPEN_COOLDOWN_MS = 1000;
 const REPAIR_COOLDOWN_MS = 300;
-const WEAR_POLL_MS = 10000;
 const BROKEN_NOTICE_GAP_MS = 30000;
 const MAX_KEYS = 64;
 const MAX_KEY_LENGTH = 512;
@@ -187,10 +185,10 @@ export class DurabilitySystem implements System {
     this.settle = wearSettler(mp, all, this.log);
     const unresolved = this.loadFallbackMaterials(mp);
     this.on = true;
-    every("durability", WEAR_POLL_MS, () => this.poll(ctx));
 
     this.installActivationHook(ctx);
     chainMpHook(mp, "onItemBroken", (actorId: number, baseId: number) => { this.onItemBroken(ctx, Number(actorId) >>> 0, Number(baseId) >>> 0); });
+    chainMpHook(mp, "onItemWorn", (actorId: number, copies: unknown) => { this.onItemWorn(ctx, Number(actorId) >>> 0, copies); });
     (globalThis as any).__alduinakRepairOpen = (actorId: number): string => this.onCommand(ctx, Number(actorId) >>> 0);
 
     const c = this.config;
@@ -218,48 +216,28 @@ export class DurabilitySystem implements System {
     this.lastRepairMs.delete(userId);
   }
 
-  // The wear notices: a worn item that fell below repair.lowNoticeBelow or broke since the last look
-  poll(ctx: SystemContext): void {
-    if (!this.on) return;
-    const now = Date.now();
-    const mp = ctx.svr as Mp;
-    let players: number[] = [];
-    try { players = Array.from(mp.get(0, "onlinePlayers") ?? [], (id) => Number(id) >>> 0); } catch { return; }
-    const online = new Set(players);
-    for (const actorId of Array.from(this.wornSeen.keys())) {
-      if (!online.has(actorId)) this.wornSeen.delete(actorId);
-    }
-    for (const actorId of players) this.watchWear(ctx, actorId, now);
-  }
-
   // ── Notices ─────────────────────────────────────────────────────────────────
 
-  private watchWear(ctx: SystemContext, actorId: number, now: number): void {
+  // The native's write of worn copies: [baseId, condition before, condition after, still worn]; a break is told by onItemBroken
+  private onItemWorn(ctx: SystemContext, actorId: number, copies: unknown): void {
+    if (!this.on || !Array.isArray(copies)) return;
     const mp = ctx.svr as Mp;
-    const copies = durableCopies(mp, actorId) || [];
-    const before = this.wornSeen.get(actorId);
-    const seen = new Map<string, number>();
-    for (const c of copies) {
-      if (!c.worn && !c.wornLeft) continue;
-      const slot = `${c.baseId}:${c.wornLeft ? "left" : "right"}`;
-      seen.set(slot, c.condition);
-      const was = before?.get(slot);
-      if (was === undefined || c.condition >= was) continue;
-      // The copy seen last time still lies in the pack as it was, so another copy took the slot and nothing wore
-      if (copies.some((o) => o !== c && o.baseId === c.baseId && sameCondition({ condition: o.condition }, { condition: was }))) continue;
-      if (c.condition <= 0) this.noticeBroken(ctx, actorId, c.baseId, now);
-      else if (was >= this.config.lowNoticeBelow && c.condition < this.config.lowNoticeBelow) {
-        this.notice(mp, userOf(mp, actorId), `Your ${this.baseName(c.baseId)} is badly worn (${conditionPercent(c.condition)}%).`);
-      }
+    const userId = userOf(mp, actorId);
+    if (userId < 0) return;
+    const low = this.config.lowNoticeBelow;
+    for (const copy of copies) {
+      if (!Array.isArray(copy)) continue;
+      const [baseId, before, after, worn] = copy.map(Number);
+      if (!worn || !(after > 0) || !(before >= low && after < low)) continue;
+      this.notice(mp, userId, `Your ${this.baseName(baseId >>> 0)} is badly worn (${conditionPercent(after)}%).`);
     }
-    this.wornSeen.set(actorId, seen);
   }
 
   private onItemBroken(ctx: SystemContext, actorId: number, baseId: number): void {
     if (actorId && baseId) this.noticeBroken(ctx, actorId, baseId, Date.now());
   }
 
-  // Once per item and fight, whichever of the native event and the poll sees the break first
+  // Once per item and fight
   private noticeBroken(ctx: SystemContext, actorId: number, baseId: number, now: number): void {
     const mp = ctx.svr as Mp;
     const slot = `${actorId}:${baseId}`;
@@ -609,8 +587,6 @@ export class DurabilitySystem implements System {
   private bypass = new Map<number, { bench: number; until: number }>();
   private lastOpenMs = new Map<number, number>();
   private lastRepairMs = new Map<number, number>();
-  // Condition of each worn copy at the last poll, by actor and then by base and hand
-  private wornSeen = new Map<number, Map<string, number>>();
   private brokenNoticedMs = new Map<string, number>();
   private cuirassCache = new Map<number, boolean>();
   private freeLogged = new Set<number>();

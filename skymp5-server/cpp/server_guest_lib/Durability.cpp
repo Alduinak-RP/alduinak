@@ -18,6 +18,7 @@ namespace {
 
 constexpr uint32_t kUnarmedSource = 0x1f4;
 constexpr const char* kBrokenEvent = "onItemBroken";
+constexpr const char* kWornEvent = "onItemWorn";
 
 struct Context
 {
@@ -64,6 +65,11 @@ bool WearsOut(const Context& ctx, uint32_t baseId)
 float ConditionOf(const std::optional<float>& condition)
 {
   return std::clamp(condition.value_or(1.f), 0.f, 1.f);
+}
+
+double Num(float value)
+{
+  return std::isfinite(value) ? std::round(value * 10000.0) / 10000.0 : 0.0;
 }
 
 // The worn entry of a base, the right hand first
@@ -241,6 +247,8 @@ bool Flush(MpActor& actor, const Context& ctx, bool final)
   Inventory inventory = actor.GetInventory();
   Equipment equipment = actor.GetEquipment();
   std::vector<BrokenItem> broken;
+  // [baseId, condition before, condition after, still worn] per copy written
+  auto wornCopies = nlohmann::json::array();
   bool changed = false;
   for (auto& pending : state.pending) {
     const auto& item = ctx.resolver->Resolve(pending.baseId, *ctx.worldState);
@@ -283,6 +291,9 @@ bool Flush(MpActor& actor, const Context& ctx, bool final)
                   ItemRows::KindName(item.kind), item.row,
                   ConditionTag::Percent(copy.condition),
                   ConditionTag::Percent(stored), pending.points, item.hp);
+    wornCopies.push_back(nlohmann::json::array(
+      { pending.baseId, Num(ConditionOf(copy.condition)),
+        Num(ConditionOf(stored)), wornEntry != nullptr }));
     pending.condition = stored;
     pending.points = after.carry;
     changed = true;
@@ -300,6 +311,10 @@ bool Flush(MpActor& actor, const Context& ctx, bool final)
   if (changed) {
     state.lastFlushAt = Durability::Clock::now();
     actor.SetInventoryAndEquipment(inventory, equipment);
+    auto args = nlohmann::json::array();
+    args.push_back(std::move(wornCopies));
+    CustomEvent(actor.GetFormId(), kWornEvent, args.dump())
+      .Fire(ctx.worldState);
   }
   for (const auto& item : broken) {
     spdlog::info("Durability: {:x} {:x} broke", actor.GetFormId(),
@@ -396,11 +411,6 @@ const char* SlotName(const ItemRows::ItemRow& item)
     }
   }
   return "weapon";
-}
-
-double Num(float value)
-{
-  return std::isfinite(value) ? std::round(value * 10000.0) / 10000.0 : 0.0;
 }
 
 }
