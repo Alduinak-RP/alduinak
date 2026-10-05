@@ -170,7 +170,7 @@ const FURNITURE_SEAT_WAIT_MS = 15000;
 const PLUGIN_REF_POLL_MS = 500;
 const PLUGIN_REF_POLL_WINDOW_MS = 30000;
 // UpdateProperty values applied to a loaded plugin ref; the record keeps the rest for its first apply
-const PLUGIN_REF_PROPS_APPLIED = new Set(['inventory', 'isOpen', 'isHarvested', 'disabled', 'ff_carried']);
+const PLUGIN_REF_PROPS_APPLIED = new Set(['inventory', 'isOpen', 'isHarvested', 'disabled', 'ff_carried', 'ff_decor']);
 
 // How waiting plugin refs were applied, to compare the load events' coverage with the fallback poll
 interface PluginRefApplies {
@@ -433,6 +433,7 @@ export class RemoteServer extends ClientListener {
 
     this.controller.on("update", reapplyPcInventory);
     this.controller.on("loadGame", () => requestPcInventoryApply());
+    this.controller.on("loadGame", () => this.queuePluginRefDecor());
     this.controller.on("update", () => this.sweepCloneCasts());
     this.controller.on("update", () => this.checkPlayerTeleport());
     this.controller.on("update", () => this.checkRaceMenu());
@@ -1863,7 +1864,6 @@ export class RemoteServer extends ClientListener {
     rec.applied = true;
     rec.changed.clear();
     const { props, custom, pose } = rec;
-    ObjectReferenceEx.dealWithRef(refr);
     // A plugin item the server moved; untouched ones keep the plugin's placement
     if (custom["ff_moved"] === true && pose) {
       refr.setPosition(pose.pos[0], pose.pos[1], pose.pos[2]);
@@ -1895,6 +1895,7 @@ export class RemoteServer extends ClientListener {
       refr.setDisplayName(displayName, true);
       logTrace(this, `calling setDisplayName`, displayName, `for`, refrId.toString(16));
     }
+    ModelApplyUtils.applyModelDecor(refr, custom["ff_decor"]);
   }
 
   private onPluginRefProperty(msg: UpdatePropertyMessage, value: unknown): void {
@@ -1911,10 +1912,21 @@ export class RemoteServer extends ClientListener {
     else (rec.props as Record<string, unknown>)[propName] = value;
     if (!rec.applied || !PLUGIN_REF_PROPS_APPLIED.has(propName)) return;
     if (propName === 'ff_carried' && !carriedByOther(value)) return;
+    this.queuePluginRefProp(refrId, rec, propName);
+  }
+
+  private queuePluginRefProp(refrId: number, rec: PluginRef, prop: string): void {
     // The last change is applied last, as the packets came
-    rec.changed.delete(propName);
-    rec.changed.add(propName);
+    rec.changed.delete(prop);
+    rec.changed.add(prop);
     if (!this.pluginRefsWaiting.has(refrId)) this.pluginRefsDue.add(refrId);
+  }
+
+  // A loaded game puts back the plugin's locks and names
+  private queuePluginRefDecor(): void {
+    pluginRefs.forEach((rec, refrId) => {
+      if (rec.applied && rec.custom["ff_decor"]) this.queuePluginRefProp(refrId, rec, 'ff_decor');
+    });
   }
 
   private applyPluginRefProp(refr: ObjectReference, rec: PluginRef, prop: string): void {
@@ -1927,6 +1939,8 @@ export class RemoteServer extends ClientListener {
       ModelApplyUtils.applyModelIsHarvested(refr, !!props.isHarvested);
     } else if (prop === 'disabled') {
       ModelApplyUtils.applyModelIsDisabled(refr, !!props.disabled);
+    } else if (prop === 'ff_decor') {
+      ModelApplyUtils.applyModelDecor(refr, rec.custom["ff_decor"]);
     } else if (prop === 'ff_carried' && carriedByOther(rec.custom["ff_carried"])) {
       // The end of a carry comes with itemMoved, which shows the item at its new spot
       ModelApplyUtils.applyModelIsDisabled(refr, true);

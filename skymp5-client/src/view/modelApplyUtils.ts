@@ -3,6 +3,10 @@ import { Inventory, applyInventory } from "../sync/inventory";
 import { logError, logTrace } from "../logging";
 import { SetNodeScaleEntry, SetNodeTextureSetEntry } from "src/services/messages/createActorMessage";
 
+const MASTER_LOCK_LEVEL = 100;
+// Refs a claim named, given back their base's name once no claim names them
+const decorNamed = new Set<number>();
+
 // For 0xff000000+ used from FormView
 // For objects from master files used directly from remoteServer.ts
 export class ModelApplyUtils {
@@ -19,7 +23,6 @@ export class ModelApplyUtils {
   static applyModelIsOpen(refr: ObjectReference, isOpen: boolean) {
     refr.setOpen(isOpen);
 
-    // See also objectReferenceEx.ts
     const caveGSecretDoor01 = 0x6f703;
 
     // TODO: add more activators to support more cells
@@ -37,6 +40,26 @@ export class ModelApplyUtils {
           refr.activate(ObjectReference.from(Game.getForm(parentActivatorId)), false);
         }
       }
+    }
+  }
+
+  // Housing's ff_decor {name, locked} on a claimed door or container; any other lock is cleared, since the server decides every activation
+  static applyModelDecor(refr: ObjectReference, decor: unknown): void {
+    const d: Record<string, unknown> = decor && typeof decor === "object" ? decor as Record<string, unknown> : {};
+    if (d["locked"] === true) {
+      if (!refr.isLocked() || refr.getLockLevel() !== MASTER_LOCK_LEVEL) {
+        refr.setLockLevel(MASTER_LOCK_LEVEL);
+        refr.lock(true, false);
+      }
+    } else if (refr.isLocked()) {
+      refr.lock(false, false);
+    }
+    const name = d["name"];
+    if (typeof name === "string" && name) {
+      refr.setDisplayName(name, true);
+      decorNamed.add(refr.getFormID());
+    } else if (decorNamed.size && decorNamed.delete(refr.getFormID())) {
+      refr.setDisplayName(refr.getBaseObject()?.getName() || "", true);
     }
   }
 

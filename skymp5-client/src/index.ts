@@ -49,7 +49,6 @@ import { ItemService } from "./services/services/itemService";
 import { HousingService } from "./services/services/housingService";
 import { PetService } from "./services/services/petService";
 import { MountService } from "./services/services/mountService";
-import { RefDecorService } from "./services/services/refDecorService";
 import { PlayerActionService } from "./services/services/playerActionService";
 import { EmoteService } from "./services/services/emoteService";
 import { MasteryService } from "./services/services/masteryService";
@@ -168,7 +167,6 @@ const main = () => {
       new HousingService(sp, controller),
       new PetService(sp, controller),
       new MountService(sp, controller),
-      new RefDecorService(sp, controller),
       new PlayerActionService(sp, controller),
       new EmoteService(sp, controller),
       new MasteryService(sp, controller),

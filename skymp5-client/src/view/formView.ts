@@ -167,8 +167,6 @@ export class FormView {
       this.destroy();
       this.refrId = refId;
       this.ready = true;
-      // dealWithRef waits in applyAll until the ref exists (spawn, teleport: cells attach after the server streams them)
-      this.dealtWithRef = false;
     }
 
     let refr = ObjectReference.from(Game.getFormEx(this.refrId));
@@ -303,7 +301,6 @@ export class FormView {
     this.was3DLoaded = false;
     this.checkedModelBaseId = null;
     this.objectState = this.getDefaultObjectState();
-    this.dealtWithRef = false;
     this.isActor = undefined;
     this.offsetCleared = false;
     this.appliedMovement = makeAppliedMovement();
@@ -360,11 +357,10 @@ export class FormView {
     if (this.objectState.disabled) this.objectState.disabled = undefined;
   }
 
-  private dealtWithRef = false;
   private isSetNodeTextureSetApplied = false;
   private isSetNodeScaleApplied = false;
 
-  // Actors skip these, whose inventory apply would break a copy's equipment; open, harvested and carried state go to the engine on a model change or a 3D load, a plugin door's disabled state on a model change or a loaded game
+  // Actors skip these, whose inventory apply would break a copy's equipment; open, harvested and carried state and a claim's name and lock go to the engine on a model change or a 3D load, a plugin door's disabled state on a model change or a loaded game
   private applyObjectModel(refr: ObjectReference, model: FormModel, loaded: boolean, loadedNow: boolean): void {
     const o = this.objectState;
     // A copy another player carries (PlacedItemSystem's ff_carried) stays hidden, however it was spawned
@@ -383,12 +379,10 @@ export class FormView {
         ModelApplyUtils.applyModelIsHarvested(refr, harvested);
       }
     }
-    if (!this.dealtWithRef) {
-      const base = refr.getBaseObject();
-      if (base) {
-        ObjectReferenceEx.dealWithRef(refr);
-        this.dealtWithRef = true;
-      }
+    const decor = (model as Record<string, unknown>)["ff_decor"];
+    if (loadedNow || decor !== o.decor) {
+      o.decor = decor;
+      ModelApplyUtils.applyModelDecor(refr, decor);
     }
     // A door set before its 3D is in can stick between open and closed, so the server's state waits for the 3D
     if (loaded) {
@@ -978,7 +972,7 @@ export class FormView {
 
   // What the engine was last given; undefined until the first apply
   private getDefaultObjectState() {
-    return { open: undefined as boolean | undefined, harvested: undefined as boolean | undefined, carriedAway: undefined as boolean | undefined, disabled: undefined as boolean | undefined, openCheck: false, openReapplyAt: 0 };
+    return { open: undefined as boolean | undefined, harvested: undefined as boolean | undefined, carriedAway: undefined as boolean | undefined, disabled: undefined as boolean | undefined, openCheck: false, openReapplyAt: 0, decor: undefined as unknown };
   };
 
   private tryHostIfNeed(ac: Actor, remoteId: number) {

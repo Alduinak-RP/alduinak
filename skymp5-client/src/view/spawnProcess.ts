@@ -1,7 +1,6 @@
 import { ObjectReference, Game, Actor } from "skyrimPlatform";
 import { Appearance, applyTints } from "../sync/appearance";
 import { NiPoint3 } from "../sync/movement";
-import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 
 export class SpawnProcess {
   // isDead: a copy that arrives as a corpse is not stood up first, the first apply kills it
@@ -49,7 +48,6 @@ export class SpawnProcess {
       });
     }
 
-    ObjectReferenceEx.dealWithRef(refr);
     return this.callback();
   }
 }
