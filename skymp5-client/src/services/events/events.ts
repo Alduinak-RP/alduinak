@@ -23,7 +23,6 @@ import { TeleportMessage } from "../messages/teleportMessage";
 import { UpdateAnimationMessage } from "../messages/updateAnimationMessage";
 import { UpdateAppearanceMessage } from "../messages/updateAppearanceMessage";
 import { UpdateEquipmentMessage } from "../messages/updateEquipmentMessage";
-import { UpdateGamemodeDataMessage } from "../messages/updateGameModeDataMessage";
 import { UpdateMovementMessage } from "../messages/updateMovementMessage";
 import { UpdatePropertyMessage } from "../messages/updatePropertyMessage";
 import { DeathStateContainerMessage } from "../messages/deathStateContainerMessage";
@@ -73,7 +72,6 @@ type EventTypes = {
     'destroyActorMessage': [ConnectionMessage<DestroyActorMessage>],
     'setRaceMenuOpenMessage': [ConnectionMessage<SetRaceMenuOpenMessage>],
     'spSnippetMessage': [ConnectionMessage<SpSnippetMessage>],
-    'updateGamemodeDataMessage': [ConnectionMessage<UpdateGamemodeDataMessage>],
     'updatePropertyMessage': [ConnectionMessage<UpdatePropertyMessage>],
     'deathStateContainerMessage': [ConnectionMessage<DeathStateContainerMessage>],
     'teleportMessage2': [ConnectionMessage<TeleportMessage2>],

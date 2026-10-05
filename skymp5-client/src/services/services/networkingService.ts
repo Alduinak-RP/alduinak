@@ -211,9 +211,7 @@ export class NetworkingService extends ClientListener {
             this.controller.emitter.emit("spSnippetMessage", event);
             this.controller.emitter.emit("anyMessage", event);
           } else if (msgAny.t === MsgType.UpdateGamemodeData) {
-            const event = { message: msgAny };
-            this.controller.emitter.emit("updateGamemodeDataMessage", event);
-            this.controller.emitter.emit("anyMessage", event);
+            // Older servers still send it on connect
           } else if (msgAny.t === MsgType.Teleport2) {
             const event = { message: msgAny };
             this.controller.emitter.emit("teleportMessage2", event);

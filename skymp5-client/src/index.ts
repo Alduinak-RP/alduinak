@@ -78,8 +78,6 @@ import { NetInfoService } from "./services/services/netInfoService";
 import { AnimDebugService } from "./services/services/animDebugService";
 import { TimersService } from "./services/services/timersService";
 import { PlayerBowShotService } from "./services/services/playerBowShotService";
-import { GamemodeEventSourceService } from "./services/services/gamemodeEventSourceService";
-import { GamemodeUpdateService } from "./services/services/gamemodeUpdateService";
 import { FrontHotReloadService } from "./services/services/frontHotReloadService";
 import { BlockedAnimationsService } from "./services/services/blockedAnimationsService";
 import { FurnitureSeatService } from "./services/services/furnitureSeatService";
@@ -89,8 +87,6 @@ import { MagicSyncService } from "./services/services/magicSyncService";
 import { ProfilingService } from "./services/services/profilingService";
 import { SettingsService } from "./services/services/settingsService";
 import { FovSettingsService } from "./services/services/fovSettingsService";
-import { ServerJsVerificationService } from "./services/services/serverJsVerificationService";
-import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService";
 import { NotificationService } from "./services/services/notificationService";
 import { ConnectionWatchdogService } from "./services/services/connectionWatchdogService";
 import { KickService } from "./services/services/kickService";
@@ -148,7 +144,6 @@ const main = () => {
       new SpSnippetService(sp, controller),
       new SettingsService(sp, controller),
       new FovSettingsService(sp, controller),
-      new SweetTaffyEvalService(sp, controller),
       new DisableSkillAdvanceService(sp, controller),
       new DisableFastTravelService(sp, controller),
       new DisableDifficultySelectionService(sp, controller),
@@ -200,8 +195,6 @@ const main = () => {
       new AnimDebugService(sp, controller),
       new TimersService(sp, controller),
       new PlayerBowShotService(sp, controller),
-      new GamemodeEventSourceService(sp, controller),
-      new GamemodeUpdateService(sp, controller),
       new ChatService(sp, controller),
       new MenuMediaService(sp, controller),
       new CharacterProgressService(sp, controller),
@@ -212,7 +205,6 @@ const main = () => {
       new KeyboardEventsService(sp, controller),
       new MagicSyncService(sp, controller),
       new ProfilingService(sp, controller),
-      new ServerJsVerificationService(sp, controller),
       new NotificationService(sp, controller)
     ];
     SpApiInteractor.setup(listeners);

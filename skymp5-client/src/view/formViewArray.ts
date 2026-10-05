@@ -1,7 +1,5 @@
 import { FormView } from "./formView";
 import { FormModel, WorldModel } from "./model";
-import { SpApiInteractor } from "../services/spApiInteractor";
-import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
 
 export class FormViewArray {
   updateForm(form: FormModel, i: number, tagPass: boolean) {
@@ -35,9 +33,6 @@ export class FormViewArray {
   }
 
   updateAll(model: WorldModel, tagPass: boolean) {
-    const gamemodeUpdateService = SpApiInteractor.getControllerInstance().lookupListener(GamemodeUpdateService);
-    gamemodeUpdateService.setFormViewArray(this);
-
     const forms = model.forms;
     const n = forms.length;
     for (let i = 0; i < n; ++i) {
@@ -48,7 +43,6 @@ export class FormViewArray {
         continue;
       }
 
-      gamemodeUpdateService.setI(i);
       this.updateForm(form, i, tagPass);
     }
   }

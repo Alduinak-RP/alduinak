@@ -19,7 +19,6 @@ import { ModelApplyUtils } from "./modelApplyUtils";
 import { carriedByOther, disabledByServer, isModelHostedByOther, isRemoteHostedByMe, knowsCharacter, shortRemoteId } from "./worldViewMisc";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
-import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
 import { isOwnCompanion, keepsOwnOffset } from "../services/services/companionService";
 import { adminGhostAlpha, afterlifeLookOf, setAdminGhostShader } from "./adminGhostLook";
 
@@ -206,9 +205,6 @@ export class FormView {
       this.applyHostility(actor, model);
     }
     this.applyAll(refr, actor, model, loaded, loadedNow, tagPass);
-
-    const gamemodeUpdateService = SpApiInteractor.getControllerInstance().lookupListener(GamemodeUpdateService);
-    gamemodeUpdateService.updateNeighbor(refr, model, this.state);
   }
 
   // The model's base and the appearance base the copy was last checked against
@@ -234,7 +230,6 @@ export class FormView {
         refr = (Game.getPlayer() as Actor).placeAtMe(base, 1, true, true) as ObjectReference;
       }
 
-      this.state = {};
       if (base.getType() !== FormType.NPC) {
         refr?.setAngle(
           model.movement?.rot[0] || 0,
@@ -1053,7 +1048,6 @@ export class FormView {
   private static readonly torchCheckMs = 2000;
   private static readonly torchMaxTries = 3;
   private static readonly torchSteadyMs = 30000;
-  private state = {};
   // Known from the first update of a ready copy
   private isActor: boolean | undefined = undefined;
   private offsetCleared = false;

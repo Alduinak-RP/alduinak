@@ -4,7 +4,6 @@ import { ChangeValuesMessage } from "./changeValuesMessage";
 import { ConsoleCommandMessage } from "./consoleCommandMessage";
 import { CraftItemMessage } from "./craftItemMessage";
 import { CreateActorMessage } from "./createActorMessage";
-import { CustomEventMessage } from "./customEventMessage";
 import { CustomPacketMessage } from "./customPacketMessage";
 import { DeathStateContainerMessage } from "./deathStateContainerMessage";
 import { DestroyActorMessage } from "./destroyActorMessage";
@@ -49,7 +48,6 @@ export type AnyMessage = ActivateMessage
     | ChangeValuesMessage
     | UpdateAppearanceMessage
     | HostMessage
-    | CustomEventMessage
     | CustomPacketMessage
     | FinishSpSnippetMessage
     | TeleportMessage
