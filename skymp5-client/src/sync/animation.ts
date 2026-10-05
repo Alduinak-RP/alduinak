@@ -562,7 +562,6 @@ export const setupHooks = (): void => {
           if (allowedAnims.has(animKey)) {
             allowedAnims.delete(animKey);
           } else {
-            printConsole("block anim " + ctx.animEventName);
             return (ctx.animEventName = "");
           }
         }

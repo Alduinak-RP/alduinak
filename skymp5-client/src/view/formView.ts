@@ -1,5 +1,5 @@
-import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, printConsole, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
-import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving, isInSitPose } from "../sync/animation";
+import { Actor, ActorBase, createText, destroyText, Form, FormType, Game, Keyword, NetImmerse, ObjectReference, once, setTextPos, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
+import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving } from "../sync/animation";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, getWornLight, resyncHandGraph, wearsExactly } from "../sync/equipment";
 import { Entry } from "../sync/inventory";
@@ -9,7 +9,7 @@ import { FormModel } from "./model";
 import { applyMovement, forgetGroundSample, isCarrierCloneId } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseCloneOnEvent, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
-import { Movement, NiPoint3 } from "../sync/movement";
+import { Movement } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { FormTypeEx } from "../extensions/formTypeEx";
@@ -63,11 +63,6 @@ export class FormView {
       if (!this.lastWorldOrCell)
         this.lastWorldOrCell = model.movement.worldOrCell;
       if (this.lastWorldOrCell !== model.movement.worldOrCell) {
-        printConsole(
-          `[1] worldOrCell changed, destroying FormView ${this.lastWorldOrCell.toString(
-            16
-          )} => ${model.movement.worldOrCell.toString(16)}`
-        );
         this.lastWorldOrCell = model.movement.worldOrCell;
         this.destroy();
         this.refrId = 0;
@@ -128,16 +123,13 @@ export class FormView {
             refr?.setDisplayName(model.appearance.name, true);
             // Recreate the floating tag so watchers see the new name (/mask)
             this.removeNickname();
-            //printConsole("Appearance updated, changing name inplace");
           } else {
             // Force re-apply appearance on the next getAppearanceBasedBase call
             this.appearanceBasedBaseId = 0;
-            //printConsole("Appearance updated");
           }
         } else {
           // Force re-apply appearance on the next getAppearanceBasedBase call
           this.appearanceBasedBaseId = 0;
-          //printConsole("Appearance updated");
         }
 
         this.appearanceState.appearance = model.appearance || null;
@@ -234,8 +226,6 @@ export class FormView {
 
         if (model.movement) {
           refr = spawnMethod.spawn(base, model.movement.pos, model.movement.rot);
-        } else {
-          printConsole("model.movement was " + model.movement);
         }
 
         this.state = {};
@@ -264,22 +254,13 @@ export class FormView {
 
         this.ready = false;
 
-        let spawnPos;
-        if (model.movement) {
-          spawnPos = model.movement.pos;
-          // printConsole("Spawn NPC at movement.pos");
-        } else {
-          spawnPos = ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
-          printConsole("Spawn NPC at player pos");
-        }
+        const spawnPos = model.movement ? model.movement.pos : ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
 
         if (refr) {
           spawnMethod.triggerSpawnProcess(refr, spawnPos, model.appearance || null, () => {
             this.ready = true;
             this.spawnMoment = Date.now();
           });
-        } else {
-          printConsole("Unable to triggerSpawnProcess for null refr");
         }
 
         if (model.appearance && model.appearance.name) {
@@ -323,8 +304,6 @@ export class FormView {
 
   destroy(): void {
     this.redrawTints();
-    this.slideState.sampledAt = 0;
-    this.slideState.idleSince = 0;
     this.spawnMoment = 0;
     this.loaded3DMoment = 0;
     this.dealtWithRef = false;
@@ -463,7 +442,6 @@ export class FormView {
           const remoteId = this.remoteRefrId;
           if (ac && ac.is3DLoaded()) {
             this.tryHostIfNeed(ac, remoteId as number);
-            printConsole("tryHostIfNeed - reason: not seeing movement for long time");
           }
         }
       }
@@ -496,9 +474,6 @@ export class FormView {
             applyMovement(refr, movement, !!model.isMyClone, movementHeld, ownOffset);
             if (!movementHeld) {
               restoreSitCollisionIfMoving(refr, movement);
-              if (ac) {
-                this.watchSlide(refr, ac, movement, model);
-              }
             }
           } catch (e) {
             if (e instanceof RespawnNeededError) {
@@ -884,7 +859,7 @@ export class FormView {
     }
     if (view !== this.adminView || now - this.lastAdminHideApply >= FormView.adminHideReapplyMs) {
       if (view !== this.adminView) {
-        printConsole(`[admin] ${this.getRemoteRefrId().toString(16)} shown ${view}`);
+        logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} admin view ${view}`);
       }
       actor.setAlpha(view === "hidden" ? 0 : view === "ghost" ? adminGhostAlpha : 1, false);
       this.adminView = view;
@@ -918,7 +893,7 @@ export class FormView {
       actor.setAlpha(ownAlpha, false);
     }
     if (shaderId !== this.afterlifeShaderId) {
-      printConsole(`[afterlife] ${this.getRemoteRefrId().toString(16)} look ${shaderId ? shaderId.toString(16) : "off"}`);
+      logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} afterlife look ${shaderId ? shaderId.toString(16) : "off"}`);
     }
     this.afterlifeShaderId = shaderId;
     this.afterlifeShaderReplayAt = 0;
@@ -979,7 +954,7 @@ export class FormView {
       // @ts-ignore
       const leveledBase = TESModPlatform.evaluateLeveledNpc(str);
       if (!leveledBase) {
-        printConsole("Failed to evaluate leveled npc", str);
+        logToPlatformLog("FormView", "Failed to evaluate leveled npc", str);
       }
       this.leveledBaseId = leveledBase?.getFormID() || 0;
     }
@@ -998,31 +973,6 @@ export class FormView {
       this.redrawTints();
     }
     return Date.now() - this.loaded3DMoment < FormView.copySettleMs;
-  }
-
-  // A copy dragged by translateTo while its graph idles is the slide players report; the line names the sender and receiver state behind it
-  private watchSlide(refr: ObjectReference, ac: Actor, m: Movement, model: FormModel): void {
-    const now = Date.now();
-    const s = this.slideState;
-    if (now - s.sampledAt >= 1000) {
-      const pos = ObjectReferenceEx.getPos(refr);
-      s.moved = s.sampledAt ? ObjectReferenceEx.getDistance(s.pos, pos) : 0;
-      s.pos = pos;
-      s.sampledAt = now;
-    }
-    const speedSampled = ac.getAnimationVariableFloat("SpeedSampled");
-    if (m.runMode === "Standing" || speedSampled !== 0) {
-      s.idleSince = 0;
-    } else if (!s.idleSince) {
-      s.idleSince = now;
-    }
-    const idleWhileMoving = s.idleSince > 0 && now - s.idleSince > 1000;
-    const standingFast = m.runMode === "Standing" && m.speed > 150;
-    if (s.moved <= 64 || !(idleWhileMoving || standingFast) || now - s.loggedAt < FormView.slideLogIntervalMs) {
-      return;
-    }
-    s.loggedAt = now;
-    logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} slides: runMode ${m.runMode}, speed ${Math.round(m.speed)}, SpeedSampled ${speedSampled.toFixed(1)}, sitState ${ac.getSitState()}, sitPose ${isInSitPose(this.refrId)}, lastAnim ${model.animation?.animEventName}, dead ${ac.isDead()}, 3D ${refr.is3DLoaded()}`);
   }
 
   // Every copy's base holds form id 7, so a head the engine rebuilds on its own (3D reload, helmet swap) carries the local player's tints until the on-screen check queues the copy's own
@@ -1097,8 +1047,6 @@ export class FormView {
   private static readonly niNodeUpdateMinIntervalMs = 5000;
   private lastPcWorldOrCell = 0;
   private lastWorldOrCell = 0;
-  private slideState = { pos: [0, 0, 0] as NiPoint3, sampledAt: 0, moved: 0, idleSince: 0, loggedAt: 0 };
-  private static readonly slideLogIntervalMs = 10000;
   private spawnMoment = 0;
   private loaded3DMoment = 0;
   private static readonly copySettleMs = 1000;
