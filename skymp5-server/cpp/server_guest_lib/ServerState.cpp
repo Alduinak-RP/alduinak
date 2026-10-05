@@ -1,6 +1,7 @@
 #include "ServerState.h"
 
 #include <algorithm>
+#include <utility>
 
 #include <spdlog/spdlog.h>
 
@@ -75,6 +76,59 @@ void ServerState::MarkDeferred(Networking::UserId userId, UserInfo& info)
     info.hasDeferred = true;
     deferredUsers.push_back(userId);
   }
+}
+
+bool RateLimit::Allow(std::chrono::steady_clock::time_point now,
+                      std::chrono::steady_clock::duration period)
+{
+  if (lastAt != std::chrono::steady_clock::time_point{} &&
+      now - lastAt < period) {
+    ++held;
+    return false;
+  }
+  lastAt = now;
+  return true;
+}
+
+RefusalLimits* ServerState::FindRefusalLimits(
+  Networking::UserId userId, uint32_t actorId,
+  std::chrono::steady_clock::time_point now)
+{
+  constexpr size_t kMaxRefusals = 256;
+
+  if (!IsConnected(userId)) {
+    return nullptr;
+  }
+  auto& refusals = userInfo[userId]->refusals;
+  if (refusals.size() >= kMaxRefusals) {
+    std::erase_if(refusals, [&](const auto& entry) {
+      return now - entry.second.log.lastAt >= RefusalLimits::kLogPeriod &&
+        now - entry.second.reply.lastAt >= RefusalLimits::kReplyPeriod;
+    });
+  }
+  return &refusals[actorId];
+}
+
+bool ServerState::AllowRefusalReply(Networking::UserId userId,
+                                    uint32_t actorId)
+{
+  const auto now = std::chrono::steady_clock::now();
+  auto limits = FindRefusalLimits(userId, actorId, now);
+  return !limits || limits->reply.Allow(now, RefusalLimits::kReplyPeriod);
+}
+
+std::optional<uint32_t> ServerState::AllowRefusalLog(Networking::UserId userId,
+                                                     uint32_t actorId)
+{
+  const auto now = std::chrono::steady_clock::now();
+  auto limits = FindRefusalLimits(userId, actorId, now);
+  if (!limits) {
+    return 0;
+  }
+  if (!limits->log.Allow(now, RefusalLimits::kLogPeriod)) {
+    return std::nullopt;
+  }
+  return std::exchange(limits->log.held, 0);
 }
 
 void ServerState::EnsureUserExists(Networking::UserId userId)

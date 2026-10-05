@@ -23,7 +23,8 @@ bool Validate(PartOne& partOne, const NiPoint3& currentPos,
 
     // Not doing this to any NPCs at this moment, yet we might consider to
     bool isMe = actor && partOne.serverState.ActorByUser(userId) == actor;
-    if (isMe) {
+    if (isMe &&
+        partOne.serverState.AllowRefusalReply(userId, actor->GetFormId())) {
       TeleportMessage2 msg;
       msg.pos = { currentPos[0], currentPos[1], currentPos[2] };
       msg.rot = { currentRot[0], currentRot[1], currentRot[2] };

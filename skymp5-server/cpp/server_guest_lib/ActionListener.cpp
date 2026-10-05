@@ -547,11 +547,18 @@ MpActor* ActionListener::SendToNeighbours(uint32_t idx,
     // See also PartOne::SetUserActor
     Networking::UserId actorsOwningUserId =
       partOne.serverState.UserByActor(actor);
+    auto& serverState = partOne.serverState;
     if (actorsOwningUserId != Networking::InvalidUserId) {
-      spdlog::error("SendToNeighbours - No permission to update actor {:x} "
-                    "(already owned by user {})",
-                    actor->GetFormId(), actorsOwningUserId);
-      partOne.SendHostStop(userId, *actor);
+      if (auto held =
+            serverState.AllowRefusalLog(userId, actor->GetFormId())) {
+        spdlog::error("SendToNeighbours - No permission to update actor {:x} "
+                      "(already owned by user {}), {} more refused since the "
+                      "last line",
+                      actor->GetFormId(), actorsOwningUserId, *held);
+      }
+      if (serverState.AllowRefusalReply(userId, actor->GetFormId())) {
+        partOne.SendHostStop(userId, *actor);
+      }
 
       partOne.worldState.hosters.erase(actor->GetFormId());
       return nullptr;
@@ -560,14 +567,19 @@ MpActor* ActionListener::SendToNeighbours(uint32_t idx,
     auto it = partOne.worldState.hosters.find(actor->GetFormId());
     if (it == partOne.worldState.hosters.end() ||
         it->second != myActor->GetFormId()) {
-      if (idx == 0) {
-        spdlog::warn("SendToNeighbours - idx=0, <Message>::ReadJson or "
-                     "similar is probably incorrect");
+      if (auto held =
+            serverState.AllowRefusalLog(userId, actor->GetFormId())) {
+        if (idx == 0) {
+          spdlog::warn("SendToNeighbours - idx=0, <Message>::ReadJson or "
+                       "similar is probably incorrect");
+        }
+        spdlog::error("SendToNeighbours - No permission to update actor {:x} "
+                      "(not a hoster), {} more refused since the last line",
+                      actor->GetFormId(), *held);
       }
-      spdlog::error(
-        "SendToNeighbours - No permission to update actor {:x} (not a hoster)",
-        actor->GetFormId());
-      partOne.SendHostStop(userId, *actor);
+      if (serverState.AllowRefusalReply(userId, actor->GetFormId())) {
+        partOne.SendHostStop(userId, *actor);
+      }
       return nullptr;
     }
   }

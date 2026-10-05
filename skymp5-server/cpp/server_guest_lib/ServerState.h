@@ -39,6 +39,26 @@ struct DeferredMessage
   uint32_t actorIdExpected = 0;
 };
 
+// Lets one event through per period and counts the ones held back
+struct RateLimit
+{
+  std::chrono::steady_clock::time_point lastAt;
+  uint32_t held = 0;
+
+  bool Allow(std::chrono::steady_clock::time_point now,
+             std::chrono::steady_clock::duration period);
+};
+
+// Replies to a refused report and their error line, per actor
+struct RefusalLimits
+{
+  static constexpr std::chrono::seconds kReplyPeriod{ 1 };
+  static constexpr std::chrono::seconds kLogPeriod{ 30 };
+
+  RateLimit reply;
+  RateLimit log;
+};
+
 struct UserInfo
 {
   bool isDisconnecting = false;
@@ -61,6 +81,8 @@ struct UserInfo
   // Start of the spawn equipment guard, set by PartOne::SetUserActor
   std::chrono::steady_clock::time_point actorAssignedAt;
   std::optional<std::chrono::steady_clock::time_point> firstEquipmentReportAt;
+
+  std::unordered_map<uint32_t, RefusalLimits> refusals;
 };
 
 class ServerState
@@ -88,4 +110,15 @@ public:
   Networking::UserId UserByActor(MpActor* actor);
   void EnsureUserExists(Networking::UserId userId);
   void MarkDeferred(Networking::UserId userId, UserInfo& info);
+
+  // True at most once per second for the user and actor
+  bool AllowRefusalReply(Networking::UserId userId, uint32_t actorId);
+
+  // Refusals held back since the last line, nullopt while rate-limited
+  std::optional<uint32_t> AllowRefusalLog(Networking::UserId userId,
+                                          uint32_t actorId);
+
+private:
+  RefusalLimits* FindRefusalLimits(Networking::UserId userId, uint32_t actorId,
+                                   std::chrono::steady_clock::time_point now);
 };
