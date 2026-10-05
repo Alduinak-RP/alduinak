@@ -167,7 +167,13 @@ export class FactionSystem implements System {
       if (factionIds.length) this.retitle(factionIds);
     });
     ctx.gm.on(CHARACTER_LIST_EVENT, (profileId: number, entries: CharacterListEntry[]) => this.onCharacterList(profileId, entries));
-    ctx.gm.on(CHARACTER_RETIRED_EVENT, (profileId: number, slot: number, actorId: number) => this.release(profileId, slot, actorId, this.realName(actorId), "deletion", 0));
+    ctx.gm.on(CHARACTER_RETIRED_EVENT, (profileId: number, slot: number, actorId: number) => {
+      const id = actorId >>> 0;
+      this.release(profileId, slot, id, this.realName(id), "deletion", 0);
+      // Read while the form exists; the retitle waits until the body is destroyed
+      const factionIds = this.leavePlay(id);
+      if (factionIds.length) soon(() => this.retitle(factionIds));
+    });
     ctx.gm.on(AFTERLIFE_EVENT, (profileId: number, slot: number, actorId: number) => {
       if (profileId > 0 && slot >= 0) this.release(profileId, slot, actorId, this.realName(actorId), "perma-death", 0);
     });
