@@ -728,13 +728,14 @@ prisoner can also be carried).
   teleports. The carrier's client refuses the press where it starts
   (`ActivationService`). It knows the load is a player from the server's
   `carryState`, which says `player: true` for one (the packet's `target`
-  names only a carried NPC, and a job load has no such field). The first
-  press on a plugin door while carrying a player asks the server whether it teleports (`loadDoorQuery`, answered from
-  the door's XTEL or the override list and remembered per door), a load door
-  is then not sent at all, the carrier reads "Set them down before going
-  through this door." (at most once per 2 s) and the Platform log says
-  `load door <id> not used: the player carries someone`; a plain door goes
-  out as soon as the answer is in. The server guards it for a client that
+  names only a carried NPC, and a job load has no such field). A door
+  teleports when it arrived with `ff_loadDoor` (a plugin door with an XTEL)
+  or is in the override list the server sends at connect
+  (`loadDoorOverrides`). A press on a load door while carrying a player is
+  not sent at all, the carrier reads "Set them down before going through
+  this door." (at most once per 2 s) and the Platform log says
+  `load door <id> not used: the player carries someone`; a plain door takes
+  the press as usual. The server guards it for a client that
   sent the press anyway: `CaptureSystem`'s `onActivate` wrapper refuses a
   door with an XTEL while the carrier's load is a player (after the housing
   lock had its say, before the door override and the native teleport), sends

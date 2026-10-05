@@ -43,7 +43,7 @@ const ACTIVE_PACKET_TYPES = new Set([
   "captureRequest", "carryRequest", "releaseRequest", "putdownRequest", "captureConsentResult",
   "givePotionRequest", "finishOffRequest", "prepareExecutionRequest", "executeRequest", "assassinateRequest", "factionRecruitRequest",
   "deathChoice", "charCreatorResult", "characterSelectResult", "characterSelectMenuRequest",
-  "masteryChoose", "masteryResetRequest", "factionRequest", "playerMenuRequest", "loadDoorQuery",
+  "masteryChoose", "masteryResetRequest", "factionRequest", "playerMenuRequest",
 ]);
 
 interface Location {

@@ -1,11 +1,11 @@
 import { ActivateEvent, FormType } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { MsgType } from "../../messages";
-import { notifyNextUpdate, sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
+import { notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { RestraintService } from "./restraintService";
 
 // TODO: refactor this out
-import { isRemoteHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
+import { formProp, isRemoteHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 
 import { logError, logToPlatformLog, logTrace } from "../../logging";
 import { takeSyntheticActivation } from "../../sync/mountApply";
@@ -16,12 +16,6 @@ const STUCK_PRESS_MS = 1500;
 
 // An ignored press older than this no longer counts toward STUCK_PRESS_MS
 const IGNORED_PRESS_TTL_MS = 5000;
-
-// A load door answer arriving later than this does not send the dropped press
-const LOAD_DOOR_ANSWER_MS = 3000;
-
-// Runtime refs never carry a teleport, so only plugin doors are asked about
-const FIRST_RUNTIME_ID = 0xff000000;
 
 const SEAT_RELEASE_LOG_GAP_MS = 5000;
 
@@ -64,17 +58,15 @@ export class ActivationService extends ClientListener {
         this.controller.on("activate", (e) => this.onActivate(e));
         // A load can leave a wait's closing delay hanging
         this.controller.on("loadGame", () => seatWaits.clear());
-        onCustomPacket(this.controller, "loadDoorAnswer", (content) => this.onCustomPacketMessage(content));
+        onCustomPacket(this.controller, "loadDoorOverrides", (content) => this.onLoadDoorOverrides(content));
     }
 
     private firstIgnoredMs = new Map<number, number>();
     private lastSeatReleaseLog = 0;
     private lastFurniturePress = { target: 0, at: 0 };
 
-    // The server's answer per plugin door: a press on a load door teleports and never reverses a swing
-    private loadDoors = new Map<number, boolean>();
-    // plain: the press also goes out when the door turns out not to teleport
-    private pendingLoadDoorPress = new Map<number, { caster: number, at: number, plain: boolean }>();
+    // The doors the server's doorTeleportOverrides redirect, sent once per connect
+    private overrideDoors = new Set<number>();
     private lastCarryDoorNotice = 0;
 
     private onActivate(e: ActivateEvent) {
@@ -121,14 +113,11 @@ export class ActivationService extends ClientListener {
 
         const swinging = openState === OpenState.Opening || openState === OpenState.Closing;
 
-        if (casterLocalId === 0x14 && this.heldForCarry(e, caster, target, !swinging)) {
+        if (casterLocalId === 0x14 && this.refusedForCarry(target)) {
             return;
         }
 
-        if (swinging && !this.loadDoors.get(target)) {
-            if (target < FIRST_RUNTIME_ID && !this.loadDoors.has(target)) {
-                this.askLoadDoor(caster, target, false);
-            }
+        if (swinging && !this.isLoadDoor(target)) {
             const now = Date.now();
             let firstIgnored = this.firstIgnoredMs.get(target);
             if (firstIgnored !== undefined && now - firstIgnored > IGNORED_PRESS_TTL_MS) {
@@ -180,20 +169,18 @@ export class ActivationService extends ClientListener {
         }
     }
 
-    // A carrier holding a player does not go through a load door: true when the press was refused or waits for the server to say whether the door teleports
-    private heldForCarry(e: ActivateEvent, caster: number, target: number, plain: boolean): boolean {
-        if (target >= FIRST_RUNTIME_ID || !this.isCarryingPlayer() || e.target.getBaseObject()?.getType() !== FormType.Door) {
+    // A carrier holding a player does not go through a load door
+    private refusedForCarry(target: number): boolean {
+        if (!this.isCarryingPlayer() || !this.isLoadDoor(target)) {
             return false;
         }
-        const loadDoor = this.loadDoors.get(target);
-        if (loadDoor === undefined) {
-            this.askLoadDoor(caster, target, plain);
-            return true;
-        }
-        if (loadDoor) {
-            this.refuseCarrier(target);
-        }
-        return loadDoor;
+        this.refuseCarrier(target);
+        return true;
+    }
+
+    // A plugin door with an XTEL arrives with ff_loadDoor; a press on a load door teleports and never reverses a swing
+    private isLoadDoor(target: number): boolean {
+        return this.overrideDoors.has(target) || formProp(target, "ff_loadDoor") === true;
     }
 
     private isCarryingPlayer(): boolean {
@@ -210,32 +197,13 @@ export class ActivationService extends ClientListener {
         logToPlatformLog(this, `load door ${target.toString(16)} not used: the player carries someone`);
     }
 
-    private askLoadDoor(caster: number, target: number, plain: boolean) {
-        const asked = this.pendingLoadDoorPress.has(target);
-        this.pendingLoadDoorPress.set(target, { caster, at: Date.now(), plain });
-        if (!asked) {
-            sendCustomPacket(this.controller, { customPacketType: "loadDoorQuery", target });
-        }
-    }
-
-    private onCustomPacketMessage(content: CustomPacketContent) {
-        const target = Number(content["target"]) >>> 0;
-        const loadDoor = content["loadDoor"] === true;
-        this.loadDoors.set(target, loadDoor);
-        const pending = this.pendingLoadDoorPress.get(target);
-        this.pendingLoadDoorPress.delete(target);
-        if (!pending || Date.now() - pending.at >= LOAD_DOOR_ANSWER_MS) return;
-        if (loadDoor && this.isCarryingPlayer()) {
-            this.refuseCarrier(target);
-        } else if (loadDoor || pending.plain) {
-            logTrace(this, "Sending the press held on door", target.toString(16));
-            this.sendActivation(pending.caster, target);
-        }
+    private onLoadDoorOverrides(content: CustomPacketContent) {
+        const doors = content["doors"];
+        this.overrideDoors = new Set(Array.isArray(doors) ? doors.map((id) => Number(id) >>> 0) : []);
     }
 
     sendActivation(caster: number, target: number) {
         this.firstIgnoredMs.delete(target);
-        this.pendingLoadDoorPress.delete(target);
 
         this.controller.emitter.emit("sendMessage", {
             message: {

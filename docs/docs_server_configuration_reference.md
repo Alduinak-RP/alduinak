@@ -372,21 +372,16 @@ per player; a press missing there never reached the server or was refused by a
 lock, a faction or the native side (`WorldSpace doesn't match`, logged by the
 server itself).
 
-The client drops a press on a door that is still swinging, so it cannot reverse
-the swing, except on a load door: the first such press on a plugin door asks the
-server (`loadDoorQuery`), which answers from the door's XTEL or this list
-(`loadDoorAnswer`), and a load door gets the dropped press sent at once and every
-later one straight through. A plain door stuck mid-swing takes a second press
-1.5 s after the first ignored one; an ignored press older than 5 s starts that
-wait over. A player carrying another player asks the same question on their
-first press on any plugin door, swinging or not: a load door is refused there
-("Set them down before going through this door."), a plain one is sent once the
-answer is in (section 10 of `docs_roleplay_survival_loop.md`).
-
-The server also tells clients which doors teleport without being asked: a
-plugin door with an XTEL arrives with an `ff_loadDoor` custom property, and the
-door ids of this list go to each client once per connection
-(`loadDoorOverrides`). Clients that read these need no `loadDoorQuery`.
+The client knows which doors teleport without asking: a plugin door with an
+XTEL arrives with an `ff_loadDoor` custom property, and the door ids of this
+list go to each client once per connection (`loadDoorOverrides`). The client
+drops a press on a door that is still swinging, so it cannot reverse the swing,
+except on a load door, where every press goes straight through. A plain door
+stuck mid-swing takes a second press 1.5 s after the first ignored one; an
+ignored press older than 5 s starts that wait over. A player carrying another
+player is refused at a load door, swinging or not ("Set them down before going
+through this door."), and a plain door takes the press as usual (section 10 of
+`docs_roleplay_survival_loop.md`).
 
 ```json5
 {
