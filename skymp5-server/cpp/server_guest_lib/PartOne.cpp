@@ -894,10 +894,6 @@ void PartOne::Init()
       message.baseId = emitter->GetBaseId();
     }
 
-    if (emitterAsActor && emitterAsActor->IsDead()) {
-      message.isDead = true;
-    }
-
     const bool isOwner = emitter == listener;
 
     auto mode = VisitPropertiesMode::OnlyPublic;
@@ -908,11 +904,6 @@ void PartOne::Init()
     emitter->VisitProperties(message, mode);
 
     auto isFilteredOut = [&](const CustomPropsEntry& customPropsEntry) {
-      // Private fields are server state, sent to no client
-      if (customPropsEntry.propName.rfind(
-            MpObjectReference::GetPropertyPrefixPrivate(), 0) == 0) {
-        return true;
-      }
       auto it = pImpl->gamemodeApiState.createdProperties.find(
         customPropsEntry.propName);
       if (it != pImpl->gamemodeApiState.createdProperties.end()) {

@@ -163,6 +163,13 @@ std::pair<int16_t, int16_t> GetGridPos(const NiPoint3& pos) noexcept
   return { int16_t(pos.x / 4096), int16_t(pos.y / 4096) };
 }
 
+bool IsPrivateProperty(const std::string& propertyName)
+{
+  static const std::string kPrefix =
+    MpObjectReference::GetPropertyPrefixPrivate();
+  return propertyName.compare(0, kPrefix.size(), kPrefix) == 0;
+}
+
 bool IsPrivateIndexedProperty(const std::string& propertyName)
 {
   static const std::string kPrefix =
@@ -479,6 +486,10 @@ void MpObjectReference::VisitProperties(CreateActorMessage& message,
   // checked by a caller (PartOne.cpp in this case)
   ChangeForm().dynamicFields.ForEachValueDump(
     [&](const std::string& propName, const std::string& valueDump) {
+      // Private fields are server state, sent to no client
+      if (IsPrivateProperty(propName)) {
+        return;
+      }
       CustomPropsEntry customPropsEntry;
       customPropsEntry.propName = propName;
       customPropsEntry.propValueJsonDump = valueDump;

@@ -4,7 +4,7 @@
 #include <spdlog/spdlog.h>
 
 void BaseActorValues::VisitBaseActorValuesAndPercentages(
-  BaseActorValues& baseActorValues, MpChangeForm& changeForm,
+  const BaseActorValues& baseActorValues, const MpChangeForm& changeForm,
   CreateActorMessage& message)
 {
   message.props.health = baseActorValues.health;

@@ -10,9 +10,9 @@
 
 struct BaseActorValues : public ActorValues
 {
-  void VisitBaseActorValuesAndPercentages(BaseActorValues& baseActorValues,
-                                          MpChangeForm& changeForm,
-                                          CreateActorMessage& message);
+  void VisitBaseActorValuesAndPercentages(
+    const BaseActorValues& baseActorValues, const MpChangeForm& changeForm,
+    CreateActorMessage& message);
 };
 
 BaseActorValues GetBaseActorValues(WorldState* worldState, uint32_t baseId,

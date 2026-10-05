@@ -479,6 +479,16 @@ void MpActor::RemoveFromFaction(FormDesc factionForm, bool lazyLoad)
 void MpActor::VisitProperties(CreateActorMessage& message,
                               VisitPropertiesMode mode)
 {
+  MpObjectReference::VisitProperties(message, mode);
+
+  if (mode != VisitPropertiesMode::All) {
+    return;
+  }
+
+  if (IsRaceMenuOpen()) {
+    message.props.isRaceMenuOpen = true;
+  }
+
   BaseActorValues baseActorValues;
   WorldState* worldState = GetParent();
   // this "if" is needed for unit testing: tests can call VisitProperties
@@ -486,32 +496,10 @@ void MpActor::VisitProperties(CreateActorMessage& message,
   if (worldState && worldState->HasEspm()) {
     baseActorValues = GetBaseValues();
   }
-
-  MpChangeForm changeForm = GetChangeForm();
-
-  MpObjectReference::VisitProperties(message, mode);
-
-  if (mode == VisitPropertiesMode::All && IsRaceMenuOpen()) {
-    message.props.isRaceMenuOpen = true;
-  }
-
-  if (mode == VisitPropertiesMode::All) {
-    baseActorValues.VisitBaseActorValuesAndPercentages(baseActorValues,
-                                                       changeForm, message);
-  }
+  baseActorValues.VisitBaseActorValuesAndPercentages(baseActorValues,
+                                                     ChangeForm(), message);
 
   message.props.learnedSpells = GetLearnedAndBaseSpells();
-
-  if (!changeForm.templateChain.empty()) {
-    std::vector<uint32_t> templateChain;
-    templateChain.reserve(changeForm.templateChain.size());
-
-    for (auto& element : changeForm.templateChain) {
-      templateChain.push_back(element.ToFormId(GetParent()->espmFiles));
-    }
-
-    message.props.templateChain = std::move(templateChain);
-  }
 }
 
 void MpActor::Disable()
