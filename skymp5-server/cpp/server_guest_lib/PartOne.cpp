@@ -13,13 +13,11 @@
 #include "HostStopMessage.h"
 #include "SetInventoryMessage.h"
 #include "SetRaceMenuOpenMessage.h"
-#include "UpdateGameModeDataMessage.h"
 
 #include "ActionListener.h"
 #include "Durability.h"
 #include "FormCallbacks.h"
 #include "MessageSerializerFactory.h"
-#include "OpenSSLSigner.h"
 #include "PacketParser.h"
 
 PartOneSendTargetWrapper::PartOneSendTargetWrapper(
@@ -93,11 +91,6 @@ struct PartOne::Impl
   FakeSendTarget fakeSendTarget;
 
   GamemodeApi::State gamemodeApiState;
-  std::vector<uint8_t> updateGamemodeDataMsg;
-
-  std::shared_ptr<OpenSSLSigner> sslSigner; // nullptr if no private key set
-  std::string sslSignerKeyAlias;            // empty string
-  bool enableGamemodeDataUpdatesBroadcast = false;
 };
 
 PartOne::PartOne(Networking::ISendTarget* sendTarget)
@@ -469,7 +462,6 @@ bool IsClientMessageType(MsgType msgType)
     case MsgType::ConsoleCommand:
     case MsgType::CraftItem:
     case MsgType::Host:
-    case MsgType::CustomEvent:
     case MsgType::ChangeValues:
     case MsgType::OnHit:
     case MsgType::DropItem:
@@ -564,94 +556,7 @@ float PartOne::CalculateDamage(const MpActor& aggressor, const MpActor& target,
 void PartOne::NotifyGamemodeApiStateChanged(
   const GamemodeApi::State& newState) noexcept
 {
-  UpdateGameModeDataMessage msg;
-
-  msg.eventSources.reserve(newState.createdEventSources.size());
-  msg.updateOwnerFunctions.reserve(newState.createdProperties.size());
-  msg.updateNeighborFunctions.reserve(newState.createdProperties.size());
-
-  for (auto [eventName, eventSourceInfo] : newState.createdEventSources) {
-    msg.eventSources.push_back(
-      { eventName, SignJavaScriptSources(eventSourceInfo.functionBody) });
-  }
-
-  for (auto [propertyName, propertyInfo] : newState.createdProperties) {
-    GamemodeValuePair updateOwnerFunctionsEntry;
-    updateOwnerFunctionsEntry.name = propertyName;
-    updateOwnerFunctionsEntry.content = SignJavaScriptSources(
-      propertyInfo.isVisibleByOwner ? propertyInfo.updateOwner : "");
-    msg.updateOwnerFunctions.push_back(updateOwnerFunctionsEntry);
-
-    //  From docs: isVisibleByNeighbors considered to be always false for
-    //  properties with `isVisibleByOwner == false`, in that case, actual
-    //  flag value is ignored.
-
-    const bool actuallyVisibleByNeighbor =
-      propertyInfo.isVisibleByNeighbors && propertyInfo.isVisibleByOwner;
-
-    GamemodeValuePair updateNeighborFunctionsEntry;
-    updateNeighborFunctionsEntry.name = propertyName;
-    updateNeighborFunctionsEntry.content = SignJavaScriptSources(
-      actuallyVisibleByNeighbor ? propertyInfo.updateNeighbor : "");
-    msg.updateNeighborFunctions.push_back(updateNeighborFunctionsEntry);
-  }
-
-  SLNet::BitStream stream;
-  GetMessageSerializerInstance().Serialize(msg, stream);
-
-  if (pImpl->enableGamemodeDataUpdatesBroadcast) {
-    spdlog::info("PartOne::NotifyGamemodeApiStateChanged - sending gamemode "
-                 "data update to all connected users");
-    auto& currentSendTarget = GetSendTarget();
-    for (size_t i = 0, n = serverState.maxConnectedId; i <= n; ++i) {
-      Networking::UserId userId = static_cast<Networking::UserId>(i);
-      if (serverState.IsConnected(userId)) {
-        currentSendTarget.Send(
-          userId, reinterpret_cast<Networking::PacketData>(stream.GetData()),
-          stream.GetNumberOfBytesUsed(), true);
-      }
-    }
-  } else {
-    // Intentionally skipped to avoid client instability. See
-    // 'enableGamemodeDataUpdatesBroadcast' in server docs.
-    spdlog::info("PartOne::NotifyGamemodeApiStateChanged - skipping gamemode "
-                 "data update send, clientside hot-reload is disabled");
-  }
-
   pImpl->gamemodeApiState = newState;
-  pImpl->updateGamemodeDataMsg.resize(stream.GetNumberOfBytesUsed());
-  std::copy(stream.GetData(), stream.GetData() + stream.GetNumberOfBytesUsed(),
-            pImpl->updateGamemodeDataMsg.begin());
-}
-
-void PartOne::SetPrivateKey(const std::string& keyAlias,
-                            const std::string& pkeyPem)
-{
-  auto pkey = std::make_shared<OpenSSLPrivateKey>(pkeyPem);
-  pImpl->sslSigner = std::make_shared<OpenSSLSigner>(pkey);
-  pImpl->sslSignerKeyAlias = keyAlias;
-}
-
-void PartOne::EnableGamemodeDataUpdatesBroadcast(bool enable)
-{
-  pImpl->enableGamemodeDataUpdatesBroadcast = enable;
-}
-
-std::string PartOne::SignJavaScriptSources(const std::string& src) const
-{
-  if (src.empty()) {
-    return src;
-  }
-
-  if (!pImpl->sslSigner) {
-    return src + "\n// skymp:sig:n/a";
-  }
-
-  std::string signature = pImpl->sslSigner->SignB64(
-    reinterpret_cast<const unsigned char*>(src.c_str()), src.length());
-  return src +
-    fmt::format("\n// skymp:sig:y:CPP{}:{}", pImpl->sslSignerKeyAlias,
-                signature);
 }
 
 void PartOne::SetPacketHistoryRecording(Networking::UserId userId, bool enable)
@@ -1025,14 +930,6 @@ void PartOne::AddUser(Networking::UserId userId, UserType type,
   serverState.Connect(userId, guid);
   for (auto& listener : worldState.listeners)
     listener->OnConnect(userId);
-
-  // Save CPU time by not serializing UpdateGamemodeDataMessage each time
-  if (!pImpl->updateGamemodeDataMsg.empty()) {
-    GetSendTarget().Send(userId,
-                         reinterpret_cast<Networking::PacketData>(
-                           pImpl->updateGamemodeDataMsg.data()),
-                         pImpl->updateGamemodeDataMsg.size(), true);
-  }
 }
 
 void PartOne::HandleMessagePacket(Networking::UserId userId,

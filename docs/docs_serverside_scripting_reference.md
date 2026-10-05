@@ -5,7 +5,7 @@ This page contains the list of `mp` object methods available to use in scripts.
 
 ## mp.makeProperty()
 
-Creates a new property that would be attached to all instances of `MpActor` and `MpObjectReference`. Values are saved to database automatically. See [Properties System](docs_properties_system.md) for more information.
+Creates a new property that would be attached to all instances of `MpActor` and `MpObjectReference`. Values are saved to database automatically. See [Properties System](docs_properties_system.md) for more information. The server no longer sends `updateOwner` and `updateNeighbor` to clients; the two options are still accepted and ignored.
 
 ```typescript
 /* Definition */
@@ -37,35 +37,6 @@ mp.makeProperty("playerLevel", {
     updateOwner: "ctx.sp.Game.setPlayerLevel(ctx.value)"
     updateNeighbor: ""
 });
-```
-
-## mp.makeEventSource()
-
-Creates a new event source allowing you to catch specific game situations and pass them to a server as events. See [Events System](docs_events_system.md) for more information.
-
-```typescript
-/* Definition */
-interface Mp {
-  // ...
-  makeEventSource(eventName: string, functionBody: string): void;
-  // ...
-}
-
-/* Usage */
-mp.makeEventSource("_onLocalDeath", `
-    ctx.sp.on("update", () => {
-      const pl = ctx.sp.Game.getPlayer();
-      const isDead = pl.getActorValuePercentage("health") === 0;
-      if (ctx.state.wasDead !== isDead) {
-        if (isDead) {
-          ctx.sendEvent();
-        }
-        ctx.state.wasDead = isDead;
-      }
-    });
-  `);
-);
-mp._onLocalDeath = function(pcFormId) { /* ... */ };
 ```
 
 ## mp.get()
@@ -104,7 +75,7 @@ mp.set(0xff000000, "pos", [0, 0, 0]);
 
 ## mp.clear()
 
-Clears added properties and event sources.
+Clears added properties.
 
 ```typescript
 // Definition

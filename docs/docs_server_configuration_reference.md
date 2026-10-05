@@ -809,7 +809,7 @@ unset): the gamemode loads once when the server starts and a changed file waits 
 next start; the boot log says `Gamemode hot reload is off`. The Test Server's settings
 set it to `true`; live keeps it off, since live receives `gamemode.js` only through
 **Migrate server** with the Main Server stopped. Protected: **Migrate settings** never
-copies it to live. `enableGamemodeDataUpdatesBroadcast` matters only while this is on.
+copies it to live.
 Read at boot.
 
 ```json5
@@ -1751,17 +1751,3 @@ All optional; see `docs/docs_roleplay_mastery.md` for the system.
 ## goldAlertThreshold
 
 `GoldWatchSystem` samples gold every 10 s for the characters with inventory activity since the last poll (an `onCraft`, `onEatItem`, `onDropItem` or `onActivate` hook as the actor, an `onPutItem` or `onTakeItem` hook as the actor or the container, or a `tradeAccept` or `bountyBoardPost` packet) and for those without a baseline yet; every sixth poll (about 60 s) samples every online character, so a gain no hook sees (a server grant, say) shows within a minute and an interval spans up to 60 s. A rise above `goldAlertThreshold` (default `5000`, `0` disables the alert) between two samples logs `GoldWatchSystem: <name> (profile P) went from A to B gold` and posts a `goldSpawn` security alert to the manager's Security tab. The first sample of a character only sets its baseline. Since 2026-09 (B24, B14) the same samples watch drops: every drop of gold and every drop of Salt Pile (`0x34cdf`) that the actor's own actions in the interval do not explain are logged as `[inv] <name> (<id>, profile P) gold|salt A -> B[, N unexplained] (interval: crafts C, eats E, puts P, drops D, takes T[, packets tradeAccept bountyBoardPost])`, where the tallies come from the `onCraft` (the recipe's inputs of that item), `onEatItem`, `onPutItem`, `onDropItem` and `onTakeItem` hooks after every other system had its say, and the packets are the trade and bounty board sends the hooks never see. A drop of the item the actor ate less than 2 s before logs `[inv] <name> (<id>, profile P) drop of <editor id> <id> xN <ms> ms after eating one: the client sent the eat as a drop too` (G9; a client before 1.0 sent eating from the inventory near a same item in the world as a drop too). Every other drop the hooks accept logs `[inv] <name> (<id>, profile P) dropped <editor id> <id> xN` (K5) once the server's count of that item has fallen: the hooks run before the native `MpActor::DropItem` removes anything, and it logs at trace level only, while a drop is the one way a player's own client takes items out of the pack without a craft, put, trade or eat line. A drop the server's count does not follow (the native removal then throws `Source inventory doesn't have enough <id> (N is required while 0 present)`) logs `[inv] <name> (<id>, profile P) drop of <editor id> <id> xN refused natively: the server held H` instead, the mark of a client showing items the server never had. Every client version sends a drop for a misc item, a pelt or ore say, that leaves the pack with no container while the inventory menu is open; G9 changed only potions and ingredients. Together with `spawn.ts`'s `[gold] <id> logs out|quits|despawned|logs in with N gold` lines and the `[pack] <id> (profile P) logs out|quits to the menu|despawned|logs in with K kind(s): <base id> x<count>, ...` line written right after each (the whole pack summed per base id in id order, gold apart; K5), a reported loss lands in one of three windows: during play (an `[inv]` line), the parked body (logout vs despawn) or offline (despawn vs login, the only window persistence can explain).
-
-## enableGamemodeDataUpdatesBroadcast
-
-A boolean setting that controls hot-reloading behavior for connected clients.
-
-* `false` (Default): Updates to gamemode scripts are applied to the server state but **not** broadcast to currently connected players. Existing players must re-login to receive the update. This ensures client stability if scripts do not support hot-reloading.
-* `true`: Updates are immediately broadcast to all connected clients. Useful for local development, but may cause desync or client errors if the scripts are not designed to be re-applied at runtime.
-
-```json5
-{
-  // ...
-  "enableGamemodeDataUpdatesBroadcast": false
-  // ...
-}

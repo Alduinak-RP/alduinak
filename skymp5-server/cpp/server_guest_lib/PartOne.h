@@ -114,10 +114,6 @@ public:
   void NotifyGamemodeApiStateChanged(
     const GamemodeApi::State& newState) noexcept;
 
-  void SetPrivateKey(const std::string& keyId, const std::string& pkeyPem);
-
-  void EnableGamemodeDataUpdatesBroadcast(bool enable);
-
   void SetPacketHistoryRecording(Networking::UserId userId, bool value);
   PacketHistory GetPacketHistory(Networking::UserId userId);
   void ClearPacketHistory(Networking::UserId userId);
@@ -152,8 +148,6 @@ private:
 
   void TickPacketHistoryPlaybacks();
   void TickDeferredMessages();
-
-  std::string SignJavaScriptSources(const std::string& src) const;
 
   struct Impl;
   std::shared_ptr<Impl> pImpl;

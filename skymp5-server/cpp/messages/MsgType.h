@@ -18,7 +18,6 @@ enum class MsgType : uint8_t
   ConsoleCommand = 12,
   CraftItem = 13,
   Host = 14,
-  CustomEvent = 15,
   ChangeValues = 16,
   OnHit = 17,
   DeathStateContainer = 18,
@@ -37,7 +36,6 @@ enum class MsgType : uint8_t
   SetRaceMenuOpen = 29,
   SpSnippet = 30,
   Teleport2 = 31,
-  UpdateGamemodeData = 32,
   CreateActor = 33,
 
   Max

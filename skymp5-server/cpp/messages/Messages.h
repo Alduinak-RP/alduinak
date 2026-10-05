@@ -4,7 +4,6 @@
 #include "ConsoleCommandMessage.h"
 #include "CraftItemMessage.h"
 #include "CreateActorMessage.h"
-#include "CustomEventMessage.h"
 #include "CustomPacketMessage.h"
 #include "DeathStateContainerMessage.h"
 #include "DestroyActorMessage.h"
@@ -29,7 +28,6 @@
 #include "UpdateAnimationMessage.h"
 #include "UpdateAppearanceMessage.h"
 #include "UpdateEquipmentMessage.h"
-#include "UpdateGameModeDataMessage.h"
 #include "UpdateMovementMessage.h"
 #include "UpdatePropertyMessage.h"
 
@@ -37,7 +35,7 @@
   REGISTER_MESSAGE(ActivateMessage)                                           \
   REGISTER_MESSAGE(ConsoleCommandMessage)                                     \
   REGISTER_MESSAGE(CraftItemMessage)                                          \
-  REGISTER_MESSAGE(CustomEventMessage)                                        \
+\
   REGISTER_MESSAGE(DestroyActorMessage)                                       \
   REGISTER_MESSAGE(DropItemMessage)                                           \
   REGISTER_MESSAGE(FinishSpSnippetMessage)                                    \
@@ -65,5 +63,5 @@
   REGISTER_MESSAGE(TeleportMessage2)                                          \
   REGISTER_MESSAGE(UpdateAnimVariablesMessage)                                \
   REGISTER_MESSAGE(UpdateAppearanceMessage)                                   \
-  REGISTER_MESSAGE(UpdateGameModeDataMessage)                                 \
+\
   REGISTER_MESSAGE(CreateActorMessage)

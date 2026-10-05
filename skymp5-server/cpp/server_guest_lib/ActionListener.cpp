@@ -1432,31 +1432,6 @@ void ActionListener::OnHostAttempt(const RawMessageData& rawMsgData,
   }
 }
 
-void ActionListener::OnCustomEvent(const RawMessageData& rawMsgData,
-                                   const CustomEventMessage& msg)
-{
-  auto ac = partOne.serverState.ActorByUser(rawMsgData.userId);
-  if (!ac) {
-    return;
-  }
-  if (msg.eventName.empty() || msg.eventName[0] != '_') {
-    return;
-  }
-
-  nlohmann::json jsonArray = nlohmann::json::array();
-
-  for (auto& arg : msg.argsJsonDumps) {
-    jsonArray.push_back(nlohmann::json::parse(arg));
-  }
-
-  const std::string jsonArrayDump = jsonArray.dump();
-
-  for (auto& listener : partOne.GetListeners()) {
-    CustomEvent customEvent(ac->GetFormId(), msg.eventName, jsonArrayDump);
-    listener->OnMpApiEvent(customEvent);
-  }
-}
-
 void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
                                     const ChangeValuesMessage& msg)
 {

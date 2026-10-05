@@ -61,12 +61,6 @@ void PacketParser::TransformPacketIntoAction(Networking::UserId userId,
         actionListener.OnCraftItem(rawMsgData, *message);
         return;
       }
-      case MsgType::CustomEvent: {
-        auto message =
-          reinterpret_cast<CustomEventMessage*>(result->message.get());
-        actionListener.OnCustomEvent(rawMsgData, *message);
-        return;
-      }
       case MsgType::DropItem: {
         auto message =
           reinterpret_cast<DropItemMessage*>(result->message.get());

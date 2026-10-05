@@ -188,7 +188,6 @@ Napi::Object ScampServer::Init(Napi::Env env, Napi::Object exports)
       InstanceMethod("getServerSettings", &ScampServer::GetServerSettings),
       InstanceMethod("clear", &ScampServer::Clear),
       InstanceMethod("makeProperty", &ScampServer::MakeProperty),
-      InstanceMethod("makeEventSource", &ScampServer::MakeEventSource),
       InstanceMethod("get", &ScampServer::Get),
       InstanceMethod("set", &ScampServer::Set),
       InstanceMethod("lookupEspmRecordById",
@@ -757,19 +756,6 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     logger->info("emptyContainers is {}, {} container base(s) keep their loot",
                  partOne->worldState.emptyContainers,
                  partOne->worldState.containerLootBaseIds.size());
-
-    if (auto it = serverSettings.find("serverKey");
-        it != serverSettings.end()) {
-      auto serverKey = it.value();
-      partOne->SetPrivateKey(serverKey["alias"].get<std::string>(),
-                             serverKey["private"].get<std::string>());
-    }
-
-    if (auto it = serverSettings.find("enableGamemodeDataUpdatesBroadcast");
-        it != serverSettings.end()) {
-      bool enableBroadcast = it.value().get<bool>();
-      partOne->EnableGamemodeDataUpdatesBroadcast(enableBroadcast);
-    }
 
     auto res =
       NapiHelper::RunScript(Env(),
@@ -1490,46 +1476,9 @@ Napi::Value ScampServer::MakeProperty(const Napi::CallbackInfo& info)
       *ptr = static_cast<bool>(v);
     }
 
-    std::vector<std::pair<std::string, std::string*>> strings{
-      { "updateNeighbor", &propertyInfo.updateNeighbor },
-      { "updateOwner", &propertyInfo.updateOwner }
-    };
-    for (auto [optionName, ptr] : strings) {
-      std::string argName = "options." + optionName;
-      static const std::pair<size_t, size_t> kMinMaxSize = { 0, 100 * 1024 };
-      auto v =
-        NapiHelper::ExtractString(options.Get(optionName.data()),
-                                  argName.data(), std::nullopt, kMinMaxSize);
-      *ptr = static_cast<std::string>(v);
-    }
-
     gamemodeApiState.createdProperties[propertyName] = propertyInfo;
     partOne->NotifyGamemodeApiStateChanged(gamemodeApiState);
 
-    return info.Env().Undefined();
-  } catch (std::exception& e) {
-    throw Napi::Error::New(info.Env(), std::string(e.what()));
-  }
-}
-
-Napi::Value ScampServer::MakeEventSource(const Napi::CallbackInfo& info)
-{
-  try {
-    static const auto kAlphabet = GetPropertyAlphabet();
-    static const std::pair<size_t, size_t> kMinMaxSizeEventName = { 1, 128 };
-    auto isUnique = [this](const std::string& s) {
-      return gamemodeApiState.createdEventSources.count(s) == 0;
-    };
-    auto eventName = NapiHelper::ExtractString(info[0], "eventName", kAlphabet,
-                                               kMinMaxSizeEventName);
-
-    static const std::pair<size_t, size_t> kMinMaxSizeFunctionBody = {
-      0, 100 * 1024
-    };
-    auto functionBody = NapiHelper::ExtractString(
-      info[1], "functionBody", std::nullopt, kMinMaxSizeFunctionBody);
-    gamemodeApiState.createdEventSources[eventName] = { functionBody };
-    partOne->NotifyGamemodeApiStateChanged(gamemodeApiState);
     return info.Env().Undefined();
   } catch (std::exception& e) {
     throw Napi::Error::New(info.Env(), std::string(e.what()));

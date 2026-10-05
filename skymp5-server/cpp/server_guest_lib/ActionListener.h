@@ -64,9 +64,6 @@ public:
   virtual void OnHostAttempt(const RawMessageData& rawMsgData,
                              const HostMessage& msg);
 
-  virtual void OnCustomEvent(const RawMessageData& rawMsgData,
-                             const CustomEventMessage& msg);
-
   virtual void OnChangeValues(const RawMessageData& rawMsgData,
                               const ChangeValuesMessage& msg);
 
