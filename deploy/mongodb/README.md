@@ -20,7 +20,10 @@ one-shot migration.
   Steps: delete the documents flagged `isDeleted` (deleted characters stay
   flagged), backed up first as canonical EJSON into
   `<backup root>\rollback-trim-<db>-<stamp>` (`mongoimport --jsonArray` puts them back);
-  set `equipmentDump.numChanges` to 0 where it is missing; swap the old
+  set `equipmentDump.numChanges` to 0 where it is missing; unset
+  `dynamicFields.ff_chatMsg` (the last chat line each player got, from before
+  chat lines became `chat` packets: no gamemode registers it any more, so the
+  server would show it to every neighbour); swap the old
   `changeForms` indexes (`formDesc_1` non-unique, `worldOrCellDesc_1`,
   `profileId_1`) for `formDesc_1` (unique) and `profileId_1_formDesc_1`, which
   the game server also ensures at every start (it refuses while a formDesc is on

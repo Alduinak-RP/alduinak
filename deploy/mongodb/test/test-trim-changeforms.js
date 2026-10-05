@@ -1,6 +1,6 @@
 'use strict'
 
-// trim-changeforms.js against a stub collection: dry run, refusals, step order, backup, the index helpers and the ff_decor backfill: node deploy/mongodb/test/test-trim-changeforms.js
+// trim-changeforms.js against a stub collection: dry run, refusals, step order, backup, the ff_chatMsg unset, the index helpers and the ff_decor backfill: node deploy/mongodb/test/test-trim-changeforms.js
 
 const assert = require('node:assert/strict')
 const fs = require('fs')
@@ -25,11 +25,12 @@ const OLD = [
 const FLAGGED = [{ _id: 'a', formDesc: 'ff000001', isDeleted: true }, { _id: 'b', formDesc: 'ff000002', isDeleted: true }]
 
 // Answers by filter shape; records every write
-function stubCol({ indexes = OLD, missingCollection = false, dups = [], numChanges = 3, decorDocs = [], flaggedGroups = [{ _id: { actor: true, ff: true }, n: 2 }] } = {}) {
+function stubCol({ indexes = OLD, missingCollection = false, dups = [], numChanges = 3, chatMsg = 2, decorDocs = [], flaggedGroups = [{ _id: { actor: true, ff: true }, n: 2 }] } = {}) {
   const writes = []
   let list = missingCollection ? null : indexes.map(i => ({ v: 2, ...i }))
   let flaggedLeft = FLAGGED.length
   let noNumChanges = numChanges
+  let chatMsgLeft = chatMsg
   const col = {
     writes,
     async indexes() {
@@ -46,12 +47,16 @@ function stubCol({ indexes = OLD, missingCollection = false, dups = [], numChang
     async bulkWrite(ops) { writes.push(`bulkWrite ${ops.length}`); col.bulkOps = ops; return { modifiedCount: ops.length } },
     async countDocuments(filter) {
       if (filter['equipmentDump.numChanges']) return noNumChanges
+      if (filter['dynamicFields.ff_chatMsg']) return chatMsgLeft
       if (filter.profileId && filter.profileId.$gte === 0) return 1
       return flaggedLeft
     },
     find() { return { toArray: async () => FLAGGED.map(d => ({ ...d })) } },
     async deleteMany(filter) { writes.push('deleteMany'); flaggedLeft -= filter._id.$in.length; return { deletedCount: filter._id.$in.length } },
-    async updateMany() { writes.push('updateMany'); const n = noNumChanges; noNumChanges = 0; return { modifiedCount: n } },
+    async updateMany(filter, update) {
+      if (update.$unset) { writes.push(`unset ${Object.keys(update.$unset)}`); const n = chatMsgLeft; chatMsgLeft = 0; return { modifiedCount: n } }
+      writes.push('updateMany'); const n = noNumChanges; noNumChanges = 0; return { modifiedCount: n }
+    },
   }
   return col
 }
@@ -76,6 +81,7 @@ async function run(argv, col, blockerReason = null) {
   assert.match(r.text, /dry run/)
   assert.match(r.text, /purge: 2 flagged documents to delete \(2 FF actors\), 1 deleted character stays flagged/)
   assert.match(r.text, /numChanges: 3 equipment dumps without numChanges/)
+  assert.match(r.text, /chatMsg: 2 documents hold a stored ff_chatMsg to unset/)
   assert.match(r.text, /indexes: drop formDesc_1, worldOrCellDesc_1, profileId_1; create formDesc_1 \(unique\), profileId_1_formDesc_1 \(partial\)/)
   assert.deepEqual(col.writes, [])
 
@@ -91,13 +97,14 @@ async function run(argv, col, blockerReason = null) {
   assert.match(r.refusal, /indexes: 1 formDesc is on more than one document.*ff000003 \(2\)/)
   assert.deepEqual(col.writes, [])
 
-  // Apply: backup, purge, numChanges, then the index swap
+  // Apply: backup, purge, numChanges, the ff_chatMsg unset, then the index swap
   col = stubCol()
   r = await run(['--apply'], col)
   assert.equal(r.refusal, null)
-  assert.deepEqual(col.writes, ['deleteMany', 'updateMany', 'drop formDesc_1', 'drop worldOrCellDesc_1', 'drop profileId_1', 'create formDesc_1', 'create profileId_1_formDesc_1'])
+  assert.deepEqual(col.writes, ['deleteMany', 'updateMany', 'unset dynamicFields.ff_chatMsg', 'drop formDesc_1', 'drop worldOrCellDesc_1', 'drop profileId_1', 'create formDesc_1', 'create profileId_1_formDesc_1'])
   assert.match(r.text, /purge: deleted 2 of 2, 0 flagged left/)
   assert.match(r.text, /numChanges: set numChanges 0 on 3, 0 left/)
+  assert.match(r.text, /chatMsg: unset ff_chatMsg on 2, 0 left/)
   const dir = fs.readdirSync(tmp).find(n => n.startsWith('rollback-trim-stub_db-'))
   assert.ok(dir, 'backup folder written')
   const info = JSON.parse(fs.readFileSync(path.join(tmp, dir, 'trim-backup.json'), 'utf8'))
@@ -107,6 +114,7 @@ async function run(argv, col, blockerReason = null) {
 
   // A migrated collection has nothing left to swap
   r = await run([], col)
+  assert.match(r.text, /chatMsg: 0 documents hold a stored ff_chatMsg to unset/)
   assert.match(r.text, /indexes: formDesc_1 \(unique\), profileId_1_formDesc_1 \(partial\) present/)
 
   // ensureIndexes: a missing collection gets both, an old one only the free name

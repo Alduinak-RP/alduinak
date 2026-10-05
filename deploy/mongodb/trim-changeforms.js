@@ -64,6 +64,22 @@ const numChanges = {
   },
 }
 
+// The last chat line a recipient got: no gamemode registers it, so the server would send it to every neighbour
+const CHAT_MSG = 'dynamicFields.ff_chatMsg'
+const HAS_CHAT_MSG = { [CHAT_MSG]: { $exists: true } }
+
+const chatMsg = {
+  name: 'chatMsg',
+  async plan(col) {
+    const count = await col.countDocuments({ ...HAS_CHAT_MSG, ...KEPT })
+    return { count, text: `${C.plural(count, 'document holds', 'documents hold')} a stored ff_chatMsg to unset` }
+  },
+  async apply(col) {
+    const res = await col.updateMany(HAS_CHAT_MSG, { $unset: { [CHAT_MSG]: '' } })
+    return `unset ff_chatMsg on ${res.modifiedCount}, ${await col.countDocuments(HAS_CHAT_MSG)} left`
+  },
+}
+
 // The game server ensures the same two at every start (MongoDatabase::EnsureIndexes)
 const INDEXES = [
   { name: 'formDesc_1', key: { formDesc: 1 }, unique: true },
@@ -253,7 +269,7 @@ const decor = {
 }
 
 // Applied in this order; a plan returns { count, text, details?, blocker? }
-const STEPS = [purge, numChanges, indexes, decor]
+const STEPS = [purge, numChanges, chatMsg, indexes, decor]
 
 async function main(argv, { open, blocker = gameServerBlocker, out = console.log } = {}) {
   if (argv.includes('--help')) return out(USAGE)

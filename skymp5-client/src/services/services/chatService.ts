@@ -11,11 +11,10 @@ import { BrowserService } from "./browserService";
 import { VoiceService } from "./voiceService";
 import { TimersService } from "./timersService";
 import { OwnerPropertyChangedEvent } from "../events/ownerPropertyChangedEvent";
-import { FormModel } from "../../view/model";
+import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 
 declare const window: any;
 
-const CHAT_MSG_PROP = 'ff_chatMsg';
 // Matches the widget's own history length
 const PENDING_LINES_CAP = 100;
 const BUBBLE_MS = 6000;
@@ -337,9 +336,10 @@ export class ChatService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.emitter.on("ownerModelReset", (e) => this.onOwnerModelReset(e.model));
+    this.controller.emitter.on("ownerModelReset", () => this.queueSync());
     this.controller.emitter.on("ownerPropertyChanged", (e) => this.onOwnerPropertyChanged(e));
-    if (this.sp.storage["ownerModelSet"] === true) this.onOwnerModelReset(this.sp.storage["ownerModel"] as FormModel | undefined);
+    onCustomPacket(this.controller, "chat", (content) => this.onChatPacket(content));
+    if (this.sp.storage["ownerModelSet"] === true) this.queueSync();
   }
 
   private onBrowserMessage(e: BrowserMessageEvent): void {
@@ -457,27 +457,20 @@ export class ChatService extends ClientListener {
     } catch (e) {}
   }
 
-  // A new owner model (login, respawn, character switch) carries the last persisted ff_chatMsg; it counts as seen so it is not replayed
-  private onOwnerModelReset(model: FormModel | undefined): void {
-    const persisted = (model as Record<string, unknown> | undefined)?.[CHAT_MSG_PROP];
-    this.lastMsg = typeof persisted === "string" ? persisted : null;
+  // Lines arrive during load screens too; they wait for the mounted widget
+  private onChatPacket(content: CustomPacketContent): void {
+    const line = content["line"];
+    if (typeof line !== "string" || line === "") return;
+    this.pendingLines.push(line);
+    if (this.pendingLines.length > PENDING_LINES_CAP) this.pendingLines.shift();
     this.queueSync();
   }
 
   private onOwnerPropertyChanged(e: OwnerPropertyChangedEvent): void {
-    if (e.propName === CHAT_MSG_PROP) {
-      const msg = e.value;
-      if (typeof msg !== "string" || msg === "" || msg === this.lastMsg) return;
-      this.lastMsg = msg;
-      this.pendingLines.push(msg);
-      if (this.pendingLines.length > PENDING_LINES_CAP) this.pendingLines.shift();
-    } else if (e.propName !== "isAdmin" && e.propName !== "appearance") {
-      return;
-    }
-    this.queueSync();
+    if (e.propName === "isAdmin" || e.propName === "appearance") this.queueSync();
   }
 
-  // Owner events arrive inside packet handlers, so the CEF and native work waits for the next update
+  // Chat packets and owner events arrive inside packet handlers, so the CEF and native work waits for the next update
   private queueSync(): void {
     if (this.syncQueued) return;
     this.syncQueued = true;
@@ -584,7 +577,6 @@ export class ChatService extends ClientListener {
   private mounted = false;
   private syncQueued = false;
   private pendingLines: string[] = [];
-  private lastMsg: string | null = null;
   private lastName: string | null = null;
   private lastAdmin = false;
   private systemOverlay: { id: number } | null = null;
