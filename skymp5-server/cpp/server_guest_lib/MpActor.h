@@ -184,10 +184,6 @@ public:
   void DamageActorValue(espm::ActorValue av, float value);
   void SetActorValue(espm::ActorValue actorValue, float value);
 
-  // TODO: only used in legacy MGEF implementation, remove when MGEF is
-  // rewritten
-  void SetActorValues(const ActorValues& actorValues);
-
   // Cached per base, race and template chain
   BaseActorValues GetBaseValues() const;
   BaseActorValues GetMaximumValues() const;
@@ -208,7 +204,6 @@ public:
   void ApplyMagicEffects(std::vector<espm::Effects::Effect>& effects,
                          bool durationOverriden = false);
   void RemoveMagicEffect(const espm::ActorValue actorValue);
-  void RemoveAllMagicEffects();
   void ReapplyMagicEffects();
 
   bool GetConsoleCommandsAllowedFlag() const;

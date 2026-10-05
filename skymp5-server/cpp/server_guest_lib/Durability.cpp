@@ -16,7 +16,6 @@
 
 namespace {
 
-constexpr uint32_t kUnarmedSource = 0x1f4;
 constexpr const char* kBrokenEvent = "onItemBroken";
 constexpr const char* kWornEvent = "onItemWorn";
 

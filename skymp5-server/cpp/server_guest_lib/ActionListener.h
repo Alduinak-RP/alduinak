@@ -171,7 +171,7 @@ private:
   void OnSpellHit(MpActor* aggressor, MpObjectReference* targetRef,
                   const HitData& hitData);
   void OnWeaponHit(MpActor* aggressor, MpObjectReference* targetRef,
-                   HitData hitData, bool isUnarmed);
+                   HitData hitData);
 
   void SendPapyrusOnHitEvent(MpActor* aggressor, MpObjectReference* target,
                              const HitData& hitData);

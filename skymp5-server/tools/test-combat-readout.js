@@ -11,14 +11,14 @@ const esbuild = require('esbuild')
 const systemsDir = path.join(__dirname, '..', 'ts', 'systems')
 // One bundle, so the test reaches the Settings the system reads
 const { outputFiles } = esbuild.buildSync({
-  stdin: { contents: "export * from './combatReadoutSystem'; export * from './combatStats'; export { Settings } from '../settings';", resolveDir: systemsDir, loader: 'ts' },
+  stdin: { contents: "export * from './combatReadoutSystem'; export * from './combatStats'; export { hasDurableCopies } from './durabilityNative'; export { Settings } from '../settings';", resolveDir: systemsDir, loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false, packages: 'external', logLevel: 'error',
 })
 const source = path.join(systemsDir, 'combatReadoutSystem.ts')
 const compiled = new Module(source)
 compiled.paths = Module._nodeModulePaths(systemsDir)
 compiled._compile(outputFiles[0].text, source)
-const { CombatReadoutSystem, Settings, armorReport, conditionPercent, conditionText, durableCopies, hasDurability, readoutConfig,
+const { CombatReadoutSystem, Settings, armorReport, conditionPercent, conditionText, readoutCopies, hasDurableCopies, readoutConfig,
   wornPiecesOf, weaponsOf, totalDtOf, armorWeightOf } = compiled.exports
 
 const PLAYER = 0xff000001
@@ -181,25 +181,25 @@ async function main() {
   })
 
   await test('the durability adapter reads copies, and nothing from a missing, throwing or empty native', () => {
-    assert.equal(hasDurability({}), false)
-    assert.equal(hasDurability(null), false)
-    assert.equal(durableCopies({}, PLAYER), null)
-    assert.equal(durableCopies({ getDurability: () => { throw new Error('gone') } }, PLAYER), null)
-    assert.equal(durableCopies({ getDurability: () => null }, PLAYER), null)
-    assert.deepEqual(durableCopies({ getDurability: () => [] }, PLAYER), [])
-    const copies = durableCopies(makeMp(null, steelCopies), PLAYER)
+    assert.equal(hasDurableCopies({}), false)
+    assert.equal(hasDurableCopies(null), false)
+    assert.equal(readoutCopies({}, PLAYER), null)
+    assert.equal(readoutCopies({ getDurability: () => { throw new Error('gone') } }, PLAYER), null)
+    assert.equal(readoutCopies({ getDurability: () => null }, PLAYER), null)
+    assert.deepEqual(readoutCopies({ getDurability: () => [] }, PLAYER), [])
+    const copies = readoutCopies(makeMp(null, steelCopies), PLAYER)
     assert.equal(copies.length, 7)
     assert.deepEqual(copies[0], { baseId: CUIRASS, condition: 0.97, maxHp: 270, worn: true, left: false })
     assert.deepEqual(copies[1], { baseId: HELMET, condition: 1, maxHp: 68, worn: true, left: false })
     // No condition field is a copy that never wore
-    assert.equal(durableCopies({ getDurability: () => [{ baseId: HELMET, maxHp: 68, worn: true }] }, PLAYER)[0].condition, 1)
+    assert.equal(readoutCopies({ getDurability: () => [{ baseId: HELMET, maxHp: 68, worn: true }] }, PLAYER)[0].condition, 1)
     // A shield is worn on the left
     assert.deepEqual(copies[4], { baseId: SHIELD, condition: 0.5, maxHp: 360, worn: true, left: true })
     assert.equal(copies[6].worn, false)
     // hp is the points left and never read as the full HP
-    assert.deepEqual(durableCopies({ getDurability: () => ({ items: [{ baseId: SWORD, condition: 0.5, hp: 175, maxHp: 350, worn: true }] }) }, PLAYER),
+    assert.deepEqual(readoutCopies({ getDurability: () => ({ items: [{ baseId: SWORD, condition: 0.5, hp: 175, maxHp: 350, worn: true }] }) }, PLAYER),
       [{ baseId: SWORD, condition: 0.5, maxHp: 350, worn: true, left: false }])
-    assert.deepEqual(durableCopies({ getDurability: () => [{ baseId: SWORD, condition: 0.5, hp: 175, worn: true }] }, PLAYER),
+    assert.deepEqual(readoutCopies({ getDurability: () => [{ baseId: SWORD, condition: 0.5, hp: 175, worn: true }] }, PLAYER),
       [{ baseId: SWORD, condition: 0.5, maxHp: null, worn: true, left: false }])
   })
 

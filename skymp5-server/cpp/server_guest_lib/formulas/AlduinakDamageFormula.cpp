@@ -21,7 +21,6 @@
 
 namespace {
 
-constexpr uint32_t kUnarmedSource = 0x1f4;
 constexpr const char* kHumanoidKeyword = "ActorTypeNPC";
 // QuickShot rides the Hunter rank markers from Adept up
 constexpr const char* kQuickShotProfession = "Hunter";

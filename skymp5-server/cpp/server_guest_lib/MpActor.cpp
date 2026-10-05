@@ -2194,14 +2194,6 @@ void MpActor::SetActorValue(espm::ActorValue actorValue, float value)
   });
 }
 
-// TODO: only used in legacy MGEF implementation, remove when MGEF is rewritten
-void MpActor::SetActorValues(const ActorValues& actorValues)
-{
-  NetSendChangeValues(actorValues, std::nullopt);
-  EditChangeForm(
-    [&](MpChangeForm& changeForm) { changeForm.actorValues = actorValues; });
-}
-
 void MpActor::ApplyMagicEffect(espm::Effects::Effect& effect,
                                bool durationOverriden)
 {
@@ -2336,18 +2328,6 @@ void MpActor::RemoveMagicEffect(const espm::ActorValue actorValue)
     });
   } catch (std::exception& e) {
     spdlog::error("MpActor::RemoveMagicEffect {:x} - {}", GetFormId(),
-                  e.what());
-  }
-}
-
-void MpActor::RemoveAllMagicEffects()
-{
-  try {
-    SetActorValues(GetBaseValues());
-    EditChangeForm(
-      [](MpChangeForm& changeForm) { changeForm.activeMagicEffects.Clear(); });
-  } catch (std::exception& e) {
-    spdlog::error("MpActor::RemoveAllMagicEffects {:x} - {}", GetFormId(),
                   e.what());
   }
 }

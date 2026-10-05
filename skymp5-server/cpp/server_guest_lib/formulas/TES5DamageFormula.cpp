@@ -17,11 +17,6 @@
 
 namespace internal {
 
-bool IsUnarmedAttack(const uint32_t sourceFormId)
-{
-  return sourceFormId == 0x1f4;
-}
-
 class TES5DamageFormulaImpl
 {
 public:
@@ -143,7 +138,7 @@ float TES5DamageFormulaImpl::CalcUnarmedDamage() const
 
 float TES5DamageFormulaImpl::DetermineDamageFromSource(uint32_t source) const
 {
-  return IsUnarmedAttack(source) ? CalcUnarmedDamage() : CalcWeaponRating();
+  return source == kUnarmedSource ? CalcUnarmedDamage() : CalcWeaponRating();
 }
 
 float TES5DamageFormulaImpl::CalcArmorDamagePenalty() const
@@ -524,7 +519,7 @@ float GetWeaponEffectMult(const MpActor& aggressor, const MpActor& target,
 {
   WorldState* worldState = aggressor.GetParent();
   if (!worldState || !worldState->effectModifiers ||
-      internal::IsUnarmedAttack(source)) {
+      source == kUnarmedSource) {
     return 1.f;
   }
   const auto weapon = espm::Convert<espm::WEAP>(

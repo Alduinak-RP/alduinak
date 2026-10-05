@@ -1528,11 +1528,6 @@ void ActionListener::OnChangeValues(const RawMessageData& rawMsgData,
 
 namespace {
 
-bool IsUnarmedAttack(const uint32_t sourceFormId)
-{
-  return sourceFormId == 0x1f4;
-}
-
 // Health share left after the damage; outMaxHealth receives the points a full bar stands for, the base maximum x private.healthScale
 float CalculateCurrentHealthPercentage(const MpActor& actor, float damage,
                                        float healthPercentage,
@@ -1572,7 +1567,7 @@ float GetReach(const MpActor& actor, const uint32_t source,
                float reachHotfixMult)
 {
   auto espmProvider = actor.GetParent();
-  if (IsUnarmedAttack(source)) {
+  if (source == kUnarmedSource) {
     uint32_t raceId = actor.GetRaceId();
     return reachHotfixMult *
       espm::GetData<espm::RACE>(raceId, espmProvider).unarmedReach;
@@ -1827,12 +1822,11 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
     return;
   }
 
-  const bool isUnarmed = IsUnarmedAttack(hitData.source);
-
   // An equipment report holds worn copies only, and a fresh swap may not have reached the server yet
-  if (isUnarmed || aggressor->GetInventory().HasItem(hitData.source) ||
+  if (hitData.source == kUnarmedSource ||
+      aggressor->GetInventory().HasItem(hitData.source) ||
       aggressor->GetEquipment().inv.HasItem(hitData.source)) {
-    OnWeaponHit(aggressor, targetRef, hitData, isUnarmed);
+    OnWeaponHit(aggressor, targetRef, hitData);
     return;
   }
 
@@ -2318,8 +2312,7 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
 }
 
 void ActionListener::OnWeaponHit(MpActor* aggressor,
-                                 MpObjectReference* targetRef, HitData hitData,
-                                 [[maybe_unused]] bool isUnarmed)
+                                 MpObjectReference* targetRef, HitData hitData)
 {
   const auto currentHitTime = std::chrono::steady_clock::now();
 

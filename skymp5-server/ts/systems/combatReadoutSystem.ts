@@ -1,6 +1,7 @@
 import { Settings } from "../settings";
 import { hex } from "./actorUtil";
 import { GearStats, NO_ATTACK_KIND, armorWeightOf, combatStats, hasCombatStats, totalDtOf, weaponsOf, wornPiecesOf } from "./combatStats";
+import { durableCopies, hasDurableCopies } from "./durabilityNative";
 import { Log, System, SystemContext } from "./system";
 import { FINE_STEP, qualityName } from "./temperRecipes";
 
@@ -19,43 +20,22 @@ type Mp = any;
 
 const DEFAULT_BROKEN_LABEL = "Broken";
 
-// Adapter for the native getDurability(actorId) of scam_native.node, which exists only in a build with the durability core.
-const DURABILITY_FUNCTION = "getDurability";
-
-export const hasDurability = (mp: Mp): boolean => typeof mp?.[DURABILITY_FUNCTION] === "function";
-
-// One durable copy in an inventory
-export interface DurableCopy {
+// One durable copy as /armor reads it
+export interface ReadoutCopy {
   baseId: number;
   // Share from 0 to 1, 1 for a copy that never wore
   condition: number;
-  // HP of the copy at full condition (the native's maxHp; its hp is the points left), null when the native sends none
+  // HP of the copy at full condition, null when the native sends none
   maxHp: number | null;
+  // Worn in either hand
   worn: boolean;
   // Worn in the left hand: a second weapon or a shield
   left: boolean;
 }
 
-const copyOf = (entry: unknown): DurableCopy | null => {
-  if (!entry || typeof entry !== "object") return null;
-  const e = entry as Record<string, unknown>;
-  const baseId = Number(e["baseId"]);
-  if (!Number.isFinite(baseId) || baseId <= 0) return null;
-  const condition = typeof e["condition"] === "number" && Number.isFinite(e["condition"]) ? Math.min(1, Math.max(0, e["condition"])) : 1;
-  const maxHp = typeof e["maxHp"] === "number" && Number.isFinite(e["maxHp"]) && e["maxHp"] > 0 ? e["maxHp"] : null;
-  return { baseId: baseId >>> 0, condition, maxHp, worn: e["worn"] === true || e["wornLeft"] === true, left: e["wornLeft"] === true };
-};
-
 // Every durable copy the actor holds, null when the native has none to give or the call fails
-export const durableCopies = (mp: Mp, actorId: number): DurableCopy[] | null => {
-  try {
-    const raw = hasDurability(mp) ? mp[DURABILITY_FUNCTION](actorId) : null;
-    const list = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : null;
-    return list ? (list as unknown[]).map(copyOf).filter((c): c is DurableCopy => c !== null) : null;
-  } catch {
-    return null;
-  }
-};
+export const readoutCopies = (mp: Mp, actorId: number): ReadoutCopy[] | null =>
+  durableCopies(mp, actorId)?.map((c) => ({ baseId: c.baseId, condition: c.condition, maxHp: c.maxHp || null, worn: c.worn || c.wornLeft, left: c.wornLeft })) ?? null;
 
 // The percent of the name tag, the native ConditionPercent: rounded down, 1 for anything above 0
 export const conditionPercent = (condition: number): number =>
@@ -103,13 +83,13 @@ export interface ReadoutSources {
 // The lines /armor shows for the actor; null when neither native has anything for it
 export const armorReport = (mp: Mp, actorId: number, o: ReadoutSources): string[] | null => {
   const stats = o.stats ? combatStats(mp, actorId) : null;
-  const copies = o.wear ? durableCopies(mp, actorId) : null;
+  const copies = o.wear ? readoutCopies(mp, actorId) : null;
   if (!stats && !copies) return null;
 
   // A worn copy is matched to one piece only, so two copies of a base keep their own condition
   const free = (copies ?? []).filter((c) => c.worn);
   // left names the hand of a weapon, whose copy in that hand is taken before any other of its base
-  const takeCopy = (baseId: number, left?: boolean): DurableCopy | null => {
+  const takeCopy = (baseId: number, left?: boolean): ReadoutCopy | null => {
     const inHand = left === undefined ? -1 : free.findIndex((c) => c.baseId === baseId && c.left === left);
     const i = inHand < 0 ? free.findIndex((c) => c.baseId === baseId) : inHand;
     return i < 0 ? null : free.splice(i, 1)[0];
@@ -162,7 +142,7 @@ export class CombatReadoutSystem implements System {
     const config = readoutConfig((await Settings.get()).allSettings?.["alduinakDamageFormulaSettings"]);
     if (!config.formula && !config.durability) return;
     const stats = config.formula && hasCombatStats(mp);
-    const wear = config.durability && hasDurability(mp);
+    const wear = config.durability && hasDurableCopies(mp);
     const missing = [config.formula && !stats ? "getCombatStats (no DT lines)" : "", config.durability && !wear ? "getDurability (no condition)" : ""].filter(Boolean);
     if (missing.length) this.log(`[combat] this scam_native.node has no ${missing.join(" and no ")}${stats || wear ? "" : ", /armor is off"}`);
     if (!stats && !wear) return;
