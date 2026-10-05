@@ -21,7 +21,7 @@ export interface Locational {
 
 // World id -> border areas, each a list of x,y points
 const areasByWorld = new Map<number, number[][][]>();
-const lastInside = new Map<number, Locational>();
+const lastInside = new Map<number, { world: number; pos: number[] }>();
 
 // Field buffers alias the plugin file, so the points are copied out
 function readBorder(mp: Mp, rec: EspmRecord): { world: number; areas: number[][][] } | null {
@@ -52,25 +52,29 @@ export async function loadWorldBorders(mp: Mp, dataDir: string, loadOrder: strin
   log(`[border] ${count} border region(s) over ${areasByWorld.size} worldspace(s)`);
 }
 
-// False in interiors, in worldspaces without a border and for unknown descs
-export function isOutsideBorder(mp: Mp, loc: Locational): boolean {
-  const areas = areasByWorld.get(formIdFromConfig(mp, String(loc.cellOrWorldDesc)));
+// False in interiors, in worldspaces without a border and for unknown ids
+export function outsideBorderAt(world: number, pos: readonly number[]): boolean {
+  const areas = areasByWorld.get(world);
   if (!areas) return false;
-  const x = Number(loc.pos[0]);
-  const y = Number(loc.pos[1]);
+  const x = Number(pos[0]);
+  const y = Number(pos[1]);
   return !areas.some((a) => pointInPolygon(a, x, y));
 }
 
-export function noteInside(actorId: number, loc: Locational): void {
-  lastInside.set(actorId, { cellOrWorldDesc: String(loc.cellOrWorldDesc), pos: [...loc.pos], rot: [...loc.rot] });
+export function isOutsideBorder(mp: Mp, loc: Locational): boolean {
+  return outsideBorderAt(formIdFromConfig(mp, String(loc.cellOrWorldDesc)), loc.pos);
 }
 
-// The actor's last spot inside in the same worldspace, else the nearest start location there, else null
+export function noteInside(actorId: number, world: number, pos: readonly number[]): void {
+  lastInside.set(actorId, { world, pos: [...pos] });
+}
+
+// The actor's last spot inside in the same worldspace with its current facing, else the nearest start location there, else null
 export function insideSpot(mp: Mp, actorId: number, loc: Locational, starts: StartLocation[]): Locational | null {
   const desc = String(loc.cellOrWorldDesc);
-  const last = lastInside.get(actorId);
-  if (last && last.cellOrWorldDesc.toLowerCase() === desc.toLowerCase()) return last;
   const world = formIdFromConfig(mp, desc);
+  const last = lastInside.get(actorId);
+  if (last && last.world === world) return { cellOrWorldDesc: desc, pos: last.pos, rot: loc.rot };
   const distance = (s: StartLocation): number => Math.hypot(s.pos[0] - loc.pos[0], s.pos[1] - loc.pos[1]);
   const start = starts
     .filter((s) => s.worldOrCell >>> 0 === world)
