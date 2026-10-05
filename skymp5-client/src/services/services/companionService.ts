@@ -4,6 +4,7 @@ import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customP
 import { WorldCleanerService } from "./worldCleanerService";
 import { isRemoteHostedByMe, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { normalizeAngle } from "../../sync/movementApply";
+import { EFFECT_FLAG_HOSTILE } from "../../sync/spell";
 
 // Owner side of the server companion library (companionSystem.ts, docs/docs_roleplay_companions.md).
 // The owner hosts its companions, so this engine's AI drives them: teammate setup, following, and combat with the server's target.
@@ -162,7 +163,7 @@ export class CompanionService extends ClientListener {
       return false;
     }
     for (let i = 0; i < scroll.getNumEffects(); i++) {
-      if (scroll.getNthEffectMagicEffect(i)?.isEffectFlagSet(CompanionService.hostileEffectFlag)) {
+      if (scroll.getNthEffectMagicEffect(i)?.isEffectFlagSet(EFFECT_FLAG_HOSTILE)) {
         return true;
       }
     }
@@ -326,5 +327,4 @@ export class CompanionService extends ClientListener {
   // Below this turn the offset is left alone, or the follower hunts its heading every tick
   private static readonly followAngleStep = 20;
   private static readonly followReassertMs = 2000;
-  private static readonly hostileEffectFlag = 0x1;
 }

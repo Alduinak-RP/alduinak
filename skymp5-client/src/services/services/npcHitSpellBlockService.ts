@@ -2,6 +2,7 @@ import { ActiveEffectApplyRemoveEvent, Actor, Form, Game, HitEvent, MagicEffect,
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { DeathService } from "./deathService";
 import { getMaximumActorValue, setActorValuePercentage } from "../../sync/actorvalues";
+import { CASTING_FIRE_AND_FORGET, DELIVERY_CONTACT, isHarmfulEffect } from "../../sync/spell";
 import { isHostedByMe, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { logToPlatformLog } from "../../logging";
 import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
@@ -14,10 +15,6 @@ const PAIR_WINDOW_MS = 250;
 const SERVER_VERDICT_WINDOW_MS = 3000;
 // Longer than the longest creature hit poison, DLC1crFalmerPoisonedWeapon06's 4 s
 const LANDED_TTL_MS = 5000;
-const DELIVERY_CONTACT = 1;
-const CASTING_FIRE_AND_FORGET = 1;
-const HOSTILE_FLAG = 0x1;
-const DETRIMENTAL_FLAG = 0x4;
 const POISON_RESIST = "PoisonResist";
 // A blocked swing lands from the front, the server's ShouldBeBlocked arc of 1 rad
 const BLOCK_ARC_DEG = 57.3;
@@ -252,7 +249,7 @@ export class NpcHitSpellBlockService extends ClientListener {
   private isPoisonHitEffect(effect: MagicEffect): boolean {
     return HIT_SPELLS_BY_EFFECT.has(effect.getFormID()) || (effect.getDeliveryType() === DELIVERY_CONTACT
       && effect.getCastingType() === CASTING_FIRE_AND_FORGET
-      && (effect.isEffectFlagSet(HOSTILE_FLAG) || effect.isEffectFlagSet(DETRIMENTAL_FLAG))
+      && isHarmfulEffect(effect)
       && effect.getResistance() === POISON_RESIST);
   }
 

@@ -71,16 +71,11 @@ export class SendInputsService extends ClientListener {
 
     // Spell-to-hand changes fire no TESEquipEvent, so poll them; otherwise clones keep the last weapon/spell loadout (desync S1/S3)
     private checkSpellEquipmentChanged(player: Actor) {
-        // Slot ids left/right/voice/instant (SpellType enum not exported here)
-        const sig = [0, 1, 2, 3]
-            .map(t => player.getEquippedSpell(t as never)?.getFormID() ?? 0)
-            .join(',');
-        if (this.lastSpellSignature === undefined) {
-            this.lastSpellSignature = sig;
-        } else if (sig !== this.lastSpellSignature) {
-            this.lastSpellSignature = sig;
+        const slots = this.controller.lookupListener(MagicSyncService).getPlayerSpellSlots(player);
+        if (this.lastSpellSlots !== undefined && slots !== this.lastSpellSlots) {
             this.equipmentChanged = true;
         }
+        this.lastSpellSlots = slots;
     }
 
     private onEquip(event: EquipEvent) {
@@ -189,13 +184,13 @@ export class SendInputsService extends ClientListener {
 
     // The server applies ChangeValues to the sender's own actor whatever idx says, so hosted NPCs report none
     private sendActorValuePercentage(player: Actor, form?: FormModel) {
+        // A clone's replayed hostile spell must not lower the reported health
+        this.controller.lookupListener(CloneSpellGuardService).enforce();
+
         const canSend = form && (form.isDead ?? false) === false;
         if (!canSend) {
           return;
         }
-
-        // A clone's replayed hostile spell must not lower the reported health
-        this.controller.lookupListener(CloneSpellGuardService).enforce();
 
         const currentTime = Date.now();
         // Nothing goes out inside the send gap, so the read waits for it
@@ -386,7 +381,7 @@ export class SendInputsService extends ClientListener {
     private actorValuesReadAt = 0;
     private isRaceSexMenuShown = false;
     private equipmentChanged = false;
-    private lastSpellSignature?: string;
+    private lastSpellSlots?: readonly number[];
     private lastEquipmentSentMs = 0;
     private numEquipmentChanges = 0;
     private reportedWornBases: number[] = [];

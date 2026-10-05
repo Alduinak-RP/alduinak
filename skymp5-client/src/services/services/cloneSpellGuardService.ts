@@ -2,6 +2,7 @@ import { Actor, Game, HitEvent, ObjectReference, Spell } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { DeathService } from "./deathService";
 import { setActorValuePercentage } from "../../sync/actorvalues";
+import { CASTING_CONCENTRATION, DELIVERY_SELF, EFFECT_FLAG_RECOVER, isHarmfulEffect } from "../../sync/spell";
 import { isHostedByMe } from "../../view/worldViewMisc";
 
 interface CloneGuard {
@@ -14,7 +15,6 @@ export class CloneSpellGuardService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
         super();
         this.controller.on("hit", (e) => this.onHit(e));
-        this.controller.on("update", () => this.enforce());
     }
 
     // Must run before the queued replay executes, so the floor is the health before the clone's hits
@@ -38,11 +38,10 @@ export class CloneSpellGuardService extends ClientListener {
             if (!effect) {
                 continue;
             }
-            launchedFromClone = launchedFromClone || effect.getDeliveryType() !== this.selfDelivery;
-            concentration = concentration || effect.getCastingType() === this.concentrationCasting;
+            launchedFromClone = launchedFromClone || effect.getDeliveryType() !== DELIVERY_SELF;
+            concentration = concentration || effect.getCastingType() === CASTING_CONCENTRATION;
             // Slows, fear and paralysis restore their value when they end and never lower health
-            const harmful = effect.isEffectFlagSet(this.hostileFlag) || effect.isEffectFlagSet(this.detrimentalFlag);
-            if (harmful && !effect.isEffectFlagSet(this.recoverFlag)) {
+            if (isHarmfulEffect(effect) && !effect.isEffectFlagSet(EFFECT_FLAG_RECOVER)) {
                 damageSec = Math.max(damageSec, spell.getNthEffectDuration(i));
             }
         }
@@ -153,11 +152,6 @@ export class CloneSpellGuardService extends ClientListener {
     private readonly playerId = 0x14;
     // Covers the longest vanilla damage projectile flight, 4 s for Firebolt and Ice Spike at full range
     private readonly guardMarginSec = 5;
-    private readonly hostileFlag = 0x1;
-    private readonly recoverFlag = 0x2;
-    private readonly detrimentalFlag = 0x4;
-    private readonly selfDelivery = 0;
-    private readonly concentrationCasting = 2;
     private guardedClones = new Map<number, CloneGuard>();
     private healthFloor: number | undefined = undefined;
 }

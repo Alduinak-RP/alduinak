@@ -2,6 +2,20 @@ import { Actor, ActorBase, Game, MagicEffect, Race, Spell, Utility, printConsole
 import { BLOCKED_POWER_IDS } from '../services/services/magicSyncService';
 import { refreshMovement } from './actorvalues';
 
+// MagicEffect flags, delivery types and casting types as the engine numbers them
+export const EFFECT_FLAG_HOSTILE = 0x1;
+export const EFFECT_FLAG_RECOVER = 0x2;
+export const EFFECT_FLAG_DETRIMENTAL = 0x4;
+export const DELIVERY_SELF = 0;
+export const DELIVERY_CONTACT = 1;
+export const CASTING_CONSTANT_EFFECT = 0;
+export const CASTING_FIRE_AND_FORGET = 1;
+export const CASTING_CONCENTRATION = 2;
+
+// Hostile or detrimental
+export const isHarmfulEffect = (effect: MagicEffect): boolean =>
+  effect.isEffectFlagSet(EFFECT_FLAG_HOSTILE) || effect.isEffectFlagSet(EFFECT_FLAG_DETRIMENTAL);
+
 // Listed spells stay, removing and re-adding one in the same frame would dispel and recast it
 export const removeUnlistedSpells = (actor: Actor, spellsIds: Array<number>) => {
   let spellToRemove = new Array<Spell>();
@@ -85,7 +99,6 @@ export const learnSpells = (actor: Actor, spellsIds: Array<number>) => {
 
 const PLAYABLE_RACE_FIRST = 0x13740;
 const PLAYABLE_RACE_LAST = 0x13749;
-const CASTING_CONSTANT_EFFECT = 0;
 
 const raceSpells = (race: Race) => {
   const spells = new Array<Spell>();

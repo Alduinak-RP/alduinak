@@ -28,7 +28,7 @@ import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSi
 import { applyDurabilityNames } from '../../sync/durabilityNames';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
-import { describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
+import { CASTING_CONCENTRATION, describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormView } from '../../view/formView';
 import { resetHostAttempts } from '../../view/hostAttempts';
@@ -2063,7 +2063,7 @@ export class RemoteServer extends ClientListener {
   }
 
   private isConcentrationSpell(spellId: number): boolean {
-    return this.sp.Spell.from(Game.getFormEx(spellId))?.getNthEffectMagicEffect(0)?.getCastingType() === this.concentrationCasting;
+    return this.sp.Spell.from(Game.getFormEx(spellId))?.getNthEffectMagicEffect(0)?.getCastingType() === CASTING_CONCENTRATION;
   }
 
   private sweepCloneCasts(): void {
@@ -2127,7 +2127,6 @@ export class RemoteServer extends ClientListener {
   private cloneCastStoppedAt = new Map<string, number>();
   private readonly cloneCastTimeoutMs = 8000;
   private readonly cloneCastStopMemoryMs = 2000;
-  private readonly concentrationCasting = 2;
   private lastCloneCastSweep = 0;
   private playerSpawnSeq = 0;
   private ownAppearanceHeld = false;

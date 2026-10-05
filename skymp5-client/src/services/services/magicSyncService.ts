@@ -8,13 +8,14 @@ import { ClientListener, CombinedController, Sp } from './clientListener';
 import { MountService } from './mountService';
 import { CustomPacketContent, onCustomPacket } from './customPacketUtil';
 import { logTrace, logToPlatformLog } from '../../logging';
+import { DELIVERY_SELF } from '../../sync/spell';
 
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
 import { UpdateAnimVariablesMessageMsgData } from "../messages/updateAnimVariablesMessage";
 
 const CASTING_RECENT_MS = 500;
-// The player's hands are read this often while no relayed cast reads them every frame
+// The player's spell slots, and casting vars while no relayed cast reads them every frame, are read this often
 const CASTING_SAMPLE_MS = 100;
 
 // Racial greater powers are disabled on this server (form ids verified against Skyrim.esm on the reference install)
@@ -101,6 +102,20 @@ export class MagicSyncService extends ClientListener {
     // True from the first read that saw a hand casting until CASTING_RECENT_MS after the first read that saw it stop
     isCastingRecently(): boolean {
         return Date.now() - this.playerCastingAt < CASTING_RECENT_MS;
+    }
+
+    // Spell ids in the left, right, voice and instant slots, a new array only when one changed
+    getPlayerSpellSlots(player: Actor): readonly number[] {
+        const now = Date.now();
+        if (now - this.playerSlotsReadAt >= CASTING_SAMPLE_MS) {
+            this.playerSlotsReadAt = now;
+            const slots: number[] = [SpellType.Left, SpellType.Right, SpellType.Voise, SpellType.Instant]
+                .map((slot: number) => player.getEquippedSpell(slot)?.getFormID() ?? 0);
+            if (slots.some((id, i) => id !== this.playerSlots[i])) {
+                this.playerSlots = slots;
+            }
+        }
+        return this.playerSlots;
     }
 
     private readCastingVars(ac: Actor, actorId: number) {
@@ -281,9 +296,11 @@ export class MagicSyncService extends ClientListener {
         }
         const { left, right, dual } = this.readCastingVars(ac, cast.casterLocalId);
         const spellId = cast.msg.spell;
+        const [leftSpell, rightSpell] = cast.casterLocalId === this.playerId
+            ? this.getPlayerSpellSlots(ac)
+            : [ac.getEquippedSpell(SpellType.Left)?.getFormID(), ac.getEquippedSpell(SpellType.Right)?.getFormID()];
         // The platform reports a spell held in both hands as right-handed, so either hand counts
-        const inBothHands = ac.getEquippedSpell(SpellType.Left)?.getFormID() === spellId
-            && ac.getEquippedSpell(SpellType.Right)?.getFormID() === spellId;
+        const inBothHands = !!spellId && leftSpell === spellId && rightSpell === spellId;
         if (dual || inBothHands) {
             return left || right || dual;
         }
@@ -323,7 +340,7 @@ export class MagicSyncService extends ClientListener {
         if (!crosshairId || !Actor.from(Game.getFormEx(crosshairId))) {
             return targetId;
         }
-        const isSelf = spell?.getNthEffectMagicEffect(0)?.getDeliveryType() === this.selfDelivery;
+        const isSelf = spell?.getNthEffectMagicEffect(0)?.getDeliveryType() === DELIVERY_SELF;
         return isSelf ? targetId : crosshairId;
     }
 
@@ -395,7 +412,6 @@ export class MagicSyncService extends ClientListener {
     }
 
     private playerId = 0x14;
-    private readonly selfDelivery = 0;
     private sendUpdateAnimationVariablesRateMs = 500;
     private castKeepAliveRateMs = 3000;
     private castStartGraceMs = 250;
@@ -407,4 +423,6 @@ export class MagicSyncService extends ClientListener {
     private playerCasting = false;
     private playerCastingAt = 0;
     private playerCastingReadAt = 0;
+    private playerSlots: number[] = [];
+    private playerSlotsReadAt = 0;
 }
