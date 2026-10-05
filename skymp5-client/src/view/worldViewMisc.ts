@@ -3,6 +3,7 @@ import { WorldView } from "./worldView";
 import { SpApiInteractor } from '../services/spApiInteractor';
 import { RemoteServer } from "../services/services/remoteServer";
 import { FormModel } from "./model";
+import { CreateActorMessageAdditionalProps } from "../services/messages/createActorMessage";
 
 export const getViewFromStorage = (): WorldView | undefined => {
   const res = storage["view"] as WorldView;
@@ -108,11 +109,22 @@ export const getObjectReference = (i: number): ObjectReference | null => {
   return null;
 };
 
-// Custom properties (ff_*) of plugin-placed refs, which keep no FormModel
-export const pluginRefProps = new Map<number, Record<string, unknown>>();
+// A plugin-placed ref the server streams to this client; these keep no FormModel
+export interface PluginRef {
+  idx: number;
+  // The server's current values, applied once the ref is loaded
+  props: CreateActorMessageAdditionalProps;
+  // Custom properties (ff_*)
+  custom: Record<string, unknown>;
+  // The server's last pose, applied when the item was moved (ff_moved)
+  pose?: { pos: number[]; rot: number[] };
+  // The whole record went on once since its CreateActor; after that only changed props are applied
+  applied: boolean;
+  changed: Set<string>;
+}
 
-// The server's last pose of a plugin-placed ref, applied once its copy loads if it was moved
-export const pluginRefPose = new Map<number, { pos: number[]; rot: number[] }>();
+// Plugin-placed refs by refrId, from their CreateActor to their DestroyActor
+export const pluginRefs = new Map<number, PluginRef>();
 
 // True when an ff_carried value names a carrier other than this client's character
 export const carriedByOther = (value: unknown): boolean => {
@@ -123,8 +135,8 @@ export const carriedByOther = (value: unknown): boolean => {
 // A custom property of a server form, or of a plugin-placed ref without one (doors keep a FormModel)
 export const formProp = (remoteId: number, prop: string): unknown => {
   if (!remoteId) return undefined;
-  const plugin = pluginRefProps.get(remoteId);
-  if (plugin) return plugin[prop];
+  const plugin = pluginRefs.get(remoteId);
+  if (plugin) return plugin.custom[prop];
   const form = SpApiInteractor.getControllerInstance().lookupListener(RemoteServer).getFormByRefrId(remoteId);
   return (form as Record<string, unknown> | undefined)?.[prop];
 };

@@ -3,7 +3,7 @@ import * as sp from "skyrimPlatform";
 import { ButtonEvent, DxScanCode, ObjectReference } from "skyrimPlatform";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { buttonEventKeyCode } from "./widgetMenuUtil";
-import { formProp, localIdToRemoteId, pluginRefPose, remoteIdToLocalId } from "../../view/worldViewMisc";
+import { formProp, localIdToRemoteId, pluginRefs, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { FormTypeEx } from "../../extensions/formTypeEx";
 import { RemoteServer } from "./remoteServer";
 import { ActivationService } from "./activationService";
@@ -213,7 +213,8 @@ export class ItemService extends ClientListener {
       // During a granted carry only the server ending it (time out, refusal) sends this
       const unghost = own && this.carry!.ghosted;
       if (own) this.carry = null;
-      if (target < 0xff000000) pluginRefPose.set(target, { pos: [pos[0], pos[1], pos[2]], rot: [rot[0], rot[1], rot[2]] });
+      const plugin = pluginRefs.get(target);
+      if (plugin) plugin.pose = { pos: [pos[0], pos[1], pos[2]], rot: [rot[0], rot[1], rot[2]] };
       // The model is what a copy spawns from and what its first movement apply moves it back to
       const form = this.controller.lookupListener(RemoteServer).getFormByRefrId(target);
       if (form?.movement) form.movement = { ...form.movement, pos: [pos[0], pos[1], pos[2]], rot: [rot[0], rot[1], rot[2]] };

@@ -71,8 +71,8 @@ import {
   getViewFromStorage,
   isHostedByMe,
   remoteIdToLocalId,
-  pluginRefProps,
-  pluginRefPose,
+  pluginRefs,
+  PluginRef,
   carriedByOther,
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
@@ -146,6 +146,20 @@ const RACE_CHECK_AFTER_S = 3;
 const RACE_MENU_LOG_MS = 60000;
 // How long a furniture activation may take to seat the player before its seat is given back
 const FURNITURE_SEAT_WAIT_MS = 15000;
+// Plugin refs no load event named are polled at this rate for this long
+const PLUGIN_REF_POLL_MS = 500;
+const PLUGIN_REF_POLL_WINDOW_MS = 30000;
+// UpdateProperty values applied to a loaded plugin ref; the record keeps the rest for its first apply
+const PLUGIN_REF_PROPS_APPLIED = new Set(['inventory', 'isOpen', 'isHarvested', 'disabled', 'ff_carried']);
+
+// How waiting plugin refs were applied, to compare the load events' coverage with the fallback poll
+interface PluginRefApplies {
+  atOnce: number;
+  cellAttach: number;
+  moveAttachDetach: number;
+  fallback: number;
+  lapsed: number;
+}
 
 interface PlayerTeleport {
   pos: NiPoint3;
@@ -398,6 +412,11 @@ export class RemoteServer extends ClientListener {
     this.controller.on("update", () => this.checkPlayerTeleport());
     this.controller.on("update", () => this.checkRaceMenu());
     this.controller.on("update", () => this.checkRaceAbilities());
+    this.controller.on("update", () => this.updatePluginRefs());
+    this.controller.on("cellAttach", (e) => this.onPluginRefAttached(e.refr, "cellAttach"));
+    this.controller.on("moveAttachDetach", (e) => {
+      if (e.isCellAttached) this.onPluginRefAttached(e.movedRef, "moveAttachDetach");
+    });
     this.controller.on("menuOpen", (e) => {
       if (e.name === Menu.RaceSex) {
         this.raceMenuSeen = true;
@@ -857,68 +876,31 @@ export class RemoteServer extends ClientListener {
     const msg = event.message;
     if (this.skipFormViewCreation(msg)) {
       const refrId = msg.refrId!;
-      const custom = this.parseCustomProps(msg);
-      if (Object.keys(custom).length) pluginRefProps.set(refrId, custom);
-      else pluginRefProps.delete(refrId);
-      if (msg.transform) pluginRefPose.set(refrId, { pos: msg.transform.pos, rot: msg.transform.rot });
-      else pluginRefPose.delete(refrId);
-      this.onceLoad(refrId, (refr: ObjectReference) => {
-        if (refr) {
-          ObjectReferenceEx.dealWithRef(refr);
-          // Current values: an UpdateProperty or itemMoved may have come while the ref was loading
-          const props = pluginRefProps.get(refrId) ?? {};
-          const pose = pluginRefPose.get(refrId);
-          // A plugin item the server moved; untouched ones keep the plugin's placement
-          if (props["ff_moved"] === true && pose) {
-            refr.setPosition(pose.pos[0], pose.pos[1], pose.pos[2]);
-            refr.setAngle(pose.rot[0], pose.rot[1], pose.rot[2]);
-          }
-          if (msg.props) {
-            if (msg.props.inventory) {
-              ModelApplyUtils.applyModelInventory(refr, msg.props.inventory);
-            }
-            ModelApplyUtils.applyModelIsOpen(refr, !!msg.props['isOpen']);
-            ModelApplyUtils.applyModelIsHarvested(
-              refr,
-              !!msg.props['isHarvested'],
-            );
-
-            ModelApplyUtils.applyModelNodeScale(refr, msg.props.setNodeScale);
-
-            ModelApplyUtils.applyModelNodeTextureSet(refr, msg.props.setNodeTextureSet);
-
-            ModelApplyUtils.applyModelIsDisabled(refr, !!(msg.props.isDisabled || msg.props['disabled']) || carriedByOther(props["ff_carried"]));
-
-            const animation = msg.props.lastAnimation;
-            if (typeof animation === "string") {
-              this.controller.lookupListener(CellAnimationsService).queue(refr.getFormID(), animation);
-            }
-
-            let displayName = msg.props.displayName;
-
-            // keep in sync with spSnippetService.ts
-            if (typeof displayName === "string") {
-
-              const replaceValue = refr.getBaseObject()?.getName();
-
-              if (replaceValue !== undefined) {
-                displayName = displayName.replace(/%original_name%/g, replaceValue);
-              } else {
-                logError(this, "Couldn't get a replaceValue for SetDisplayName, refr.getFormID() was", refr.getFormID().toString(16));
-              }
-
-              refr.setDisplayName(displayName, true);
-              logTrace(this, `calling setDisplayName`, displayName, `for`, refr.getFormID().toString(16));
-            }
-          }
-        } else {
-          logError(this, 'Failed to apply model to', refrId.toString(16));
-        }
+      // An idx names a plugin ref or a form, never both
+      if (this.getIdManager().getId(msg.idx) !== -1) {
+        this.removeForm(msg.idx);
+        this.getIdManager().freeIdFor(msg.idx);
+      }
+      this.dropPluginRef(msg.idx);
+      const old = pluginRefs.get(refrId);
+      if (old) this.dropPluginRef(old.idx);
+      this.pluginRefByIdx.set(msg.idx, refrId);
+      pluginRefs.set(refrId, {
+        idx: msg.idx,
+        props: msg.props ? { ...msg.props } : {},
+        custom: this.parseCustomProps(msg),
+        pose: msg.transform ? { pos: msg.transform.pos, rot: msg.transform.rot } : undefined,
+        applied: false,
+        changed: new Set(),
       });
+      this.pluginRefsDue.add(refrId);
       return;
     }
 
     logTrace(this, "Create actor");
+
+    // An idx names a plugin ref or a form, never both
+    this.dropPluginRef(msg.idx);
 
     if (this.getIdManager().getId(msg.idx) !== -1) {
       logToPlatformLog(this, `repeated CreateActor for idx ${msg.idx} (refr ${(msg.refrId ?? 0).toString(16)}), model and view replaced`);
@@ -1229,8 +1211,10 @@ export class RemoteServer extends ClientListener {
   }
 
   private onDestroyActorMessage(event: ConnectionMessage<DestroyActorMessage>): void {
-    this.removeForm(event.message.idx);
-    this.getIdManager().freeIdFor(event.message.idx);
+    const idx = event.message.idx;
+    if (this.dropPluginRef(idx) || this.getIdManager().getId(idx) === -1) return;
+    this.removeForm(idx);
+    this.getIdManager().freeIdFor(idx);
   }
 
   // Drops the model at this idx and destroys its view; the idx keeps its id
@@ -1242,7 +1226,7 @@ export class RemoteServer extends ClientListener {
       this.formIdxByRefrId.delete(refrId);
     }
     this.worldModel.forms[i] = undefined;
-    getViewFromStorage()?.syncFormArray(this.worldModel);
+    getViewFromStorage()?.getFormViews().destroyForm(i);
 
     // Shrink to fit
     while (1) {
@@ -1396,29 +1380,7 @@ export class RemoteServer extends ClientListener {
     const msgData = this.extractUpdatePropertyMessageData(msg);
 
     if (this.skipFormViewCreation(msg)) {
-      const refrId = msg.refrId;
-      if (msg.propName.startsWith("ff_")) {
-        pluginRefProps.set(refrId, { ...pluginRefProps.get(refrId), [msg.propName]: msgData });
-      }
-      once('update', () => {
-        const refr = ObjectReference.from(Game.getFormEx(refrId));
-        if (!refr) {
-          logError(this, 'UpdateProperty: refr not found');
-          return;
-        }
-        if (msg.propName === 'inventory') {
-          ModelApplyUtils.applyModelInventory(refr, msgData as Inventory);
-        } else if (msg.propName === 'isOpen') {
-          ModelApplyUtils.applyModelIsOpen(refr, !!msgData);
-        } else if (msg.propName === 'isHarvested') {
-          ModelApplyUtils.applyModelIsHarvested(refr, !!msgData);
-        } else if (msg.propName === 'disabled') {
-          ModelApplyUtils.applyModelIsDisabled(refr, !!msgData);
-        } else if (msg.propName === 'ff_carried' && carriedByOther(msgData)) {
-          // The end of a carry comes with itemMoved, which shows the item at its new spot
-          ModelApplyUtils.applyModelIsDisabled(refr, true);
-        }
-      });
+      this.onPluginRefProperty(msg, msgData);
       return;
     }
     const i = this.getIdManager().getId(msg.idx);
@@ -1521,8 +1483,7 @@ export class RemoteServer extends ClientListener {
     storage['hosted'] = [];
     disposeCopyAnimationSources();
     resetHostAttempts();
-    pluginRefProps.clear();
-    pluginRefPose.clear();
+    this.resetPluginRefs();
     this.cloneCastWatch.clear();
     this.cloneCastStoppedAt.clear();
     FormView.speakingUntil.clear();
@@ -1819,25 +1780,151 @@ export class RemoteServer extends ClientListener {
     });
   }
 
-  private onceLoad(
-    refrId: number,
-    callback: (refr: ObjectReference) => void,
-    maxAttempts: number = 120,
-  ) {
-    once('update', () => {
-      const refr = ObjectReference.from(Game.getFormEx(refrId));
-      if (refr) {
-        callback(refr);
-      } else {
-        maxAttempts--;
-        if (maxAttempts > 0) {
-          once('update', () => this.onceLoad(refrId, callback, maxAttempts));
-        } else {
-          logError(this, 'Failed to load object reference ' + refrId.toString(16));
-        }
+  // Returns false when the idx is not a plugin ref
+  private dropPluginRef(idx: number): boolean {
+    const refrId = this.pluginRefByIdx.get(idx);
+    if (refrId === undefined) return false;
+    this.pluginRefByIdx.delete(idx);
+    if (pluginRefs.get(refrId)?.idx === idx) {
+      pluginRefs.delete(refrId);
+      this.pluginRefsWaiting.delete(refrId);
+      this.pluginRefsPolled.delete(refrId);
+    }
+    return true;
+  }
+
+  private resetPluginRefs(): void {
+    pluginRefs.clear();
+    this.pluginRefByIdx.clear();
+    this.pluginRefsDue.clear();
+    this.pluginRefsWaiting.clear();
+    this.pluginRefsPolled.clear();
+  }
+
+  private updatePluginRefs(): void {
+    if (this.pluginRefsDue.size) {
+      this.pluginRefsDue.forEach((refrId) => {
+        if (!pluginRefs.has(refrId)) return;
+        const refr = ObjectReference.from(Game.getFormEx(refrId));
+        if (refr) this.applyPluginRef(refrId, refr, "atOnce");
+        else this.waitForPluginRef(refrId);
+      });
+      this.pluginRefsDue.clear();
+    }
+    if (!this.pluginRefsPolling) return;
+    const now = Date.now();
+    if (now < this.pluginRefPollAt) return;
+    this.pluginRefPollAt = now + PLUGIN_REF_POLL_MS;
+    this.pluginRefsPolled.forEach((since, refrId) => {
+      if (now - since >= PLUGIN_REF_POLL_WINDOW_MS) {
+        this.pluginRefsPolled.delete(refrId);
+        this.pluginRefApplies.lapsed++;
+        return;
       }
+      if (now - since < PLUGIN_REF_POLL_MS) return;
+      const refr = ObjectReference.from(Game.getFormEx(refrId));
+      if (refr) this.applyPluginRef(refrId, refr, "fallback");
     });
-  };
+    if (this.pluginRefsPolled.size) return;
+    this.pluginRefsPolling = false;
+    const a = this.pluginRefApplies;
+    logToPlatformLog(this, `plugin refs since start: ${a.atOnce} applied at once, ${a.cellAttach} on cellAttach, ${a.moveAttachDetach} on moveAttachDetach, ${a.fallback} by the fallback poll, ${a.lapsed} not loaded within ${PLUGIN_REF_POLL_WINDOW_MS / 1000} s`);
+  }
+
+  private waitForPluginRef(refrId: number): void {
+    this.pluginRefsWaiting.add(refrId);
+    if (!this.pluginRefsPolled.has(refrId)) this.pluginRefsPolled.set(refrId, Date.now());
+    this.pluginRefsPolling = true;
+  }
+
+  private onPluginRefAttached(refr: ObjectReference | null | undefined, how: "cellAttach" | "moveAttachDetach"): void {
+    if (!this.pluginRefsWaiting.size || !refr) return;
+    const refrId = refr.getFormID();
+    if (this.pluginRefsWaiting.has(refrId)) this.applyPluginRef(refrId, refr, how);
+  }
+
+  private applyPluginRef(refrId: number, refr: ObjectReference, how: Exclude<keyof PluginRefApplies, "lapsed">): void {
+    const rec = pluginRefs.get(refrId);
+    if (!rec) return;
+    if (this.pluginRefsWaiting.delete(refrId) || !rec.applied) this.pluginRefApplies[how]++;
+    this.pluginRefsPolled.delete(refrId);
+    if (rec.applied) {
+      rec.changed.forEach((prop) => this.applyPluginRefProp(refr, rec, prop));
+      rec.changed.clear();
+      return;
+    }
+    rec.applied = true;
+    rec.changed.clear();
+    const { props, custom, pose } = rec;
+    ObjectReferenceEx.dealWithRef(refr);
+    // A plugin item the server moved; untouched ones keep the plugin's placement
+    if (custom["ff_moved"] === true && pose) {
+      refr.setPosition(pose.pos[0], pose.pos[1], pose.pos[2]);
+      refr.setAngle(pose.rot[0], pose.rot[1], pose.rot[2]);
+    }
+    if (props.inventory) {
+      ModelApplyUtils.applyModelInventory(refr, props.inventory);
+    }
+    ModelApplyUtils.applyModelIsOpen(refr, !!props.isOpen);
+    ModelApplyUtils.applyModelIsHarvested(refr, !!props.isHarvested);
+    ModelApplyUtils.applyModelNodeScale(refr, props.setNodeScale);
+    ModelApplyUtils.applyModelNodeTextureSet(refr, props.setNodeTextureSet);
+    ModelApplyUtils.applyModelIsDisabled(refr, !!(props.isDisabled || props.disabled) || carriedByOther(custom["ff_carried"]));
+
+    const animation = props.lastAnimation;
+    if (typeof animation === "string") {
+      this.controller.lookupListener(CellAnimationsService).queue(refrId, animation);
+    }
+
+    let displayName = props.displayName;
+    // keep in sync with spSnippetService.ts
+    if (typeof displayName === "string") {
+      const replaceValue = refr.getBaseObject()?.getName();
+      if (replaceValue !== undefined) {
+        displayName = displayName.replace(/%original_name%/g, replaceValue);
+      } else {
+        logError(this, "Couldn't get a replaceValue for SetDisplayName, refr.getFormID() was", refrId.toString(16));
+      }
+      refr.setDisplayName(displayName, true);
+      logTrace(this, `calling setDisplayName`, displayName, `for`, refrId.toString(16));
+    }
+  }
+
+  private onPluginRefProperty(msg: UpdatePropertyMessage, value: unknown): void {
+    const { refrId, propName } = msg;
+    let rec = pluginRefs.get(refrId);
+    // No CreateActor seen, as for a ref streamed before a hot reload
+    if (!rec) {
+      this.dropPluginRef(msg.idx);
+      rec = { idx: msg.idx, props: {}, custom: {}, applied: true, changed: new Set() };
+      pluginRefs.set(refrId, rec);
+      this.pluginRefByIdx.set(msg.idx, refrId);
+    }
+    if (propName.startsWith("ff_")) rec.custom[propName] = value;
+    else (rec.props as Record<string, unknown>)[propName] = value;
+    if (!rec.applied || !PLUGIN_REF_PROPS_APPLIED.has(propName)) return;
+    if (propName === 'ff_carried' && !carriedByOther(value)) return;
+    // The last change is applied last, as the packets came
+    rec.changed.delete(propName);
+    rec.changed.add(propName);
+    if (!this.pluginRefsWaiting.has(refrId)) this.pluginRefsDue.add(refrId);
+  }
+
+  private applyPluginRefProp(refr: ObjectReference, rec: PluginRef, prop: string): void {
+    const props = rec.props;
+    if (prop === 'inventory') {
+      ModelApplyUtils.applyModelInventory(refr, props.inventory as Inventory);
+    } else if (prop === 'isOpen') {
+      ModelApplyUtils.applyModelIsOpen(refr, !!props.isOpen);
+    } else if (prop === 'isHarvested') {
+      ModelApplyUtils.applyModelIsHarvested(refr, !!props.isHarvested);
+    } else if (prop === 'disabled') {
+      ModelApplyUtils.applyModelIsDisabled(refr, !!props.disabled);
+    } else if (prop === 'ff_carried' && carriedByOther(rec.custom["ff_carried"])) {
+      // The end of a carry comes with itemMoved, which shows the item at its new spot
+      ModelApplyUtils.applyModelIsDisabled(refr, true);
+    }
+  }
 
   private skipFormViewCreation(
     msg: UpdatePropertyMessage | CreateActorMessage,
@@ -2059,4 +2146,14 @@ export class RemoteServer extends ClientListener {
   private raceMenuFrames?: FrameStats & { openedAt: number; switches: number };
   private frontLoadedLogged = false;
   private readonly formIdxByRefrId = new Map<number, number>();
+  private readonly pluginRefByIdx = new Map<number, number>();
+  // Tried on the next update: new records and changed props of loaded refs
+  private readonly pluginRefsDue = new Set<number>();
+  // Not loaded when last tried, applied by cellAttach, moveAttachDetach or the poll
+  private readonly pluginRefsWaiting = new Set<number>();
+  // When each waiting ref started waiting, while the poll still tries it
+  private readonly pluginRefsPolled = new Map<number, number>();
+  private pluginRefsPolling = false;
+  private pluginRefPollAt = 0;
+  private readonly pluginRefApplies: PluginRefApplies = { atOnce: 0, cellAttach: 0, moveAttachDetach: 0, fallback: 0, lapsed: 0 };
 }
