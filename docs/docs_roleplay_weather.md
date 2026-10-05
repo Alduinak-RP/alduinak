@@ -129,8 +129,10 @@ the sky still shows the applied weather (the region's outside, SkyrimClear
 inside) and forces it again when a door, fast travel or the engine dropped
 it: outside once no fade is running, inside at once, since a fade there is the
 engine drifting toward the cell's own weather. `loadGame` (login and
-character switch) resets that state and sends `weatherRequest`, which the
-server answers at once.
+character switch) resets that state, drops the last packet, which may be
+another character's, and sends `weatherRequest`, which the server answers at
+once; a character loaded in a place without a region releases whatever
+override the save carried.
 
 ## Transitions
 

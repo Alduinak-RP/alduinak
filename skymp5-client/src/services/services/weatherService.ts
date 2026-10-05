@@ -44,11 +44,12 @@ export class WeatherService extends ClientListener {
     this.dirty = true;
   }
 
-  // The template save carries its own sky, so no weather is held and the server's is asked for again
+  // The template save carries its own sky and the last packet may be another character's, so nothing is held until the server answers
   private onLoadGame(): void {
     this.applied = 0;
     this.fadeSince = 0;
-    this.dirty = !!this.pending;
+    this.pending = null;
+    this.dirty = false;
     sendCustomPacket(this.controller, { customPacketType: "weatherRequest" });
   }
 
@@ -90,7 +91,8 @@ export class WeatherService extends ClientListener {
     const target = !p.region || !p.weatherId ? 0 : this.indoors ? INDOOR_WEATHER : p.weatherId;
     let did = "kept";
     if (!target) {
-      if (this.applied) {
+      // A loaded save may carry an override of its own
+      if (this.applied || first) {
         this.sp.Weather.releaseOverride();
         did = "released";
       }
