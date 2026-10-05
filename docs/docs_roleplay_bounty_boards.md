@@ -168,6 +168,8 @@ other stacks, ...`; other stacks are what managers put in. With
 back for anyone whose client opens the box before the server's inventory
 reaches it, and with `emptyContainers` off or the base listed in
 `containerLootBaseIds` the server itself would add the base's loot.
+`node tools/test-bounty-strongbox.js` in `skymp5-server` runs the swap of an
+old-base box with its contents and the boot line against a mock world.
 
 **On the ground (F10, 2026-10).** Several visible boards stand with their
 foot sunk into the landscape, so a box at the foot was buried: the vanilla
