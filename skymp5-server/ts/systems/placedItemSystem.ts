@@ -211,9 +211,10 @@ export class PlacedItemSystem implements System {
     for (const user of users) sendJson(mp, user, { customPacketType: "itemMoved", target, pos, rot });
   }
 
-  // Users whose client may have the item: the server's neighbours for an FF copy; for a plugin ref everyone in its interior, or within the cells clients load around it outdoors
+  // Users whose client may have the item: the server's neighbours, plus for a plugin ref everyone in its interior, or within the cells clients load around it outdoors
   private viewers(mp: Mp, target: number): number[] {
-    if (target >= 0xff000000) return neighborUsers(mp, target);
+    const neighbors = neighborUsers(mp, target);
+    if (target >= 0xff000000) return neighbors;
     let cell = 0;
     let pos: number[] = [];
     try {
@@ -225,7 +226,8 @@ export class PlacedItemSystem implements System {
     }
     const outdoors = isOutdoors(mp, target);
     const inRange = (p: readonly number[]) => Math.abs(p[0] - pos[0]) <= PLUGIN_LOAD_RANGE && Math.abs(p[1] - pos[1]) <= PLUGIN_LOAD_RANGE;
-    return (onlineSnapshot(mp).byCell.get(cell) ?? []).filter((p) => p.userId >= 0 && (!outdoors || inRange(p.pos))).map((p) => p.userId);
+    const nearby = (onlineSnapshot(mp).byCell.get(cell) ?? []).filter((p) => p.userId >= 0 && (!outdoors || inRange(p.pos))).map((p) => p.userId);
+    return Array.from(new Set([...neighbors, ...nearby]));
   }
 
   private endGrab(mp: Mp, target: number): void {
