@@ -164,7 +164,7 @@ export class MountService extends ClientListener {
 
   // The horse's model says it died or moved to another host; a HostStop counts the same
   private horseLost(now: number): boolean {
-    const form = this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === this.horseId);
+    const form = this.controller.lookupListener(RemoteServer).getFormByRefrId(this.horseId);
     const lost = !form || form.isDead === true || isModelHostedByOther(form) || !isRemoteHostedByMe(this.horseId);
     if (!lost) {
       this.lostSince = 0;

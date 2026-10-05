@@ -44,17 +44,17 @@ export class NetworkingService extends ClientListener {
 
     const remoteServer = this.controller.lookupListener(RemoteServer);
 
-    const idxInModel = refrId
-      ? remoteServer.getWorldModel().forms.findIndex((f) => f && f.refrId === refrId)
-      : remoteServer.getWorldModel().playerCharacterFormIdx;
+    const form = refrId
+      ? remoteServer.getFormByRefrId(refrId)
+      : remoteServer.getWorldModel().forms[remoteServer.getMyActorIndex()];
 
     // fixes "can't get property idx of null or undefined"
-    if (!remoteServer.getWorldModel().forms[idxInModel]) {
+    if (!form) {
       return;
     }
 
     // @ts-ignore
-    e.message.idx = remoteServer.getWorldModel().forms[idxInModel].idx;
+    e.message.idx = form.idx;
 
     delete e.message._refrId;
 

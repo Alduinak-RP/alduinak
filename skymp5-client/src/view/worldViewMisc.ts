@@ -13,6 +13,9 @@ export const getViewFromStorage = (): WorldView | undefined => {
   return undefined;
 };
 
+// Server ids are 64-bit: an actor with a plugin id is streamed with 2^32 added
+export const shortRemoteId = (remoteId: number): number => remoteId >= 0x100000000 ? remoteId - 0x100000000 : remoteId;
+
 export const localIdToRemoteId = (localFormId: number, newCast: boolean = false): number => {
   if (newCast && localFormId == 0x14) {
     return SpApiInteractor.getControllerInstance().lookupListener(RemoteServer).getMyRemoteRefrId();
@@ -23,14 +26,7 @@ export const localIdToRemoteId = (localFormId: number, newCast: boolean = false)
     if (!view) {
       return 0;
     }
-    localFormId = view.getRemoteRefrId(localFormId);
-    if (!localFormId) {
-      return 0;
-    }
-    // serverside ids are 64bit
-    if (localFormId >= 0x100000000) {
-      localFormId -= 0x100000000;
-    }
+    return shortRemoteId(view.getRemoteRefrId(localFormId) || 0);
   }
   return localFormId;
 };
@@ -129,6 +125,6 @@ export const formProp = (remoteId: number, prop: string): unknown => {
   if (!remoteId) return undefined;
   const plugin = pluginRefProps.get(remoteId);
   if (plugin) return plugin[prop];
-  const form = SpApiInteractor.getControllerInstance().lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === remoteId);
+  const form = SpApiInteractor.getControllerInstance().lookupListener(RemoteServer).getFormByRefrId(remoteId);
   return (form as Record<string, unknown> | undefined)?.[prop];
 };

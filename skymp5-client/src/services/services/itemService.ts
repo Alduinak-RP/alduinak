@@ -215,7 +215,7 @@ export class ItemService extends ClientListener {
       if (own) this.carry = null;
       if (target < 0xff000000) pluginRefPose.set(target, { pos: [pos[0], pos[1], pos[2]], rot: [rot[0], rot[1], rot[2]] });
       // The model is what a copy spawns from and what its first movement apply moves it back to
-      const form = this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === target);
+      const form = this.controller.lookupListener(RemoteServer).getFormByRefrId(target);
       if (form?.movement) form.movement = { ...form.movement, pos: [pos[0], pos[1], pos[2]], rot: [rot[0], rot[1], rot[2]] };
       // Native calls are unsafe in the packet handler
       this.controller.once("update", () => {

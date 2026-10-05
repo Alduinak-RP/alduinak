@@ -108,7 +108,7 @@ export class PetService extends ClientListener {
   // The ff_pet property of a pet actor, undefined for anything else
   petOf(remoteId: number): PetProp | undefined {
     if (remoteId < FIRST_DYNAMIC_REMOTE_ID) return undefined;
-    const form = this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === remoteId);
+    const form = this.controller.lookupListener(RemoteServer).getFormByRefrId(remoteId);
     const pet = form ? (form as Record<string, unknown>)["ff_pet"] as PetProp | undefined : undefined;
     return pet && typeof pet === "object" && typeof pet.kind === "string" ? pet : undefined;
   }

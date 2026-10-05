@@ -31,7 +31,7 @@ const MENU_STATE_WAIT_MS = 500;
 
 // Server-spawned NPCs share the dynamic id space; only player characters carry an appearance
 export const isPlayerCharacterId = (controller: CombinedController, remoteId: number): boolean =>
-  remoteId >= FIRST_DYNAMIC_REMOTE_ID && !!controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === remoteId)?.appearance;
+  remoteId >= FIRST_DYNAMIC_REMOTE_ID && !!controller.lookupListener(RemoteServer).getFormByRefrId(remoteId)?.appearance;
 
 interface PlayerAction {
   id: string;

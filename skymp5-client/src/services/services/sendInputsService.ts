@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { SinglePlayerService } from "./singlePlayerService";
-import { FormModel, WorldModel } from "../../view/model";
+import { FormModel } from "../../view/model";
 import { MsgType } from "../../messages";
 import { getMovement } from "../../sync/movementGet";
 
@@ -133,10 +133,8 @@ export class SendInputsService extends ClientListener {
 
         const modelSource = this.controller.lookupListener(RemoteServer);
 
-        const world = modelSource.getWorldModel();
-
         targets.forEach((target) => {
-            const targetFormModel = target ? this.getForm(target, world) : this.getForm(undefined, world);
+            const targetFormModel = this.getForm(target, modelSource);
             this.sendMovement(target, targetFormModel);
             this.sendAnimation(target);
             this.sendAppearance(target);
@@ -395,11 +393,12 @@ export class SendInputsService extends ClientListener {
             : this.sp.Game.getPlayer();
     }
 
-    private getForm(refrId: number | undefined, world: WorldModel): FormModel | undefined {
-        const form = refrId
-            ? world?.forms.find((f) => f?.refrId === refrId)
-            : world.forms[world.playerCharacterFormIdx];
-        return form;
+    private getForm(refrId: number | undefined, modelSource: RemoteServer): FormModel | undefined {
+        if (refrId) {
+            return modelSource.getFormByRefrId(refrId);
+        }
+        const world = modelSource.getWorldModel();
+        return world.forms[world.playerCharacterFormIdx];
     }
 
     private updateActorValuesAfterAnimation(animName: string) {

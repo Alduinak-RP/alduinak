@@ -16,7 +16,7 @@ import { FormTypeEx } from "../extensions/formTypeEx";
 import { PlayerCharacterDataHolder } from "./playerCharacterDataHolder";
 import { lastTryHost, tryHost } from "./hostAttempts";
 import { ModelApplyUtils } from "./modelApplyUtils";
-import { carriedByOther, isModelHostedByOther, knowsCharacter, localIdToRemoteId } from "./worldViewMisc";
+import { carriedByOther, isModelHostedByOther, isRemoteHostedByMe, knowsCharacter, shortRemoteId } from "./worldViewMisc";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { WorldCleanerService } from "../services/services/worldCleanerService";
 import { GamemodeUpdateService } from "../services/services/gamemodeUpdateService";
@@ -55,7 +55,7 @@ export const getScreenResolution = (): ScreenResolution => {
 }
 
 export class FormView {
-  constructor(private remoteRefrId?: number) { }
+  constructor(private remoteRefrId?: number, private readonly onLocalIdChange?: (view: FormView, previous: number) => void) { }
 
   update(model: FormModel): void {
     // Other players mutate into PC clones when moving to another location
@@ -436,16 +436,7 @@ export class FormView {
       }
     }
 
-    // TODO: make host service
-    const hosted = storage['hosted'];
-    let alreadyHosted = false;
-    if (Array.isArray(hosted)) {
-      const remoteId = localIdToRemoteId(this.refrId);
-
-      if (hosted.includes(remoteId) || hosted.includes(remoteId + 0x100000000)) {
-        alreadyHosted = true;
-      }
-    }
+    const alreadyHosted = isRemoteHostedByMe(this.remoteRefrId ?? 0);
     setDefaultAnimsDisabled(this.refrId, alreadyHosted ? false : true);
 
     // Own companions and steered pets keep the follow offset their service gives them
@@ -531,16 +522,6 @@ export class FormView {
           if (ac && remoteId && ac.is3DLoaded()) {
             if (!keepsOwnOffset(remoteId)) {
               ac.clearKeepOffsetFromActor();
-            }
-
-            // TODO: make host service
-            const hosted = storage['hosted'];
-            let alreadyHosted = false;
-            if (Array.isArray(hosted)) {
-              const remoteId = localIdToRemoteId(ac.getFormID());
-              if (hosted.includes(remoteId) || hosted.includes(remoteId + 0x100000000)) {
-                alreadyHosted = true;
-              }
             }
 
             if (!alreadyHosted) {
@@ -704,7 +685,7 @@ export class FormView {
           this.textNameId = createText(textXPos, textYPos, this.createdTagName, this.createdTagColor);
           setTextSize(this.textNameId, 0.5);
           // The server's actor id (a player's character id, a PK body's own id) on a second line under the name
-          const serverId = this.createdActorIdLine ? localIdToRemoteId(this.refrId) : 0;
+          const serverId = this.createdActorIdLine ? shortRemoteId(this.remoteRefrId ?? 0) : 0;
           if (serverId) {
             this.textActorIdId = createText(
               textXPos,
@@ -1076,14 +1057,28 @@ export class FormView {
   };
 
   getLocalRefrId(): number {
-    return this.refrId;
+    return this.localRefrId;
   }
 
   getRemoteRefrId(): number {
     return this.remoteRefrId as number;
   }
 
-  private refrId = 0;
+  private get refrId(): number {
+    return this.localRefrId;
+  }
+
+  // Re-indexed on every change so id lookups later in the same update see the new copy
+  private set refrId(id: number) {
+    const previous = this.localRefrId;
+    if (id === previous) {
+      return;
+    }
+    this.localRefrId = id;
+    this.onLocalIdChange?.(this, previous);
+  }
+
+  private localRefrId = 0;
   private ready = false;
   private animState = this.getDefaultAnimState();
   private movState = {

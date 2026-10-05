@@ -361,6 +361,13 @@ export class RemoteServer extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
 
+    // The world model outlives a hot reload
+    this.worldModel.forms.forEach((form, i) => {
+      if (form?.refrId) {
+        this.formIdxByRefrId.set(form.refrId, i);
+      }
+    });
+
     this.controller.emitter.on("hostStartMessage", (e) => this.onHostStartMessage(e));
     this.controller.emitter.on("hostStopMessage", (e) => this.onHostStopMessage(e));
     this.controller.emitter.on("setInventoryMessage", (e) => this.onSetInventoryMessage(e));
@@ -558,7 +565,7 @@ export class RemoteServer extends ClientListener {
   private onBodyLeft(content: CustomPacketContent): void {
     const victim = Number(content["victim"]) >>> 0;
     const ms = Number(content["ms"]);
-    const form = this.worldModel.forms.find((f) => f?.refrId === victim);
+    const form = this.getFormByRefrId(victim);
     if (form && ms > 0) {
       form.bodyLeftUntil = Date.now() + ms;
     }
@@ -958,6 +965,9 @@ export class RemoteServer extends ClientListener {
       isMyClone: msg.isMe,
     };
     this.worldModel.forms[i] = form;
+    if (msg.refrId) {
+      this.formIdxByRefrId.set(msg.refrId, i);
+    }
 
     if (msg.appearance) {
       form.appearance = msg.appearance;
@@ -1231,6 +1241,11 @@ export class RemoteServer extends ClientListener {
     const msg = event.message;
 
     const i = this.getIdManager().getId(msg.idx);
+    const refrId = this.worldModel.forms[i]?.refrId;
+    // A repeated CreateActor can leave another form with this refrId, which may own the entry
+    if (refrId && this.formIdxByRefrId.get(refrId) === i) {
+      this.formIdxByRefrId.delete(refrId);
+    }
     this.worldModel.forms[i] = undefined;
     getViewFromStorage()?.syncFormArray(this.worldModel);
 
@@ -1493,6 +1508,7 @@ export class RemoteServer extends ClientListener {
 
   private handleConnectionAccepted(): void {
     this.worldModel.forms = [];
+    this.formIdxByRefrId.clear();
     this.worldModel.playerCharacterFormIdx = -1;
     this.worldModel.playerCharacterRefrId = 0;
     this.playerTeleport = undefined;
@@ -1747,6 +1763,12 @@ export class RemoteServer extends ClientListener {
 
   getWorldModel(): WorldModel {
     return this.worldModel;
+  }
+
+  // The newest form the server streamed with this refrId (64-bit for plugin actors)
+  getFormByRefrId(refrId: number): FormModel | undefined {
+    const i = this.formIdxByRefrId.get(refrId);
+    return i === undefined ? undefined : this.worldModel.forms[i];
   }
 
   getMyActorIndex(): number {
@@ -2043,4 +2065,5 @@ export class RemoteServer extends ClientListener {
   private lastTickAt = 0;
   private raceMenuFrames?: FrameStats & { openedAt: number; switches: number };
   private frontLoadedLogged = false;
+  private readonly formIdxByRefrId = new Map<number, number>();
 }

@@ -516,7 +516,7 @@ export class AdminMenuService extends ClientListener {
     const refId = serverId || localId;
     const character = safe(() => isPlayerCharacterId(this.controller, serverId), false);
     // Refs created in game read their base from the server's world model
-    const form = serverId >= FIRST_DYNAMIC_ID ? safe(() => this.controller.lookupListener(RemoteServer).getWorldModel().forms.find((f) => f?.refrId === serverId), undefined) : undefined;
+    const form = serverId >= FIRST_DYNAMIC_ID ? safe(() => this.controller.lookupListener(RemoteServer).getFormByRefrId(serverId), undefined) : undefined;
     const serverBase = form ? (form.baseId || (character ? PLAYER_BASE_ID : 0)) >>> 0 : 0;
     // The body a PK leaves wears the victim's look under an id of its own
     const body = character && (form as Record<string, unknown> | undefined)?.["ff_body"] === true;

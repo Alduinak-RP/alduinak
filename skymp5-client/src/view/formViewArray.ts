@@ -8,7 +8,11 @@ export class FormViewArray {
   updateForm(form: FormModel, i: number) {
     const view = this.formViews[i];
     if (!view) {
-      this.formViews[i] = new FormView(form.refrId);
+      const created = new FormView(form.refrId, (v, previous) => this.indexLocalId(v, previous));
+      this.formViews[i] = created;
+      if (form.refrId !== undefined && form.refrId >= 0xff000000) {
+        this.viewByRemoteId.set(form.refrId, created);
+      }
     } else {
       view.update(form);
     }
@@ -20,13 +24,13 @@ export class FormViewArray {
       return;
     }
 
-    formView.destroy();
+    this.discard(formView);
     this.formViews[i] = undefined;
   }
 
   resize(newSize: number) {
     if (this.formViews.length > newSize) {
-      this.formViews.slice(newSize).forEach((v) => v && v.destroy());
+      this.formViews.slice(newSize).forEach((v) => v && this.discard(v));
     }
     this.formViews.length = newSize;
   }
@@ -89,18 +93,14 @@ export class FormViewArray {
   getRemoteRefrId(clientsideRefrId: number): number {
     if (clientsideRefrId < 0xff000000)
       throw new Error("This function is only for 0xff forms");
-    const formView = this.formViews.find((formView?: FormView) => {
-      return formView && formView.getLocalRefrId() === clientsideRefrId;
-    });
+    const formView = this.viewByLocalId.get(clientsideRefrId);
     return formView ? formView.getRemoteRefrId() : 0;
   }
 
   getLocalRefrId(remoteRefrId: number): number {
     if (remoteRefrId < 0xff000000)
       throw new Error("This function is only for 0xff forms");
-    const formView = this.formViews.find((formView?: FormView) => {
-      return formView && formView.getRemoteRefrId() === remoteRefrId;
-    });
+    const formView = this.viewByRemoteId.get(remoteRefrId);
     return formView ? formView.getLocalRefrId() : 0;
   }
 
@@ -112,5 +112,30 @@ export class FormViewArray {
     return this.formViews.length;
   }
 
+  // An entry is removed only while it still points at this view, so a duplicated id keeps the newer view
+  private indexLocalId(view: FormView, previous: number) {
+    if (this.viewByLocalId.get(previous) === view) {
+      this.viewByLocalId.delete(previous);
+    }
+    const id = view.getLocalRefrId();
+    if (id >= 0xff000000) {
+      this.viewByLocalId.set(id, view);
+    }
+  }
+
+  private discard(view: FormView) {
+    view.destroy();
+    const localId = view.getLocalRefrId();
+    if (this.viewByLocalId.get(localId) === view) {
+      this.viewByLocalId.delete(localId);
+    }
+    const remoteId = view.getRemoteRefrId();
+    if (this.viewByRemoteId.get(remoteId) === view) {
+      this.viewByRemoteId.delete(remoteId);
+    }
+  }
+
   private formViews = new Array<FormView | undefined>();
+  private viewByLocalId = new Map<number, FormView>();
+  private viewByRemoteId = new Map<number, FormView>();
 }
