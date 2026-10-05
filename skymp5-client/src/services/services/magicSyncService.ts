@@ -3,9 +3,10 @@ import { isHostedByMe, localIdToRemoteId } from "../../view/worldViewMisc";
 import { PlayerCharacterDataHolder } from "../../view/playerCharacterDataHolder";
 
 // @ts-expect-error (TODO: Remove in 2.10.0)
-import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, SlotType, EquippedItemType, Spell, Debug } from 'skyrimPlatform'
+import { SpellCastEvent, Actor, printConsole, Game, getAnimationVariablesFromActor, ActorAnimationVariables, SpellType, Spell, Debug } from 'skyrimPlatform'
 import { ClientListener, CombinedController, Sp } from './clientListener';
 import { MountService } from './mountService';
+import { SendInputsService } from './sendInputsService';
 import { CustomPacketContent, onCustomPacket } from './customPacketUtil';
 import { logTrace, logToPlatformLog } from '../../logging';
 
@@ -61,7 +62,10 @@ export class MagicSyncService extends ClientListener {
         this.controller.on("update", () => this.onUpdate());
         this.controller.on("spellCast", (e) => this.onSpellCast(e));
         onCustomPacket(this.controller, "racialState", (content) => this.onRacialState(content));
-        this.controller.emitter.on("connectionDisconnect", () => this.rationedPowers.clear());
+        this.controller.emitter.on("connectionDisconnect", () => {
+            this.rationedPowers.clear();
+            this.streamingAnimVariables = false;
+        });
 
         const self = this;
 
@@ -76,37 +80,44 @@ export class MagicSyncService extends ClientListener {
 
     private onUpdate() {
         this.syncRelayedCasts();
+        this.syncAnimVariables();
+    }
 
-        if (this.isAnyMagicStuffEquiped() === false) {
+    // Observers' clones follow the player's graph only while a drawn hand casts, and the snapshot after it goes reliable
+    private syncAnimVariables() {
+        const now = Date.now();
+        if (now - this.lastSendUpdateAnimationVariables <= this.sendUpdateAnimationVariablesRateMs) {
+            return;
+        }
+
+        const castingRecently = this.controller.lookupListener(SendInputsService).isCastingRecently();
+        if (!castingRecently && !this.streamingAnimVariables) {
             return;
         }
 
         // A rider's snapshot carries riding and locomotion state that would unseat the observers' clone
         if (this.controller.lookupListener(MountService).isMounted) {
+            this.streamingAnimVariables = false;
             return;
         }
 
-        if (Date.now() - this.lastSendUpdateAnimationVariables <= this.sendUpdateAnimationVariablesRateMs) {
+        const ac = Game.getPlayer();
+        if (!ac) {
             return;
         }
 
-        this.lastSendUpdateAnimationVariables = Date.now();
+        const streaming = castingRecently && ac.isWeaponDrawn();
+        if (!streaming && !this.streamingAnimVariables) {
+            return;
+        }
+        this.streamingAnimVariables = streaming;
+        this.lastSendUpdateAnimationVariables = now;
 
-        this.controller.once('update', () => {
-            const ac = Game.getPlayer();
-
-            if (!ac) {
-                return;
-            }
-
-            const animVariables = this.getAnimationVariablesFromActorConverted(ac.getFormID());
-
-            this.controller.emitter.emit("sendMessage", {
-                message: { t: MsgType.UpdateAnimVariables, data: this.getUpdateAnimVariablesEventData(ac, animVariables) },
-                reliability: "reliable"
-            });
+        const animVariables = this.getAnimationVariablesFromActorConverted(ac.getFormID());
+        this.controller.emitter.emit("sendMessage", {
+            message: { t: MsgType.UpdateAnimVariables, data: this.getUpdateAnimVariablesEventData(ac, animVariables) },
+            reliability: streaming ? "unreliable" : "reliable"
         });
-
     }
 
     // Each racialState lists every rationed power of the character, so it replaces the last one
@@ -361,32 +372,6 @@ export class MagicSyncService extends ClientListener {
         return isSpellCastAnimForLeftHand || isSpellCastAnimForRightHand;
     };
 
-    private isAnyMagicStuffEquiped(): boolean {
-        const ac = Game.getPlayer();
-
-        if (!ac) {
-            return false;
-        }
-
-        if (ac.getEquippedSpell(SpellType.Left) || ac.getEquippedSpell(SpellType.Right)) {
-            return true;
-        }
-
-        if (ac.getEquippedSpell(SpellType.Voise) || ac.getEquippedSpell(SpellType.Instant)) {
-            return true;
-        }
-
-        const leftHandEquipmentType = ac.getEquippedItemType(SlotType.Left);
-        const rightHandEquipmentType = ac.getEquippedItemType(SlotType.Right);
-
-        if (leftHandEquipmentType === 9 || leftHandEquipmentType === EquippedItemType.Staff ||
-            rightHandEquipmentType === 9 || rightHandEquipmentType === EquippedItemType.Staff) {
-            return true;
-        }
-
-        return false;
-    }
-
     private playerId = 0x14;
     private readonly selfDelivery = 0;
     private sendUpdateAnimationVariablesRateMs = 500;
@@ -396,4 +381,5 @@ export class MagicSyncService extends ClientListener {
     private relayedCasts = new Map<string, RelayedCast>();
     private rationedPowers = new Map<number, RationedPower>();
     private lastSendUpdateAnimationVariables: number = 0;
+    private streamingAnimVariables = false;
 }

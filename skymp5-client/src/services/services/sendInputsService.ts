@@ -31,6 +31,7 @@ import { Movement } from "../../sync/movement";
 import { logTrace, logToPlatformLog } from "../../logging";
 
 const playerFormId = 0x14;
+const CASTING_RECENT_MS = 500;
 
 // Menus named in a zero-worn report, the ones that undress or re-dress the player or hide the engine's equips
 const REPORT_MENUS = [Menu.Inventory, Menu.Container, Menu.Crafting, Menu.RaceSex, Menu.Loading, Menu.Favorites, Menu.Magic, Menu.Barter, Menu.Gift];
@@ -216,7 +217,7 @@ export class SendInputsService extends ClientListener {
         // Delaying actor values update due to casting
         // TODO: partial updates once the server supports it (keep health/stamina during casting, delay magicka)
         if (
-            currentTime - this.prevCastingDetectedTime < 500 &&
+            this.isCastingRecently() &&
             av.health > 0 // don't delay death actor value update
         ) {
             return;
@@ -280,6 +281,10 @@ export class SendInputsService extends ClientListener {
     // As the engine wore them for the last equipment report, before the creature-form strip
     getReportedWornBases(): number[] {
         return this.reportedWornBases;
+    }
+
+    isCastingRecently(): boolean {
+        return Date.now() - this.prevCastingDetectedTime < CASTING_RECENT_MS;
     }
 
     relayPlayerAnimEvent(animEventName: string): void {
