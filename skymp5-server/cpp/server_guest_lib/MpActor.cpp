@@ -136,6 +136,8 @@ struct MpActor::Impl
   };
   TemplateCache<uint32_t> templateRaceId;
   TemplateCache<BaseActorValues> baseValues;
+  // Keyed on the appearance race, the flag is passivesOnly
+  TemplateCache<std::pair<bool, std::vector<uint32_t>>> baseSpells;
 };
 
 namespace {
@@ -1089,27 +1091,28 @@ bool MpActor::IsSpellLearned(const uint32_t spellId) const
 
 bool MpActor::IsSpellLearnedFromBase(const uint32_t spellId) const
 {
-  const auto spells = GetBaseSpells();
+  const auto& spells = GetBaseSpells();
   return std::find(spells.begin(), spells.end(), spellId) != spells.end();
 }
 
-std::vector<uint32_t> MpActor::GetBaseSpells() const
+namespace {
+// appearanceRaceId replaces the NPC_ race when it is not 0
+std::vector<uint32_t> EvaluateBaseSpells(const MpActor& actor,
+                                         WorldState* worldState,
+                                         bool passivesOnly,
+                                         uint32_t appearanceRaceId)
 {
   std::vector<uint32_t> result;
-
-  auto worldState = GetParent();
-  if (!worldState || !worldState->HasEspm()) {
-    return result;
-  }
+  const uint32_t baseId = actor.GetBaseId();
 
   try {
-    const auto npcData = espm::GetData<espm::NPC_>(GetBaseId(), worldState);
-    const auto npc = worldState->GetEspm().GetBrowser().LookupById(GetBaseId());
+    const auto npcData = espm::GetData<espm::NPC_>(baseId, worldState);
+    const auto npc = worldState->GetEspm().GetBrowser().LookupById(baseId);
     auto& browser = worldState->GetEspm().GetBrowser();
 
     // Templated NPCs (leveled draugr, skeleton mages) take SPLO from the template chain
     auto npcSpells = EvaluateTemplateNoThrow<espm::NPC_::UseSpelllist>(
-      worldState, GetBaseId(), GetTemplateChain(),
+      worldState, baseId, actor.GetTemplateChain(),
       [](const auto& npcLookupResult, const auto& templateNpcData) {
         std::vector<uint32_t> ids;
         for (auto raw : templateNpcData.spells) {
@@ -1140,9 +1143,6 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
       }
     }
 
-    // playersInheritBaseSpells=false keeps only passives: Player spells (Flames, Healing) and race powers are withheld
-    const bool passivesOnly = !worldState->PlayersInheritBaseSpells() &&
-      ChangeForm().profileId != -1;
     auto isWithheld =
       [&](uint32_t spellId,
           std::initializer_list<espm::SPEL::SpellType> withheldTypes) {
@@ -1166,13 +1166,8 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
       }
     }
 
-    // Players carry their chosen race in appearance, not in the NPC_ record
-    uint32_t raceId = npc.ToGlobalId(npcData.race);
-    if (auto appearance = GetAppearance()) {
-      if (appearance->raceId != 0) {
-        raceId = appearance->raceId;
-      }
-    }
+    const uint32_t raceId =
+      appearanceRaceId ? appearanceRaceId : npc.ToGlobalId(npcData.race);
 
     const auto raceData = espm::GetData<espm::RACE>(raceId, worldState);
     const auto race = worldState->GetEspm().GetBrowser().LookupById(raceId);
@@ -1185,10 +1180,40 @@ std::vector<uint32_t> MpActor::GetBaseSpells() const
       }
     }
   } catch (std::exception& e) {
-    spdlog::warn("MpActor::GetBaseSpells {:x} - {}", GetFormId(), e.what());
+    spdlog::warn("MpActor::GetBaseSpells {:x} - {}", actor.GetFormId(),
+                 e.what());
   }
 
   return result;
+}
+}
+
+const std::vector<uint32_t>& MpActor::GetBaseSpells() const
+{
+  static const std::vector<uint32_t> kNoSpells;
+  auto worldState = GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return kNoSpells;
+  }
+
+  // playersInheritBaseSpells=false keeps only passives: Player spells (Flames, Healing) and race powers are withheld
+  const bool passivesOnly =
+    !worldState->PlayersInheritBaseSpells() && ChangeForm().profileId != -1;
+  // Players carry their chosen race in appearance, not in the NPC_ record
+  const auto appearance = GetAppearance();
+  const uint32_t appearanceRaceId = appearance ? appearance->raceId : 0;
+
+  const uint32_t baseId = GetBaseId();
+  const auto& templateChain = GetTemplateChain();
+  auto& cache = pImpl->baseSpells;
+  auto cached = cache.Find(baseId, appearanceRaceId, templateChain);
+  if (!cached || cached->first != passivesOnly) {
+    cached = &cache.Store(baseId, appearanceRaceId, templateChain,
+                          { passivesOnly,
+                            EvaluateBaseSpells(*this, worldState, passivesOnly,
+                                               appearanceRaceId) });
+  }
+  return cached->second;
 }
 
 std::vector<uint32_t> MpActor::GetSpellList() const

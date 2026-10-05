@@ -17,17 +17,12 @@
 class ServerState;
 class WorldState;
 struct ActorValues;
+struct CombatEspmCache;
 
 class ActionListener
 {
 public:
-  ActionListener(PartOne& partOne_)
-    : partOne(partOne_)
-  {
-    craftService = std::make_shared<CraftService>(partOne_);
-    sweetHidePlayerNamesService =
-      std::make_shared<SweetHidePlayerNamesService>(partOne_);
-  }
+  ActionListener(PartOne& partOne_);
 
   virtual void OnCustomPacket(const RawMessageData& rawMsgData,
                               const CustomPacketMessage& msg);
@@ -205,6 +200,8 @@ private:
   // Until when a player's reports can still carry an unblocked hit's poison
   std::unordered_map<uint32_t, std::chrono::steady_clock::time_point>
     unblockedPoisonUntil;
+
+  std::shared_ptr<CombatEspmCache> combatEspmCache;
 
   // TODO: inverse dependency
   std::shared_ptr<CraftService> craftService;

@@ -48,6 +48,74 @@ uint32_t LongToNormal(uint64_t longFormId)
 }
 
 namespace {
+struct HitPoison
+{
+  // Health the whole poison takes over its run
+  float health = 0.f;
+  std::chrono::milliseconds duration{ 0 };
+};
+}
+
+// ESP facts behind the cast and hit checks, read once each since the ESP never changes
+struct CombatEspmCache
+{
+  // Every id the template tree walk from a base reaches
+  std::unordered_map<uint32_t, std::unordered_set<uint32_t>> templateTreeIds;
+  // Per base, one entry per template chain
+  std::unordered_map<
+    uint32_t,
+    std::vector<std::pair<std::vector<FormDesc>, std::optional<HitPoison>>>>
+    hitPoisons;
+  std::unordered_map<uint32_t, bool> wardSpells;
+  std::unordered_map<uint32_t, uint32_t> paralysisSeconds;
+  std::unordered_map<uint32_t, std::vector<espm::Effects::Effect>>
+    restorativeEffects;
+  std::unordered_map<uint32_t, std::vector<espm::Effects::Effect>>
+    areaRestorativeEffects;
+  std::unordered_map<uint32_t, std::optional<espm::SPEL::SPITData>>
+    spellItems;
+  // Cloak and hazard spells by the spell they hit with
+  std::optional<std::unordered_map<uint32_t, std::vector<uint32_t>>>
+    parentsByGrantedSpell;
+};
+
+ActionListener::ActionListener(PartOne& partOne_)
+  : partOne(partOne_)
+  , combatEspmCache(std::make_shared<CombatEspmCache>())
+{
+  craftService = std::make_shared<CraftService>(partOne_);
+  sweetHidePlayerNamesService =
+    std::make_shared<SweetHidePlayerNamesService>(partOne_);
+}
+
+namespace {
+template <class Map, class Compute>
+const typename Map::mapped_type& Cached(Map& map,
+                                        const typename Map::key_type& key,
+                                        const Compute& compute)
+{
+  auto it = map.find(key);
+  if (it == map.end()) {
+    it = map.emplace(key, compute()).first;
+  }
+  return it->second;
+}
+
+// Throws for a record that is not a SPEL
+const std::optional<espm::SPEL::SPITData>& GetSpellItem(
+  CombatEspmCache& cache, WorldState* worldState, uint32_t spellId)
+{
+  return Cached(cache.spellItems, spellId,
+                [&]() -> std::optional<espm::SPEL::SPITData> {
+                  const auto* spellItem =
+                    espm::GetData<espm::SPEL>(spellId, worldState).spellItem;
+                  if (!spellItem) {
+                    return std::nullopt;
+                  }
+                  return *spellItem;
+                });
+}
+
 // Bounds a channel whose stop was lost, matching the observers' clone watch
 constexpr auto kCastRefreshTimeout = std::chrono::milliseconds(8000);
 
@@ -69,9 +137,8 @@ bool HasSweetPie(const WorldState& worldState)
 }
 
 // Non-hostile Health/Magicka/Stamina effects; areaOnly keeps those a self cast spreads to others
-std::vector<espm::Effects::Effect> GetRestorativeEffects(WorldState* worldState,
-                                                         uint32_t spellId,
-                                                         bool areaOnly)
+std::vector<espm::Effects::Effect> EvaluateRestorativeEffects(
+  WorldState* worldState, uint32_t spellId, bool areaOnly)
 {
   std::vector<espm::Effects::Effect> result;
   const auto spellLookup =
@@ -109,11 +176,21 @@ std::vector<espm::Effects::Effect> GetRestorativeEffects(WorldState* worldState,
   return result;
 }
 
+const std::vector<espm::Effects::Effect>& GetRestorativeEffects(
+  CombatEspmCache& cache, WorldState* worldState, uint32_t spellId,
+  bool areaOnly)
+{
+  return Cached(
+    areaOnly ? cache.areaRestorativeEffects : cache.restorativeEffects,
+    spellId,
+    [&] { return EvaluateRestorativeEffects(worldState, spellId, areaOnly); });
+}
+
 // Learned, NPC_/template/race and currently equipped spells
 std::vector<uint32_t> GetKnownSpells(const MpActor& actor)
 {
   std::vector<uint32_t> spells = actor.GetSpellList();
-  const auto baseSpells = actor.GetBaseSpells();
+  const auto& baseSpells = actor.GetBaseSpells();
   spells.insert(spells.end(), baseSpells.begin(), baseSpells.end());
   const auto& equipment = actor.GetEquipment();
   for (const auto& slot : { equipment.leftSpell, equipment.rightSpell,
@@ -141,22 +218,25 @@ void ForEachSpellEffect(WorldState* worldState, uint32_t spellId,
     });
 }
 
-bool IsWardSpell(WorldState* worldState, uint32_t spellId)
+bool IsWardSpell(CombatEspmCache& cache, WorldState* worldState,
+                 uint32_t spellId)
 {
-  bool isWard = false;
-  ForEachSpellEffectData(
-    worldState, spellId,
-    [&](const espm::SPEL::EFIT*, const espm::MGEF::DATA& data,
-        const espm::LookupResult&) {
-      isWard = isWard ||
-        (data.effectType == espm::MGEF::EffectType::AccumulateMagnitude &&
-         data.primaryAV == espm::ActorValue::WardPower);
-    });
-  return isWard;
+  return Cached(cache.wardSpells, spellId, [&] {
+    bool isWard = false;
+    ForEachSpellEffectData(
+      worldState, spellId,
+      [&](const espm::SPEL::EFIT*, const espm::MGEF::DATA& data,
+          const espm::LookupResult&) {
+        isWard = isWard ||
+          (data.effectType == espm::MGEF::EffectType::AccumulateMagnitude &&
+           data.primaryAV == espm::ActorValue::WardPower);
+      });
+    return isWard;
+  });
 }
 
 // Longest visible Paralysis effect in seconds, hidden perk riders need conditions the server does not evaluate
-uint32_t GetParalysisSeconds(WorldState* worldState, uint32_t spellId)
+uint32_t EvaluateParalysisSeconds(WorldState* worldState, uint32_t spellId)
 {
   uint32_t seconds = 0;
   bool damagesHealth = false;
@@ -178,6 +258,14 @@ uint32_t GetParalysisSeconds(WorldState* worldState, uint32_t spellId)
     });
   // Replaying a damaging spell on the target's client would damage it twice
   return damagesHealth ? 0 : seconds;
+}
+
+uint32_t GetParalysisSeconds(CombatEspmCache& cache, WorldState* worldState,
+                             uint32_t spellId)
+{
+  return Cached(cache.paralysisSeconds, spellId, [&] {
+    return EvaluateParalysisSeconds(worldState, spellId);
+  });
 }
 
 // The aggressor's poisoned copy of the weapon that hit, the twin of the worn entry when several differ
@@ -275,23 +363,17 @@ bool IsGrantedBoundItem(const MpActor& actor, uint32_t itemId)
   return false;
 }
 
-// The host's engine rolls leveled templates on its own, so any spell in the base's template tree is valid
-bool IsSpellInTemplateTree(const MpActor& actor, uint32_t spellId)
+// Every id the walk from a base reaches through NPC_ templates and leveled lists, at most 512
+std::unordered_set<uint32_t> EvaluateTemplateTreeIds(WorldState* worldState,
+                                                     uint32_t baseId)
 {
-  WorldState* worldState = actor.GetParent();
-  if (!worldState || !worldState->HasEspm()) {
-    return false;
-  }
   auto& browser = worldState->GetEspm().GetBrowser();
-  std::vector<uint32_t> pending = { actor.GetBaseId() };
+  std::vector<uint32_t> pending = { baseId };
   std::unordered_set<uint32_t> visited;
   constexpr size_t kMaxVisited = 512;
   while (!pending.empty() && visited.size() < kMaxVisited) {
     const uint32_t formId = pending.back();
     pending.pop_back();
-    if (formId == spellId) {
-      return true;
-    }
     if (!visited.insert(formId).second) {
       continue;
     }
@@ -318,18 +400,34 @@ bool IsSpellInTemplateTree(const MpActor& actor, uint32_t spellId)
       }
     }
   }
-  return false;
+  return visited;
+}
+
+// The host's engine rolls leveled templates on its own, so any spell in the base's template tree is valid
+bool IsSpellInTemplateTree(CombatEspmCache& cache, const MpActor& actor,
+                           uint32_t spellId)
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return false;
+  }
+  const uint32_t baseId = actor.GetBaseId();
+  return Cached(cache.templateTreeIds, baseId, [&] {
+           return EvaluateTemplateTreeIds(worldState, baseId);
+         }).count(spellId) > 0;
 }
 
 // A known spell counts even when the equipment update naming it was late, lost or rejected
-bool CanCastSpell(const MpActor& actor, uint32_t spellId)
+bool CanCastSpell(CombatEspmCache& cache, const MpActor& actor,
+                  uint32_t spellId)
 {
   if (actor.GetEquipment().IsSpellEquipped(spellId) ||
       actor.IsSpellLearned(spellId)) {
     return true;
   }
   // Hosted NPCs keep no spell equipment on the server, their template tree is the gate
-  return actor.GetProfileId() == -1 && IsSpellInTemplateTree(actor, spellId);
+  return actor.GetProfileId() == -1 &&
+    IsSpellInTemplateTree(cache, actor, spellId);
 }
 
 // Scrolls sit in the inventory, not in a spell slot
@@ -345,18 +443,18 @@ bool IsHeldScroll(const MpActor& actor, uint32_t scrollId)
 }
 
 // Cloaks and hazards (Blizzard) hit with a spell they grant, not the spell that was cast
-bool IsSpellGrantedBy(WorldState* worldState, uint32_t parentSpellId,
-                      uint32_t sourceId)
+template <class Callback>
+void ForEachGrantedSpell(WorldState* worldState, uint32_t parentSpellId,
+                         const Callback& callback)
 {
-  bool granted = false;
   ForEachSpellEffect(
     worldState, parentSpellId,
     [&](espm::MGEF::EffectType type, uint32_t associatedItem, uint32_t) {
-      if (granted || associatedItem == 0) {
+      if (associatedItem == 0) {
         return;
       }
       if (type == espm::MGEF::EffectType::Cloak) {
-        granted = associatedItem == sourceId;
+        callback(associatedItem);
         return;
       }
       if (type != espm::MGEF::EffectType::SpawnHazard) {
@@ -370,24 +468,54 @@ bool IsSpellGrantedBy(WorldState* worldState, uint32_t parentSpellId,
       }
       const uint32_t hazardSpell =
         hazard->GetData(worldState->GetEspmCache()).spell;
-      granted =
-        hazardSpell != 0 && hazardLookup.ToGlobalId(hazardSpell) == sourceId;
+      if (hazardSpell != 0) {
+        callback(hazardLookup.ToGlobalId(hazardSpell));
+      }
     });
-  return granted;
+}
+
+// The cloak and hazard spells that hit with grantedSpellId
+const std::vector<uint32_t>& GetGrantingSpells(CombatEspmCache& cache,
+                                               WorldState* worldState,
+                                               uint32_t grantedSpellId)
+{
+  static const std::vector<uint32_t> kNoSpells;
+  if (!worldState || !worldState->HasEspm()) {
+    return kNoSpells;
+  }
+  if (!cache.parentsByGrantedSpell) {
+    auto& parents = cache.parentsByGrantedSpell.emplace();
+    for (const auto& spell :
+         worldState->GetEspm().GetBrowser().GetDistinctRecordsByType("SPEL")) {
+      const uint32_t parentId = spell.ToGlobalId(spell.rec->GetId());
+      ForEachGrantedSpell(worldState, parentId, [&](uint32_t grantedId) {
+        auto& list = parents[grantedId];
+        if (std::find(list.begin(), list.end(), parentId) == list.end()) {
+          list.push_back(parentId);
+        }
+      });
+    }
+  }
+  auto it = cache.parentsByGrantedSpell->find(grantedSpellId);
+  return it != cache.parentsByGrantedSpell->end() ? it->second : kNoSpells;
 }
 
 // Projectiles, cloaks and hazards may land after the spell left the hand
-bool CanHitWithSpell(const MpActor& actor, uint32_t spellId)
+bool CanHitWithSpell(CombatEspmCache& cache, const MpActor& actor,
+                     uint32_t spellId)
 {
   if (actor.GetEquipment().IsSpellEquipped(spellId) ||
       actor.IsSpellLearned(spellId)) {
     return true;
   }
-  if (actor.GetProfileId() == -1 && IsSpellInTemplateTree(actor, spellId)) {
+  if (actor.GetProfileId() == -1 &&
+      IsSpellInTemplateTree(cache, actor, spellId)) {
     return true;
   }
-  for (uint32_t knownSpellId : GetKnownSpells(actor)) {
-    if (IsSpellGrantedBy(actor.GetParent(), knownSpellId, spellId)) {
+  for (uint32_t parentId :
+       GetGrantingSpells(cache, actor.GetParent(), spellId)) {
+    if (actor.GetEquipment().IsSpellEquipped(parentId) ||
+        actor.IsSpellLearned(parentId)) {
       return true;
     }
   }
@@ -1739,7 +1867,7 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
     sourceInEspm.rec && sourceInEspm.rec->GetType() == espm::SPEL::kType;
 
   if (isSourceSpell) {
-    if (CanHitWithSpell(*aggressor, hitData.source)) {
+    if (CanHitWithSpell(*combatEspmCache, *aggressor, hitData.source)) {
       OnSpellHit(aggressor, targetRef, hitData);
     } else {
       spdlog::info("ActionListener::OnHit - {:x} cannot hit with spell {:x}",
@@ -1860,7 +1988,8 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   }
 
   const bool isScroll = IsHeldScroll(*caster, spellCastData.spell);
-  if (!isScroll && !CanCastSpell(*caster, spellCastData.spell)) {
+  if (!isScroll &&
+      !CanCastSpell(*combatEspmCache, *caster, spellCastData.spell)) {
     spdlog::info("ActionListener::OnSpellCast - spell {0:x} not "
                  "found in equipment of {1:x}",
                  spellCastData.spell, caster->GetFormId());
@@ -1910,20 +2039,20 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     partOne.worldState.LookupFormById(spellCastData.target));
 
   // Restorative (non-hostile) effects apply here; hostile damage stays on the OnSpellHit path
-  const auto spellData =
-    espm::GetData<espm::SPEL>(spellCastData.spell, &partOne.worldState);
+  const auto& spellItem = GetSpellItem(*combatEspmCache, &partOne.worldState,
+                                       spellCastData.spell);
 
   MpActor* targetActor = nullptr;
-  const bool selfDelivery = spellData.spellItem &&
-    spellData.spellItem->delivery == espm::SPEL::Delivery::Self;
-  const bool isConcentration = spellData.spellItem &&
-    spellData.spellItem->castType == espm::SPEL::CastType::Concentration;
+  const bool selfDelivery =
+    spellItem && spellItem->delivery == espm::SPEL::Delivery::Self;
+  const bool isConcentration = spellItem &&
+    spellItem->castType == espm::SPEL::CastType::Concentration;
   // The cast event's target is always the caster, so an aimed channel takes its target from hits
   const bool aimed = !selfDelivery && isConcentration;
 
   // Fire-and-forget heals on others land in OnSpellHit
-  if (!selfDelivery && spellData.spellItem &&
-      spellData.spellItem->castType == espm::SPEL::CastType::FireAndForget) {
+  if (!selfDelivery && spellItem &&
+      spellItem->castType == espm::SPEL::CastType::FireAndForget) {
     return;
   }
 
@@ -1948,8 +2077,8 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     }
   }
 
-  auto restoreEffects =
-    GetRestorativeEffects(&partOne.worldState, spellCastData.spell, false);
+  auto restoreEffects = GetRestorativeEffects(
+    *combatEspmCache, &partOne.worldState, spellCastData.spell, false);
 
   if (!restoreEffects.empty()) {
     const bool hasSweetpie = HasSweetPie(partOne.worldState);
@@ -2220,16 +2349,16 @@ void ActionListener::OnSpellHit(MpActor* aggressor,
     return;
   }
 
-  const auto spellData =
-    espm::GetData<espm::SPEL>(hitData.source, &partOne.worldState);
-  if (!spellData.spellItem ||
-      spellData.spellItem->castType != espm::SPEL::CastType::FireAndForget) {
+  const auto& spellItem =
+    GetSpellItem(*combatEspmCache, &partOne.worldState, hitData.source);
+  if (!spellItem ||
+      spellItem->castType != espm::SPEL::CastType::FireAndForget) {
     return;
   }
   const bool selfDelivery =
-    spellData.spellItem->delivery == espm::SPEL::Delivery::Self;
-  auto restoreEffects =
-    GetRestorativeEffects(&partOne.worldState, hitData.source, selfDelivery);
+    spellItem->delivery == espm::SPEL::Delivery::Self;
+  auto restoreEffects = GetRestorativeEffects(
+    *combatEspmCache, &partOne.worldState, hitData.source, selfDelivery);
   if (restoreEffects.empty()) {
     return;
   }
@@ -2655,7 +2784,8 @@ void ActionListener::UpdateWardChannel(uint32_t casterId,
     }
     return;
   }
-  if (!IsWardSpell(&partOne.worldState, spellCastData.spell)) {
+  if (!IsWardSpell(*combatEspmCache, &partOne.worldState,
+                   spellCastData.spell)) {
     return;
   }
   const auto now = std::chrono::steady_clock::now();
@@ -2678,22 +2808,13 @@ const std::pair<FormDesc, FormDesc> kHitPoisonPerks[] = {
 // The client's 2 s ChangeValues throttle and the report's travel
 constexpr auto kPoisonReportDelay = std::chrono::seconds(3);
 
-struct HitPoison
-{
-  // Health the whole poison takes over its run
-  float health = 0.f;
-  std::chrono::milliseconds duration{ 0 };
-};
-
 // From the perk list the NPC's engine uses: its own, or its template's when it inherits the spell list
-std::optional<HitPoison> FindHitPoison(const MpActor& actor)
+std::optional<HitPoison> EvaluateHitPoison(
+  WorldState* worldState, uint32_t baseId,
+  const std::vector<FormDesc>& templateChain)
 {
-  WorldState* worldState = actor.GetParent();
-  if (actor.GetProfileId() >= 0 || !worldState || !worldState->HasEspm()) {
-    return std::nullopt;
-  }
   const auto perks = EvaluateTemplateNoThrow<espm::NPC_::UseSpelllist>(
-    worldState, actor.GetBaseId(), actor.GetTemplateChain(),
+    worldState, baseId, templateChain,
     [](const auto& lookup, const auto& npcData) {
       std::vector<uint32_t> res;
       for (uint32_t perk : npcData.perks) {
@@ -2741,6 +2862,26 @@ std::optional<HitPoison> FindHitPoison(const MpActor& actor)
   }
   return std::nullopt;
 }
+
+std::optional<HitPoison> FindHitPoison(CombatEspmCache& cache,
+                                       const MpActor& actor)
+{
+  WorldState* worldState = actor.GetParent();
+  if (actor.GetProfileId() >= 0 || !worldState || !worldState->HasEspm()) {
+    return std::nullopt;
+  }
+  const uint32_t baseId = actor.GetBaseId();
+  const auto& templateChain = actor.GetTemplateChain();
+  auto& entries = cache.hitPoisons[baseId];
+  for (const auto& [chain, poison] : entries) {
+    if (chain == templateChain) {
+      return poison;
+    }
+  }
+  auto poison = EvaluateHitPoison(worldState, baseId, templateChain);
+  entries.emplace_back(templateChain, poison);
+  return poison;
+}
 }
 
 // A blocked poison swing opens the guard, an unblocked one closes it and keeps it shut while its poison is reported, since the report cannot tell the two apart
@@ -2750,7 +2891,7 @@ void ActionListener::TrackNpcHitPoison(const MpActor& aggressor,
   if (target.GetProfileId() < 0) {
     return;
   }
-  const auto poison = FindHitPoison(aggressor);
+  const auto poison = FindHitPoison(*combatEspmCache, aggressor);
   if (!poison) {
     return;
   }
@@ -2876,7 +3017,8 @@ void ActionListener::ApplyParalysis(MpActor& aggressor, MpActor& target,
   if (&aggressor == &target || target.IsDead() || IsParalyzed(target)) {
     return;
   }
-  const uint32_t seconds = GetParalysisSeconds(&partOne.worldState, spellId);
+  const uint32_t seconds =
+    GetParalysisSeconds(*combatEspmCache, &partOne.worldState, spellId);
   // God mode refuses paralysis like it refuses damage
   if (seconds == 0 ||
       !FireHitDamageEvent("onHitDamageAttempt", &aggressor, &target, spellId,
