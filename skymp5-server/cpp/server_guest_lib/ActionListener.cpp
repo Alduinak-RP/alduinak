@@ -1835,11 +1835,10 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
     }
   }
 
+  // Death schedules the respawn, so a late swing changes nothing
   if (aggressor->IsDead()) {
-    spdlog::debug(fmt::format("{:x} actor is dead and can't attack. "
-                              "requesting respawn in order to fix death state",
-                              aggressor->GetFormId()));
-    aggressor->RespawnWithDelay(true);
+    spdlog::debug("ActionListener::OnHit - {:x} is dead and cannot attack",
+                  aggressor->GetFormId());
     return;
   }
 
@@ -1967,11 +1966,10 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
     return;
   }
 
+  // Death schedules the respawn, so a late cast changes nothing
   if (caster->IsDead()) {
-    spdlog::info(fmt::format("{:x} actor is dead and can't spell cast. "
-                             "requesting respawn in order to fix death state",
-                             caster->GetFormId()));
-    caster->RespawnWithDelay(true);
+    spdlog::debug("ActionListener::OnSpellCast - {:x} is dead and cannot cast",
+                  caster->GetFormId());
     return;
   }
 
@@ -2372,9 +2370,10 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
   const auto currentHitTime = std::chrono::steady_clock::now();
 
   auto* targetActorPtr = targetRef ? targetRef->AsActor() : nullptr;
-  if (!targetActorPtr) {
+  // An object or a corpse takes no damage and wears nothing, its scripts still see the hit
+  if (!targetActorPtr || targetActorPtr->IsDead()) {
     SendPapyrusOnHitEvent(aggressor, targetRef, hitData);
-    return; // Not an actor, damage calculation is not needed
+    return;
   }
 
   auto& targetActor = *targetActorPtr;
