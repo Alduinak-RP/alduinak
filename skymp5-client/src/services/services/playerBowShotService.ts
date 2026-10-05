@@ -1,5 +1,6 @@
-import { Ammo, Game, PlayerBowShotEvent, WeaponType } from "skyrimPlatform";
+import { Actor, Ammo, Game, PlayerBowShotEvent, WeaponType } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
+import { SendInputsService } from "./sendInputsService";
 import { MsgType } from "../../messages";
 import { getEquipment } from "../../sync/equipment";
 import { QueryBlockSetInventoryEvent } from "../events/queryBlockSetInventoryEvent";
@@ -86,22 +87,21 @@ export class PlayerBowShotService extends ClientListener {
             return;
         }
 
-        const equippedAmmoEntries = getEquipment(actor, 0).inv.entries.filter(entry => entry.worn && Ammo.from(Game.getFormEx(entry.baseId)));
+        const equippedAmmoIds = this.getWornAmmoIds(actor);
 
-        if (equippedAmmoEntries.length === 0) {
+        if (equippedAmmoIds.length === 0) {
             logError(this, `Ammo not found`);
             return;
         }
 
-        if (equippedAmmoEntries.length > 1) {
-            const equippedAmmoIds = equippedAmmoEntries.map(entry => entry.baseId);
+        if (equippedAmmoIds.length > 1) {
             logError(this, `Found more than 1 ammos:`, equippedAmmoIds);
             return;
         }
 
         this.sendShot({
             weaponId: crossbow.getFormID(),
-            ammoId: equippedAmmoEntries[0].baseId,
+            ammoId: equippedAmmoIds[0],
             isSunGazing: false,
             power: 1.0
         });
@@ -110,6 +110,16 @@ export class PlayerBowShotService extends ClientListener {
         this.inventoryUnblockMoment = Date.now() + 5 * 1000;
 
         logTrace(this, `Sent crossbow shot`);
+    }
+
+    // The last equipment report's ammo while the engine still has it equipped, else a full inventory read
+    private getWornAmmoIds(actor: Actor): number[] {
+        const ammoOf = (bases: number[]) => bases.filter((baseId) => Ammo.from(Game.getFormEx(baseId)));
+        const reported = ammoOf(this.controller.lookupListener(SendInputsService).getReportedWornBases());
+        if (reported.length > 0 && reported.every((baseId) => actor.isEquipped(Game.getFormEx(baseId)))) {
+            return reported;
+        }
+        return ammoOf(getEquipment(actor, 0).inv.entries.filter((e) => e.worn).map((e) => e.baseId));
     }
 
     private score = 0;

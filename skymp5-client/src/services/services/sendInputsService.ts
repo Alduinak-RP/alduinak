@@ -278,6 +278,11 @@ export class SendInputsService extends ClientListener {
         }
     }
 
+    // As the engine wore them for the last equipment report, before the creature-form strip
+    getReportedWornBases(): number[] {
+        return this.reportedWornBases;
+    }
+
     relayPlayerAnimEvent(animEventName: string): void {
         const player = this.sp.Game.getPlayer();
         if (player) {
@@ -344,6 +349,7 @@ export class SendInputsService extends ClientListener {
                 this.sp.Game.getPlayer() as Actor,
                 this.numEquipmentChanges,
             );
+            this.reportedWornBases = eq.inv.entries.filter((e) => e.worn).map((e) => e.baseId);
             // A creature form reports no worn gear, so no weapon reaches the other players' copies of its skeleton
             if (this.controller.lookupListener(PolymorphService).creatureForm) {
                 const worn = countWorn(eq.inv);
@@ -419,6 +425,7 @@ export class SendInputsService extends ClientListener {
     private lastSpellSignature?: string;
     private lastEquipmentSentMs = 0;
     private numEquipmentChanges = 0;
+    private reportedWornBases: number[] = [];
     private spawnReportsToLog = 0;
     private lastEquip?: { baseId: number; at: number };
     private lastUnequip?: { baseId: number; at: number };
