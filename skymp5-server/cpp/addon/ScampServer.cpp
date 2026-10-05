@@ -545,6 +545,11 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     ReadAuthorityBound(serverSettings, "maxActivateDistance",
                        "enforceActivateDistance",
                        partOne->worldState.activateDistance);
+    ReadAuthorityBound(serverSettings, "meleeSlack", "enforceMeleeReach",
+                       partOne->worldState.meleeSlack);
+    ReadAuthorityBound(serverSettings, "maxShotDistance",
+                       "enforceShotDistance",
+                       partOne->worldState.shotDistance);
 
     partOne->worldState.isPapyrusHotReloadEnabled =
       serverSettings.count("isPapyrusHotReloadEnabled") != 0 &&

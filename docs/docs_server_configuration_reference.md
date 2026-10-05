@@ -1318,6 +1318,8 @@ native server at boot; it logs `<limit> is <n> and <switch> is <true|false>: ...
 |---|---|---|---|
 | `maxMovementSpeed` | `enforceMovementSpeed` | `2048` | Horizontal units per second a player's movement report may cover since the server last accepted one, counting at least 0.13 s, plus 256 units of slack. Logs `MovementValidation - <actor> moved <n> units in <s> s, over the <bound> units maxMovementSpeed allows, logged only\|refused`. A refused report puts the player back with Teleport2. Hosted NPCs are not checked. |
 | `maxActivateDistance` | `enforceActivateDistance` | `1024` | Units from the player, or the hosted NPC, to the object it activates (doors, containers, items, seats). Closing a container or leaving a seat is never checked, and an object in another cell or worldspace is left to the activation's own worldspace check. Logs `ActionListener::OnActivate - <caster> activates <target> from <n> units, farther than maxActivateDistance <max>, logged only\|refused`. Very large objects such as gates have far origins. Papyrus activations, lever links and activation children are not checked. |
+| `meleeSlack` | `enforceMeleeReach` | `400` | Units a player's melee hit (fists, any weapon but a staff, a bow bash) may land beyond its reach, measured between the two origins. The reach is the weapon's reach times `fCombatDistance`, or the race's unarmed reach for fists; the slack covers body size and movement lag. Logs `ActionListener::OnHit - <attacker> hits <target> with <weapon> from <n> units, beyond its reach <r> plus meleeSlack <slack>, logged only\|refused`. Hosted NPCs are never checked, because creatures (giants, mammoths, dragons) hit from far-off origins. Large targets have far origins too. |
+| `maxShotDistance` | `enforceShotDistance` | `8192` | Units from the shooter, a player or a hosted NPC, to the target of a bow or crossbow hit (not a bash). Logs `ActionListener::OnHit - <shooter> shoots <target> with <weapon> from <n> units, farther than maxShotDistance <max>, logged only\|refused`. Other hits stay bounded by the fixed 4096 units. |
 
 ```json5
 {
@@ -1325,7 +1327,11 @@ native server at boot; it logs `<limit> is <n> and <switch> is <true|false>: ...
   "maxMovementSpeed": 2048,
   "enforceMovementSpeed": false,
   "maxActivateDistance": 1024,
-  "enforceActivateDistance": false
+  "enforceActivateDistance": false,
+  "meleeSlack": 400,
+  "enforceMeleeReach": false,
+  "maxShotDistance": 8192,
+  "enforceShotDistance": false
   // ...
 }
 ```

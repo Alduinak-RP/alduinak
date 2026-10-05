@@ -1703,6 +1703,23 @@ bool IsBowOrCrossbowShot(const HitData& hitData, WorldState* worldState)
   return true;
 }
 
+// Fists and any weapon but a staff; a bow counts only for a bash
+bool IsMeleeSource(const HitData& hitData, bool isShot,
+                   WorldState* worldState)
+{
+  if (hitData.source == kUnarmedSource) {
+    return true;
+  }
+  if (isShot || !worldState || !worldState->HasEspm()) {
+    return false;
+  }
+  const auto* weapon = espm::Convert<espm::WEAP>(
+    worldState->GetEspm().GetBrowser().LookupById(hitData.source).rec);
+  const auto* weapDNAM =
+    weapon ? weapon->GetData(worldState->GetEspmCache()).weapDNAM : nullptr;
+  return weapDNAM && weapDNAM->animType != espm::WEAP::AnimType::Staff;
+}
+
 bool IsDistanceValid(const MpActor& actor, const MpActor& targetActor,
                      const HitData& hitData)
 {
@@ -1819,8 +1836,8 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
     return;
   }
 
-  // TODO: repair IsDistanceValid instead
-  if (!IsBowOrCrossbowShot(hitData, &partOne.worldState)) {
+  const bool isShot = IsBowOrCrossbowShot(hitData, &partOne.worldState);
+  if (!isShot) {
     const NiPoint3& aggressorPos = aggressor->GetPos();
     const NiPoint3& targetPos = targetRef->GetPos();
     constexpr float kExteriorCellWidthUnits = 4096.f;
@@ -1837,6 +1854,11 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
   if (aggressor->IsDead()) {
     spdlog::debug("ActionListener::OnHit - {:x} is dead and cannot attack",
                   aggressor->GetFormId());
+    return;
+  }
+
+  if (!IsHitDistanceAllowed(rawMsgData.userId, *aggressor, *targetRef,
+                            hitData, isShot)) {
     return;
   }
 
@@ -1880,6 +1902,54 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
 
   spdlog::debug("{:x} weapon is not equipped by {:x} actor and cannot be used",
                 hitData.source, hitData.aggressor);
+}
+
+bool ActionListener::IsHitDistanceAllowed(Networking::UserId userId,
+                                          const MpActor& aggressor,
+                                          const MpObjectReference& target,
+                                          const HitData& hitData, bool isShot)
+{
+  auto& worldState = partOne.worldState;
+  const float sqrDistance = (aggressor.GetPos() - target.GetPos()).SqrLength();
+
+  if (isShot) {
+    const auto& bound = worldState.shotDistance;
+    if (sqrDistance <= bound.max * bound.max) {
+      return true;
+    }
+    if (auto held = partOne.serverState.AllowAuthorityLog(
+          userId, AuthorityCheck::ShotDistance)) {
+      spdlog::warn("ActionListener::OnHit - {:x} shoots {:x} with {:x} from "
+                   "{} units, farther than maxShotDistance {}, {} ({} more "
+                   "since the last line)",
+                   aggressor.GetFormId(), target.GetFormId(), hitData.source,
+                   std::sqrt(sqrDistance), bound.max,
+                   bound.enforce ? "refused" : "logged only", *held);
+    }
+    return !bound.enforce;
+  }
+
+  // Creatures hit from body origins far beyond their reach, so only players are checked
+  if (aggressor.GetProfileId() < 0 || !target.AsActor() ||
+      !IsMeleeSource(hitData, isShot, &worldState)) {
+    return true;
+  }
+  const auto& bound = worldState.meleeSlack;
+  const float reach = GetReach(aggressor, hitData.source, 1.f);
+  const float maxDistance = reach + bound.max;
+  if (sqrDistance <= maxDistance * maxDistance) {
+    return true;
+  }
+  if (auto held = partOne.serverState.AllowAuthorityLog(
+        userId, AuthorityCheck::MeleeReach)) {
+    spdlog::warn("ActionListener::OnHit - {:x} hits {:x} with {:x} from {} "
+                 "units, beyond its reach {} plus meleeSlack {}, {} ({} more "
+                 "since the last line)",
+                 aggressor.GetFormId(), target.GetFormId(), hitData.source,
+                 std::sqrt(sqrDistance), reach, bound.max,
+                 bound.enforce ? "refused" : "logged only", *held);
+  }
+  return !bound.enforce;
 }
 
 void ActionListener::OnUpdateAnimVariables(
@@ -2457,27 +2527,6 @@ void ActionListener::OnWeaponHit(MpActor* aggressor,
       expectedAttackTime);
     return;
   }
-
-  // if (IsDistanceValid(*aggressor, targetActor, hitData) == false) {
-  //   float distance =
-  //     std::sqrt(GetSqrDistanceToBounds(*aggressor, targetActor));
-
-  //   // TODO: fix bounding boxes for creatures such as chicken, mudcrab, etc
-  //   float reachPveHotfixMult =
-  //     (aggressor->GetBaseId() <= 0x7 && targetActor.GetBaseId() <= 0x7)
-  //     ? 1.f
-  //     : std::numeric_limits<float>::infinity();
-
-  //   float reach = GetReach(*aggressor, hitData.source, reachPveHotfixMult);
-  //   uint32_t aggressorId = aggressor->GetFormId();
-  //   uint32_t targetId = targetActor.GetFormId();
-  //   spdlog::debug(
-  //     fmt::format("{:x} actor can't reach {:x} target because distance {} is
-  //     "
-  //                 "greater then first actor attack radius {}",
-  //                 aggressorId, targetId, distance, reach));
-  //   return;
-  // }
 
   ActorValues currentActorValues = targetActor.GetActorValues();
 

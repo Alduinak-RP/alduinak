@@ -214,6 +214,11 @@ private:
                                  const MpObjectReference& caster,
                                  const MpObjectReference& target);
 
+  // Logs a shot beyond maxShotDistance or a player's melee hit beyond its reach plus meleeSlack, false only while that check is enforced
+  bool IsHitDistanceAllowed(Networking::UserId userId, const MpActor& aggressor,
+                            const MpObjectReference& target,
+                            const HitData& hitData, bool isShot);
+
   // sanitizedMsg replaces the owner's raw report when the server changed it
   void RelayEquipment(MpActor& actor, const RawMessageData& rawMsgData,
                       const UpdateEquipmentMessage* sanitizedMsg);

@@ -44,6 +44,8 @@ enum class AuthorityCheck
 {
   MovementSpeed,
   ActivateDistance,
+  MeleeReach,
+  ShotDistance,
   Count
 };
 

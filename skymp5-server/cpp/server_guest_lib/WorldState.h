@@ -288,6 +288,10 @@ public:
   AuthorityBound movementSpeed{ 2048.f };
   // Units from a caster to the ref it opens, takes or uses
   AuthorityBound activateDistance{ 1024.f };
+  // Units a player's melee hit may land beyond its weapon or unarmed reach
+  AuthorityBound meleeSlack{ 400.f };
+  // Units from the shooter to the target of a bow or crossbow hit
+  AuthorityBound shotDistance{ 8192.f };
 
   // Rows of alduinakDamageFormulaSettings, null unless a valid block has enabled or durability.enabled true
   std::shared_ptr<ItemRowResolver> itemRowResolver;
