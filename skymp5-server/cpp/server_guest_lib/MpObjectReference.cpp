@@ -162,6 +162,40 @@ std::pair<int16_t, int16_t> GetGridPos(const NiPoint3& pos) noexcept
 {
   return { int16_t(pos.x / 4096), int16_t(pos.y / 4096) };
 }
+
+bool IsPrivateIndexedProperty(const std::string& propertyName)
+{
+  static const std::string kPrefix =
+    MpObjectReference::GetPropertyPrefixPrivateIndexed();
+  return propertyName.compare(0, kPrefix.size(), kPrefix) == 0;
+}
+
+// Null-like dumps are never indexed
+bool IsNullDump(const std::string& s)
+{
+  return s == "null" || s == "undefined" || s == "" || s == "''" ||
+    s == "\"\"";
+}
+
+void UnindexPrivateProperty(WorldState& worldState, uint32_t formId,
+                            const std::string& propertyName,
+                            const std::string& valueDump)
+{
+  if (IsNullDump(valueDump)) {
+    return;
+  }
+  auto key =
+    worldState.MakePrivateIndexedPropertyMapKey(propertyName, valueDump);
+  auto it = worldState.actorIdByPrivateIndexedProperty.find(key);
+  if (it == worldState.actorIdByPrivateIndexedProperty.end()) {
+    return;
+  }
+  it->second.erase(formId);
+  if (it->second.empty()) {
+    worldState.actorIdByPrivateIndexedProperty.erase(it);
+  }
+  spdlog::trace("UnindexPrivateProperty {:x} - unregister {}", formId, key);
+}
 }
 
 struct AnimGraphHolder
@@ -979,29 +1013,16 @@ void MpObjectReference::RegisterPrivateIndexedProperty(
     throw std::runtime_error("Not attached to WorldState");
   }
 
-  bool (*isNull)(const std::string&) = [](const std::string& s) {
-    return s == "null" || s == "undefined" || s == "" || s == "''" ||
-      s == "\"\"";
-  };
-
-  auto currentValueStringified =
-    ChangeForm().dynamicFields.GetValueDump(propertyName);
   auto formId = GetFormId();
-  if (!isNull(currentValueStringified)) {
-    auto key = worldState->MakePrivateIndexedPropertyMapKey(
-      propertyName, currentValueStringified);
-    worldState->actorIdByPrivateIndexedProperty[key].erase(formId);
-    spdlog::trace("MpObjectReference::RegisterPrivateIndexedProperty {:x} - "
-                  "unregister {}",
-                  formId, key);
-  }
+  UnindexPrivateProperty(*worldState, formId, propertyName,
+                         ChangeForm().dynamicFields.GetValueDump(propertyName));
 
   EditChangeForm([&](MpChangeFormREFR& changeForm) {
     changeForm.dynamicFields.SetValueDump(propertyName,
                                           propertyValueStringified);
   });
 
-  if (!isNull(propertyValueStringified)) {
+  if (!IsNullDump(propertyValueStringified)) {
     auto key = worldState->MakePrivateIndexedPropertyMapKey(
       propertyName, propertyValueStringified);
     worldState->actorIdByPrivateIndexedProperty[key].insert(formId);
@@ -1258,9 +1279,7 @@ void MpObjectReference::ApplyChangeForm(const MpChangeForm& changeForm)
 
   changeForm.dynamicFields.ForEachValueDump(
     [&](const std::string& propertyName, const std::string& valueDump) {
-      static const std::string kPrefix = GetPropertyPrefixPrivateIndexed();
-      bool startsWith = propertyName.compare(0, kPrefix.size(), kPrefix) == 0;
-      if (startsWith) {
+      if (IsPrivateIndexedProperty(propertyName)) {
         RegisterPrivateIndexedProperty(propertyName, valueDump);
       }
     });
@@ -2171,12 +2190,19 @@ void MpObjectReference::BeforeDestroy()
     this->occupant->RemoveEventSink(this->occupantDestroySink);
   }
 
-  // Move far far away calling OnTriggerExit, unsubscribing, etc
-  SetPos({ -1'000'000'000, 0, 0 });
+  LeaveGrid();
+
+  if (auto worldState = GetParent()) {
+    ChangeForm().dynamicFields.ForEachValueDump(
+      [&](const std::string& propertyName, const std::string& valueDump) {
+        if (IsPrivateIndexedProperty(propertyName)) {
+          UnindexPrivateProperty(*worldState, GetFormId(), propertyName,
+                                 valueDump);
+        }
+      });
+  }
 
   MpForm::BeforeDestroy();
-
-  RemoveFromGridAndUnsubscribeAll();
 }
 
 float MpObjectReference::GetTotalItemWeight() const

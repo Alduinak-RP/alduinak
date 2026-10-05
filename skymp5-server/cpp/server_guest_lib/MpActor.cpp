@@ -1661,8 +1661,6 @@ void MpActor::BeforeDestroy()
   }
 
   MpObjectReference::BeforeDestroy();
-
-  UnsubscribeFromAll();
 }
 
 void MpActor::Init(WorldState* worldState, uint32_t formId, bool hasChangeForm)
