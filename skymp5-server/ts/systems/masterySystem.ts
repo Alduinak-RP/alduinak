@@ -23,8 +23,7 @@ type Mp = any;
 // docs/docs_professions_revamp_contract.md is the fixed interface. Everyone is Free (rank 0); choosing a primary profession
 // makes the character a Novice of it, and hours of its work raise it to Adept, Expert, Master and Legendary. Every
 // server-observed activity of the profession is worth one hour, at most one per hour. This system chains the native
-// onCraft/onActivate/onSpellCast hooks on `mp` and the gamemode relays kills through globalThis.__alduinakMasteryEvent
-// (gamemode_extensions/62_mastery.js); other systems credit their own work (skinning) through creditWork. Each rank
+// onCraft/onActivate/onSpellCast/onDeath hooks on `mp`; other systems credit their own work (skinning) through creditWork. Each rank
 // grants a cumulative marker spell AldProf_<Label>_<Rank>; the plugin's recipes condition on it with HasSpell.
 // A mage cannot rise above Adept without having cast an Adept spell, above Expert without an Expert one, and so on.
 // Hour bank: each extra craft of the profession inside a counted hour banks one hour, up to masteryHourBank; a banked hour
@@ -492,9 +491,6 @@ export class MasterySystem implements System {
     ctx.gm.on(CREATION_FINISHED_EVENT, (actorId: number) => this.pendingGrants.set(actorId >>> 0, Date.now() + LOGIN_GRANT_DELAY_MS));
 
     // Events are only queued so every property write and Papyrus call runs outside the native event call stack.
-    (globalThis as any).__alduinakMasteryEvent = (kind: string, actorId: number, detail: unknown) => {
-      this.enqueue(kind, actorId, detail);
-    };
     this.hookNativeEvents(ctx);
     every("mastery", EVERY_PASS_MS, () => this.poll(ctx));
   }
@@ -507,6 +503,9 @@ export class MasterySystem implements System {
       this.enqueue("craft", actorId, { recipeId, held: this.holdsInputs(ctx, Number(actorId) >>> 0, Number(recipeId) >>> 0) ? 1 : 0 }));
     chainMpHook(mp, "onActivate", (refrId: number, casterId: number) => this.enqueue("activate", casterId, { refrId }));
     chainMpHook(mp, "onSpellCast", (casterId: number, spellId: number) => this.enqueue("cast", casterId, { spellId }));
+    chainMpHook(mp, "onDeath", (victimId: number, killerId: number) => {
+      if (killerId) this.enqueue("kill", killerId, { victimId });
+    });
   }
 
   private enqueue(kind: string, actorId: unknown, detail: unknown): void {

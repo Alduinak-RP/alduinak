@@ -1,9 +1,9 @@
 import { System, Log, SystemContext } from "./system";
 import { espmFieldFormIds, readFormIdField } from "./formIdUtil";
-import { guardMpHook, hex, notifyActor } from "./actorUtil";
+import { chainMpHook, guardMpHook, hex, notifyActor } from "./actorUtil";
 import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
-import { every } from "./timers";
+import { soon } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -12,8 +12,6 @@ type Mp = any;
 // Players have black souls, so only an empty black soul gem takes them; a player whose soul an executioner or staff took is sent to the Soul Cairn (AfterlifeSystem).
 
 const HIT_EVENT = "onPapyrusEvent:OnHit";
-// Only marked actors are polled, and a respawn takes seconds.
-const DEATH_POLL_MS = 100;
 
 // MGEF archetype Soul Trap; the Soul Trap spell (SoulTrapFFActor) and weapon enchantments (EnchSoulTrapFFContact) use Script-archetype effects.
 const ARCHETYPE_SOUL_TRAP = 23;
@@ -87,32 +85,22 @@ export class SoulTrapSystem implements System {
         this.log(`[soultrap] hit check failed: ${e}`);
       }
     });
-    every("soulTrap", DEATH_POLL_MS, () => this.poll(ctx));
+    chainMpHook(ctx.svr as Mp, "onDeath", (victimId: number) => this.onDeath(ctx, Number(victimId) >>> 0));
   }
 
-  poll(ctx: SystemContext): void {
-    if (!this.traps.size) return;
-    const now = Date.now();
-    const mp = ctx.svr as Mp;
-    for (const [targetId, trap] of Array.from(this.traps)) {
-      let dead = false;
+  // The capture runs after the native death call returns
+  private onDeath(ctx: SystemContext, targetId: number): void {
+    const trap = this.traps.get(targetId);
+    if (!trap) return;
+    this.traps.delete(targetId);
+    if (Date.now() > trap.expiresAt) return;
+    soon(() => {
       try {
-        dead = mp.get(targetId, "isDead") === true;
-      } catch {
-        this.traps.delete(targetId);
-        continue;
+        this.capture(ctx, targetId, trap.casterId);
+      } catch (e) {
+        this.log(`[soultrap] capture of ${hex(targetId)} failed: ${e}`);
       }
-      if (dead) {
-        this.traps.delete(targetId);
-        try {
-          this.capture(ctx, targetId, trap.casterId);
-        } catch (e) {
-          this.log(`[soultrap] capture of ${hex(targetId)} failed: ${e}`);
-        }
-      } else if (now > trap.expiresAt) {
-        this.traps.delete(targetId);
-      }
-    }
+    });
   }
 
   private onHit(ctx: SystemContext, targetId: number, aggressor: unknown, source: unknown): void {
@@ -125,8 +113,11 @@ export class SoulTrapSystem implements System {
     if (this.companions?.isCompanionActor(targetId)) return;
     if (mp.get(targetId, "type") !== "MpActor" || mp.get(targetId, "isDead") === true) return;
     if (!this.isPlayer(mp, targetId) && this.npcKeywords(ctx, targetId).has(KEYWORD_NO_SOUL_TRAP)) return;
+    const now = Date.now();
+    // Marks that ran out without a death
+    for (const [id, trap] of this.traps) if (now > trap.expiresAt) this.traps.delete(id);
     // The latest soul trap on a target decides whose gem its soul goes to
-    this.traps.set(targetId, { casterId, expiresAt: Date.now() + seconds * 1000 });
+    this.traps.set(targetId, { casterId, expiresAt: now + seconds * 1000 });
   }
 
   private capture(ctx: SystemContext, targetId: number, casterId: number): void {

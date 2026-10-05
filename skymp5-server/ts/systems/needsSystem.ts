@@ -6,7 +6,7 @@ import { CastType, SpellType, fieldData, keywordConditionsPass, spellEffects, sp
 import { formatWait, hex, chainMpHook, guardMpHook, isAlive, isBleedingOut, isCreationPending, isPlayerActor, sendStagger, userOf } from "./actorUtil";
 import { FREE, LEGENDARY, MasterySystem } from "./masterySystem";
 import { LOAD_PACKETS, StageAbilityTracker } from "./stageAbilities";
-import { every } from "./timers";
+import { every, soon } from "./timers";
 import { armorWeightOf, combatStats, hasCombatStats } from "./combatStats";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -403,17 +403,10 @@ export class NeedsSystem implements System {
     chainMpHook(mp, "onSpellCastAttempt", (casterId: number, spellId: number) => this.castAttempt(ctx, casterId >>> 0, spellId >>> 0));
     chainMpHook(mp, "onSpellCast", (casterId: number, spellId: number) => this.chargeCast(ctx, casterId >>> 0, spellId >>> 0));
 
-    // Hits and kills ride the mastery relay (gamemode 62_mastery.js)
-    const g = globalThis as any;
-    const previousRelay = g.__alduinakMasteryEvent;
-    g.__alduinakMasteryEvent = (kind: string, actorId: number, detail: any) => {
-      try {
-        if (typeof previousRelay === "function") previousRelay(kind, actorId, detail);
-      } finally {
-        if (kind === "hit" && detail) this.noteHit(Number(actorId) >>> 0, Number(detail.targetId) >>> 0);
-        else if (kind === "kill" && detail) setImmediate(() => this.chargeKill(ctx, Number(actorId) >>> 0, Number(detail.victimId) >>> 0));
-      }
-    };
+    chainMpHook(mp, "onHitDamage", (aggressorId: number, targetId: number) => this.noteHit(Number(aggressorId) >>> 0, Number(targetId) >>> 0));
+    chainMpHook(mp, "onDeath", (victimId: number, killerId: number) => {
+      if (killerId) soon(() => this.chargeKill(ctx, Number(killerId) >>> 0, Number(victimId) >>> 0));
+    });
   }
 
   // OnHit fires before the native hit writes the percentages it copied earlier, so the drain waits a tick.

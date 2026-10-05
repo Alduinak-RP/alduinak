@@ -1052,8 +1052,8 @@ across restarts too. One death is never skinned through both bodies: once a
 PK body is left, the victim's own stripped actor is passed over while that
 body is recent (`BodySystem.hasBodyFor`, 30 s, longer than the own body ever
 lies: 4 s after the PK, `respawnSeconds` at most), and an own-body skinning
-already under way when a PK body is left for the same death (a soul trap PK is
-noticed up to 100 ms after the death) gives nothing, as the PK body now holds
+already under way when a PK body is left for the same death (a soul trap PK
+follows the death on the next event loop turn) gives nothing, as the PK body now holds
 that death: the victim's stripped actor respawns 4 s after the PK body is
 left, before the 5 s skinning ends, so the skinning stops with `... they
 respawned` and the skinner stands up; `... a PK body

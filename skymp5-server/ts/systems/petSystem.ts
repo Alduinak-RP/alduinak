@@ -3,7 +3,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT, USER_MENU_QUIT_EVENT } from "./system";
 import { placeNpc, moveNpc, locationNear, locationForFollower, HOSTILE_PROP } from "./npcPlacement";
 import { toFormId } from "./formIdUtil";
-import { userOf, isAlive, isNear, isStreamedTo, hex, destroyLeftovers, destroyRef, guardMpHook, addItemTo, nameShownTo, cleanDisplayName, isDoorRef, formatWait } from "./actorUtil";
+import { userOf, isAlive, isNear, isStreamedTo, hex, destroyLeftovers, destroyRef, chainMpHook, guardMpHook, addItemTo, nameShownTo, cleanDisplayName, isDoorRef, formatWait } from "./actorUtil";
 import { HostingSystem, Hostable } from "./hostingSystem";
 import { CompanionSystem } from "./companionSystem";
 import { HousingSystem } from "./housingSystem";
@@ -12,7 +12,7 @@ import { CaptureSystem } from "./captureSystem";
 import { resolveEditorIds } from "./espmEditorIds";
 import { PET_ANCHORS } from "./adminMapMarkers";
 import { Inventory, addEntries, isNamedItem, readInventory, withCount } from "./inventoryExtras";
-import { every } from "./timers";
+import { every, soon } from "./timers";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -786,19 +786,14 @@ export class PetSystem implements System {
     const mp = this.mp;
     const now = Date.now();
     for (const a of Array.from(this.active.values())) {
-      let dead = false;
-      let gone = false;
-      try { dead = mp.get(a.id, "isDead") === true; } catch { dead = gone = true; }
-      if (gone) {
-        this.forget(a, "vanished");
-        continue;
-      }
-      if (dead && !a.diedAt) {
-        this.onDeath(a, now);
-        continue;
-      }
       if (a.diedAt) {
         if (now - a.diedAt >= this.cfg.petCorpseSeconds * 1000) this.forget(a, "body removed");
+        continue;
+      }
+      try {
+        mp.get(a.id, "type");
+      } catch {
+        this.forget(a, "vanished");
         continue;
       }
       // A character switch or a quit to the menu fires no disconnect
@@ -903,6 +898,15 @@ export class PetSystem implements System {
 
   private installHooks(): void {
     const mp = this.mp;
+    // Marked dead at once, the records and notices follow after the native death call returns
+    chainMpHook(mp, "onDeath", (victimId: number) => {
+      const a = this.active.get(Number(victimId) >>> 0);
+      if (!a || a.diedAt) return;
+      a.diedAt = Date.now();
+      soon(() => {
+        if (this.active.get(a.id) === a) this.onDeath(a, a.diedAt);
+      });
+    });
     // Only the living owner, or the rider taking it, hosts a pet; a released one is anyone's
     guardMpHook(mp, "onHostAttempt", (requesterId: number, actorId: number) => {
       const a = this.active.get(actorId >>> 0);

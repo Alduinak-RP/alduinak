@@ -68,6 +68,7 @@ import { trackConnections } from "./systems/actorUtil";
 import { trackOnline } from "./systems/onlineSnapshot";
 import { notePreLoginPacket, trackPreLogin } from "./systems/preLoginPackets";
 import { startPolls } from "./systems/timers";
+import { ownGamemodeHooks, reclaimGamemodeHooks } from "./systems/gamemodeHooks";
 import { EventEmitter } from "events";
 import { pid } from "process";
 import * as fs from "fs";
@@ -128,6 +129,7 @@ function requireUncached(
         globalThis.mp = globalThis.mp || server;
 
         requireTemp(module);
+        reclaimGamemodeHooks(server);
         return;
       } catch (e) {
         if (`${e}`.indexOf("'JsRun' returned error 0x30002") === -1) {
@@ -175,6 +177,7 @@ const setupGamemode = (server: any, gamemodePath: string, hotReload: boolean) =>
   // guards itself instead: each generation tags globalThis.__ffGen and stale
   // generations' handlers and timers self-mute.
   const clear = () => server.clear();
+  ownGamemodeHooks(server);
 
   const toAbsolute = (p: string) => {
     if (path.isAbsolute(p)) {
@@ -366,7 +369,6 @@ const main = async () => {
     // After mastery so a refused tool check is never credited as work.
     new GatheringSystem(log, masterySystem, needsSystem, furnitureSeatSystem),
     new FactionCraftSystem(log, factionSystem),
-    // After mastery so its kill relay is in place to be wrapped.
     huntingSystem,
     // After hunting, whose raw meat it reads, and after needs, whose eat hook it wraps
     survivalSystem,

@@ -322,7 +322,7 @@ crafts -25% until <hh:mm>` (the server's local time); `drinkUntil` rides `privat
 - Skinning (hunter rank) costs half a kill. Only a hunter's skinning takes an animal's pelt and meat; a search of the
   body never shows its meat.
 - A kill of an NPC or creature costs the kill price by hunter rank (animals) or warrior rank (everything else),
-  split equally among every player who hit the victim during the fight (the hit relay of `62_mastery.js`; a fight
+  split equally among every player who hit the victim during the fight (NeedsSystem's `onHitDamage` hook; a fight
   untouched for 10 minutes is forgotten). A kill cannot be refused; the bar just empties.
 - A craft the bar cannot pay for is refused before the native craft runs. The server sends `needsState` with
   `closeCrafting`, resends the unchanged inventory to undo the recipe the vanilla menu already made locally, and shows

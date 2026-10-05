@@ -247,7 +247,7 @@ true and the block accepted at boot); an older one, and this one with the formul
 flags are the ones the hit was priced with. A spell hit carries `blocked` for a ward, `power`, `bash` and `critical`
 false, and its damage before the ward as `preDT`: for a spell that is the damage after the resistances, the worn DT
 of the magic rules, the wrappers and the cap, so it is not a number before DT.
-The gamemode part `62_mastery.js` passes every argument on to `60_admin_modes.js`, which reads the
+The server's `onHitDamage` dispatcher (`gamemodeHooks.ts`) passes every argument on to `60_admin_modes.js`, which reads the
 five new ones in one place (`hitExtras`) and only while `enabled` is true. A hit without them is logged once per
 gamemode load (`[combat] a hit arrived without the arguments blocked, power, bash, critical, preDT ...`) and
 treated as before.

@@ -221,7 +221,8 @@ export const isCreationPending = (mp: Mp, actorId: number): boolean => {
   }
 };
 
-const runMpHook = (mp: Mp, event: string, handler: (...args: any[]) => unknown, args: unknown[]): unknown => {
+// Calls one mp.* event handler; a throw is logged and reads as undefined
+export const runMpHook = (mp: Mp, event: string, handler: (...args: any[]) => unknown, args: unknown[]): unknown => {
   try {
     return handler.apply(mp, args);
   } catch (e) {
