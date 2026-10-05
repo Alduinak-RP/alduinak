@@ -472,6 +472,18 @@ bool WorldState::AttachEspmRecord(const espm::CombineBrowser& br,
 
   uint32_t formId = espm::utils::GetMappedId(record->GetId(), mapping);
 
+  if (t == "LIGH" &&
+      !(reinterpret_cast<const espm::LIGH*>(base.rec)->GetData(cache).data.flags &
+        espm::LIGH::Flags::CanBeCarried) &&
+      !pImpl->changeFormsForDeferredLoad.count(formId) &&
+      !HasVmadScripts(baseId, formId)) {
+    if (optionalOutTrace) {
+      *optionalOutTrace << fmt::format(
+        "AttachEspmRecord - the server skips lights that cannot be carried\n");
+    }
+    return false;
+  }
+
   if (isNpc) {
     if (NpcSourceFilesOverriden() && !IsNpcAllowed(formId)) {
       spdlog::trace("Skip NPC loading, it is not allowed. refrId {:#x}",
