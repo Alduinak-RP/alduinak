@@ -271,9 +271,6 @@ public:
   // Ability and Disease skill modifiers scale weapon damage and blocking
   bool effectModifiers = false;
 
-  // Magic resistance abilities reduce hostile spell damage inside the rebalance formula
-  bool nativeMagicResistance = false;
-
   // The rebalance formula's per-hit lines log at info instead of debug
   bool combatTrace = false;
 

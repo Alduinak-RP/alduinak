@@ -36,19 +36,12 @@ struct SpellDamageParts
   float damage = 0.f;
   // The same damage as if the target resisted nothing
   float unresisted = 0.f;
-  // Share magic resistance lets through, 1 where it does not count
-  float magicResistMult = 1.f;
-  bool ignoresResistance = false;
 };
 
-// Health damage of a spell's hostile effects after the target's resist abilities; magicResistance also counts its magic resistance on spells that do not ignore resistance
+// Health damage of a spell's hostile effects after the resist value each effect names
 [[nodiscard]] SpellDamageParts CalculateSpellDamageParts(
   const MpActor& aggressor, const MpActor& target,
-  const SpellCastData& spellCastData, bool magicResistance);
-
-// Share of hostile spell damage the target's magic resistance abilities and diseases let through
-[[nodiscard]] float GetMagicResistMult(const MpActor& target,
-                                       const MpActor& aggressor);
+  const SpellCastData& spellCastData);
 
 // Implements vanilla Skyrim damage formula.
 // Some parts may be missing. If they are, there should be a TODO regarding it.

@@ -60,7 +60,6 @@ type Mp = any;
 
 const SETTINGS_KEY = "racialPassives";
 const MAGIC_ENTRIES_KEY = "damageMultConditionalFormulaSettings";
-const FORMULA_KEY = "alduinakDamageFormulaSettings";
 const RACIAL_PROP = "private.racial";
 // The 1.0 launch, 2026-10-01 16:00 on the server box (UTC-7)
 const DEFAULT_START_ITEMS_SINCE = Date.parse("2026-10-01T16:00:00-07:00");
@@ -318,18 +317,6 @@ export const magicDamageEntries = (raw: unknown): { key: string; mult: number; r
     return raceIds.length ? [{ key, mult, raceIds }] : [];
   });
 
-// True when the native counts magic resistance abilities on spell damage itself: under the rebalance formula, by magic.resistance when set, else while no entry scales spell damage by race
-export const nativeMagicResistance = (all: Record<string, unknown>): boolean => {
-  const block = objectOf(all[FORMULA_KEY]);
-  if (block.enabled !== true) return false;
-  const setting = objectOf(block.magic).resistance;
-  if (setting !== undefined) return setting === true;
-  return !Object.values(objectOf(all[MAGIC_ENTRIES_KEY])).some((value) => {
-    const v = objectOf(value);
-    return typeof v.magicDamageMultiplier === "number" && Array.isArray(v.conditions) && v.conditions.some((c) => objectOf(c).function === "GetIsRace");
-  });
-};
-
 export class RacialSystem implements System, NeedsModifierSource {
   systemName = "RacialSystem";
   label = "race";
@@ -345,7 +332,6 @@ export class RacialSystem implements System, NeedsModifierSource {
     this.mp = ctx.svr as Mp;
     const problems = this.configure(all[SETTINGS_KEY]);
     this.magicEntries = magicDamageEntries(all[MAGIC_ENTRIES_KEY]);
-    this.nativeMagicResist = nativeMagicResistance(all);
     const forget = (actorId: number) => this.forget(actorId >>> 0);
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
       forget(actorId);
@@ -822,8 +808,7 @@ export class RacialSystem implements System, NeedsModifierSource {
     const baseLine = this.config.present && this.config.enabled ? "racialBase with the race's base health and stamina after an accepted race menu" : "no racialBase";
     this.log(`[racial] ready: ${!this.config.present ? "no racialPassives block, every race neutral" : `${this.config.enabled ? "on" : "off (enabled false), every race neutral"}, ${this.config.races.size} race entries (${Array.from(this.config.races.keys()).join(", ") || "none"}), ${Object.keys(this.config.aliases).length} aliases, powers ${powers.join(", ") || "none"}, start items once per slot, backfilled at login for characters created since ${new Date(this.config.startItemsSince).toISOString().slice(0, 16)}Z`}; ${selfCheck}; ${baseLine}; Player NPC_ offsets H/M/S ${offsets.join("/")}`);
     this.log(`[racial] powers: ${powersLine}`);
-    this.log(`[racial] magic damage entries: ${this.magicEntries.map((e) => `${e.key} x${round(e.mult)} on ${e.raceIds.map((id) => this.edidOf(id) || hex(id)).join(", ")}`).join("; ") || "none"}` +
-      `${this.nativeMagicResist ? `; the native counts magic resistance abilities on spell damage itself (${FORMULA_KEY}.magic)` : ""}`);
+    this.log(`[racial] magic damage entries: ${this.magicEntries.map((e) => `${e.key} x${round(e.mult)} on ${e.raceIds.map((id) => this.edidOf(id) || hex(id)).join(", ")}`).join("; ") || "none"}`);
     const notInPlugin: string[] = [];
     for (const race of RACES) {
       try {
@@ -900,8 +885,7 @@ export class RacialSystem implements System, NeedsModifierSource {
     const t = entry || NEUTRAL;
     const magic = this.magicEntries.filter((e) => e.raceIds.includes(race.id));
     const magicResist = resist.find(([label]) => label === "magic")?.[1] || 0;
-    if (magicResist > 0 && !magic.length && !this.nativeMagicResist) warnings.push(`${race.edid} abilities resist magic ${magicResist} but no ${MAGIC_ENTRIES_KEY} entry names it, so server spell damage is not reduced`);
-    if (magic.length && this.nativeMagicResist) warnings.push(`${MAGIC_ENTRIES_KEY}.${magic.map((e) => e.key).join(", ")} scales spell damage on ${race.edid} while ${FORMULA_KEY}.magic.resistance is true, so its magic resistance counts twice: remove the entry`);
+    if (magicResist > 0 && !magic.length) warnings.push(`${race.edid} abilities resist magic ${magicResist} but no ${MAGIC_ENTRIES_KEY} entry names it, so server spell damage is not reduced`);
     for (const e of magic) {
       if (!e.raceIds.includes(race.vampire)) warnings.push(`${MAGIC_ENTRIES_KEY}.${e.key} names ${race.edid} but not ${race.edid}Vampire`);
     }
@@ -932,7 +916,6 @@ export class RacialSystem implements System, NeedsModifierSource {
   private mp: Mp = null;
   private config: RacialConfig = parseRacialPassives(undefined).config;
   private magicEntries: { key: string; mult: number; raceIds: number[] }[] = [];
-  private nativeMagicResist = false;
   // actorId -> race id, 0 while creation is pending
   private raceCache = new Map<number, number>();
   private edidCache = new Map<number, string>();

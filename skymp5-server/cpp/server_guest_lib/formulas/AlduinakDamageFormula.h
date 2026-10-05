@@ -61,10 +61,8 @@ public:
     uint32_t spell = 0;
     // Damage of the spell's hostile effects before any resistance
     float unresisted = 0.f;
-    // After the target's resist abilities, magic resistance included when it counts
+    // After the resist value each effect names
     float resisted = 0.f;
-    float magicResistMult = 1.f;
-    bool ignoresResistance = false;
     float wornDT = 0.f;
     // DT the spell met, magic.dtShare of the worn DT
     float spellDT = 0.f;

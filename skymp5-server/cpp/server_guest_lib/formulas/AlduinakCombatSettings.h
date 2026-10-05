@@ -175,8 +175,6 @@ struct AlduinakCombatSettings
     float dtShare = 0.5f;
     // Share of a spell's damage worn DT never takes
     float floor = 0.5f;
-    // Magic resistance of abilities and diseases on hostile spell damage; unset follows the racial entries of damageMultConditionalFormulaSettings
-    std::optional<bool> resistance;
   };
 
   std::string source;

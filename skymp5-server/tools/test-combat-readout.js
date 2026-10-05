@@ -58,7 +58,7 @@ const nativeStats = (weapons, shield = true, conditions = {}) => () => ({
   naturalDT: 0,
   pieces: [nativePiece(CUIRASS, 'armor', ['cuirass'], 2, 6.0255, 35, conditions[CUIRASS]), ...(shield ? [nativePiece(SHIELD, 'shield', ['shield'], 0, 0.72, 12, conditions[SHIELD])] : [])],
   weapons,
-  magic: { dtShare: 0.5, floor: 0.5, spellDT: (shield ? 6.7455 : 6.0255) / 2, resistance: false, resistMult: 1 },
+  magic: { dtShare: 0.5, floor: 0.5, spellDT: (shield ? 6.7455 : 6.0255) / 2 },
   unarmed: attackJson('unarmed', 'unarmed', 'unarmed', 0, 4),
 })
 const FINE_SWORD = nativeWeapon(SWORD, 'right', 'sword', 1, 16.5)

@@ -13,7 +13,7 @@ const { outputFiles } = esbuild.buildSync({ entryPoints: [source], bundle: true,
 const compiled = new Module(source)
 compiled.paths = Module._nodeModulePaths(path.dirname(source))
 compiled._compile(outputFiles[0].text, source)
-const { RacialSystem, magicDamageEntries, nativeMagicResistance } = compiled.exports
+const { RacialSystem, magicDamageEntries } = compiled.exports
 
 const spec = require(path.join(__dirname, '..', '..', 'misc', 'proficiency-patcher', 'spec.json')).races
 
@@ -87,7 +87,7 @@ test('Breton: resist magic 50, +50 magicka', () => {
   assert.deepEqual(bonus('BretonRace'), { health: 0, magicka: 50, stamina: 0 })
 })
 
-test('Breton and Orc magic resistance on spell damage: the two entries until they are removed, then the native rule of the rebalance', () => {
+test('Breton and Orc magic resistance on spell damage comes from the two entries alone', () => {
   const race = (id) => ({ function: 'GetIsRace', runsOn: 'Target', comparison: '==', value: 1, parameter1: id, parameter2: '0x0', logicalOperator: 'OR' })
   // The entries of the Test settings (alduinak-r13/live/r27-RC4)
   const entries = {
@@ -97,21 +97,6 @@ test('Breton and Orc magic resistance on spell damage: the two entries until the
   }
   assert.deepEqual(magicDamageEntries(entries).map((e) => [e.key, e.mult, e.raceIds]),
     [['racialMagicResistBreton', 0.5, [0x13741, 0x8883c]], ['racialMagicResistOrc', 0.75, [0x13747, 0xa82b9]]])
-  const on = (block, damageMultConditionalFormulaSettings) => nativeMagicResistance({ alduinakDamageFormulaSettings: block, damageMultConditionalFormulaSettings })
-  // The Test Server today: the block is on with no magic key and both entries, so the entries do the work
-  assert.equal(on({ enabled: true }, entries), false)
-  // The entries removed: the native reads the abilities
-  assert.equal(on({ enabled: true }, { hunterOverDraw: entries.hunterOverDraw }), true)
-  assert.equal(on({ enabled: true }, undefined), true)
-  // magic.resistance decides when it is set: true beside the entries counts twice, false counts nothing
-  assert.equal(on({ enabled: true, magic: { resistance: true } }, entries), true)
-  assert.equal(on({ enabled: true, magic: { resistance: false } }, {}), false)
-  assert.equal(on({ enabled: true, magic: { dtShare: 0.5 } }, {}), true)
-  // No rebalance formula, no native rule: live without the block, or durability alone
-  assert.equal(on(undefined, {}), false)
-  assert.equal(on({ enabled: false, durability: { enabled: true }, magic: { resistance: true } }, {}), false)
-  // A value the native rejects the whole block for
-  assert.equal(on({ enabled: true, magic: { resistance: 'yes' } }, {}), false)
 })
 
 test('Dark Elf: resist fire 75', () => {

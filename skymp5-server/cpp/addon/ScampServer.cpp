@@ -18,7 +18,6 @@
 #include "formulas/DamageMultFormula.h"
 #include "formulas/EffectModifiers.h"
 #include "formulas/ItemRowResolver.h"
-#include "formulas/MagicRules.h"
 #include "formulas/TES5DamageFormula.h"
 #include "gamemode_events/DeathEvent.h"
 #include "libespm/IterateFields.h"
@@ -100,36 +99,6 @@ void ReadAuthorityBound(const nlohmann::json& settings, const char* maxKey,
   GetLogger()->info("{} is {} and {} is {}: going over it is {}", maxKey,
                     bound.max, enforceKey, bound.enforce,
                     bound.enforce ? "refused and logged" : "logged only");
-}
-
-// Keys of the damageMultConditionalFormulaSettings entries that scale spell damage by race, joined for the log
-std::string RacialMagicEntries(const nlohmann::json& settings)
-{
-  std::string keys;
-  if (!settings.is_object()) {
-    return keys;
-  }
-  for (auto& [key, entry] : settings.items()) {
-    if (!entry.is_object()) {
-      continue;
-    }
-    auto mult = entry.find("magicDamageMultiplier");
-    auto conditions = entry.find("conditions");
-    if (mult == entry.end() || !mult->is_number() ||
-        conditions == entry.end() || !conditions->is_array()) {
-      continue;
-    }
-    const bool byRace = std::any_of(
-      conditions->begin(), conditions->end(), [](const nlohmann::json& c) {
-        auto function = c.is_object() ? c.find("function") : c.end();
-        return c.is_object() && function != c.end() && function->is_string() &&
-          function->get_ref<const std::string&>() == "GetIsRace";
-      });
-    if (byRace) {
-      keys += (keys.empty() ? "" : ", ") + key;
-    }
-  }
-  return keys;
 }
 
 // Parses the whole id, so "-1", "12zz" or "zz:File.esp" throw instead of resolving to a wrong form
@@ -643,49 +612,13 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
         "player hits capped at {}, health snap at {}); spells are priced by "
         "TES5, then by the magic rules, with the same cap",
         combatSettings->playerHitCap, combatSettings->healthSnap);
-      // magic.resistance not set: the native rule waits while racial entries of damageMultConditionalFormulaSettings do its work
       const auto& magic = combatSettings->magic;
-      const std::string racialEntries =
-        RacialMagicEntries(damageMultConditionalFormulaSettings);
-      const bool magicResistance = MagicRules::NativeMagicResistance(
-        true, magic.resistance, !racialEntries.empty());
-      partOne->worldState.nativeMagicResistance = magicResistance;
       logger->info(
         "alduinakDamageFormulaSettings: magic: a hostile spell loses {} of "
         "the target's worn DT and keeps at least {} of its damage "
         "(magic.dtShare, magic.floor{})",
         magic.dtShare, magic.floor,
         magic.dtShare > 0.f ? "" : "; 0 leaves spells as TES5 prices them");
-      if (magicResistance && racialEntries.empty()) {
-        logger->info(
-          "alduinakDamageFormulaSettings: magic: magic resistance of "
-          "abilities and diseases reduces hostile spell damage, at most by "
-          "85%, spells that ignore resistance excepted (magic.resistance {})",
-          magic.resistance ? "true"
-                           : "not set, no racial magic entry in "
-                             "damageMultConditionalFormulaSettings");
-      } else if (magicResistance) {
-        logger->warn(
-          "alduinakDamageFormulaSettings: magic.resistance is true while "
-          "damageMultConditionalFormulaSettings still holds {}: the races "
-          "those entries name resist spells twice, remove the entries",
-          racialEntries);
-      } else if (!magic.resistance) {
-        logger->info(
-          "alduinakDamageFormulaSettings: magic: magic resistance stays "
-          "with the damageMultConditionalFormulaSettings entries {} "
-          "(magic.resistance is not set): once they are removed the magic "
-          "resistance of abilities and diseases counts natively",
-          racialEntries);
-      } else {
-        logger->info(
-          "alduinakDamageFormulaSettings: magic.resistance is false: magic "
-          "resistance abilities reduce no server spell damage{}",
-          racialEntries.empty()
-            ? ""
-            : ", damageMultConditionalFormulaSettings still holds " +
-              racialEntries);
-      }
       logger->info(
         "alduinakDamageFormulaSettings: hit rules: melee and fists at most "
         "one hit per {} x the swing of their type, a sneak attack after {} s "

@@ -88,36 +88,18 @@ shock (x1.25), Argonian poison 75 and Redguard poison 50. Only the resist value 
 resistance or armor rating abilities count for the few effects that name them (Vampiric Drain, some dragon and
 Wabbajack effects).
 
-Magic resistance on every other spell, the Breton's 50 and the Orc's 25, has two sources, and the server uses one of
-them at a time:
+Magic resistance on every other spell, the Breton's 50 and the Orc's 25, comes from two entries alone (in the Test
+and live settings): `racialMagicResistBreton` (`magicDamageMultiplier` 0.5) and `racialMagicResistOrc` (0.75) of
+`damageMultConditionalFormulaSettings`, each keyed on `GetIsRace` of the target with its vampire race (the JSON is
+under `racialPassives` in the configuration reference). They multiply every server spell hit on such a target, not
+poisons, on top of the element resistance, as vanilla stacks the two, and being a wrapper they come after everything
+the formula did, the worn DT below included: Firebolt (25) on a Breton in a Steel set lands (25 - 4.875) x 0.5 =
+10.06. An effect that names MagicResist itself counts the Breton's resistance twice. Without the entries only the
+client engine applies magic resistance, to non-damage effects. The native has no magic resistance rule of its own any
+more (owner decision D15, Stage 2 L4-20), so `alduinakDamageFormulaSettings.magic.resistance` is no longer read.
 
-- **The two entries** (in the Test settings today): `racialMagicResistBreton` (`magicDamageMultiplier` 0.5) and
-  `racialMagicResistOrc` (0.75) of `damageMultConditionalFormulaSettings`, each keyed on `GetIsRace` of the target
-  with its vampire race (the JSON is under `racialPassives` in the configuration reference). They multiply every
-  server spell hit on such a target, not poisons, on top of the element resistance, as vanilla stacks the two, and
-  being a wrapper they come after everything the formula did; an effect that names MagicResist itself counts the
-  Breton's resistance twice. Under the vanilla formula (no `alduinakDamageFormulaSettings`, or its `enabled` false)
-  they are the only source: without them only the client engine applies the magic resistance, to non-damage effects.
-- **The native rule** (`scam_native.node` from `feb6f390`, only while `alduinakDamageFormulaSettings.enabled` is
-  true): the summed MagicResist of the target's Ability and Disease spells, capped at 85, multiplies every damaging
-  effect beside the effect's own resistance. A spell with the Ignore Resistance flag (10 of the 462 damage spells of
-  the Test load order, the dragon and soul drains) is left alone, and an effect whose own resist value is MagicResist
-  already (58 spells) is not multiplied a second time. The rule is on when `magic.resistance` is true, or when that
-  key is not set and `damageMultConditionalFormulaSettings` holds no entry with a `magicDamageMultiplier` and a
-  `GetIsRace` condition; `false` turns it off.
-
-So with `magic.resistance` not set nothing counts twice: while the two entries are in the settings they do the work,
-and once they are removed the native rule takes over at the next start. Only `magic.resistance: true` beside the
-entries counts both, and the native warns at boot (`... magic.resistance is true while
-damageMultConditionalFormulaSettings still holds racialMagicResistBreton, racialMagicResistOrc: the races those
-entries name resist spells twice, remove the entries`). The two sources give different numbers, because the native
-rule comes before the worn DT below and the entries after it: Firebolt (25) on a Breton in a Steel set lands (25 -
-4.875) x 0.5 = 10.06 with the entries and 25 x 0.5 - 4.875 = 7.625 with the native rule.
-
-`RacialSystem` lists the entries at boot (`[racial] magic damage entries: ...`, ending `; the native counts magic
-resistance abilities on spell damage itself (alduinakDamageFormulaSettings.magic)` when the settings switch the
-native rule on). It warns about a race whose ability resists magic while neither source covers it, and about an
-entry that is left beside `magic.resistance: true`.
+`RacialSystem` lists the entries at boot (`[racial] magic damage entries: ...`) and warns about a race whose ability
+resists magic while no entry names it.
 
 Spells against armor (rebalance): while `alduinakDamageFormulaSettings.enabled` is true a spell is priced as above
 and then loses `magic.dtShare` (0.5) of the target's worn DT, but never more than 1 - `magic.floor` (0.5) of its
@@ -126,8 +108,7 @@ damage. Firebolt (25) lands 20.125 on a Steel set (DT 9.75) and 17.5 on a Daedri
 condition and the shield included); a creature's natural DT takes nothing from a spell. The
 `damageMultConditionalFormulaSettings` wrappers and the 45 cap still come last. `magic.dtShare: 0` leaves spells as
 the vanilla formula prices them. A spell hit that a resistance or the DT changed logs `AlduinakDamageFormula - spell
-<s> of <a> on <t>: <u> before resistances, <r> after (magic resistance x<m>), worn DT <dt> x <share> takes <n>, <d>
-lands` at debug level, at info with `combatTrace` on.
+<s> of <a> on <t>: <u> before resistances, <r> after, worn DT <dt> x <share> takes <n>, <d> lands` at debug level, at info with `combatTrace` on.
 
 Weapon poison:
 ```

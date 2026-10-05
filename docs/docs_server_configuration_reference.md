@@ -587,10 +587,8 @@ cooldown`.
 
 Breton and Orc magic resistance is not in this block. The plugin's abilities resist magic in the client engine, and
 server spell damage needs two `damageMultConditionalFormulaSettings` entries, x0.5 for a Breton target and x0.75 for
-an Orc, vampire forms included. They wrap every server spell hit, not poisons. Under the vanilla formula they are
-the only magic resistance on spell damage. Under the rebalance formula (`alduinakDamageFormulaSettings.enabled` true)
-the native counts the abilities itself, but with `magic.resistance` not set only once these two entries are removed,
-so nothing counts twice while they stay (`docs_onhit_and_damage.md`):
+an Orc, vampire forms included. They wrap every server spell hit, not poisons, and are the only magic resistance on
+server spell damage under either formula (`docs_onhit_and_damage.md`):
 
 ```json5
 {
@@ -1432,7 +1430,7 @@ The formula's numbers, read while `enabled` is true:
 | `npcNaturalPowerMult` | `1.25` | Power attack multiplier of a creature's own attack |
 | `bashMult` | `0.3` | Share of the weapon's damage a bash deals; a bash never crits |
 | `playerHitCap` | `45` | The most one weapon hit (poison included) or one spell takes from a player, applied last, after `damageMultConditionalFormulaSettings`; NPC targets have no cap. Logs `... damage capped at 45` |
-| `magic` | `{ "dtShare": 0.5, "floor": 0.5 }` | Spells (`scam_native.node` from `feb6f390`). A hostile spell loses `dtShare` of the target's worn DT and keeps at least `floor` of its damage (Firebolt 25 lands 20.125 on a Steel set, Flames 8 lands 4); `dtShare: 0` leaves spell damage alone. 0 to 1 each. `resistance` (true or false, not set by default): whether the magic resistance of the target's Ability and Disease spells (Breton 50, Orc 25, at most 85) multiplies every damaging spell effect, except on spells that ignore resistance. Not set, it is on only when `damageMultConditionalFormulaSettings` holds no entry with a `magicDamageMultiplier` and a `GetIsRace` condition (the two `racialMagicResist` entries), so nothing counts twice; `true` beside those entries counts both and warns at boot; `false` leaves magic resistance to the entries. The generator writes no `magic` key |
+| `magic` | `{ "dtShare": 0.5, "floor": 0.5 }` | Spells (`scam_native.node` from `feb6f390`). A hostile spell loses `dtShare` of the target's worn DT and keeps at least `floor` of its damage (Firebolt 25 lands 20.125 on a Steel set, Flames 8 lands 4); `dtShare: 0` leaves spell damage alone. 0 to 1 each. Magic resistance comes only from the two `racialMagicResist` entries of `damageMultConditionalFormulaSettings`; a `resistance` key is no longer read. The generator writes no `magic` key |
 | `healthSnap` | `0.00011` | A health share at or under this after a hit counts as 0, so nine hits of 11.11 down 100 health. 0 to 1 |
 | `tempering` | `{ "weaponPerStep": 0.015, "armorPerStep": 0.015 }` | Share of damage or DT one temper step (Fine is 1) adds to a player's worn copy. 0 to 1 each |
 | `arrow` | `{ "scale": 0.25, "zero": 8, "max": 4 }` | Damage an arrow or bolt adds to its bow's row: clamp(`scale` x (AMMO damage - `zero`), 0, `max`) |
@@ -1516,12 +1514,7 @@ Boot lines in `gameserver.log`, in order:
 - `alduinakDamageFormulaSettings: the rebalance formula prices weapon hits (row damage against worn DT, crits rolled
   by the server, player hits capped at 45, health snap at 0.00011); spells are priced by TES5, then by the magic
   rules, with the same cap`, then `... magic: a hostile spell loses 0.5 of the target's worn DT and keeps at least
-  0.5 of its damage (magic.dtShare, magic.floor)`, one line for magic resistance (`... magic: magic resistance stays
-  with the damageMultConditionalFormulaSettings entries racialMagicResistBreton, racialMagicResistOrc
-  (magic.resistance is not set): once they are removed the magic resistance of abilities and diseases counts
-  natively`, or `... magic: magic resistance of abilities and diseases reduces hostile spell damage, at most by 85%,
-  spells that ignore resistance excepted (magic.resistance not set, no racial magic entry in
-  damageMultConditionalFormulaSettings)`) and `... hit rules: ...`; or `... enabled is false, weapon hits are priced
+  0.5 of its damage (magic.dtShare, magic.floor)` and `... hit rules: ...`; or `... enabled is false, weapon hits are priced
   by TES5 as without the block`.
 - Server TS: `[needs] block stamina by armor weight: a block costs x (1 + 0.006 x worn armor weight, counted up to
   115)`, `[durability] repairs on: workbench armor and shields, grindstone weapons, one set of temper materials per

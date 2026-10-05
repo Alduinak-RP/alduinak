@@ -3,37 +3,8 @@
 #include "HealthScale.h"
 #include "formulas/MagicRules.h"
 #include <limits>
-#include <optional>
 
 using Catch::Matchers::WithinAbs;
-
-TEST_CASE("Magic resistance multiplies an effect's own resistance",
-          "[MagicRules]")
-{
-  // Flames (8) on a Breton, Firebolt (25) on an Orc
-  REQUIRE_THAT(8.f * MagicRules::EffectMult(1.f, 0.5f, true, false, false),
-               WithinAbs(4.0, 0.0001));
-  REQUIRE_THAT(25.f * MagicRules::EffectMult(1.f, 0.75f, true, false, false),
-               WithinAbs(18.75, 0.0001));
-  // Fire resistance 50 beside magic resistance 50
-  REQUIRE_THAT(MagicRules::EffectMult(0.5f, 0.5f, true, false, false),
-               WithinAbs(0.25, 0.0001));
-  // A weakness to magic raises the damage
-  REQUIRE_THAT(MagicRules::EffectMult(1.f, 1.25f, true, false, false),
-               WithinAbs(1.25, 0.0001));
-}
-
-TEST_CASE("Magic resistance skips what it must not touch", "[MagicRules]")
-{
-  // The rule off: the effect's own multiplier bit for bit
-  REQUIRE(MagicRules::EffectMult(1.f, 0.5f, false, false, false) == 1.f);
-  REQUIRE(MagicRules::EffectMult(0.37f, 0.5f, false, false, false) == 0.37f);
-  REQUIRE(MagicRules::EffectMult(1.25f, 0.5f, false, true, true) == 1.25f);
-  // A spell that ignores resistance
-  REQUIRE(MagicRules::EffectMult(0.5f, 0.5f, true, true, false) == 0.5f);
-  // An effect resisted by magic resistance itself counts it once
-  REQUIRE(MagicRules::EffectMult(0.5f, 0.5f, true, false, true) == 0.5f);
-}
 
 TEST_CASE("A spell loses a share of the worn DT and keeps its floor",
           "[MagicRules]")
@@ -60,11 +31,6 @@ TEST_CASE("A spell loses a share of the worn DT and keeps its floor",
   // The whole DT
   REQUIRE_THAT(MagicRules::SpellAfterDT(25.f, kSteel, 1.f, 0.5f),
                WithinAbs(15.25, 0.0001));
-  // A Breton in Steel: Firebolt halves first, then meets the DT
-  REQUIRE_THAT(MagicRules::SpellAfterDT(
-                 25.f * MagicRules::EffectMult(1.f, 0.5f, true, false, false),
-                 kSteel, 0.5f, 0.5f),
-               WithinAbs(7.625, 0.0001));
   REQUIRE_THAT(MagicRules::SpellDT(kSteel, 0.5f), WithinAbs(4.875, 0.0001));
 }
 
@@ -78,23 +44,6 @@ TEST_CASE("Without DT or a share the spell damage stays bit for bit",
   REQUIRE(MagicRules::SpellAfterDT(-3.f, 9.75f, 0.5f, 0.5f) == -3.f);
   REQUIRE(MagicRules::SpellDT(-4.f, 0.5f) == 0.f);
   REQUIRE(MagicRules::SpellDT(9.75f, -1.f) == 0.f);
-}
-
-TEST_CASE("magic.resistance follows the racial entries unless it is set",
-          "[MagicRules]")
-{
-  const std::optional<bool> unset;
-  // Not set: on once the racial entries are gone
-  REQUIRE(MagicRules::NativeMagicResistance(true, unset, false));
-  REQUIRE(!MagicRules::NativeMagicResistance(true, unset, true));
-  // true and false decide whatever the entries say
-  REQUIRE(MagicRules::NativeMagicResistance(true, true, true));
-  REQUIRE(MagicRules::NativeMagicResistance(true, true, false));
-  REQUIRE(!MagicRules::NativeMagicResistance(true, false, false));
-  REQUIRE(!MagicRules::NativeMagicResistance(true, false, true));
-  // Never without the formula
-  REQUIRE(!MagicRules::NativeMagicResistance(false, unset, false));
-  REQUIRE(!MagicRules::NativeMagicResistance(false, true, false));
 }
 
 TEST_CASE("private.healthScale reads a number and nothing else",

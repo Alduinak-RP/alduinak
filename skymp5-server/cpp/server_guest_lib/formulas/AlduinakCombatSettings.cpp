@@ -844,11 +844,6 @@ std::shared_ptr<AlduinakCombatSettings> Parse(
   if (const json* magic = r.Object(block, "", "magic", false)) {
     r.Number(*magic, "magic.", "dtShare", s.magic.dtShare, 0.f, 1.f);
     r.Number(*magic, "magic.", "floor", s.magic.floor, 0.f, 1.f);
-    if (magic->contains("resistance")) {
-      bool resistance = false;
-      r.Bool(*magic, "magic.", "resistance", resistance);
-      s.magic.resistance = resistance;
-    }
   }
   if (const json* tempering = r.Object(block, "", "tempering", false)) {
     r.Number(*tempering, "tempering.", "weaponPerStep",
