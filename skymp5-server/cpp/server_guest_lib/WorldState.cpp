@@ -24,6 +24,7 @@
 #include <save_storages/AsyncSaveStorage.h> // UpsertFailedException
 #include <save_storages/ISaveStorage.h>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace {
 
@@ -59,7 +60,7 @@ struct WorldState::Impl
   std::vector<std::unique_ptr<IPapyrusClassBase>> classes;
   std::array<std::shared_ptr<std::vector<uint32_t>>, 0x100>
     allFormsByModIndexCache;
-  std::vector<uint32_t> attachEspmRecordFailures;
+  std::unordered_set<uint32_t> attachEspmRecordFailures;
 };
 
 WorldState::WorldState()
@@ -334,7 +335,7 @@ const std::shared_ptr<MpForm>& WorldState::LookupFormById(
   auto it = forms.find(formId);
   if (it == forms.end()) {
     if (formId < 0xff000000) {
-      if (LoadForm(formId, optionalOutTrace)) {
+      if (LoadForm(formId, false, optionalOutTrace)) {
         it = forms.find(formId);
         if (it != forms.end()) {
           if (optionalOutTrace) {
@@ -673,8 +674,19 @@ bool WorldState::AttachEspmRecord(const espm::CombineBrowser& br,
   return true;
 }
 
-bool WorldState::LoadForm(uint32_t formId, std::stringstream* optionalOutTrace)
+bool WorldState::LoadForm(uint32_t formId, bool isChunkLoad,
+                          std::stringstream* optionalOutTrace)
 {
+  if (forms.count(formId)) {
+    return true;
+  }
+  if (pImpl->attachEspmRecordFailures.count(formId)) {
+    if (optionalOutTrace) {
+      *optionalOutTrace << "AttachEspmRecord failed earlier" << std::endl;
+    }
+    return false;
+  }
+
   ANTIGO_CONTEXT_INIT(ctx);
   ctx.AddUnsigned(formId);
 
@@ -696,21 +708,21 @@ bool WorldState::LoadForm(uint32_t formId, std::stringstream* optionalOutTrace)
   }
 
   if (!attached) {
-    pImpl->attachEspmRecordFailures.push_back(formId);
-  }
-
-  if (attached) {
-    auto& refr = GetFormAt<MpObjectReference>(formId);
-    auto it = pImpl->changeFormsForDeferredLoad.find(formId);
-    if (it != pImpl->changeFormsForDeferredLoad.end()) {
-      auto copy = it->second; // crashes without copying
-      refr.ApplyChangeForm(copy);
+    // Chunk loads never retry, so only lookups and deferred deltas need it
+    if (!isChunkLoad || pImpl->changeFormsForDeferredLoad.count(formId)) {
+      pImpl->attachEspmRecordFailures.insert(formId);
     }
-
-    refr.ForceSubscriptionsUpdate();
+    return false;
   }
 
-  return attached;
+  auto& refr = GetFormAt<MpObjectReference>(formId);
+  auto deferred = pImpl->changeFormsForDeferredLoad.extract(formId);
+  if (!deferred.empty()) {
+    refr.ApplyChangeForm(deferred.mapped());
+  }
+
+  refr.ForceSubscriptionsUpdate();
+  return true;
 }
 
 void WorldState::TickSaveStorage(const std::chrono::system_clock::time_point&)
@@ -870,12 +882,13 @@ const std::set<MpObjectReference*>& WorldState::GetNeighborsByPosition(
             auto rawMapping = br.GetRawMapping(i);
             uint32_t mappedCellOrWorld =
               espm::utils::GetMappedId(cellOrWorld, *rawMapping);
-            auto records = br.GetRecordsAtPos(mappedCellOrWorld, x, y);
-            for (auto rec : *records[i]) {
+            for (auto rec : br.GetRecordsAtPos(i, mappedCellOrWorld, x, y)) {
               auto mappedId =
                 espm::utils::GetMappedId(rec->GetId(), *combMapping);
               assert(mappedId < 0xff000000);
-              LoadForm(mappedId);
+              if (!forms.count(mappedId)) {
+                LoadForm(mappedId, true);
+              }
             }
           }
           // Do not keep "loaded" reference here since LoadForm would
@@ -903,8 +916,6 @@ std::shared_ptr<std::vector<uint32_t>> WorldState::GetAllForms(
 
   if (!resCache) {
     // Deduplicate form IDs
-    // TODO: Consider cleaning changeFormsForDeferredLoad after adding a form
-    // so we don't need de-duplicate in runtime
     std::unordered_set<uint32_t> formIds;
     for (const auto& p : forms) {
       // Match by file index, not high byte: all light plugins share 0xFE

@@ -29,8 +29,10 @@ public:
 
   std::vector<LookupResult> GetDistinctRecordsByType(const char* type) const;
 
-  std::vector<const std::vector<const RecordHeader*>*> GetRecordsAtPos(
-    uint32_t cellOrWorld, int16_t cellX, int16_t cellY) const;
+  // cellOrWorld is in the file's own (raw) id space
+  const std::vector<const RecordHeader*>& GetRecordsAtPos(
+    size_t fileIndex, uint32_t cellOrWorld, int16_t cellX,
+    int16_t cellY) const;
 
   // Returns nullptr on failure
   const IdMapping* GetCombMapping(size_t fileIndex) const noexcept;

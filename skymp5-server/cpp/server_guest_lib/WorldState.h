@@ -316,7 +316,7 @@ private:
                         const espm::IdMapping& mapping,
                         std::stringstream* optionalOutTrace = nullptr);
 
-  bool LoadForm(uint32_t formId,
+  bool LoadForm(uint32_t formId, bool isChunkLoad,
                 std::stringstream* optionalOutTrace = nullptr);
   void TickSaveStorage(const std::chrono::system_clock::time_point& now);
   void TickTimers(const std::chrono::system_clock::time_point& now);

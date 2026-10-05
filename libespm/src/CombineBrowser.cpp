@@ -117,16 +117,15 @@ std::vector<LookupResult> CombineBrowser::GetDistinctRecordsByType(
   return result;
 }
 
-std::vector<const std::vector<const RecordHeader*>*>
-CombineBrowser::GetRecordsAtPos(uint32_t cellOrWorld, int16_t cellX,
-                                int16_t cellY) const
+const std::vector<const RecordHeader*>& CombineBrowser::GetRecordsAtPos(
+  size_t fileIndex, uint32_t cellOrWorld, int16_t cellX, int16_t cellY) const
 {
-  std::vector<const std::vector<const RecordHeader*>*> res;
-  for (size_t i = 0; i < pImpl->numSources; ++i) {
-    res.push_back(
-      &pImpl->sources[i].br->GetRecordsAtPos(cellOrWorld, cellX, cellY));
+  if (fileIndex >= pImpl->numSources) {
+    const static std::vector<const RecordHeader*> g_empty{};
+    return g_empty;
   }
-  return res;
+  return pImpl->sources[fileIndex].br->GetRecordsAtPos(cellOrWorld, cellX,
+                                                       cellY);
 }
 
 const IdMapping* CombineBrowser::GetCombMapping(
