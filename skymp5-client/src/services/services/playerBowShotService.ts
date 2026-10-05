@@ -5,7 +5,10 @@ import { MsgType } from "../../messages";
 import { getEquipment } from "../../sync/equipment";
 import { QueryBlockSetInventoryEvent } from "../events/queryBlockSetInventoryEvent";
 import { PlayerBowShotMessage } from "../messages/playerBowShotMessage";
-import { logError, logTrace } from "../../logging";
+import { logError, logToPlatformLog, logTrace } from "../../logging";
+import { describeAim } from "../../sync/castProbe";
+
+const OWN_AIM_LOG_GAP_MS = 10000;
 
 export class PlayerBowShotService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -60,6 +63,7 @@ export class PlayerBowShotService extends ClientListener {
     }
 
     private onPlayerBowShot(e: PlayerBowShotEvent) {
+        this.logOwnAim("bow shot");
         this.sendShot({
             weaponId: e.weapon.getFormID(),
             ammoId: e.ammo.getFormID(),
@@ -99,6 +103,7 @@ export class PlayerBowShotService extends ClientListener {
             return;
         }
 
+        this.logOwnAim("crossbow shot");
         this.sendShot({
             weaponId: crossbow.getFormID(),
             ammoId: equippedAmmoIds[0],
@@ -122,6 +127,18 @@ export class PlayerBowShotService extends ClientListener {
         return ammoOf(getEquipment(actor, 0).inv.entries.filter((e) => e.worn).map((e) => e.baseId));
     }
 
+    // Diagnostic, at most one line every 10 s: the pitch this shot left at, to compare with the copies' AimSync lines
+    private logOwnAim(what: string) {
+        const now = Date.now();
+        const player = now >= this.nextAimLogAt ? this.sp.Game.getPlayer() : null;
+        if (!player) {
+            return;
+        }
+        this.nextAimLogAt = now + OWN_AIM_LOG_GAP_MS;
+        logToPlatformLog("AimSync", `own ${what}: ${describeAim(player)}`);
+    }
+
     private score = 0;
     private inventoryUnblockMoment = 0;
+    private nextAimLogAt = 0;
 };

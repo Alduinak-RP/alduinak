@@ -1,5 +1,6 @@
 import { Actor, ActorBase, createText, destroyText, FormType, Game, Keyword, NetImmerse, ObjectReference, once, setTextColor, setTextRefr, setTextRefrNode, setTextRefrOffset, setTextRefrScreenOffset, setTextSize, setTextString, storage, TESModPlatform, Utility, worldPointToScreenPoint } from "skyrimPlatform";
-import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving, isShotEvent } from "../sync/animation";
+import { setDefaultAnimsDisabled, applyAnimation, restoreSitCollisionIfMoving, isCastStartEvent, isShotEvent } from "../sync/animation";
+import { probeCopyCast } from "../sync/castProbe";
 import { Appearance, applyAppearance } from "../sync/appearance";
 import { isBadMenuShown, isBadMenuShownNow, applyEquipment, countWorn, equipEntries, Equipment, getMissingWorn, getWornLight, resyncHandGraph, wearsExactly } from "../sync/equipment";
 import { Entry } from "../sync/inventory";
@@ -523,8 +524,16 @@ export class FormView {
 
     if (loaded) {
       if (model.animation) {
-        if (actor && !alreadyHosted && !mounted && model.animation.numChanges !== this.animState.lastNumChanges && isShotEvent(model.animation.animEventName)) {
-          aimForShot(actor, model.movement, model.movement?.rot[0] ?? 0, model.animation.animEventName);
+        if (actor && !alreadyHosted && !mounted && model.animation.numChanges !== this.animState.lastNumChanges) {
+          const event = model.animation.animEventName;
+          const castStart = isCastStartEvent(event);
+          // A staff cast has no SpellCast replay, so its start event is the copy's only cue and the copy is aimed here as before a shot
+          if (castStart || isShotEvent(event)) {
+            aimForShot(actor, model.movement, model.movement?.rot[0] ?? 0, event);
+          }
+          if (castStart) {
+            probeCopyCast("staff", actor, `staff cast event ${event}`, true);
+          }
         }
         applyAnimation(refr, model.animation, this.animState, mounted, !!model.appearance);
       }

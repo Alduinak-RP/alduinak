@@ -12,6 +12,7 @@ import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { SpApiInteractor } from "../services/spApiInteractor";
 import { isInSitPose } from "./animation";
 import { logToPlatformLog } from "../logging";
+import { describeGraphAim } from "./castProbe";
 
 const sqr = (x: number) => x * x;
 
@@ -34,6 +35,8 @@ const maxExtrapolationSpeed = 640;
 const turnRecheckMs = 130;
 // A smaller pitch change is not worth moving the copy for
 const aimPitchDeadzone = 1;
+// The in-place translation that pitches a copy covers no distance, so its speed only has to be above zero
+const aimTranslateSpeed = 100;
 const rangedHandTypes = new Set<number>([EquippedItemType.Bow, EquippedItemType.Staff, EquippedItemType.Spell, EquippedItemType.Crossbow]);
 const aimLogIntervalMs = 10000;
 
@@ -201,11 +204,18 @@ const applyHeadTracking = (ac: Actor, m: Movement, state: AppliedMovement, trust
 const holdsRanged = (ac: Actor): boolean =>
   rangedHandTypes.has(ac.getEquippedItemType(1)) || rangedHandTypes.has(ac.getEquippedItemType(0));
 
-// The engine fires an actor's arrows and casts at its X angle, so the copy is pitched where its player aimed; returns the angle it had
+// The last pitch given to a copy, for the AimSync line
+const lastAimGiven = { id: 0, pitch: 0, at: 0 };
+
+// The engine fires an actor's arrows and casts at its X angle while its graph aims at no target (Actor::GetAimAngle); returns the angle the copy had
+// A translation to the copy's own spot carries the angle: Papyrus SetAngle on an actor is the engine's MoveTo, which levels the X angle and resets the actor
 const aimCopy = (ac: Actor, pitch: number): number => {
   const angleX = ac.getAngleX();
   if (wrappedAngleDiff(angleX, pitch) > aimPitchDeadzone) {
-    ac.setAngle(normalizeAngle(pitch), ac.getAngleY(), ac.getAngleZ());
+    ac.translateTo(ac.getPositionX(), ac.getPositionY(), ac.getPositionZ(), normalizeAngle(pitch), ac.getAngleY(), ac.getAngleZ(), aimTranslateSpeed, 0);
+    lastAimGiven.id = ac.getFormID();
+    lastAimGiven.pitch = pitch;
+    lastAimGiven.at = Date.now();
   }
   return angleX;
 };
@@ -238,11 +248,14 @@ export const aimForShot = (ac: Actor, m: Movement | undefined, pitch: number, wh
   if (!m || m.runMode !== "Standing" || m.isInJumpState) {
     return;
   }
-  const had = aimCopy(ac, pitch);
   const now = Date.now();
+  const id = ac.getFormID();
+  // Read before this shot's own write, so the line shows whether the engine kept the pitch given earlier
+  const given = now >= nextAimLogAt && lastAimGiven.id === id ? `, given ${Math.round(lastAimGiven.pitch)} ${now - lastAimGiven.at} ms ago` : "";
+  const had = aimCopy(ac, pitch);
   if (now >= nextAimLogAt) {
     nextAimLogAt = now + aimLogIntervalMs;
-    logToPlatformLog("AimSync", `${what} by ${ac.getFormID().toString(16)}: pitch ${Math.round(pitch)}, copy had ${Math.round(had)}`);
+    logToPlatformLog("AimSync", `${what} by ${id.toString(16)}: pitch ${Math.round(pitch)}, copy had ${Math.round(had)}${given}; ${describeGraphAim(ac)}`);
   }
 };
 

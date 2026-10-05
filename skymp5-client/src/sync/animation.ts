@@ -423,6 +423,11 @@ const shotEventsLowerCase = new Set<string>(["bowattackstart", "attackrelease", 
 
 export const isShotEvent = (animEventName: string): boolean => shotEventsLowerCase.has(animEventName.toLowerCase());
 
+// The casting idles' events, which start a hand, dual or ritual cast of a spell or a staff: MRh_SpellAimedStart, MLh_WardStart, DualMagic_SpellSelfConcentrationStart, RitualSpellStart
+const castStartEvent = /^((mlh|mrh|dualmagic)_.*|ritualspell.*)start$/i;
+
+export const isCastStartEvent = (animEventName: string): boolean => castStartEvent.test(animEventName);
+
 // Get-ups and forced poses are single-slot on the receiver, a lost one leaves a copy posed
 export const needsReliableSend = (animEventName: string): boolean =>
   actorGetUpAnimsLowerCase.includes(animEventName.toLowerCase()) || forcedSyncAnims.has(animEventName);
