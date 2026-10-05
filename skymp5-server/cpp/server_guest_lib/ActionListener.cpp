@@ -1797,15 +1797,6 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
     hitData.target = myActor->GetFormId();
   }
 
-  // The gamemode can forbid an aggressor to fight (a carrier)
-  if (!FireGamemodeEvent(
-        partOne.worldState, aggressor->GetFormId(), "onHitAttempt",
-        nlohmann::json::array({ hitData.target, hitData.source }))) {
-    spdlog::info("ActionListener::OnHit - gamemode refused a hit by {:x}",
-                 aggressor->GetFormId());
-    return;
-  }
-
   MpForm* targetForm = partOne.worldState.LookupFormById(hitData.target).get();
   MpObjectReference* targetRef =
     targetForm ? targetForm->AsObjectReference() : nullptr;
@@ -1849,6 +1840,15 @@ void ActionListener::OnHit(const RawMessageData& rawMsgData,
                               "requesting respawn in order to fix death state",
                               aggressor->GetFormId()));
     aggressor->RespawnWithDelay(true);
+    return;
+  }
+
+  // The gamemode can forbid an aggressor to fight (a carrier)
+  if (!FireGamemodeEvent(
+        partOne.worldState, aggressor->GetFormId(), "onHitAttempt",
+        nlohmann::json::array({ hitData.target, hitData.source }))) {
+    spdlog::info("ActionListener::OnHit - gamemode refused a hit by {:x}",
+                 aggressor->GetFormId());
     return;
   }
 
