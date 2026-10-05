@@ -121,12 +121,19 @@ const SESSION_MODES = ["speed", "freecam"];
 // Teleport tab sections, the front's LOC_GROUPS ids
 const TELEPORT_GROUPS = ["cities", "villages", "forts", "temples", "oblivion", "other"];
 
-// The Oblivion section: the afterlife arrivals, the Hall of Valor and the Apocrypha origin (Dragonborn.esm COC marker 1C305 in DLC2ApocryphaOrigin); a configured entry of the same name replaces one
+// The Oblivion section: the afterlife arrivals, the Hall of Valor and realm cells at a marker or door arrival of the cell; kind names the realm; a configured entry of the same name replaces one
 const REALM_LOCATIONS = [
   { name: "Sovngarde", kind: "", group: "oblivion", ...REALMS.sovngarde.arrival },
   { name: "Hall of Valor", kind: "", group: "oblivion", cellOrWorldDesc: "95c44:Skyrim.esm", pos: [-266, 147, -448], rot: [0, 0, 359] },
   { name: "Soul Cairn", kind: "", group: "oblivion", ...REALMS.soulCairn.arrival },
+  // DLC2ApocryphaOrigin, cell 0,0 of DLC2ApocryphaWorld, at its COC marker (Dragonborn.esm REFR 1C305)
   { name: "Apocrypha", kind: "", group: "oblivion", cellOrWorldDesc: "1c0b2:Dragonborn.esm", pos: [2604.03, 97, 1192.59], rot: [0, 0, 0] },
+  // DA14Interior, where the Morvunskar portal door (Skyrim.esm REFR 3DC45) sets the player down
+  { name: "Misty Grove", kind: "Revelry", group: "oblivion", cellOrWorldDesc: "3d62b:Skyrim.esm", pos: [1405.97, 543.58, -578.93], rot: [0, 0, 288.56] },
+  // AzurasStarInterior01 at its COC marker (REFR 96428); no door leads in
+  { name: "Azura's Star", kind: "Moonshadow", group: "oblivion", cellOrWorldDesc: "152bd:Skyrim.esm", pos: [-4442.27, -9496.88, 987.39], rot: [0, 0, 127.71] },
+  // BluePalaceWingStart, cell 0,0 of BluePalaceWingWorld, at its COC marker (REFR 9B243)
+  { name: "Shivering Isles", kind: "", group: "oblivion", cellOrWorldDesc: "34240:Skyrim.esm", pos: [1970.17, 1601.36, 960.21], rot: [0, 0, 1.43] },
 ];
 
 interface TeleportLocation {
