@@ -413,6 +413,8 @@ const main = async () => {
     process.exit(-1);
   }
   const ctx = { svr: server, gm: new EventEmitter() };
+  // Every system listens once to the shared events; a count past this still flags a real leak
+  ctx.gm.setMaxListeners(40);
   trackConnections(server);
   trackOnline(ctx);
   trackPreLogin(ctx);

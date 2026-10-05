@@ -336,8 +336,9 @@ export class PlacedItemSystem implements System {
     for (const doc of docs) {
       const desc = String(doc.formDesc ?? "");
       const id = desc.includes(":") ? 0 : (0xff000000 | parseInt(desc, 16)) >>> 0;
+      if (!id) continue;
       const at = this.placedAt(mp, id);
-      if (!id || at === null || at >= cutoff || this.nailedBy(mp, id)) continue;
+      if (at === null || at >= cutoff || this.nailedBy(mp, id)) continue;
       try {
         destroyRef(mp, id);
         removed++;
