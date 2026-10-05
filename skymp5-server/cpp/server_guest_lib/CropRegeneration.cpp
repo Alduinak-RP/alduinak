@@ -25,14 +25,13 @@ float GetServerHealthRegenMultiplier(MpActor* actor)
 
 float CropRegeneration(float newAttributeValue, float secondsAfterLastRegen,
                        float attributeRate, float attributeRateMult,
-                       float oldAttributeValue, bool hasActiveMagicEffects)
+                       float oldAttributeValue)
 {
   spdlog::trace(
     "[crop]: args=(newAttributeValue={}, secondsAfterLastRegen={}, "
-    "attributerate={}, attributeRateMult={}, oldAttributeValue={}, "
-    "hasActiveMagicEffects={})",
+    "attributerate={}, attributeRateMult={}, oldAttributeValue={})",
     newAttributeValue, secondsAfterLastRegen, attributeRate, attributeRateMult,
-    oldAttributeValue, hasActiveMagicEffects);
+    oldAttributeValue);
 
   float validRegenerationPercentage =
     MathUtils::PercentToFloat(attributeRate) *
@@ -51,7 +50,6 @@ float CropRegeneration(float newAttributeValue, float secondsAfterLastRegen,
 
   validAttributePercentage =
     validAttributePercentage > 1.0f ? 1.0f : validAttributePercentage;
-  constexpr float kMaxOldPercentage = 1.f;
 
   spdlog::trace("[crop]: comparing received attribute value and valid one: "
                 "newAttributeValue={}, validAttributePercentage={}",
@@ -63,10 +61,6 @@ float CropRegeneration(float newAttributeValue, float secondsAfterLastRegen,
   if (newAttributeValue < 0.0f) {
     return 0.0f;
   }
-  // if (hasActiveMagicEffects &&
-  //    !MathUtils::IsNearlyEqual(oldAttributeValue, kMaxOldPercentage)) {
-  //  return validAttributePercentage;
-  // }
   return newAttributeValue;
 }
 
@@ -80,9 +74,8 @@ float CropHealthRegeneration(float newAttributeValue,
   const float rateMult =
     std::max(baseValues.healRateMult, actorValues.healRateMult);
   const float oldPercentage = actorValues.healthPercentage;
-  const bool hasActiveMagicEffects = !actor->GetActiveMagicEffects().Empty();
   return CropRegeneration(newAttributeValue, secondsAfterLastRegen, rate,
-                          rateMult, oldPercentage, hasActiveMagicEffects);
+                          rateMult, oldPercentage);
 }
 
 float CropMagickaRegeneration(float newAttributeValue,
@@ -96,9 +89,8 @@ float CropMagickaRegeneration(float newAttributeValue,
   const float rateMult =
     std::max(baseValues.magickaRateMult, actorValues.magickaRateMult);
   const float oldPercentage = actorValues.magickaPercentage;
-  const bool hasActiveMagicEffects = !actor->GetActiveMagicEffects().Empty();
   return CropRegeneration(newAttributeValue, secondsAfterLastRegen, rate,
-                          rateMult, oldPercentage, hasActiveMagicEffects);
+                          rateMult, oldPercentage);
 }
 
 float CropStaminaRegeneration(float newAttributeValue,
@@ -113,9 +105,8 @@ float CropStaminaRegeneration(float newAttributeValue,
   const float rateMult =
     std::max(baseValues.staminaRateMult, actorValues.staminaRateMult);
   const float oldPercentage = actorValues.staminaPercentage;
-  const bool hasActiveMagicEffects = !actor->GetActiveMagicEffects().Empty();
   return CropRegeneration(newAttributeValue, secondsAfterLastRegen, rate,
-                          rateMult, oldPercentage, hasActiveMagicEffects);
+                          rateMult, oldPercentage);
 }
 
 float CropPeriodAfterLastRegen(float secondsAfterLastRegen,

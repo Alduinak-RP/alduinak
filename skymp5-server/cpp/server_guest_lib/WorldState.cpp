@@ -610,9 +610,6 @@ bool WorldState::AttachEspmRecord(const espm::CombineBrowser& br,
                     spawnInInterior, spawnInExterior);
     }
 
-    if (spawnInInterior && isInterior || spawnInExterior && isExterior) {
-    }
-
     if ((!spawnInInterior || !isInterior) &&
         (!spawnInExterior || !isExterior)) {
       spdlog::trace(

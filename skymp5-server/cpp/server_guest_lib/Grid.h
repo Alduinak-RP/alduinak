@@ -3,10 +3,8 @@
 
 #pragma once
 #include "DSLine.h"
-#include <cassert>
 #include <cstdint>
 #include <set>
-#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 
@@ -27,13 +25,6 @@ public:
     }
   }
 
-  std::pair<int16_t, int16_t> GetPos(const T& id) const
-  {
-    if (objects[id].active)
-      return objects[id].coords;
-    throw std::logic_error("grid: id not found");
-  }
-
   void Forget(const T& id)
   {
     auto& obj = objects[id];
@@ -49,20 +40,6 @@ public:
   {
     auto& neiX = nei.At(x);
     return neiX.At(y);
-  }
-
-  const std::set<T>& GetNeighboursAndMe(const T& id) const
-  {
-    auto& pos = objects[id].coords;
-    return GetNeighboursByPosition(pos.first, pos.second);
-  }
-
-  std::set<T> GetNeighbours(const T& id)
-  {
-    auto res = GetNeighboursAndMe(id);
-    auto n = res.erase(id);
-    assert(n == 1);
-    return res;
   }
 
 private:
@@ -96,13 +73,6 @@ private:
 
   mutable std::unordered_map<T, Obj> objects;
   mutable DSLine<DSLine<std::set<T>>> nei;
-
-  static bool IsNeighbours(int16_t x1, int16_t y1, int16_t x2, int16_t y2)
-  {
-    if (x1 <= x2 + 1 && x1 >= x2 - 1 && y1 <= y2 + 1 && y1 >= y2 - 1)
-      return true;
-    return false;
-  }
 };
 
 using Grid = GridImpl<uint64_t>;

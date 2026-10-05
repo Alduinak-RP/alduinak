@@ -5,7 +5,7 @@ struct BaseActorValues;
 
 float CropRegeneration(float newAttributeValue, float secondsAfterLastRegen,
                        float attributeRate, float attributeRateMult,
-                       float oldAttributeValue, bool hasActiveMagicEffects);
+                       float oldAttributeValue);
 
 float CropHealthRegeneration(float newAttributeValue,
                              float secondsAfterLastRegen, MpActor* actor,
