@@ -86,6 +86,10 @@ export class FormViewArray {
     this.viewByLocalId.get(localId)?.noteOpenClose();
   }
 
+  noteEngineDeath(localId: number, killerId: number) {
+    this.viewByLocalId.get(localId)?.noteEngineDeath(killerId);
+  }
+
   forgetLoaded3D() {
     this.formViews.forEach((v) => v?.forgetLoaded3D());
   }

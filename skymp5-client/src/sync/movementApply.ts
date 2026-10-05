@@ -66,6 +66,8 @@ export interface AppliedMovement {
   ranged?: boolean;
   // The pitch a standing copy was given, undefined while it stands level
   aimPitch?: number;
+  // The engine's dead flag read at the last recheck, taken by FormView
+  engineDead?: boolean;
 }
 
 export const makeAppliedMovement = (): AppliedMovement => ({ recheckAt: 0, window: 0.2 });
@@ -118,6 +120,11 @@ export const applyMovement = (refr: ObjectReference, m: Movement, isMyClone?: bo
   const ac = Actor.from(refr);
   if (!ac) {
     return;
+  }
+
+  // A kill the engine did on its own is read back with the other cached values
+  if (!trusted) {
+    state.engineDead = ac.isDead();
   }
 
   applyHeadTracking(ac, m, state, trusted);

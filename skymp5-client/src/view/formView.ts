@@ -196,10 +196,9 @@ export class FormView {
       // Blocked once per copy, so a world NPC that PetService unblocks stays talkable
       actor?.blockActivation(true);
     }
-    if (actor && !this.localImmortal) {
-      actor.startDeferredKill();
-      actor.setActorValue("health", 1000000);
-      actor.setActorValue("magicka", 1000000);
+    // The engine keeps the deferred kill in the process data an actor only has once its 3D is in, so it is set then and again after each 3D load
+    if (actor && loaded && (!this.localImmortal || loadedNow)) {
+      FormView.makeImmortal(actor);
       this.localImmortal = true;
     }
     if (actor && !refId) {
@@ -261,6 +260,8 @@ export class FormView {
         new SpawnProcess(model.appearance || null, spawnPos, refr.getFormID(), () => {
           this.ready = true;
           this.spawnMoment = Date.now();
+          // The spawn's resurrect resets the actor, so the deferred kill is set again at the next update
+          this.localImmortal = false;
         }, !!model.isDead);
       }
 
@@ -270,11 +271,9 @@ export class FormView {
       const spawned = Actor.from(refr);
       if (spawned) {
         spawned.setActorValue("attackDamageMult", 0);
-        // Immortal from the first frame: a copy dying while its collision still loads would have its host report a death the server never saw
-        spawned.startDeferredKill();
-        spawned.setActorValue("health", 1000000);
-        spawned.setActorValue("magicka", 1000000);
-        this.localImmortal = true;
+        // A copy just placed has no process data, where the deferred kill lives, so update sets it once the 3D is in
+        FormView.makeImmortal(spawned);
+        this.localImmortal = false;
       }
     }
     this.refrId = (refr as ObjectReference).getFormID();
@@ -330,6 +329,7 @@ export class FormView {
 
     this.localImmortal = false;
     this.killApplied = false;
+    this.engineDeadSince = 0;
     this.hostilityApplied = false;
     this.aggressionBeforeRaise = undefined;
     this.adminView = "visible";
@@ -484,6 +484,7 @@ export class FormView {
             if (!movementHeld) {
               restoreSitCollisionIfMoving(refr, movement);
             }
+            this.takeEngineDeathRead();
           } catch (e) {
             if (e instanceof RespawnNeededError) {
               this.lastWorldOrCell = model.movement.worldOrCell;
@@ -614,6 +615,7 @@ export class FormView {
     }
     const emitter = SpApiInteractor.getControllerInstance().emitter;
     if (isDead) {
+      this.engineDeadSince = 0;
       if (loaded && !this.killApplied) {
         if (actor.isDead()) {
           this.killApplied = true;
@@ -624,19 +626,60 @@ export class FormView {
       return false;
     }
     this.killApplied = false;
-    if (!revived) {
+    if (revived) {
+      // A copy only ragdolled by the relayed Ragdoll event has no engine death for DeathService to undo, so it is spawned again here
+      if (actor.getActorValue("Variable10") < -999) {
+        this.respawn();
+        return true;
+      }
+      try {
+        emitter.emit("applyDeathStateEvent", { actor, isDead: false, trigger: "model" });
+      } catch (e) {
+        if (!(e instanceof RespawnNeededError)) {
+          throw e;
+        }
+        this.respawn();
+        return true;
+      }
       return false;
     }
-    try {
-      emitter.emit("applyDeathStateEvent", { actor, isDead: false, trigger: "model" });
-    } catch (e) {
-      if (!(e instanceof RespawnNeededError)) {
-        throw e;
-      }
+    // The server's own verdict on the hit arrives within the grace; past it the engine's kill was its own and the copy follows the server
+    if (this.engineDeadSince && Date.now() - this.engineDeadSince >= FormView.engineDeathGraceMs) {
+      const killer = this.engineKillerId ? ` by ${this.engineKillerId.toString(16)}` : "";
+      logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy ${this.refrId.toString(16)} died in the engine${killer} while the server has it alive, spawned again`);
       this.respawn();
       return true;
     }
     return false;
+  }
+
+  // From the engine's death events on this copy's local id
+  noteEngineDeath(killerId: number): void {
+    if (!this.engineDeadSince) {
+      this.engineDeadSince = Date.now();
+      this.engineKillerId = killerId;
+    }
+  }
+
+  // The dead flag applyMovement read back with the copy's other cached values
+  private takeEngineDeathRead(): void {
+    const dead = this.appliedMovement.engineDead;
+    if (dead === undefined) {
+      return;
+    }
+    this.appliedMovement.engineDead = undefined;
+    if (dead) {
+      this.noteEngineDeath(0);
+    } else {
+      this.engineDeadSince = 0;
+    }
+  }
+
+  // A deferred kill holds a copy at 0 health instead of killing it, so only the server's isDead kills it; a huge pool keeps local hits from reaching 0 at all
+  private static makeImmortal(actor: Actor): void {
+    actor.startDeferredKill();
+    actor.setActorValue("health", 1000000);
+    actor.setActorValue("magicka", 1000000);
   }
 
   // One head projection serves the tint on-screen trigger and the name tag; the tint also runs on the update after a reset
@@ -1073,6 +1116,11 @@ export class FormView {
   private modelWasDead = false;
   // This copy read dead after the server's death, so it is not read again until it is respawned or revived
   private killApplied = false;
+  // When the engine reported this copy dead while the model said alive, 0 otherwise
+  private engineDeadSince = 0;
+  private engineKillerId = 0;
+  // Longer than a hit's round trip, so a death the server confirms is not undone first
+  private static readonly engineDeathGraceMs = 1500;
   private hostilityApplied = false;
   private hostileFlagSeen: unknown = undefined;
   private aggressionBeforeRaise: number | undefined = undefined;

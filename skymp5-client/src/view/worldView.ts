@@ -1,4 +1,4 @@
-import { OpenCloseEvent } from 'skyrimPlatform';
+import { DeathEvent, OpenCloseEvent } from 'skyrimPlatform';
 import { WorldModel } from './model';
 import { FormViewArray } from './formViewArray';
 import { PlayerCharacterDataHolder } from './playerCharacterDataHolder';
@@ -17,6 +17,8 @@ export class WorldView extends ClientListener {
     controller.on("crosshairRefChanged", (e) => PlayerCharacterDataHolder.setCrosshairRef(e.reference));
     controller.on("open", (e) => this.onOpenClose(e));
     controller.on("close", (e) => this.onOpenClose(e));
+    controller.on("deathStart", (e) => this.onEngineDeath(e));
+    controller.on("deathEnd", (e) => this.onEngineDeath(e));
     controller.on("loadGame", () => this.state.formViews.forgetLoaded3D());
 
     this.state = this.makeEmptyState();
@@ -99,6 +101,14 @@ export class WorldView extends ClientListener {
     const localId = e.target?.getFormID();
     if (localId) {
       this.state.formViews.noteOpenClose(localId);
+    }
+  }
+
+  // A copy's death in this engine, which only the server's isDead may confirm
+  private onEngineDeath(e: DeathEvent) {
+    const localId = e.actorDying?.getFormID() ?? 0;
+    if (localId >= 0xff000000) {
+      this.state.formViews.noteEngineDeath(localId, e.actorKiller?.getFormID() ?? 0);
     }
   }
 
