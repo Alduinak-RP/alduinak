@@ -34,9 +34,7 @@ export class WorldView extends ClientListener {
   }
 
   syncFormArray(model: WorldModel) {
-    const { settings } = this.sp;
-    const showMe = settings['skymp5-client']['show-me'];
-    this.state.formViews.syncFormView(model, !!showMe);
+    this.state.formViews.syncFormView(model);
   }
 
   destroy() {
@@ -46,7 +44,6 @@ export class WorldView extends ClientListener {
 
   resetFormViews() {
     this.state.formViews.resize(0);
-    this.state.cloneFormViews.resize(0);
   }
 
   getFormViews() {
@@ -106,7 +103,6 @@ export class WorldView extends ClientListener {
   }
 
   private updateWorld(model: WorldModel): void {
-    const { settings } = this.sp;
     const state = this.state;
 
     if (!state.allowUpdate) {
@@ -117,42 +113,20 @@ export class WorldView extends ClientListener {
       }
     }
 
-    const skipUpdates = settings['skymp5-client']['skipUpdates'];
-
-    // skip 50% of updates if specified in the settings
-    state.counter = !state.counter;
-    if (state.counter && skipUpdates) {
-      return;
-    }
-
     state.formViews.resize(model.forms.length);
-
-    const showMe = settings['skymp5-client']['show-me'];
-    const showClones = settings['skymp5-client']['show-clones'];
-
-    state.formViews.updateAll(model, !!showMe, false);
-
-    if (showClones) {
-      state.cloneFormViews.updateAll(model, false, true);
-    } else {
-      state.cloneFormViews.resize(0);
-    }
+    state.formViews.updateAll(model);
   }
 
   private makeEmptyState() {
     return {
       formViews: new FormViewArray(),
-      cloneFormViews: new FormViewArray(),
       allowUpdate: false,
-      counter: false,
     }
   }
 
   private state: {
     formViews: FormViewArray;
-    cloneFormViews: FormViewArray;
     allowUpdate: boolean;
-    counter: boolean;
   };
 
   private oldView?: WorldView;

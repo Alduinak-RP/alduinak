@@ -182,9 +182,7 @@ It always dispels when the aggressor is a copy this client does not host (its sw
 real hit), and puts the health back to the value before the effect when only the poison's own first tick was lost.
 Each verdict is logged, at most once per NPC every 5 s (`NpcHitSpellBlockService: dispelled <spells> from <npc>
 (<reason>, <sources>)`, `kept <spells> from <npc> (unblocked, ...)` or `left <spells> from <npc> (<reason>),
-dispelSpell would also take the unblocked poison of <other npc>`). `hit` events from NPC aggressors with a
-non-weapon source are logged once per source every 5 s (`HitService: npc ... hit the player with source ...`), which
-says whether the engine raises a hit event for a given hit spell at all. An unblocked hit from a hosted NPC still
+dispelSpell would also take the unblocked poison of <other npc>`). An unblocked hit from a hosted NPC still
 poisons the player locally as before, invisible to god mode and `onHitDamageAttempt`.
 
 The poison's damage reaches the server only through the victim's own `ChangeValues` report, which `OnChangeValues`

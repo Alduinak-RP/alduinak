@@ -360,18 +360,6 @@ export class MagicSyncService extends ClientListener {
         return undefined;
     }
 
-    private isSpellCastAnim(animEventName: string): boolean {
-        const eventName = animEventName.toLowerCase();
-
-        const isSpellCastAnimForLeftHand = eventName === "mlh_spellaimedconcentrationstart" || eventName === "mlh_spellaimedstart" || eventName === "mlh_spellready_event" ||
-            eventName === "mlh_spellrelease_event" || eventName === "mlh_equipped_event";
-
-        const isSpellCastAnimForRightHand = eventName === "mrh_spellaimedconcentrationstart" || eventName === "mrh_spellaimedstart" || eventName === "mrh_spellready_event" ||
-            eventName === "mrh_spellrelease_event" || eventName === "mrh_equipped_event";
-
-        return isSpellCastAnimForLeftHand || isSpellCastAnimForRightHand;
-    };
-
     private playerId = 0x14;
     private readonly selfDelivery = 0;
     private sendUpdateAnimationVariablesRateMs = 500;

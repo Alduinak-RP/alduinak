@@ -151,19 +151,7 @@ export class FormView {
         this.dealtWithRef = false;
       }
     } else {
-      let templateChain = model.templateChain;
-
-      // There is no place for random/leveling in 1-sized chain
-      // Just spawn an NPC, do not generate a temporary TESNPC form
-      if (templateChain?.length === 1) {
-        templateChain = undefined;
-      }
-
-      // TODO: getLeveledBase crashes too often ATM
-      let base = null; //Game.getFormEx(this.getLeveledBase(templateChain));
-      if (base === null) {
-        base = Game.getFormEx(model.baseId || NaN);
-      }
+      let base = Game.getFormEx(model.baseId || NaN);
       if (base === null) {
         base = Game.getFormEx(this.getAppearanceBasedBase());
       }
@@ -185,54 +173,11 @@ export class FormView {
       if (respawnRequired) {
         this.destroy();
 
-        const player = Game.getPlayer() as Actor;
-
-        const spawnMethodOriginal = {
-          spawn(baseForm: Form, _spawnPosition: [number, number, number], _spawnRotation: [number, number, number]): ObjectReference {
-            return player.placeAtMe(
-              baseForm,
-              1,
-              true,
-              true
-            ) as ObjectReference;
-          },
-
-          triggerSpawnProcess(spawningRefr: ObjectReference, spawnPosition: [number, number, number], appearance: Appearance | null, callback: () => void) {
-            new SpawnProcess(
-              appearance,
-              spawnPosition,
-              spawningRefr.getFormID(),
-              callback,
-              !!model.isDead
-            );
-          }
-        };
-
-        const spawnMethodStub = {
-          spawn(baseForm: Form, spawnPosition: [number, number, number], spawnRotation: [number, number, number]): ObjectReference {
-            const f = storage["formViewFunc1"] as Function;
-            const ref: ObjectReference = f(baseForm, spawnPosition, spawnRotation);
-            return ref;
-          },
-
-          triggerSpawnProcess(spawningRefr: ObjectReference, spawnPosition: [number, number, number], appearance: Appearance | null, callback: () => void) {
-            const f = storage["formViewFunc2"] as Function;
-            f(spawningRefr, spawnPosition, appearance, callback);
-          }
-        };
-
-        const spawnUsingStubMethod = base.getType() === FormType.NPC
-          && !this.appearanceState.appearance
-          && storage["formViewFunc1Set"] === true
-          && storage["formViewFunc2Set"] === true;
-        const spawnMethod = spawnUsingStubMethod ? spawnMethodStub : spawnMethodOriginal;
-
         if (model.movement) {
-          refr = spawnMethod.spawn(base, model.movement.pos, model.movement.rot);
+          refr = (Game.getPlayer() as Actor).placeAtMe(base, 1, true, true) as ObjectReference;
         }
 
         this.state = {};
-        delete this.wasHostedByOther;
         if (base.getType() !== FormType.NPC) {
           refr?.setAngle(
             model.movement?.rot[0] || 0,
@@ -260,10 +205,10 @@ export class FormView {
         const spawnPos = model.movement ? model.movement.pos : ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
 
         if (refr) {
-          spawnMethod.triggerSpawnProcess(refr, spawnPos, model.appearance || null, () => {
+          new SpawnProcess(model.appearance || null, spawnPos, refr.getFormID(), () => {
             this.ready = true;
             this.spawnMoment = Date.now();
-          });
+          }, !!model.isDead);
         }
 
         if (model.appearance && model.appearance.name) {
@@ -609,10 +554,8 @@ export class FormView {
           refr.is3DLoaded() &&
           !isBadMenuShown() &&
           Date.now() - this.eqState.lastEqMoment > 500 &&
-          Date.now() - this.spawnMoment > -1 &&
           this.spawnMoment > 0
         ) {
-          //if (this.spawnMoment > 0 && Date.now() - this.spawnMoment > 5000) {
           // Stripping and re-equipping an NPC copy races the engine's skeleton update, so a copy already wearing the set is left alone
           if (!model.appearance && wearsExactly(ac, model.equipment)) {
             this.eqState.lastNumChanges = model.equipment.numChanges;
@@ -624,9 +567,6 @@ export class FormView {
           }
           this.eqState.verifyNumChanges = model.equipment.numChanges;
           this.eqState.lastEqMoment = Date.now();
-          //}
-          //const res: boolean = applyEquipment(ac, model.equipment);
-          //if (res) this.eqState.lastNumChanges = model.equipment.numChanges;
         }
       }
     }
@@ -689,10 +629,6 @@ export class FormView {
             );
             setTextSize(this.textActorIdId, 0.4);
           }
-          SpApiInteractor.getControllerInstance().emitter.emit("nicknameCreate", {
-            remoteRefrId: this.getRemoteRefrId(),
-            textId: this.textNameId
-          });
         } else {
           const deleteNickname = headScreenPos[2] < 0;
           if (deleteNickname) {
@@ -944,10 +880,6 @@ export class FormView {
 
   private removeNickname() {
     if (this.textNameId) {
-      SpApiInteractor.getControllerInstance().emitter.emit("nicknameDestroy", {
-        remoteRefrId: this.getRemoteRefrId(),
-        textId: this.textNameId
-      });
       destroyText(this.textNameId);
       this.textNameId = undefined;
     }
@@ -963,25 +895,6 @@ export class FormView {
       this.appearanceBasedBaseId = applyAppearance(this.appearanceState.appearance).getFormID();
     }
     return this.appearanceBasedBaseId;
-  }
-
-  private getLeveledBase(templateChain: number[] | undefined): number {
-    if (templateChain === undefined) {
-      return 0;
-    }
-
-    const str = templateChain.join(',');
-
-    if (this.leveledBaseId === 0) {
-      // @ts-ignore
-      const leveledBase = TESModPlatform.evaluateLeveledNpc(str);
-      if (!leveledBase) {
-        logToPlatformLog("FormView", "Failed to evaluate leveled npc", str);
-      }
-      this.leveledBaseId = leveledBase?.getFormID() || 0;
-    }
-
-    return this.leveledBaseId;
   }
 
   // True until the copy's 3D has stayed loaded for copySettleMs
@@ -1062,7 +975,6 @@ export class FormView {
   private appearanceState = this.getDefaultAppearanceState();
   private eqState = this.getDefaultEquipState();
   private appearanceBasedBaseId = 0;
-  private leveledBaseId = 0;
   private isOnScreen = false;
   private lastNiNodeUpdateMs = 0;
   // A head at the camera (a carried player inside their carrier) flickers on and off screen; each rebuild is a hitch
@@ -1077,7 +989,6 @@ export class FormView {
   private static readonly torchCheckMs = 2000;
   private static readonly torchMaxTries = 3;
   private static readonly torchSteadyMs = 30000;
-  private wasHostedByOther: boolean | undefined = undefined;
   private state = {};
   // Known from the first update of a ready copy
   private isActor: boolean | undefined = undefined;

@@ -3,6 +3,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { keepMenusClosed } from "./menuBlockUtil";
 import { showSystemNotification } from "./systemNotification";
+import { logToPlatformLog } from "../../logging";
 
 // Game time is the server box's local wall clock plus the server's offset at 1:1, taken from its gameTime packet (TimeSystem)
 
@@ -111,7 +112,7 @@ export class TimeService extends ClientListener {
     if (this.weeks === undefined) this.weeks = Math.floor((days - current) / 7);
     const target = days - 7 * this.weeks;
     if (this.samples && this.samples.push(`${current.toFixed(5)}/${target.toFixed(5)}`) >= DAYS_PASSED_SAMPLES) {
-      this.report(`GameDaysPassed value/target every 2 s after the load: ${this.samples.join(" ")}`);
+      logToPlatformLog(this, `GameDaysPassed value/target every 2 s after the load: ${this.samples.join(" ")}`);
       this.samples = undefined;
     }
     // Both ways, so training, jail or the DST fall back never leave it ahead
@@ -119,11 +120,6 @@ export class TimeService extends ClientListener {
     // The engine rebuilds the global every frame from the Calendar's whole days and GameHour, older SkyrimPlatform builds lack the setter
     const api = this.sp as Sp & CalendarApi;
     if (typeof api.setRawDaysPassed === "function") api.setRawDaysPassed(Math.round(target - hour.getValue() / 24));
-  }
-
-  // printConsole never reaches skyrim-platform.log (and the console is blocked), a throw from its own update does
-  private report(message: string): void {
-    this.controller.once("update", () => { throw new Error(`TimeService: ${message}`); });
   }
 
   // Until the server answers, the client's own local clock stands in

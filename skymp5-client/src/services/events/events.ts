@@ -39,8 +39,6 @@ import { SpellCastMessage } from "../messages/spellCastMessage";
 import { UpdateAnimVariablesMessage } from "../messages/updateAnimVariablesMessage";
 
 import { AnyRawMessageEvent } from "./anyRawMessageEvent";
-import { NicknameCreateEvent } from "./nicknameCreateEvent";
-import { NicknameDestroyEvent } from "./nicknameDestroyEvent";
 import { PlayerWorldOrCellChangedEvent } from "./playerWorldOrCellChangedEvent";
 import { OwnerPropertyChangedEvent } from "./ownerPropertyChangedEvent";
 import { OwnerModelResetEvent } from "./ownerModelResetEvent";
@@ -89,8 +87,6 @@ type EventTypes = {
     'queryBlockSetInventoryEvent': [QueryBlockSetInventoryEvent],
     'queryKeyCodeBindings': [QueryKeyCodeBindings],
     'uiHiddenChanged': [UiHiddenChangedEvent],
-    'nicknameCreate': [NicknameCreateEvent],
-    'nicknameDestroy': [NicknameDestroyEvent],
     'playerWorldOrCellChanged': [PlayerWorldOrCellChangedEvent],
     'ownerPropertyChanged': [OwnerPropertyChangedEvent],
     'ownerModelReset': [OwnerModelResetEvent]

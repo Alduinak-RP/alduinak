@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
-import { logError } from "../../logging";
+import { logError, logToPlatformLog } from "../../logging";
 
 // The sky follows the server's weather packet (WeatherSystem): one weather per region, shared by everyone standing in it.
 // The first weather after a load screen is set outright, so the template save's own sky never fades over; later ones fade
@@ -134,7 +134,7 @@ export class WeatherService extends ClientListener {
     if (!this.fadeSince || now - this.fadeSince < SLOW_FADE_MS) return;
     this.fadeSince = 0;
     const transition = this.sp.Weather.getCurrentWeatherTransition();
-    if (transition < 1) this.controller.once("update", () => { throw new Error(`WeatherService: fade still at ${transition.toFixed(2)} five minutes after setActive; set weatherTransition or weatherGameSettings in server-settings.json`); });
+    if (transition < 1) logToPlatformLog(this, `fade still at ${transition.toFixed(2)} five minutes after setActive; set weatherTransition or weatherGameSettings in server-settings.json`);
   }
 
   private pending: WeatherPacket | null = null;

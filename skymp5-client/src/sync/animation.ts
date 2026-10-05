@@ -7,7 +7,6 @@ import {
   printConsole,
   Utility,
   Game,
-  storage,
   once,
   SendAnimationEventHook,
   // @ts-expect-error (TODO: Remove in 2.10.0)
@@ -301,13 +300,8 @@ export const applyAnimation = (
 
   if (anim.animEventName === "Ragdoll") {
     if (ac) {
-      if (storage["animationFunc1Set"] === true) {
-        // @ts-ignore
-        storage["animationFunc1"](ac);
-      } else {
-        ac.pushActorAway(ac, 0);
-        ac.setActorValue("Variable10", -1000);
-      }
+      ac.pushActorAway(ac, 0);
+      ac.setActorValue("Variable10", -1000);
     }
     return;
   }
@@ -446,25 +440,6 @@ export class AnimationSource {
   // The last animation the sender passed on
   lastSent?: Animation;
 
-  filterMovement(mov: Movement): Movement {
-    if (this.weapDrawnBlocker >= Date.now()) {
-      mov.isWeapDrawn = true;
-    }
-    if (this.weapNonDrawnBlocker >= Date.now()) {
-      mov.isWeapDrawn = false;
-    }
-
-    if (this.sneakBlocker === mov.isSneaking) {
-      this.sneakBlocker = null;
-    } else if (this.sneakBlocker === true) {
-      mov.isSneaking = true;
-    } else if (this.sneakBlocker === false) {
-      mov.isSneaking = false;
-    }
-
-    return mov;
-  }
-
   getAnimation(): Animation {
     const { numChanges, animEventName } = this;
     return { numChanges, animEventName };
@@ -479,28 +454,21 @@ export class AnimationSource {
     if (ignoredAnims.has(animEventName)) {
       return;
     }
+    const lower = animEventName.toLowerCase();
     // Half of a paired idle replayed alone on a copy has no partner; PairedIdleService plays both halves everywhere
-    if (animEventName.toLowerCase().startsWith("pa_")) {
+    if (lower.startsWith("pa_")) {
       return;
     }
 
-    const lower = animEventName.toLowerCase();
-
     const isTorchEvent = lower.includes("torch");
-    if (animEventName.toLowerCase().includes("unequip") && !isTorchEvent) {
-      this.weapNonDrawnBlocker = Date.now() + 300;
+    if (lower.includes("unequip") && !isTorchEvent) {
       animEventName = "SkympFakeUnequip";
-    } else if (animEventName.toLowerCase().includes("equip") && !isTorchEvent) {
-      this.weapDrawnBlocker = Date.now() + 300;
+    } else if (lower.includes("equip") && !isTorchEvent) {
       animEventName = "SkympFakeEquip";
     }
 
-    if (animEventName === "SneakStart") {
-      this.sneakBlocker = true;
-      return;
-    }
-    if (animEventName === "SneakStop") {
-      this.sneakBlocker = false;
+    // Sneaking reaches copies through movement
+    if (animEventName === "SneakStart" || animEventName === "SneakStop") {
       return;
     }
 
@@ -510,10 +478,6 @@ export class AnimationSource {
 
   private numChanges = 0;
   private animEventName = "";
-
-  private weapNonDrawnBlocker = 0;
-  private weapDrawnBlocker = 0;
-  private sneakBlocker: boolean | null = null;
 }
 
 const ignoredAnims = new Set<string>([
