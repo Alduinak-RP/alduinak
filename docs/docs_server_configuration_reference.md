@@ -690,8 +690,8 @@ The per-region weather sync (`docs_roleplay_weather.md`) rolls one weather per p
 | `weatherEnabled` | `true` | `false` switches the sync off; clients keep the vanilla sky |
 | `weatherMinMinutes` | `30` | Shortest weather, real minutes (1 to 1440) |
 | `weatherMaxMinutes` | `90` | Longest weather (at least the minimum, at most 1440) |
-| `weatherTransition` | `"accelerate"` | How a client changes to a new weather: `accelerate` (the engine's fast fade), `normal` (the vanilla fade, slow at the realm's 1:1 game clock) or `instant` |
-| `weatherGameSettings` | none | `{ "fWeatherTransMin": .., "fWeatherTransMax": .., "fWeatherTransAccel": .. }`, floats every client applies once to tune the fade speed, no client rebuild needed |
+| `weatherTransition` | `"accelerate"` | How a client changes to a rolled weather: `accelerate` (a fade; one still running is hurried first), `normal` (a fade that waits for a running one) or `instant`. An admin's force or clear is always instant |
+| `weatherGameSettings` | `{ "fWeatherTransMin": 0.0005, "fWeatherTransMax": 0.0125 }` | Fade length in game hours, which every client applies once: a twentieth of the vanilla 0.01 and 0.25, so a fade lasts 2 to 45 s on the realm's 1:1 game clock. Any of `fWeatherTransMin`, `fWeatherTransMax`, `fWeatherTransAccel` replaces its default, no client rebuild needed |
 
 ```json5
 {

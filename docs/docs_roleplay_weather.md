@@ -89,10 +89,13 @@ refreshes from the live position. A player who stops just past a border gets
 the new region's weather at the next climate step, after a trip through a
 door, or after 15 m more travel. A packet goes out only when the region, its
 weather or its start changed for that player, so riding along a border never
-flips the sky back and forth.
+flips the sky back and forth. A roll goes out in the poll that rolled it; an
+admin's force or clear goes out at once, to everyone the server last placed in
+the region; `weatherRequest` is answered at once from the player's live
+position.
 
 ```
-Server -> Client  { customPacketType: "weather", region, name, weatherId, weather, endsAt, transition, gameSettings? }
+Server -> Client  { customPacketType: "weather", region, name, weatherId, weather, endsAt, transition, gameSettings }
 Client -> Server  { customPacketType: "weatherRequest" }
 ```
 
@@ -112,21 +115,32 @@ the sky still shows the applied weather (the region's outside, SkyrimClear
 inside) and forces it again when a door, fast travel or the engine dropped
 it: outside once no fade is running, inside at once, since a fade there is the
 engine drifting toward the cell's own weather. `loadGame` (login and
-character switch) resets that state and sends `weatherRequest`, which makes
-the server answer within one poll.
+character switch) resets that state and sends `weatherRequest`, which the
+server answers at once.
 
 ## Transitions
 
-The engine advances a weather fade in game hours, and the realm's clock runs
-game time at 1:1, so a normal fade is far slower than in vanilla. The packet
-carries the mode (`weatherTransition`): `accelerate` (default) uses the
-engine's accelerated fade, `instant` switches the sky outright, `normal` is
-the vanilla fade. `weatherGameSettings` passes `fWeatherTransMin`,
-`fWeatherTransMax` and `fWeatherTransAccel` floats that every client applies
-once, so the fade speed can be tuned from `server-settings.json` without a
-client rebuild. The first test measures it: if a fade still runs five minutes
-after `setActive`, the client logs `WeatherService: fade still at 0.xx five
-minutes after setActive` to `skyrim-platform.log`.
+The engine times a weather fade in game hours: it lasts `fWeatherTransMin`
+(0.01) to `fWeatherTransMax` (0.25) game hours by the incoming weather's Trans
+Delta, which is 125 of 255 on nearly every vanilla weather: 23 s at the
+vanilla timescale of 20. The realm's clock runs game time at 1:1, where that
+same fade took 7.7 real minutes. The engine also starts a new fade only after
+the running one has ended (`Sky::SetWeather` just stores the weather), so a
+second change inside those minutes showed nothing at all. The server therefore
+sends both settings at a twentieth (`fWeatherTransMin` 0.0005,
+`fWeatherTransMax` 0.0125) in every packet and every client applies them
+once: a fade lasts 2 to 45 s again, 23 s for a usual weather.
+`weatherGameSettings` replaces single values, `fWeatherTransAccel` (4)
+included, without a client rebuild.
+
+The packet carries the mode. A rolled weather uses `weatherTransition`:
+`accelerate` (default) fades and, when an older fade is still running, lets
+that one finish five times faster so the new one starts sooner (the engine's
+accelerate flag does nothing else); `normal` waits for it at its own speed;
+`instant` switches the sky outright. An admin's force or clear always goes
+out as `instant`, so every client in the region shows it together. If a fade
+still runs five minutes after `setActive`, the client logs `WeatherService:
+fade still at 0.xx five minutes after setActive` to `skyrim-platform.log`.
 
 ## The state sidecar
 
@@ -166,8 +180,8 @@ All optional, in `server-settings.json`:
 | `weatherEnabled` | `true` | `false` sends no packets; clients keep the vanilla sky |
 | `weatherMinMinutes` | `30` | Shortest weather, real minutes (1 to 1440) |
 | `weatherMaxMinutes` | `90` | Longest weather (at least the minimum, at most 1440) |
-| `weatherTransition` | `"accelerate"` | `accelerate`, `normal` or `instant` |
-| `weatherGameSettings` | none | `{ "fWeatherTransMin": .., "fWeatherTransMax": .., "fWeatherTransAccel": .. }`, applied once per client |
+| `weatherTransition` | `"accelerate"` | How a rolled weather comes in: `accelerate`, `normal` or `instant` (an admin's change is always instant) |
+| `weatherGameSettings` | `{ "fWeatherTransMin": 0.0005, "fWeatherTransMax": 0.0125 }` | Fade length in game hours, applied once per client; any of `fWeatherTransMin`, `fWeatherTransMax`, `fWeatherTransAccel` replaces its default |
 
 ## Admin > Weather
 
@@ -182,13 +196,16 @@ form's Region from a row and Clear on a row releases it.
 The form: Region ("The region I am in" or any region), Weather (the picked
 region's own weathers with their chances first, then the whole catalog, the
 FX and editor weathers last), Minutes (blank holds until cleared, else 1 to
-1440). Force puts the weather on the region for everyone in it within one
-poll and Clear rolls one of the region's own weathers again with a fresh
-30 to 90 minute clock. Both toast the result and write an admin.log line:
+1440). Force puts the weather on the region and Clear rolls one of the
+region's own weathers again with a fresh 30 to 90 minute clock; either shows
+at once and without a fade for everyone in the region (someone who walked in
+during the last seconds follows at the next poll, with a fade). Both toast the
+result and write an admin.log line:
 `profile 12 (gm) forced weather SkyrimStormSnow on region tundra until
-cleared`, `profile 12 (gm) cleared the weather on region tundra`. A forced
-weather survives restarts by design, so an event storm nobody cleared shows
-as forced until someone presses Clear.
+cleared`, `profile 12 (gm) cleared the weather on region tundra`; the server
+log says how many clients got it: `[weather] tundra: SkyrimStormSnow set
+outright for 2 player(s)`. A forced weather survives restarts by design, so an
+event storm nobody cleared shows as forced until someone presses Clear.
 
 ```
 Client -> Server  { customPacketType: "adminAction", action: "weatherList", catalog? }

@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Settings } from "../settings";
-import { System, Log, SystemContext } from "./system";
+import { System, Log, SystemContext, Content } from "./system";
 import { WEATHER_REGIONS, WEATHER_CATALOG, WeatherRegionDef, WeatherChance } from "./weatherRegions";
 import { writeFileAtomic } from "./fileUtil";
 import { every } from "./timers";
@@ -15,15 +15,17 @@ type Mp = any;
 // region (mirrored to private.weatherRegion so a relog in an inn keeps it); in an unlisted world (Sovngarde, the Soul Cairn) they get none and the vanilla sky runs.
 // Durations use the box clock (Date.now), never the game calendar TimeSystem drives.
 //
-//   Server -> Client: { customPacketType: "weather", region, name, weatherId, weather, endsAt, transition, gameSettings? }  region null: release the override
-//   Client -> Server: { customPacketType: "weatherRequest" }  the current weather again, after a load screen
+//   Server -> Client: { customPacketType: "weather", region, name, weatherId, weather, endsAt, transition, gameSettings }  region null: release the override
+//   Client -> Server: { customPacketType: "weatherRequest" }  the current weather again, after a load screen; answered at once
+// A packet goes out when a player's region, its weather or its start changed: from the 2 s poll (travel, rolls), at once to a whole region
+// with transition "instant" when an admin forces or clears it, and at once as the answer to weatherRequest.
 //
 // server-settings.json keys (all optional):
 //   weatherEnabled       false switches the sync off (default true)
 //   weatherMinMinutes    shortest weather in real minutes (default 30)
 //   weatherMaxMinutes    longest (default 90)
-//   weatherTransition    "accelerate" (default), "normal" or "instant": how a client changes to a new weather
-//   weatherGameSettings  { "fWeatherTransMin": .., "fWeatherTransMax": .., "fWeatherTransAccel": .. } floats every client applies once, tuning the fade speed
+//   weatherTransition    how a client changes to a rolled weather: "accelerate" (default: a fade still running is hurried first), "normal" or "instant"
+//   weatherGameSettings  { "fWeatherTransMin": .., "fWeatherTransMax": .., "fWeatherTransAccel": .. } floats every client applies once, over DEFAULT_GAME_SETTINGS
 // State: ./weather-state.json, one entry per region { weatherDesc, weatherId, startedAt, endsAt, forced }, rewritten atomically on every change.
 
 const STATE_FILE = "./weather-state.json";
@@ -36,6 +38,8 @@ const DEFAULT_MIN_MINUTES = 30;
 const DEFAULT_MAX_MINUTES = 90;
 const MAX_MINUTES = 1440;
 const TRANSITIONS = ["accelerate", "normal", "instant"];
+// A fade lasts fWeatherTransMin to fWeatherTransMax game hours (vanilla 0.01 and 0.25 at timescale 20); a twentieth keeps its 2 to 45 s on the 1:1 clock
+const DEFAULT_GAME_SETTINGS: Record<string, number> = { fWeatherTransMin: 0.0005, fWeatherTransMax: 0.0125 };
 // Utility weathers, listed after the real ones in the admin picker
 const CATALOG_LAST = /^(FX|Editor|TEST|WorldMap)/i;
 
@@ -103,7 +107,8 @@ export class WeatherSystem implements System {
   private minMinutes = DEFAULT_MIN_MINUTES;
   private maxMinutes = DEFAULT_MAX_MINUTES;
   private transition = "accelerate";
-  private gameSettings: Record<string, number> | null = null;
+  private gameSettings = DEFAULT_GAME_SETTINGS;
+  private mp: Mp | null = null;
   private regions = new Map<string, Region>();
   // Areas per world id, in lookup order
   private worldAreas = new Map<number, Area[]>();
@@ -122,6 +127,7 @@ export class WeatherSystem implements System {
       return;
     }
     const mp = ctx.svr as Mp;
+    this.mp = mp;
     for (const entry of WEATHER_CATALOG) this.resolveWeather(mp, entry);
     const defs = this.loadDefs();
     for (const def of defs) {
@@ -163,11 +169,11 @@ export class WeatherSystem implements System {
     if (TRANSITIONS.includes(transition)) this.transition = transition;
     const gs = all?.["weatherGameSettings"];
     if (gs && typeof gs === "object" && !Array.isArray(gs)) {
-      const out: Record<string, number> = {};
+      const out = { ...DEFAULT_GAME_SETTINGS };
       for (const [k, v] of Object.entries(gs)) {
         if (/^fWeatherTrans/.test(k) && Number.isFinite(Number(v))) out[k] = Number(v);
       }
-      if (Object.keys(out).length) this.gameSettings = out;
+      this.gameSettings = out;
     }
   }
 
@@ -271,8 +277,14 @@ export class WeatherSystem implements System {
     return { weatherDesc: pick.desc, weatherId: pick.id, startedAt: now, endsAt: now + Math.round(minutes * 60000), forced: false };
   }
 
-  customPacket(userId: number, type: string): void {
-    if (type === "weatherRequest") this.lastSent.delete(userId);
+  customPacket(userId: number, type: string, _content: Content, ctx: SystemContext): void {
+    if (type !== "weatherRequest" || !this.enabled) return;
+    this.lastSent.delete(userId);
+    const mp = ctx.svr as Mp;
+    try {
+      const actorId = mp.getUserActor(userId);
+      if (actorId) this.sync(mp, userId, this.regionNow(mp, actorId));
+    } catch { /* the poll answers */ }
   }
 
   disconnect(userId: number, ctx: SystemContext): void {
@@ -301,26 +313,36 @@ export class WeatherSystem implements System {
     }
     if (changed) this.saveState();
     for (const { actorId, userId, cell, pos } of onlineSnapshot(mp).players) {
-      if (userId < 0) continue;
-      const regionId = this.polledRegion(mp, actorId, cell, pos);
-      const region = regionId ? this.regions.get(regionId) : undefined;
-      const key = region ? `${regionId}|${region.state.weatherId}|${region.state.startedAt}` : "none";
-      if (this.lastSent.get(userId) === key) continue;
-      this.lastSent.set(userId, key);
-      this.send(mp, userId, region ?? null);
+      if (userId >= 0) this.sync(mp, userId, this.polledRegion(mp, actorId, cell, pos));
     }
   }
 
-  private send(mp: Mp, userId: number, region: Region | null): void {
-    const packet: Record<string, unknown> = { customPacketType: "weather", region: region ? region.def.id : null, transition: this.transition };
+  // Sends the region's weather, or the release without one, unless the user already holds exactly that
+  private sync(mp: Mp, userId: number, regionId: string | null, transition = this.transition): boolean {
+    const region = regionId ? this.regions.get(regionId) : undefined;
+    const key = region ? `${regionId}|${region.state.weatherId}|${region.state.startedAt}` : "none";
+    if (this.lastSent.get(userId) === key) return false;
+    this.lastSent.set(userId, key);
+    const packet: Record<string, unknown> = { customPacketType: "weather", region: region ? regionId : null, transition, gameSettings: this.gameSettings };
     if (region) {
       packet["name"] = region.def.name;
       packet["weatherId"] = region.state.weatherId;
       packet["weather"] = this.edidOf(region.state.weatherDesc);
       packet["endsAt"] = region.state.endsAt;
     }
-    if (this.gameSettings) packet["gameSettings"] = this.gameSettings;
     try { mp.sendCustomPacket(userId, JSON.stringify(packet)); } catch { }
+    return true;
+  }
+
+  // An admin's change shows at once and without a fade for everyone the poll last placed in the region
+  private pushNow(regionId: string): void {
+    const mp = this.mp;
+    if (!mp) return;
+    let sent = 0;
+    for (const { actorId, userId } of onlineSnapshot(mp).players) {
+      if (userId >= 0 && this.lastRegion.get(actorId) === regionId && this.sync(mp, userId, regionId, "instant")) sent++;
+    }
+    this.log(`[weather] ${regionId}: ${this.edidOf(this.regions.get(regionId)?.state.weatherDesc ?? "")} set outright for ${sent} player(s)`);
   }
 
   private edidOf(desc: string): string {
@@ -446,6 +468,7 @@ export class WeatherSystem implements System {
     const now = Date.now();
     region.state = { weatherDesc: entry.desc, weatherId: entry.id, startedAt: now, endsAt: minutes ? now + minutes * 60000 : 0, forced: true };
     this.saveState();
+    this.pushNow(regionId);
     return null;
   }
 
@@ -454,6 +477,7 @@ export class WeatherSystem implements System {
     if (!region) return "Unknown region";
     region.state = this.roll(region, Date.now());
     this.saveState();
+    this.pushNow(regionId);
     return null;
   }
 }
