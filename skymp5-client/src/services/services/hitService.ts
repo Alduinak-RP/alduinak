@@ -75,7 +75,8 @@ export class HitService extends ClientListener {
             isHitBlocked: e.isHitBlocked,
             isPowerAttack: e.isPowerAttack,
             isSneakAttack: e.isSneakAttack,
-            projectile: e.projectile ? e.projectile.getFormID() : 0,
+            // Never read by the server; stays on the wire until HitMessage drops it
+            projectile: 0,
             source: e.source ? e.source.getFormID() : 0,
             target: localIdToRemoteId(e.target.getFormID())
         }
