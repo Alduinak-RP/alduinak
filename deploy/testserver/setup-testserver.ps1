@@ -276,6 +276,7 @@ const address = e.ALDUINAK_TS_ADDRESS || String(liveVoice.url || '').replace(/^w
 const out = Object.assign({}, live, {
   name: 'Test Server',
   gamemodePath: 'gamemode.js',
+  gamemodeHotReload: true,
   port: Number(e.ALDUINAK_TS_PORT),
   maxPlayers: Number(e.ALDUINAK_TS_MAXPLAYERS),
   playerSlots: Number(e.ALDUINAK_TS_MAXPLAYERS),

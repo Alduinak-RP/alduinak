@@ -103,6 +103,7 @@ values the wipe tool resets them to:
 | Key | Value |
 |---|---|
 | `name` | `"Test Server"` (the name the launcher lists) |
+| `gamemodeHotReload` | `true` (Build gamemode reloads `gamemode.js` without a restart; protected, never migrated to live) |
 | `port` | `7787` (the UI port is the port + 1, loopback only) |
 | `maxPlayers`, `playerSlots` | `20` |
 | `logDir` | `"C:/logs/test"` |

@@ -53,10 +53,10 @@ Parameters: `-MongoPassword` (required, the `skympuser` password; it goes into t
    from `C:\Alduinak\livekit`), fresh API keys kept on re-runs, firewall rules
    "Alduinak LiveKit Test TCP" (7890, 7891) and "Alduinak LiveKit Test UDP" (50300-50500).
 4. **Settings.** `build\dist\testserver\server-settings.json` derived from the live file
-   with node: name, port, player cap, log dir, master key, `databaseName` `skymp_test`
-   with a `databaseUri` on 127.0.0.1:27017, the test Data folder in `dataDir`,
-   `loadOrder` and `archives`, the test LiveKit, no Discord event or security channels,
-   no daily restart, staff-only access. Written only when missing.
+   with node: name, gamemode hot reload on, port, player cap, log dir, master key,
+   `databaseName` `skymp_test` with a `databaseUri` on 127.0.0.1:27017, the test Data
+   folder in `dataDir`, `loadOrder` and `archives`, the test LiveKit, no Discord event or
+   security channels, no daily restart, staff-only access. Written only when missing.
 5. **Game service.** `AlduinakTestServer` (nssm, manual start) running
    `node dist_back\skymp5-server.js` in `build\dist\testserver`, logs in `C:\logs\test`,
    `WS_PORT` pointing at the backend's test relay, firewall rule
