@@ -5,7 +5,7 @@ import { logError, logToPlatformLog } from "../../logging";
 // The sky follows the server's weather packet (WeatherSystem): one weather per region, shared by everyone standing in it.
 // A weather is set outright while none is held (after a load screen, or back from a world with its own sky), within 10 s of a door or
 // teleport, indoors and when the packet says instant; any other change fades. Every 10 s (and after a cell load) the applied weather is re-set when a door, fast travel
-// or the engine dropped it, outside only once no fade is running. A packet without a region releases the override for the vanilla sky.
+// or the engine dropped it. A packet without a region releases the override for the vanilla sky.
 // Indoors it holds SkyrimClear, since Show Sky interiors (inns, ruins with open roofs) draw the sky; stepping outside sets the region's weather outright.
 
 const APPLY_MS = 1000;
@@ -61,7 +61,7 @@ export class WeatherService extends ClientListener {
       if (this.dirty) this.apply(now);
       if (now >= this.recheckAt) {
         this.recheckAt = now + RECHECK_MS;
-        this.recheck();
+        this.recheck(now);
       }
       this.watchFade(now);
     } catch (e) {
@@ -124,20 +124,18 @@ export class WeatherService extends ClientListener {
     this.dirty = false;
   }
 
-  // The sky must show the applied weather, outside once no fade is running, inside at once; anything else reset it
-  private recheck(): void {
+  // The sky must show the applied weather, inside settled; outside an own fade may wait for a running one, any other weather is the engine's pick after it dropped the override
+  private recheck(now: number): void {
     if (!this.applied) return;
     const current = this.sp.Weather.getCurrentWeather()?.getFormID();
     const settled = this.sp.Weather.getCurrentWeatherTransition() >= 1;
-    if (this.indoors) {
-      if (current === this.applied && settled) return;
-    } else {
-      if (!settled) return;
-      const outgoing = this.sp.Weather.getOutgoingWeather()?.getFormID();
-      if (current === this.applied || outgoing === this.applied) return;
-    }
+    if (current === this.applied && (settled || !this.indoors)) return;
+    if (!this.indoors && !settled && this.fadeSince) return;
     this.sp.Weather.from(this.sp.Game.getFormEx(this.applied))?.forceActive(true);
     this.fadeSince = 0;
+    if (now - this.resetLoggedAt < SLOW_FADE_MS) return;
+    this.resetLoggedAt = now;
+    logToPlatformLog(this, `${this.applied.toString(16)} set again${this.indoors ? ", indoors" : ""}: the sky showed ${current?.toString(16)}${settled ? "" : ", fading in"}`);
   }
 
   // A fade lasts seconds under the server's fWeatherTrans settings; one log line tells when it does not
@@ -157,5 +155,6 @@ export class WeatherService extends ClientListener {
   private indoors = false;
   private nextApplyAt = 0;
   private recheckAt = 0;
+  private resetLoggedAt = 0;
   private fadeSince = 0;
 }

@@ -127,8 +127,13 @@ the sky already showed it (`, indoors` marks a packet that came in under a
 roof). Every 10 s, and after each cell load, the client checks that
 the sky still shows the applied weather (the region's outside, SkyrimClear
 inside) and forces it again when a door, fast travel or the engine dropped
-it: outside once no fade is running, inside at once, since a fade there is the
-engine drifting toward the cell's own weather. `loadGame` (login and
+it; outside, a fade of its own that still waits for a running one is left
+alone. The engine drops an override by itself about 19 game hours after the
+last weather change, and at once when its game clock reads earlier than the
+hour that change was made (its expiry check adds 24 hours then), which a time
+sync stepping the clock back a few seconds can do. Such a re-set leaves
+`WeatherService: 10a242 set again: the sky showed c8220, fading in` in
+`skyrim-platform.log`, at most once in five minutes. `loadGame` (login and
 character switch) resets that state, drops the last packet, which may be
 another character's, and sends `weatherRequest`, which the server answers at
 once; a character loaded in a place without a region releases whatever
