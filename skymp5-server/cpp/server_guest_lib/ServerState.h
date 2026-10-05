@@ -53,6 +53,9 @@ struct UserInfo
   // Actor whose SetInventory is sent at the next deferred flush, 0 for none
   uint32_t inventoryActorIdExpected = 0;
 
+  // Set while the user is listed in ServerState::deferredUsers
+  bool hasDeferred = false;
+
   std::string guid;
 
   // Start of the spawn equipment guard, set by PartOne::SetUserActor
@@ -70,6 +73,9 @@ public:
   ActorsMap actorsMap;
   Networking::UserId disconnectingUserId = Networking::InvalidUserId;
 
+  // Users with deferred messages or a pending SetInventory
+  std::vector<Networking::UserId> deferredUsers;
+
   std::map<Networking::UserId, Playback>
     activePlaybacks; // do not modify directly, use requestedPlaybacks
   std::map<Networking::UserId, Playback> requestedPlaybacks;
@@ -81,4 +87,5 @@ public:
   const std::string& UserGuid(Networking::UserId userId);
   Networking::UserId UserByActor(MpActor* actor);
   void EnsureUserExists(Networking::UserId userId);
+  void MarkDeferred(Networking::UserId userId, UserInfo& info);
 };

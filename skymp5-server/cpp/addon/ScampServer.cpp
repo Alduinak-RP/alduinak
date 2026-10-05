@@ -831,17 +831,14 @@ Napi::Value ScampServer::Tick(const Napi::CallbackInfo& info)
   try {
     tickEnv = info.Env();
 
-    bool tickFinished = false;
-    while (!tickFinished) {
-      try {
-        server->Tick(PartOne::HandlePacket, partOne.get());
-        tickFinished = true;
-      } catch (const std::exception& e) {
-        logger->error("{}", e.what());
-        while (antigo::HasExceptionWitness()) {
-          auto w = antigo::PopExceptionWitness();
-          logger->error(w.ToString());
-        }
+    // The real server catches per packet, this covers the mock one
+    try {
+      server->Tick(PartOne::HandlePacket, partOne.get());
+    } catch (const std::exception& e) {
+      logger->error("{}", e.what());
+      while (antigo::HasExceptionWitness()) {
+        auto w = antigo::PopExceptionWitness();
+        logger->error(w.ToString());
       }
     }
 

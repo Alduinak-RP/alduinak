@@ -1,9 +1,14 @@
 #include "Networking.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <deque>
 #include <memory>
+#include <vector>
 
+#include <antigo/ExecutionData.h>
+#include <antigo/ResolvedContext.h>
 #include <fmt/format.h>
 #include <prometheus/core.h>
 #include <prometheus/gauge.h>
@@ -12,7 +17,6 @@
 #include <slikenet/types.h>
 #include <spdlog/spdlog.h>
 
-#include "Exceptions.h"
 #include "IdManager.h"
 #include "NetworkingInterface.h"
 
@@ -154,6 +158,10 @@ public:
     }
 
     idManager = std::make_unique<IdManager>(maxConnections);
+    backlog.resize(maxConnections);
+    userPacketsThisTick.resize(maxConnections);
+    errorLogs.resize(maxConnections);
+    pingGauges.resize(maxConnections);
     peer = std::make_unique<RakPeer>();
     socket = std::make_unique<SocketDescriptor>(port_, listenAddress);
 
@@ -184,22 +192,58 @@ public:
                reliable ? RELIABLE_ORDERED : UNRELIABLE, 0, guid, false);
   }
 
+  ~Server() override
+  {
+    for (auto& queue : backlog) {
+      for (Packet* packet : queue) {
+        peer->DeallocatePacket(packet);
+      }
+    }
+  }
+
   void Tick(OnPacket onPacket, void* state) override
   {
-    while (1) {
-      auto packet = peer->Receive();
-      if (!packet)
-        break;
-      PacketGuard guard(peer.get(), packet);
-      try {
-        Networking::HandlePacketServerside(onPacket, state, packet,
-                                           *this->idManager);
-      } catch (PublicError& e) {
-        // TODO: Send PublicError to related client
-        throw;
-      } catch (std::exception& e) {
-        throw;
+    std::fill(userPacketsThisTick.begin(), userPacketsThisTick.end(), 0);
+    size_t packetsThisTick = 0;
+
+    // Leftovers of earlier ticks go first, each user's in arrival order
+    std::vector<Networking::UserId> waitingUsers;
+    waitingUsers.swap(backlogUsers);
+    for (Networking::UserId userId : waitingUsers) {
+      auto& queue = backlog[userId];
+      while (!queue.empty() && packetsThisTick < kMaxPacketsPerTick &&
+             userPacketsThisTick[userId] < kMaxUserPacketsPerTick) {
+        Packet* packet = queue.front();
+        queue.pop_front();
+        ++userPacketsThisTick[userId];
+        ++packetsThisTick;
+        HandlePacket(onPacket, state, packet, userId);
       }
+      if (!queue.empty()) {
+        backlogUsers.push_back(userId);
+      }
+    }
+
+    while (packetsThisTick < kMaxPacketsPerTick) {
+      Packet* packet = peer->Receive();
+      if (!packet) {
+        break;
+      }
+      const auto userId = idManager->find(packet->guid);
+      if (userId != Networking::InvalidUserId) {
+        auto& queue = backlog[userId];
+        if (!queue.empty() ||
+            userPacketsThisTick[userId] >= kMaxUserPacketsPerTick) {
+          if (queue.empty()) {
+            backlogUsers.push_back(userId);
+          }
+          queue.push_back(packet);
+          continue;
+        }
+        ++userPacketsThisTick[userId];
+      }
+      ++packetsThisTick;
+      HandlePacket(onPacket, state, packet, userId);
     }
 
     const auto currentTime = std::chrono::steady_clock::now();
@@ -209,31 +253,90 @@ public:
     }
   }
 
+  void HandlePacket(OnPacket onPacket, void* state, Packet* packet,
+                    Networking::UserId userId)
+  {
+    PacketGuard guard(peer.get(), packet);
+    const auto packetId = packet->data[0];
+    try {
+      Networking::HandlePacketServerside(onPacket, state, packet,
+                                         *this->idManager);
+    } catch (const std::exception& e) {
+      LogPacketError(userId, e.what());
+    }
+    if (userId != Networking::InvalidUserId &&
+        (packetId == ID_DISCONNECTION_NOTIFICATION ||
+         packetId == ID_CONNECTION_LOST)) {
+      RemovePingGauge(userId);
+    }
+  }
+
+  void LogPacketError(Networking::UserId userId, const char* what)
+  {
+    auto& errors =
+      userId < errorLogs.size() ? errorLogs[userId] : unknownUserErrorLog;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - errors.windowStart >= kErrorLogPeriod) {
+      if (errors.suppressed > 0) {
+        spdlog::error("Networking: {} more packet errors of user {} were not "
+                      "logged",
+                      errors.suppressed, userId);
+      }
+      errors = { now, 0, 0 };
+    }
+
+    const bool print = errors.lines < kErrorLinesPerPeriod;
+    if (print) {
+      ++errors.lines;
+      spdlog::error("{}", what);
+    } else {
+      ++errors.suppressed;
+    }
+    while (antigo::HasExceptionWitness()) {
+      auto witness = antigo::PopExceptionWitness();
+      if (print) {
+        spdlog::error(witness.ToString());
+      }
+    }
+  }
+
   void UpdateMetrics()
   {
+    DataStructures::List<SystemAddress> addresses;
+    DataStructures::List<RakNetGUID> guids;
+    peer->GetSystemList(addresses, guids);
+
     unsigned short connectedCount = 0;
-
-    for (Networking::UserId userId = 0; userId < maxConnections; ++userId) {
-      const auto guid = idManager->find(userId);
-      int clientPing = -1;
-      if (guid != RakNetGUID(-1)) {
-        static_assert(std::is_same_v<decltype(clientPing),
-                                     decltype(peer->GetLastPing(guid))>);
-        clientPing = peer->GetLastPing(guid);
-        connectedCount++;
+    for (unsigned int i = 0; i < guids.Size(); ++i) {
+      const auto userId = idManager->find(guids[i]);
+      if (userId == Networking::InvalidUserId) {
+        continue;
       }
+      connectedCount++;
 
-      auto& slotPing = metrics.pingPerSlotGaugeFamily.Add(
-        { { "networking_user_id", std::to_string(userId) } });
-      if (clientPing != -1) {
-        metrics.overallPingSecondsHistogram.Observe(clientPing / 1000.);
-        slotPing.Set(clientPing / 1000.);
-      } else {
-        metrics.pingPerSlotGaugeFamily.Remove(&slotPing);
+      const int clientPing = peer->GetLastPing(guids[i]);
+      if (clientPing == -1) {
+        RemovePingGauge(userId);
+        continue;
       }
+      auto& gauge = pingGauges[userId];
+      if (!gauge) {
+        gauge = &metrics.pingPerSlotGaugeFamily.Add(
+          { { "networking_user_id", std::to_string(userId) } });
+      }
+      metrics.overallPingSecondsHistogram.Observe(clientPing / 1000.);
+      gauge->Set(clientPing / 1000.);
     }
 
     metrics.connectedClientsGauge.Set(connectedCount);
+  }
+
+  void RemovePingGauge(Networking::UserId userId)
+  {
+    if (auto& gauge = pingGauges[userId]) {
+      metrics.pingPerSlotGaugeFamily.Remove(gauge);
+      gauge = nullptr;
+    }
   }
 
   std::string GetIp(Networking::UserId userId) const override
@@ -266,6 +369,26 @@ private:
   std::unique_ptr<RakPeerInterface> peer;
   std::unique_ptr<SocketDescriptor> socket;
   std::unique_ptr<IdManager> idManager;
+
+  // Packets past a budget wait for the next tick, so a flood cannot stall it
+  constexpr static size_t kMaxPacketsPerTick = 4096;
+  constexpr static uint16_t kMaxUserPacketsPerTick = 64;
+  constexpr static std::chrono::seconds kErrorLogPeriod{ 10 };
+  constexpr static uint32_t kErrorLinesPerPeriod = 5;
+
+  struct ErrorLog
+  {
+    std::chrono::steady_clock::time_point windowStart;
+    uint32_t lines = 0;
+    uint32_t suppressed = 0;
+  };
+
+  std::vector<std::deque<Packet*>> backlog;
+  std::vector<Networking::UserId> backlogUsers;
+  std::vector<uint16_t> userPacketsThisTick;
+  std::vector<ErrorLog> errorLogs;
+  ErrorLog unknownUserErrorLog;
+  std::vector<prometheus::Gauge<double>*> pingGauges;
 
   std::chrono::time_point<std::chrono::steady_clock> lastMetricsUpdate;
 

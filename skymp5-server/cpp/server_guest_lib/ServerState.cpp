@@ -69,6 +69,14 @@ Networking::UserId ServerState::UserByActor(MpActor* actor)
   return actorsMap.Find(actor);
 }
 
+void ServerState::MarkDeferred(Networking::UserId userId, UserInfo& info)
+{
+  if (!info.hasDeferred) {
+    info.hasDeferred = true;
+    deferredUsers.push_back(userId);
+  }
+}
+
 void ServerState::EnsureUserExists(Networking::UserId userId)
 {
   if (userInfo.size() <= userId || !userInfo[userId]) {

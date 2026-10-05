@@ -810,6 +810,7 @@ FormCallbacks PartOne::CreateFormCallbacks()
         userInfo->deferredChannels[deferredChannelId].push_back(
           deferredMessage);
       }
+      st->MarkDeferred(targetuserId, *userInfo);
     };
 
   FormCallbacks::GetUserIdFn getUserId =
@@ -826,6 +827,7 @@ FormCallbacks PartOne::CreateFormCallbacks()
       }
       if (auto& userInfo = st->userInfo[targetuserId]) {
         userInfo->inventoryActorIdExpected = actor->GetFormId();
+        st->MarkDeferred(targetuserId, *userInfo);
       }
     };
 
@@ -1109,12 +1111,14 @@ void PartOne::TickPacketHistoryPlaybacks()
 
 void PartOne::TickDeferredMessages()
 {
-  for (size_t i = 0, n = serverState.maxConnectedId; i <= n; ++i) {
-    Networking::UserId userId = static_cast<Networking::UserId>(i);
+  auto& users = serverState.deferredUsers;
+  for (size_t i = 0; i < users.size(); ++i) {
+    const Networking::UserId userId = users[i];
     auto& userInfo = serverState.userInfo[userId];
-    if (!userInfo) {
+    if (!userInfo || !userInfo->hasDeferred) {
       continue;
     }
+    userInfo->hasDeferred = false;
     auto actor = serverState.ActorByUser(userId);
     const uint32_t inventoryActorId =
       std::exchange(userInfo->inventoryActorIdExpected, 0);
@@ -1137,6 +1141,7 @@ void PartOne::TickDeferredMessages()
       channel.clear();
     }
   }
+  users.clear();
 }
 
 MessageSerializer& PartOne::GetMessageSerializerInstance()
