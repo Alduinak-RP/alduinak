@@ -31,7 +31,7 @@ import { applyWeapDrawn } from '../../sync/movementApply';
 import { describeRaceAbilities, dropUnlistedBaseSpells, isConcentration, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormView } from '../../view/formView';
-import { resetHostAttempts } from '../../view/hostAttempts';
+import { forgetHostAttempts, resetHostAttempts } from '../../view/hostAttempts';
 import { FormModel, WorldModel } from '../../view/model';
 import { LoadGameService } from './loadGameService';
 import { MasteryService } from './masteryService';
@@ -1246,6 +1246,7 @@ export class RemoteServer extends ClientListener {
     // Another form with this refrId may own the entry
     if (refrId && this.formIdxByRefrId.get(refrId) === i) {
       this.formIdxByRefrId.delete(refrId);
+      forgetHostAttempts(refrId);
     }
     this.worldModel.forms[i] = undefined;
     getViewFromStorage()?.getFormViews().destroyForm(i);

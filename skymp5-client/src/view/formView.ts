@@ -455,7 +455,7 @@ export class FormView {
           this.movState.lastRehost = now;
           const remoteId = this.remoteRefrId;
           if (actor && loaded) {
-            this.tryHostIfNeed(actor, remoteId as number);
+            this.tryHostIfNeed(actor, remoteId as number, model);
           }
         }
       }
@@ -508,7 +508,7 @@ export class FormView {
             this.releaseKeepOffset(actor);
 
             if (!alreadyHosted) {
-              if (this.tryHostIfNeed(actor, remoteId)) {
+              if (this.tryHostIfNeed(actor, remoteId, model)) {
 
                 // previously, we did this cleanup on each update
                 // but I guess it's too expensive and can possibly hurt FPS
@@ -975,7 +975,11 @@ export class FormView {
     return { open: undefined as boolean | undefined, harvested: undefined as boolean | undefined, carriedAway: undefined as boolean | undefined, disabled: undefined as boolean | undefined, openCheck: false, openReapplyAt: 0, decor: undefined as unknown };
   };
 
-  private tryHostIfNeed(ac: Actor, remoteId: number) {
+  private tryHostIfNeed(ac: Actor, remoteId: number, model: FormModel) {
+    // Players and PK bodies carry an appearance and are never hosted by a claim
+    if (model.appearance) {
+      return false;
+    }
     const last = lastTryHost[remoteId];
     if (!last || Date.now() - last >= 1000) {
       lastTryHost[remoteId] = Date.now();
