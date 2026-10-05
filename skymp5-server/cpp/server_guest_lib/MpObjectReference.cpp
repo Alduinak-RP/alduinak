@@ -1023,9 +1023,16 @@ void MpObjectReference::Subscribe(MpObjectReference* emitter,
   if (!emitter->pImpl->onInitEventSent &&
       listener->GetChangeForm().profileId != -1) {
     emitter->pImpl->onInitEventSent = true;
-    emitter->SendPapyrusEvent("OnInit");
-    emitter->SendPapyrusEvent("OnCellLoad");
-    emitter->SendPapyrusEvent("OnLoad");
+    // Actors may take their scripts from the template chain
+    auto worldState = emitter->GetParent();
+    if (actorEmitter ||
+        (worldState &&
+         worldState->HasVmadScripts(emitter->GetBaseId(),
+                                    emitter->GetFormId()))) {
+      emitter->SendPapyrusEvent("OnInit");
+      emitter->SendPapyrusEvent("OnCellLoad");
+      emitter->SendPapyrusEvent("OnLoad");
+    }
   }
 
   const bool hasPrimitive = emitter->HasPrimitive();
@@ -1923,7 +1930,7 @@ void MpObjectReference::InitScripts()
       !Utils::stricmp(val.data(), "CritterSpawn") ||
       !Utils::stricmp(val.data(), "PlayerBookShelfContainerScript");
 
-    spdlog::info("Skipping script {}", val);
+    spdlog::debug("Skipping script {}", val);
 
     return isRemoveNeeded;
   };

@@ -7,6 +7,7 @@
 #include "MpChangeForms.h"
 #include "MpObjectReference.h"
 #include "libespm/GroupUtils.h"
+#include "libespm/ScriptData.h"
 #include "papyrus-vm/Reader.h"
 #include "papyrus-vm/Utils.h"
 #include "script_classes/PapyrusClassesFactory.h"
@@ -61,6 +62,7 @@ struct WorldState::Impl
   std::array<std::shared_ptr<std::vector<uint32_t>>, 0x100>
     allFormsByModIndexCache;
   std::unordered_set<uint32_t> attachEspmRecordFailures;
+  std::unordered_map<uint32_t, bool> baseHasVmadScripts;
 };
 
 WorldState::WorldState()
@@ -975,6 +977,29 @@ espm::CompressedFieldsCache& WorldState::GetEspmCache()
     throw std::runtime_error("No espm cache found");
   }
   return *espmCache;
+}
+
+bool WorldState::HasVmadScripts(uint32_t baseId, uint32_t refrId)
+{
+  if (!espm) {
+    return false;
+  }
+
+  auto hasScripts = [&](uint32_t formId) {
+    auto rec = espm->GetBrowser().LookupById(formId).rec;
+    if (!rec) {
+      return false;
+    }
+    espm::ScriptData scriptData;
+    rec->GetScriptData(&scriptData, GetEspmCache());
+    return !scriptData.scripts.empty();
+  };
+
+  auto [it, inserted] = pImpl->baseHasVmadScripts.try_emplace(baseId, false);
+  if (inserted) {
+    it->second = hasScripts(baseId);
+  }
+  return it->second || hasScripts(refrId);
 }
 
 IScriptStorage* WorldState::GetScriptStorage() const
