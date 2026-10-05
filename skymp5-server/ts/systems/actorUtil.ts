@@ -291,9 +291,14 @@ export const neighborUsers = (mp: Mp, formId: number, exceptActor = 0): number[]
   return users;
 };
 
-// Introduced through the gamemode's ff_knownIds; without that list everyone counts as known
+// Introduced through the gamemode's ff_knownIds, read from its Set cache when loaded; without that list everyone counts as known
 export const isIntroduced = (mp: Mp, viewerActorId: number, subjectActorId: number): boolean => {
   try {
+    const cache = (globalThis as any).__alduinakKnown;
+    if (typeof cache === "function") {
+      const set: ReadonlySet<number> | null = cache(viewerActorId);
+      return !set || set.has(subjectActorId);
+    }
     const known = mp.get(viewerActorId, "ff_knownIds");
     return !Array.isArray(known) || known.includes(subjectActorId);
   } catch {

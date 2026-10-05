@@ -4,7 +4,7 @@ import {
   Item, InventoryEntry, Inventory, isNamedItem, sameBase, hasIdentityExtras, sameItem, lineKey,
   readInventory, copyValidExtras, withCount, addEntries, describeExtras, byNearestCondition, conditionOf, conditionPercent,
 } from "./inventoryExtras";
-import { isBleedingOut } from "./actorUtil";
+import { isBleedingOut, isIntroduced } from "./actorUtil";
 import { SettleWear, wearSettler } from "./durabilityNative";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -245,15 +245,7 @@ export class TradeSystem implements System {
 
   // The subject's name as the viewer may see it: real once introduced (gamemode ff_knownIds), otherwise the anonymity placeholder
   private nameShownTo(mp: Mp, viewerUserId: number, subjectUserId: number): string {
-    const viewerActorId = this.actorOf(mp, viewerUserId);
-    const subjectActorId = this.actorOf(mp, subjectUserId);
-    try {
-      const known = mp.get(viewerActorId, 'ff_knownIds');
-      if (Array.isArray(known) && !known.includes(subjectActorId)) {
-        return 'A stranger';
-      }
-    } catch { /* fall through to the real name */ }
-    return this.nameOf(mp, subjectUserId);
+    return isIntroduced(mp, this.actorOf(mp, viewerUserId), this.actorOf(mp, subjectUserId)) ? this.nameOf(mp, subjectUserId) : 'A stranger';
   }
 
   // Push the current deal to one participant, framed from their point of view.

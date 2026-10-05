@@ -481,7 +481,7 @@ piece already held.
   acting. The game server writes it to the actor property `ff_factionTitle`,
   registered in the gamemode next to the other `ff_` properties; clients put it
   in front of the floating name above the character, and the gamemode's
-  `nameFor` puts it in front of chat names. The game server also puts it in
+  `namesFor` puts it in front of chat names. The game server also puts it in
   front of the signature and seal names on writings and in front of the author
   of a new bounty board notice. The same choice picks which
   faction's mark a letter is sealed or signed with (see

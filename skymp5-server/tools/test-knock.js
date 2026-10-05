@@ -140,7 +140,27 @@ test('a knock from inside reaches the street', () => {
 test('it needs no gamemode part', () => {
   const t = setup()
   assert.equal(globalThis.__alduinakEmoteAt, undefined)
+  assert.equal(globalThis.__alduinakKnown, undefined)
   assert.equal(t.knock(KNOCKER).size, 4)
+})
+
+test('the gamemode introduce cache answers when it is loaded, a reader without a list counts as introduced', () => {
+  const t = setup()
+  const lists = new Map([[STRANGER, new Set([KNOCKER])], [FRIEND, new Set()]])
+  const asked = new Set()
+  globalThis.__alduinakKnown = (id) => {
+    asked.add(id)
+    return lists.get(id) ?? null
+  }
+  try {
+    const read = t.knock(KNOCKER)
+    assert.deepEqual(read.get(STRANGER), ['Ria knocks on the door.'])
+    assert.deepEqual(read.get(FRIEND), ['Someone knocks on the door.'])
+    assert.deepEqual(read.get(HOST), ['Ria knocks on the door.'])
+    assert.deepEqual([...asked].sort(), [FRIEND, STRANGER, HOST].sort())
+  } finally {
+    delete globalThis.__alduinakKnown
+  }
 })
 
 test('the Show Title prefix goes in front of a known name only', () => {
