@@ -1,12 +1,13 @@
-import { Actor, ContainerChangedEvent, Game } from "skyrimPlatform";
+import { ContainerChangedEvent, FurnitureEvent, Game, HitEvent, Menu } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { getPcInventory, holdPcInventoryApply, requestPcInventoryApply } from "./remoteServer";
 import {
-  Entry, Inventory, getDiff, getInventory, healthStep, isBoundItem, isNamedItemBase, revertLocalExtras, sameEffects, sameItem,
+  Entry, Inventory, getDiff, getPlayerInventory, healthStep, isBoundItem, isNamedItemBase, revertLocalExtras, sameEffects, sameItem,
 } from "../../sync/inventory";
 import { splitTag, stripTag, tagFor } from "../../sync/durabilityNames";
 import { getRecentSeat } from "./furnitureSeatService";
+import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logTrace } from "../../logging";
 
 // Reports extras the player made locally and the charge and poison hits used up, for craftedExtrasSystem.ts; souls are soul trap's
@@ -14,7 +15,6 @@ import { logTrace } from "../../logging";
 // Client -> Server: { customPacketType: "craftedExtras", workbench, gained: Entry[], lost: Entry[] }
 // Server -> Client: { customPacketType: "craftedExtrasRefused", baseIds: number[] }
 
-const CHECK_MS = 1000;
 const AFTER_CHANGE_MS = 300;
 // Charge and poison drain every hit, so their reports are batched
 const USE_REPORT_MS = 10000;
@@ -24,6 +24,8 @@ const HOLD_MS = 2000;
 const WORKBENCH_MEMORY_MS = 15000;
 const MAX_GAINED = 32;
 const MAX_LOST = 64;
+// Closing these ends enchanting, tempering, a poison apply or a recharge
+const CRAFT_MENUS: string[] = [Menu.Crafting, Menu.Inventory, Menu.Favorites];
 
 interface CraftReport {
   gained: Entry[];
@@ -33,6 +35,10 @@ interface CraftReport {
 
 const hasCraftedExtras = (e: Entry): boolean =>
   healthStep(e.health) > 10 || !!(e.enchantmentEffects && e.enchantmentEffects.length) || !!e.poisonId;
+
+// Charge or poison that a hit uses up
+const isUsedByHits = (e: Entry): boolean =>
+  typeof e.chargePercent === "number" || !!e.maxCharge || !!e.enchantmentId || !!(e.enchantmentEffects && e.enchantmentEffects.length) || !!e.poisonId;
 
 const withoutWorn = (e: Entry): Entry => {
   const copy: Entry = { ...e };
@@ -108,10 +114,16 @@ export class CraftedExtrasService extends ClientListener {
     super();
     this.controller.on("update", () => this.onUpdate());
     this.controller.on("containerChanged", (e) => this.onContainerChanged(e));
+    this.controller.on("hit", (e) => this.onHit(e));
+    this.controller.on("furnitureExit", (e) => this.onFurnitureExit(e));
+    this.controller.on("menuOpen", (e) => {
+      if (e.name === Menu.Crafting) this.noteCraftingBench(true);
+    });
+    this.controller.on("menuClose", (e) => this.onMenuClose(e.name));
     // remoteServer stores the new snapshot on the next update, so check shortly after
     this.controller.emitter.on("setInventoryMessage", () => {
       this.awaitingUntil = 0;
-      this.nextCheckAt = Date.now() + AFTER_CHANGE_MS;
+      this.checkAt = Date.now() + AFTER_CHANGE_MS;
     });
     onCustomPacket(this.controller, "craftedExtrasRefused", (content) => this.onCustomPacketMessage(content));
   }
@@ -127,6 +139,7 @@ export class CraftedExtrasService extends ClientListener {
       this.awaitingUntil = 0;
       revertLocalExtras(baseIds);
       requestPcInventoryApply();
+      this.scheduleCheck(Date.now() + AFTER_CHANGE_MS);
     });
   }
 
@@ -135,24 +148,83 @@ export class CraftedExtrasService extends ClientListener {
     const oldId = e.oldContainer ? e.oldContainer.getFormID() : 0;
     const newId = e.newContainer ? e.newContainer.getFormID() : 0;
     if ((oldId === 0x14 && newId === 0) || (oldId === 0 && newId === 0x14)) {
-      this.nextCheckAt = Math.min(this.nextCheckAt, Date.now() + AFTER_CHANGE_MS);
+      this.scheduleCheck(Date.now() + AFTER_CHANGE_MS);
       holdPcInventoryApply(HOLD_MS);
     }
   }
 
-  private onUpdate(): void {
-    const now = Date.now();
-    if (now < this.nextCheckAt || now < this.awaitingUntil) {
+  // One check USE_REPORT_MS after the first hit covers the hits that follow it
+  private onHit(e: HitEvent): void {
+    if (this.useCheckAt || e.aggressor.getFormID() !== 0x14 || !this.holdsWeaponUsedByHits()) {
       return;
     }
-    const player = this.sp.Game.getPlayer() as Actor | null;
+    this.useCheckAt = Date.now() + USE_REPORT_MS;
+    this.scheduleCheck(this.useCheckAt);
+  }
+
+  // A weapon in either hand with a base enchantment, or whose server copies carry charge or poison
+  private holdsWeaponUsedByHits(): boolean {
+    const player = this.sp.Game.getPlayer();
+    const pcInv = getPcInventory();
+    return [false, true].some((left) => {
+      const weapon = player?.getEquippedWeapon(left);
+      if (!weapon) return false;
+      if (weapon.getEnchantment()) return true;
+      const baseId = weapon.getFormID();
+      return !!pcInv && pcInv.entries.some((e) => e.baseId === baseId && isUsedByHits(e));
+    });
+  }
+
+  private onFurnitureExit(e: FurnitureEvent): void {
+    if (e.actor?.getFormID() === 0x14) {
+      this.scheduleCheck(Date.now() + AFTER_CHANGE_MS);
+    }
+  }
+
+  private onMenuClose(name: string): void {
+    if (name === Menu.Crafting) this.noteCraftingBench(false);
+    if (CRAFT_MENUS.includes(name)) this.scheduleCheck(Date.now() + AFTER_CHANGE_MS);
+  }
+
+  // The station of a Crafting Menu the seat tracker missed, kept while the menu is open and like a seat after it closes
+  private noteCraftingBench(open: boolean): void {
+    if (open || !this.menuBench) {
+      const furniture = getRecentSeat(0) ? null : this.sp.Game.getPlayer()?.getFurnitureReference();
+      this.menuBench = furniture ? localIdToRemoteId(furniture.getFormID()) : 0;
+    }
+    this.menuBenchUntil = open ? Infinity : Date.now() + WORKBENCH_MEMORY_MS;
+  }
+
+  private getWorkbench(now: number): number {
+    return getRecentSeat(0) || (now < this.menuBenchUntil ? this.menuBench : 0) || getRecentSeat(WORKBENCH_MEMORY_MS);
+  }
+
+  private scheduleCheck(at: number): void {
+    this.checkAt = this.checkAt ? Math.min(this.checkAt, at) : at;
+  }
+
+  private onUpdate(): void {
+    if (!this.checkAt) {
+      return;
+    }
+    const now = Date.now();
+    if (now < this.checkAt || now < this.awaitingUntil) {
+      return;
+    }
+    const player = this.sp.Game.getPlayer();
     if (!player) {
       return;
     }
-    this.nextCheckAt = now + CHECK_MS;
+    this.checkAt = 0;
+    this.useCheckAt = 0;
     const pcInv = getPcInventory();
-    const report = pcInv ? getCraftReport(pcInv, getInventory(player)) : null;
-    if (!report || (!report.urgent && now - this.lastUseReportAt < USE_REPORT_MS)) {
+    const report = pcInv ? getCraftReport(pcInv, getPlayerInventory(player)) : null;
+    if (!report) {
+      return;
+    }
+    if (!report.urgent && now - this.lastUseReportAt < USE_REPORT_MS) {
+      this.useCheckAt = this.lastUseReportAt + USE_REPORT_MS;
+      this.scheduleCheck(this.useCheckAt);
       return;
     }
     const key = JSON.stringify([report.gained, report.lost]);
@@ -164,7 +236,7 @@ export class CraftedExtrasService extends ClientListener {
     if (!report.urgent) {
       this.lastUseReportAt = now;
     }
-    const workbench = getRecentSeat(WORKBENCH_MEMORY_MS);
+    const workbench = this.getWorkbench(now);
     logTrace(this, "Reporting crafted extras", key);
     sendCustomPacket(this.controller, { customPacketType: "craftedExtras", workbench, gained: report.gained, lost: report.lost });
     this.awaitingUntil = now + AWAIT_MS;
@@ -173,7 +245,12 @@ export class CraftedExtrasService extends ClientListener {
     }
   }
 
-  private nextCheckAt = 0;
+  // When the next check is due, 0 while none is
+  private checkAt = 0;
+  // When the check armed for charge and poison use is due, 0 while none is
+  private useCheckAt = 0;
+  private menuBench = 0;
+  private menuBenchUntil = 0;
   private awaitingUntil = 0;
   private lastUseReportAt = 0;
   private lastSentAt = 0;
