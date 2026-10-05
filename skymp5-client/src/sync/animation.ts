@@ -527,6 +527,13 @@ export const disposeCopyAnimationSources = (remoteId?: number): void => {
   });
 };
 
+// Called inside the hook with every event sent to the player's graph, so natives are not safe there
+export type PlayerAnimationListener = (animEventName: string) => void;
+const playerAnimationListeners: PlayerAnimationListener[] = [];
+export const addPlayerAnimationListener = (listener: PlayerAnimationListener): void => {
+  playerAnimationListeners.push(listener);
+};
+
 // Offset overlays report failure but still sync; see carryAnimSystem.ts in the gamemode
 const feedSource = (source: AnimationSource | undefined, ctx: SendAnimationEventHook.LeaveContext): void => {
   if (source && (ctx.animationSucceeded || forcedSyncAnims.has(ctx.animEventName))) {
@@ -560,7 +567,10 @@ export const setupHooks = (): void => {
         ctx.animEventName = "";
       }
     },
-    leave: (ctx) => feedSource(playerAnimationSource, ctx),
+    leave: (ctx) => {
+      feedSource(playerAnimationSource, ctx);
+      playerAnimationListeners.forEach((listener) => listener(ctx.animEventName));
+    },
   }, 0x14, 0x14);
 
   addAnimationHook({

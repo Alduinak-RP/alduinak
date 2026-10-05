@@ -651,7 +651,10 @@ Graph Variable entry point runs from the graph setup alone), so a perk an
 ability grants later counts only after the next 3D rebuild: check Quick Shot
 and Ranger in game. Block Runner's `bPerkShieldCharge` is kept by the client
 (`sneakBlockSpeedService.ts`): true while the player holds the perk, crouched
-or not, checked once a second. A Block Runner's block therefore always starts
+or not. It is checked three times, a second apart, after a game load, a race
+switch of the player, the Stats or Console menu closing, and the start or end
+of an effect on the player that carries the perk (the warrior's Adept
+ability). A Block Runner's block therefore always starts
 in the Shield Charge state, so one raised crouched and kept up after standing
 has the 370 at once (it stayed at 81 while the variable was switched off for
 the crouch).
@@ -675,7 +678,9 @@ So with the walk toggle on, raising the shield took a crouched walk from 47 to
 81 for everyone, and a Block Runner's block (`BlockBehavior` reads
 `bPerkShieldCharge` as its start state, once, when the block starts) kept the
 370 through the crouch. While the player sneaks with a
-block up, the client reads `iState` and the run flag every frame (an
+block up, the client reads `iState` and the run flag every frame (the check
+starts on the player's own sneak and block animation events and runs on for a
+second after the sneak block ends; an
 over-encumbered player, or one carrying a body, counts as walking: the engine
 walks them whatever the run flag says) and damages
 SpeedMult by the share that brings the block's movement type down to the sneak
