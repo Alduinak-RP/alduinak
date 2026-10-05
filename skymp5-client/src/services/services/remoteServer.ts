@@ -11,7 +11,6 @@ import {
   Ui,
   Utility,
   WorldSpace,
-  on, // TODO: use this.controller.on instead
   once, // TODO: use this.controller.once instead
   storage, // TODO: use this.sp.storage instead
 } from 'skyrimPlatform';
@@ -304,7 +303,7 @@ export const settleSpawnEquipment = (player: Actor): boolean => {
   return true;
 };
 
-on('update', () => {
+const reapplyPcInventory = () => {
   if (isBadMenuShown()) {
     return;
   }
@@ -351,7 +350,7 @@ on('update', () => {
       }
     }
   }
-});
+};
 
 // The spawn save dresses the player in the Player record's default outfit
 const unequipDefaultOutfit = () => {
@@ -384,6 +383,7 @@ export class RemoteServer extends ClientListener {
     this.controller.emitter.on("spellCastMessage", (e) => this.onSpellCastMessage(e));
     this.controller.emitter.on("updateAnimVariablesMessage", (e) => this.onUpdateAnimVariablesMessage(e));
 
+    this.controller.on("update", reapplyPcInventory);
     this.controller.on("update", () => this.sweepCloneCasts());
     this.controller.on("update", () => this.checkPlayerTeleport());
     this.controller.on("update", () => this.checkRaceMenu());

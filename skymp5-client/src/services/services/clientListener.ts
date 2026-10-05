@@ -21,7 +21,7 @@ declare module "skyrimPlatform" {
     function getTextRefrScreenOffset(textId: number): number[];
 }
 
-export type Sp = Omit<typeof sp, "on" | "once">;
+export type Sp = Omit<typeof sp, "on" | "once" | "unsubscribe">;
 
 export abstract class ClientListener {
     // Don't let TypeScript treat this class as empty
@@ -40,6 +40,7 @@ export type ListenerLookupController = {
 export type EventsController = {
     readonly on: typeof sp.on,
     readonly once: typeof sp.once,
+    readonly unsubscribe: typeof sp.unsubscribe,
     readonly emitter: EventEmitterType
 };
 

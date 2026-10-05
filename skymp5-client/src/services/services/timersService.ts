@@ -149,7 +149,7 @@ export class TimersService extends ClientListener {
   private onMenuOpen(e: MenuOpenEvent) {
     if (e.name === Menu.Main) {
       if (this.updateEventHandle) {
-        this.sp.unsubscribe(this.updateEventHandle);
+        this.controller.unsubscribe(this.updateEventHandle);
       }
 
       this.setProcessMethod(ProcessMethodType.tick);
@@ -158,7 +158,7 @@ export class TimersService extends ClientListener {
 
   private onPreLoadGame() {
     if (this.updateEventHandle) {
-      this.sp.unsubscribe(this.updateEventHandle);
+      this.controller.unsubscribe(this.updateEventHandle);
     }
 
     this.setProcessMethod(ProcessMethodType.update);
