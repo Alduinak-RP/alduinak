@@ -2004,7 +2004,8 @@ void ActionListener::OnUpdateAnimVariables(
     return;
   }
 
-  SendToNeighbours(myActor->idx, rawMsgData, false, kSkipSender);
+  // Reliable and so in order with the SpellCast relays: the snapshot that ends a cast must not be lost or land before an older one
+  SendToNeighbours(myActor->idx, rawMsgData, true, kSkipSender);
 }
 
 void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,

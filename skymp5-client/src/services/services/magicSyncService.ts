@@ -8,7 +8,9 @@ import { ClientListener, CombinedController, Sp } from './clientListener';
 import { MountService } from './mountService';
 import { CustomPacketContent, onCustomPacket } from './customPacketUtil';
 import { logTrace, logToPlatformLog } from '../../logging';
-import { DELIVERY_SELF, isBlockedPower, isConcentration, setBlockedPowers } from '../../sync/spell';
+import { isBlockedPower, isConcentration, isSelfDelivered, setBlockedPowers } from '../../sync/spell';
+import { addPlayerAnimationListener, isCastStartEvent } from '../../sync/animation';
+import { describeAim, describeCastGraph, describeCastHands } from '../../sync/castProbe';
 
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
@@ -17,6 +19,7 @@ import { UpdateAnimVariablesMessageMsgData } from "../messages/updateAnimVariabl
 const CASTING_RECENT_MS = 500;
 // The player's spell slots, and casting vars while no relayed cast reads them every frame, are read this often
 const CASTING_SAMPLE_MS = 100;
+const OWN_CAST_LOG_GAP_MS = 10000;
 
 // A rationed racial power from the server's racialState: { powers: [{ spellId, name, readyInMs, available, blocked? }] } (racialSystem.ts)
 interface RationedPower {
@@ -67,12 +70,34 @@ export class MagicSyncService extends ClientListener {
                 self.onSendAnimationEventLeave(ctx);
             }
         }, this.playerId, this.playerId);
+
+        // Called inside the hook, where natives are unsafe, so the line is written on the next update
+        addPlayerAnimationListener((animEventName) => {
+            if (isCastStartEvent(animEventName)) this.ownCastStartEvent = animEventName;
+        });
     }
 
     private onUpdate() {
         this.syncRelayedCasts();
         this.samplePlayerCasting();
         this.syncAnimVariables();
+        this.logOwnCastStart();
+    }
+
+    // Diagnostic, at most one line every 10 s: the player's hands, graph and aim as a spell or staff cast starts, to compare with the copies' AimSync and CastProbe lines
+    private logOwnCastStart() {
+        const event = this.ownCastStartEvent;
+        if (!event) {
+            return;
+        }
+        this.ownCastStartEvent = "";
+        const now = Date.now();
+        const player = now >= this.nextOwnCastLogAt ? Game.getPlayer() : null;
+        if (!player) {
+            return;
+        }
+        this.nextOwnCastLogAt = now + OWN_CAST_LOG_GAP_MS;
+        logToPlatformLog(this, `own cast event ${event}: ${describeCastHands(player)}, ${describeCastGraph(player)}, anim variables ${this.streamingAnimVariables ? "streaming" : "not streaming"}, ${describeAim(player)}`);
     }
 
     // A charge that never casts has no relayed cast, so the sample covers it
@@ -111,7 +136,8 @@ export class MagicSyncService extends ClientListener {
         const dual = ac.getAnimationVariableBool("IsCastingDual");
         if (actorId === this.playerId) {
             const now = Date.now();
-            const casting = left || right || dual;
+            // The engine sets bWantCast for as long as a hand's caster has a cast requested, a staff's included, before the graph reads casting
+            const casting = left || right || dual || ac.getAnimationVariableBool("bWantCastLeft") || ac.getAnimationVariableBool("bWantCastRight");
             if (casting || this.playerCasting) {
                 this.playerCastingAt = now;
             }
@@ -123,13 +149,14 @@ export class MagicSyncService extends ClientListener {
 
     // Observers' clones follow the player's graph only while a drawn hand casts, and the snapshot after it goes reliable
     private syncAnimVariables() {
-        const now = Date.now();
-        if (now - this.lastSendUpdateAnimationVariables <= this.sendUpdateAnimationVariablesRateMs) {
+        const castingRecently = this.isCastingRecently();
+        if (!castingRecently && !this.streamingAnimVariables) {
             return;
         }
 
-        const castingRecently = this.isCastingRecently();
-        if (!castingRecently && !this.streamingAnimVariables) {
+        // A new cast's first snapshot goes out at once, the ones after it at the stream's rate
+        const now = Date.now();
+        if (this.streamingAnimVariables && now - this.lastSendUpdateAnimationVariables <= this.sendUpdateAnimationVariablesRateMs) {
             return;
         }
 
@@ -148,13 +175,15 @@ export class MagicSyncService extends ClientListener {
         if (!streaming && !this.streamingAnimVariables) {
             return;
         }
+        // The first snapshot starts the copies' cast and the last one ends it, so neither may be lost
+        const reliable = !streaming || !this.streamingAnimVariables;
         this.streamingAnimVariables = streaming;
         this.lastSendUpdateAnimationVariables = now;
 
         const animVariables = this.getAnimationVariablesFromActorConverted(ac.getFormID());
         this.controller.emitter.emit("sendMessage", {
             message: { t: MsgType.UpdateAnimVariables, data: this.getUpdateAnimVariablesEventData(ac, animVariables) },
-            reliability: streaming ? "unreliable" : "reliable"
+            reliability: reliable ? "reliable" : "unreliable"
         });
     }
 
@@ -229,6 +258,11 @@ export class MagicSyncService extends ClientListener {
 
         const msg: SpellCastMsgData = this.getSpellCastEventData(event, false);
         this.sendSpellCast(msg);
+
+        // A cast too short for the 10 Hz sample still opens the anim variable stream, whose last snapshot takes the copies out of their cast pose
+        if (casterLocalId === this.playerId) {
+            this.playerCastingAt = Date.now();
+        }
 
         // Receivers end a fire-and-forget replay on their own, so only a channel needs its stop
         if (!isConcentration(event.spell)) {
@@ -337,8 +371,7 @@ export class MagicSyncService extends ClientListener {
         if (!crosshairId || !Actor.from(Game.getFormEx(crosshairId))) {
             return targetId;
         }
-        const isSelf = spell?.getNthEffectMagicEffect(0)?.getDeliveryType() === DELIVERY_SELF;
-        return isSelf ? targetId : crosshairId;
+        return isSelfDelivered(spell) ? targetId : crosshairId;
     }
 
     private getAnimationVariablesFromActorConverted(actorId: number) {
@@ -419,6 +452,8 @@ export class MagicSyncService extends ClientListener {
     private streamingAnimVariables = false;
     private playerCasting = false;
     private playerCastingAt = 0;
+    private ownCastStartEvent = "";
+    private nextOwnCastLogAt = 0;
     private playerCastingReadAt = 0;
     private playerSlots: number[] = [];
     private playerSlotsReadAt = 0;
