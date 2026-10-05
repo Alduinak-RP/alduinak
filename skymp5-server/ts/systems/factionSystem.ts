@@ -10,7 +10,8 @@ import { holdName, holdOfActor, isHoldLand } from "./holdOf";
 import { RELEASED_PROP, isFallen } from "./afterlifeSystem";
 import * as rules from "./factionRules";
 import { adminAudit } from "./discordAlerts";
-import { every } from "./timers";
+import { every, soon } from "./timers";
+import { watchFileDebounced } from "./fileUtil";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -59,12 +60,7 @@ const DEFAULT_INVITE_DISTANCE = 1024;
 // Definition edits from the dashboard or the Server Manager reach the game this often, a 304 when nothing changed
 const DEFINITIONS_TTL_MS = 20000;
 const DEFINITIONS_RETRY_MS = 15000;
-// Due definitions are fetched at most this late
-const DEFINITIONS_POLL_MS = 1000;
 const ROSTER_TTL_MS = 3000;
-const ACCESS_FILE_CHECK_MS = 10000;
-// How often a leader logging out hands the seat to the next regent in line
-const REGENCY_CHECK_MS = 5000;
 const RELEASE_RETRIES = 5;
 const RELEASE_RETRY_MS = 30000;
 const MAX_QUEUED = 3;
@@ -173,9 +169,8 @@ export class FactionSystem implements System {
     });
 
     this.loadAccessFile();
-    every("faction.access", ACCESS_FILE_CHECK_MS, () => this.loadAccessFile());
-    every("faction.definitions", DEFINITIONS_POLL_MS, () => this.refreshDefinitions());
-    every("faction.titles", REGENCY_CHECK_MS, () => this.refreshTitles());
+    watchFileDebounced(ACCESS_FILE, () => this.loadAccessFile(), (e) => this.log(`[factions] ${ACCESS_FILE} watch error: ${e}`));
+    every("faction.definitions", DEFINITIONS_TTL_MS, () => this.refreshDefinitions());
     this.log(`[factions] ready, ${this.accessByRef.size} faction-only door(s) and container(s)`);
   }
 
@@ -189,16 +184,20 @@ export class FactionSystem implements System {
     }
   }
 
-  private refreshDefinitions(): void {
-    if (this.backend() && Date.now() >= this.definitionsDueAt && !this.definitionsLoading) {
-      this.ensureDefinitions().catch(() => undefined);
-    }
+  // Fetches even while the cached definitions are fresh, so an edit arrives within one poll
+  private refreshDefinitions(): Promise<void> {
+    return this.backend() ? this.ensureDefinitions(true).catch(() => undefined) : Promise.resolve();
   }
 
   disconnect(userId: number): void {
     this.queues.delete(userId);
     this.queueDepth.delete(userId);
-    this.acting.clear();
+    this.userActors.delete(userId);
+    const actorId = this.actorOf(userId);
+    if (!actorId) return;
+    const factionIds = this.leavePlay(actorId);
+    // The leaving character counts as online until the disconnect completes
+    if (factionIds.length) soon(() => this.retitle(factionIds));
   }
 
   // ── Requests ────────────────────────────────────────────────────────────────
@@ -494,8 +493,7 @@ export class FactionSystem implements System {
     await backend.setRegency(faction.id, { enabled, regents: next }, this.who(actorId));
     if (enabled !== undefined) faction.regencyEnabled = enabled;
     if (next) faction.regents = next;
-    this.acting.clear();
-    this.refreshTitles();
+    this.retitle([faction.id]);
     this.notice(userId, enabled !== undefined
       ? `Regency is ${enabled ? "on" : "off"} for ${faction.name}.`
       : `The regency of ${faction.name} was updated.`);
@@ -552,6 +550,7 @@ export class FactionSystem implements System {
   // ff_factionTitle is what clients prefix to the floating name; empty means no title is shown
   private applyTitle(actorId: number): void {
     const factionId = this.titleFactionOf(actorId);
+    this.trackShower(actorId, factionId);
     const faction = factionId ? this.defs.get(factionId) : null;
     let title = "";
     if (faction) {
@@ -561,10 +560,25 @@ export class FactionSystem implements System {
     }
     if (this.titles.get(actorId) === title) return;
     this.titles.set(actorId, title);
-    try { this.mp.set(actorId, TITLE_FF, title); } catch { this.titles.delete(actorId); }
+    try { this.mp.set(actorId, TITLE_FF, title); } catch { this.forgetTitle(actorId); }
   }
 
-  // A leader logging in or out moves the regency, which changes what every member of that faction is called
+  // Keeps titleShowers in step with the faction the character's title names, "" for none
+  private trackShower(actorId: number, factionId: string): void {
+    for (const [id, actors] of this.titleShowers) {
+      if (id !== factionId && actors.delete(actorId) && !actors.size) this.titleShowers.delete(id);
+    }
+    if (!factionId) return;
+    const actors = this.titleShowers.get(factionId) ?? new Set<number>();
+    this.titleShowers.set(factionId, actors.add(actorId));
+  }
+
+  private forgetTitle(actorId: number): void {
+    this.titles.delete(actorId);
+    this.trackShower(actorId, "");
+  }
+
+  // Every online character's title, for a definitions change
   private refreshTitles(): void {
     this.acting.clear();
     const live = new Set<number>();
@@ -572,7 +586,36 @@ export class FactionSystem implements System {
       live.add(o.actorId);
       this.applyTitle(o.actorId);
     }
-    for (const actorId of Array.from(this.titles.keys())) if (!live.has(actorId)) this.titles.delete(actorId);
+    for (const actorId of Array.from(this.titles.keys())) if (!live.has(actorId)) this.forgetTitle(actorId);
+  }
+
+  // The factions' acting regents are worked out again and everyone showing their titles, plus the given characters, is re-titled
+  private retitle(factionIds: Iterable<string>, actorIds: Iterable<number> = []): void {
+    const targets = new Set(actorIds);
+    for (const id of factionIds) {
+      this.acting.delete(id);
+      for (const actorId of this.titleShowers.get(id) ?? []) targets.add(actorId);
+    }
+    for (const actorId of targets) this.applyTitle(actorId);
+  }
+
+  // A character coming or going moves the regency of the factions it leads or holds a seat in
+  private regencyFactionIds(actorId: number): string[] {
+    const regencies = Array.from(this.defs.values()).filter((f) => f.regencyEnabled && f.regents.length);
+    if (!regencies.length) return [];
+    let profileId = 0;
+    try { profileId = Number(this.mp.get(actorId, "profileId")); } catch { /* gone */ }
+    const memberships = this.membershipsOfActor(actorId);
+    return regencies
+      .filter((f) => f.regents.some((seat) => seat.profileId === profileId) || memberships.some((m) => m.factionId === f.id && rules.rankOf(f, m.rankSlug)?.leader))
+      .map((f) => f.id);
+  }
+
+  // Drops the character's title and returns the factions to re-title once it is out of play
+  private leavePlay(actorId: number): string[] {
+    const factionIds = this.regencyFactionIds(actorId);
+    this.forgetTitle(actorId);
+    return factionIds;
   }
 
   private isFemale(actorId: number): boolean {
@@ -823,6 +866,10 @@ export class FactionSystem implements System {
   // ── Characters ──────────────────────────────────────────────────────────────
 
   private async onAssign(userId: number, actorId: number): Promise<void> {
+    const previous = this.userActors.get(userId);
+    this.userActors.set(userId, actorId);
+    // A character switch takes the previous character out of play without a disconnect
+    if (previous && previous !== actorId && userOf(this.mp, previous) < 0) this.retitle(this.leavePlay(previous));
     if (this.backend()) {
       try {
         await this.ensureDefinitions();
@@ -831,8 +878,9 @@ export class FactionSystem implements System {
         this.log(`[factions] could not refresh ranks at spawn: ${e}`);
       }
     }
-    this.acting.clear();
-    this.refreshTitles();
+    // The user left or picked another character while the ranks loaded
+    if (this.userActors.get(userId) !== actorId) return;
+    this.retitle(this.regencyFactionIds(actorId), [actorId]);
     this.sendState(userId, actorId);
   }
 
@@ -891,9 +939,9 @@ export class FactionSystem implements System {
     return factionBackendOf(this.mp);
   }
 
-  private ensureDefinitions(): Promise<void> {
+  private ensureDefinitions(force = false): Promise<void> {
     if (this.definitionsLoading) return this.definitionsLoading;
-    if (this.defs.size && Date.now() < this.definitionsDueAt) return Promise.resolve();
+    if (!force && this.defs.size && Date.now() < this.definitionsDueAt) return Promise.resolve();
     const backend = this.backend();
     if (!backend) return Promise.resolve();
     this.definitionsLoading = backend.fetchDefinitions()
@@ -911,6 +959,7 @@ export class FactionSystem implements System {
         this.definitionsLoaded = true;
         this.acting.clear();
         if (had !== this.defs.size) this.log(`[factions] ${this.defs.size} faction(s) loaded from the backend`);
+        if (changed) this.refreshTitles();
         if (reload) this.refreshOnlineAccess();
       })
       .catch((e) => {
@@ -977,13 +1026,18 @@ export class FactionSystem implements System {
 
   // Every online character of the profile gets its narrowed copy; Spawn keeps the full payload for the next character select
   private applyAccess(profileId: number, payload: AccessPayload): void {
+    // The factions the characters were in and are in now are the only ones whose titles can change
+    const factionIds = new Set<string>();
+    const actorIds: number[] = [];
     for (const o of this.online()) {
       if (o.profileId !== profileId) continue;
-      try { this.mp.set(o.actorId, "private.skympAccess", filterAccessForSlot(payload, o.slot)); } catch { continue; }
+      const access = filterAccessForSlot(payload, o.slot);
+      for (const m of this.membershipsOfActor(o.actorId).concat(rules.membershipsOf(access))) factionIds.add(m.factionId);
+      try { this.mp.set(o.actorId, "private.skympAccess", access); } catch { continue; }
+      actorIds.push(o.actorId);
       this.sendState(o.userId, o.actorId);
     }
-    this.acting.clear();
-    this.refreshTitles();
+    this.retitle(factionIds, actorIds);
     this.ctx.gm.emit(ACCESS_REFRESHED_EVENT, profileId, payload);
   }
 
@@ -1195,6 +1249,10 @@ export class FactionSystem implements System {
   // factionId -> the regent acting for an absent leader, cleared whenever memberships or logins change
   private acting = new Map<string, OnlineActor | null>();
   private titles = new Map<number, string>();
+  // factionId -> online characters whose shown title names it
+  private titleShowers = new Map<string, Set<number>>();
+  // userId -> the character last assigned, to notice a character switch
+  private userActors = new Map<number, number>();
   private invites = new Map<number, PendingInvite>();
   private inviteCooldown = new Map<string, number>();
   private borderLogged = new Map<number, number>();

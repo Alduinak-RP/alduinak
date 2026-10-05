@@ -485,7 +485,12 @@ piece already held.
   front of the signature and seal names on writings and in front of the author
   of a new bounty board notice. The same choice picks which
   faction's mark a letter is sealed or signed with (see
-  `docs_roleplay_writing.md`, "Hold and faction marks").
+  `docs_roleplay_writing.md`, "Hold and faction marks"). The title is
+  rewritten when the choice, the character's ranks, the regency or the
+  definitions change, and for the members showing a faction's title when its
+  leader or a seated regent logs in or out. A polymorph that changes the
+  character's sex shows in a gendered title at the next rank reload (opening
+  the Faction or housing menu, or the next login).
 - **Staff** whose tier has the `factions` cap (every tier by default) see
   every faction in the type tabs and may do everything, the leader rank included.
 - **Deleted and perma-dead characters**, and characters sent to Sovngarde or
@@ -552,10 +557,10 @@ piece already held.
   `HOLD_CELLS` table is gone: most of its ids were not cells at all and
   `000165A0`, listed as Proudspire Manor for Haafingar, is Whiterun's stables.
 - **Faction-only doors and containers** are listed in the live file
-  `faction-access.json` next to `gamemode.js` (re-read within 10 seconds of a
-  change). An entry with a rank list admits exactly those ranks; an entry
-  without one admits every rank with `factionAccess` (every member until the
-  game server has loaded the definitions). Outsiders are refused and told who
+  `faction-access.json` next to `gamemode.js` (re-read within about 3 seconds of
+  being saved, created or removed). An entry with a rank list admits exactly
+  those ranks; an entry without one admits every rank with `factionAccess`
+  (every member until the game server has loaded the definitions). Outsiders are refused and told who
   owns it, the housing menu shows the faction as the owner and nobody can claim
   it; staff and NPCs pass. A court's ranks pass only inside its own hold, and
   are told the border notice elsewhere (Territory above). Either half of a teleport door matches. A faction

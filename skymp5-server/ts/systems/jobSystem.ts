@@ -1,5 +1,4 @@
 import * as fs from "fs";
-import * as chokidar from "chokidar";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
@@ -10,6 +9,7 @@ import { MasterySystem } from "./masterySystem";
 import { pick, pickKey, num, parsePos, parseIdCount } from "./npcSpawnSystem";
 import { ITEM_TYPES, descKey, itemNames } from "./itemCatalog";
 import { every } from "./timers";
+import { watchFileDebounced } from "./fileUtil";
 import { onlineSnapshot } from "./onlineSnapshot";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -35,7 +35,6 @@ const CARRY_PACKET = "carryState";
 const NOTICE_PACKET = "notification";
 
 const POLL_MS = 1000;
-const RELOAD_DEBOUNCE_MS = 500;
 const MAX_NAME = 64;
 const MAX_TEXT = 48;
 const MAX_REQUIRES = 16;
@@ -212,7 +211,6 @@ export class JobSystem implements System {
   private entries: Entry[] = [];
   private jobs: Job[] = [];
   private loadChain: Promise<void> = Promise.resolve();
-  private reloadTimer: ReturnType<typeof setTimeout> | null = null;
   // Carrier actorId -> trip
   private trips = new Map<number, Trip>();
   // userId -> name of the job offered
@@ -231,7 +229,7 @@ export class JobSystem implements System {
     ctx.gm.on(USER_MENU_QUIT_EVENT, (userId: number) => this.dropUser(userId));
     ctx.gm.on("userAssignActor", (userId: number) => this.dropUser(userId));
     await this.queueLoad("boot");
-    this.watchFile();
+    watchFileDebounced(JOBS_FILE, () => this.queueLoad("file changed"), (e) => this.log(`[jobs] watch error: ${e}`));
     this.ready = true;
     every("job", POLL_MS, () => this.poll());
   }
@@ -568,23 +566,6 @@ export class JobSystem implements System {
     for (const userId of Array.from(this.offers.keys())) this.setOffer(userId, null);
     this.jobs = jobs;
     this.entries = entries;
-  }
-
-  private watchFile(): void {
-    const watcher = chokidar.watch(JOBS_FILE, { persistent: true, ignoreInitial: true, awaitWriteFinish: true });
-    const schedule = () => this.scheduleReload();
-    watcher.on("add", schedule);
-    watcher.on("change", schedule);
-    watcher.on("unlink", schedule);
-    watcher.on("error", (e: unknown) => this.log(`[jobs] watch error: ${e}`));
-  }
-
-  private scheduleReload(): void {
-    if (this.reloadTimer) clearTimeout(this.reloadTimer);
-    this.reloadTimer = setTimeout(() => {
-      this.reloadTimer = null;
-      this.queueLoad("file changed");
-    }, RELOAD_DEBOUNCE_MS);
   }
 
   // ── Players ────────────────────────────────────────────────────────────────

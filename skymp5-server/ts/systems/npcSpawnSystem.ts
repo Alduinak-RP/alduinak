@@ -1,5 +1,4 @@
 import * as fs from "fs";
-import * as chokidar from "chokidar";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, WORLD_LOADED_EVENT } from "./system";
 import { resolveEditorIds, isEditorId } from "./espmEditorIds";
@@ -8,7 +7,7 @@ import { placeNpc, HOSTILE_PROP } from "./npcPlacement";
 import { Hostable } from "./hostingSystem";
 import { destroyLeftovers } from "./actorUtil";
 import { loadNavmeshSpots, randomPointOn, NavmeshTarget, SpotKind, Spots } from "./navmeshSpots";
-import { writeFileAtomic } from "./fileUtil";
+import { watchFileDebounced, writeFileAtomic } from "./fileUtil";
 import { every } from "./timers";
 import { onlineSnapshot, OnlinePlayer } from "./onlineSnapshot";
 
@@ -40,7 +39,6 @@ const PLAYER_CLEARANCE = 768;
 // Spawn height above POS so an NPC drops onto an uneven floor instead of starting inside it
 const SPAWN_LIFT = 64;
 const RETRY_MS = 30000;
-const RELOAD_DEBOUNCE_MS = 500;
 const TAG_PROP = "private.npcSpawner";
 // ACBS template flags: the race or the AI data comes from the TPLT template
 const TEMPLATE_USE_TRAITS = 0x01;
@@ -264,7 +262,6 @@ export class NpcSpawnSystem implements System {
   private loading = false;
   // Loads run one at a time, whether the watcher or the admin panel asks
   private loadChain: Promise<void> = Promise.resolve();
-  private reloadTimer: ReturnType<typeof setTimeout> | null = null;
   // Dead NPC actorId -> epoch ms when its corpse is destroyed
   private corpses = new Map<number, number>();
   private corpseMs = DEFAULT_CORPSE_SECONDS * 1000;
@@ -283,7 +280,7 @@ export class NpcSpawnSystem implements System {
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.removeLeftovers());
     ctx.gm.on(CORPSE_CONSUMED_EVENT, (bodyId: number) => this.consumeCorpse(Number(bodyId) >>> 0));
     await this.queueLoad("boot");
-    this.watchFile();
+    watchFileDebounced(ZONES_FILE, () => this.queueLoad("file changed"), (e) => this.log(`NpcSpawnSystem: watch error: ${e}`));
     this.ready = true;
     every("npcSpawn", POLL_MS, () => this.poll(ctx));
   }
@@ -919,24 +916,6 @@ export class NpcSpawnSystem implements System {
     const now = Date.now();
     zone.slotReadyAt = zone.slotReadyAt.map((at) => reset || at < 0 || at <= now ? 0 : at);
     this.saveSpawns();
-  }
-
-  private watchFile(): void {
-    const watcher = chokidar.watch(ZONES_FILE, { persistent: true, ignoreInitial: true, awaitWriteFinish: true });
-    const schedule = () => this.scheduleReload();
-    watcher.on("add", schedule);
-    watcher.on("change", schedule);
-    watcher.on("unlink", schedule);
-    watcher.on("error", (e: unknown) => this.log(`NpcSpawnSystem: watch error: ${e}`));
-  }
-
-  // Coalesces the burst of events one save produces into a single reload
-  private scheduleReload(): void {
-    if (this.reloadTimer) clearTimeout(this.reloadTimer);
-    this.reloadTimer = setTimeout(() => {
-      this.reloadTimer = null;
-      this.queueLoad("file changed");
-    }, RELOAD_DEBOUNCE_MS);
   }
 
   // Spawned NPCs persist in the world DB, so ids from a previous run are read on boot and destroyed instead of leaking forever

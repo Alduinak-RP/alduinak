@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "Seed for faction-access.json next to gamemode.js. The game server re-reads the file within 10 seconds of a change.",
+    "Seed for faction-access.json next to gamemode.js. The game server re-reads the file within about 3 seconds of it being saved, created or removed.",
     "Every ref below was checked in Skyrim.esm: the door, its cell and its teleport partner. Either side of a pair gates both.",
     "label is what outsiders are told (Only <label> may use this.); ranks limits the listed factions to those rank ids.",
     "note is for people and is ignored."
