@@ -1,4 +1,4 @@
-import { Actor, Menu, ObjectReference } from "skyrimPlatform";
+import { Actor, MagicEffect, Menu, ObjectReference } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { SpSnippetMessage } from "../messages/spSnippetMessage";
@@ -34,7 +34,11 @@ const DISEASE_SPELLS: Array<[string, number[]]> = [
 ];
 
 const POLL_MS = 500;
-const GUARD_MS = 10000;
+const GUARD_MS = 60000;
+// A hit or an effect on the player brings the disease guard forward to this long after it
+const GUARD_AFTER_HARM_MS = 2000;
+// A guard run after a harm or one that marked a disease is followed by another this long later; a harm never brings a run closer than this to the last
+const GUARD_CONFIRM_MS = 10000;
 // The server reads the worn warmth at its 15 s cold step, so the engine total goes out once one has run after the last change
 const WARMTH_REPORT_MS = 20000;
 // The server's stage and disease spells land after the state, and SpeedMult counts once their effects run
@@ -126,17 +130,22 @@ export class SurvivalService extends ClientListener {
       this.warmthDueAt = 0;
       this.contagionAt = 0;
       this.firstState = true;
+      this.cloakDue = true;
       this.request();
     }));
     // A load resets the globals and may carry a stale Variable04
     this.controller.on("loadGame", () => this.controller.once("update", () => {
       logToPlatformLog(this, `before load re-apply: ${this.describeHealth()}`);
       this.hudLogKey = "";
+      this.cloakDue = true;
       this.apply();
       this.request();
     }));
     this.controller.on("equip", (e) => this.onEquipChange(e.actor));
     this.controller.on("unequip", (e) => this.onEquipChange(e.actor));
+    this.controller.on("effectStart", (e) => this.onEffectStart(e.effect, e.target));
+    this.controller.on("hit", (e) => this.onHarm(e.target));
+    this.controller.on("magicEffectApply", (e) => this.onHarm(e.target));
     this.controller.on("update", () => this.onUpdate());
   }
 
@@ -207,6 +216,18 @@ export class SurvivalService extends ClientListener {
     this.warmthDueAt = Date.now() + WARMTH_REPORT_MS;
   }
 
+  // A cloak on the player is read at the next poll; one in force is read every poll, which also sees it end
+  private onEffectStart(effect: MagicEffect | null, target: ObjectReference | null): void {
+    if (this.cloakDue || this.flameCloak || !effect || FLAME_CLOAK_EFFECTS.indexOf(effect.getFormID()) === -1) return;
+    if (target?.getFormID() === PLAYER_ID) this.cloakDue = true;
+  }
+
+  private onHarm(target: ObjectReference | null): void {
+    if (this.harmed || target?.getFormID() !== PLAYER_ID) return;
+    this.harmed = true;
+    this.guardAt = Math.min(this.guardAt, Math.max(Date.now() + GUARD_AFTER_HARM_MS, this.guardRanAt + GUARD_CONFIRM_MS));
+  }
+
   private onUpdate(): void {
     const now = Date.now();
     if (!this.state || now < this.pollAt) return;
@@ -221,8 +242,10 @@ export class SurvivalService extends ClientListener {
       logToPlatformLog(this, `movement refreshed after ${this.refreshWhy}: SpeedMult ${player.getActorValue("SpeedMult").toFixed(1)}`);
     }
     if (now >= this.guardAt) {
-      this.guardAt = now + GUARD_MS;
       this.guardDiseases(player);
+      this.guardAt = now + (this.harmed || this.unlistedSeen.length ? GUARD_CONFIRM_MS : GUARD_MS);
+      this.guardRanAt = now;
+      this.harmed = false;
     }
     if (this.state.contagion) this.checkContagion(player, now, this.state.contagion);
   }
@@ -256,11 +279,8 @@ export class SurvivalService extends ClientListener {
   // Swimming and a flame cloak on change, the engine's warmth total once due
   private report(player: Actor, now: number): void {
     const swimming = player.isSwimming();
-    const flameCloak = FLAME_CLOAK_EFFECTS.some((id) => player.hasMagicEffect(this.sp.MagicEffect.from(this.sp.Game.getFormEx(id))));
-    if (flameCloak !== this.flameCloak) {
-      this.flameCloak = flameCloak;
-      this.setHud();
-    }
+    if (this.cloakDue || this.flameCloak) this.readFlameCloak(player);
+    const flameCloak = this.flameCloak;
     const key = `${swimming}|${flameCloak}`;
     const warmthDue = this.warmthDueAt > 0 && now >= this.warmthDueAt;
     if (key === this.reported && !warmthDue) return;
@@ -272,6 +292,14 @@ export class SurvivalService extends ClientListener {
       logToPlatformLog(this, `engine warmth ${payload["engineWarmth"]} reported, server warmth ${this.state?.warmth ?? "none"}`);
     }
     sendCustomPacket(this.controller, payload);
+  }
+
+  private readFlameCloak(player: Actor): void {
+    this.cloakDue = false;
+    const flameCloak = FLAME_CLOAK_EFFECTS.some((id) => player.hasMagicEffect(this.sp.MagicEffect.from(this.sp.Game.getFormEx(id))));
+    if (flameCloak === this.flameCloak) return;
+    this.flameCloak = flameCloak;
+    this.setHud();
   }
 
   // The server's spell grants and removals on the player after the spawn's learnedSpells, which the world model never gets
@@ -331,9 +359,11 @@ export class SurvivalService extends ClientListener {
     const freezing = globalOf(this.sp, FREEZING_AREA_GLOBAL, ALDUINAK_PLUGIN) ? "found" : `not in ${ALDUINAK_PLUGIN}`;
     logToPlatformLog(this, `survival client on: cold ${state.cold} (${state.coldStageName || "off"}, stage ${state.coldStage}), penalty ${Math.round(state.coldPenalty * 100)}%, ` +
       `temperature ${state.temperatureLevel}, warmth ${state.warmth}, freezing area ${state.freezingArea ? "yes" : "no"}, afflictions ${listText(state.afflictions)}, ` +
-      `diseases ${this.diseaseText(state)}; swim and flame cloak poll every ${POLL_MS} ms (${cloaks} of ${FLAME_CLOAK_EFFECTS.length} cloak effects found), ` +
+      `diseases ${this.diseaseText(state)}; swim poll every ${POLL_MS} ms, flame cloak read on its effectStart and every poll while on ` +
+      `(${cloaks} of ${FLAME_CLOAK_EFFECTS.length} cloak effects found), ` +
       `engine warmth ${WARMTH_REPORT_MS / 1000} s after the last equip change, movement refresh ${MOVEMENT_REFRESH_MS / 1000} s after a stage or disease change, ` +
-      `disease guard every ${GUARD_MS / 1000} s over ${this.diseaseIds().length} of ${total} disease spells (dropped when neither the spawn list nor a later ` +
+      `disease guard every ${GUARD_MS / 1000} s, ${GUARD_AFTER_HARM_MS / 1000} s after a hit or effect on the player and again ${GUARD_CONFIRM_MS / 1000} s later ` +
+      `(a harm never brings it under ${GUARD_CONFIRM_MS / 1000} s after the last run), over ${this.diseaseIds().length} of ${total} disease spells (dropped when neither the spawn list nor a later ` +
       `server AddSpell names it at two checks in a row, ${this.serverSpells.size} server grant(s) and removal(s) so far), ` +
       `freezing water global AldSurvival_FreezingArea ${freezing}, ` +
       `contagion ${state.contagion ? `check every ${state.contagion.seconds} s within ${state.contagion.range} units of the loaded players' ${CONTAGIOUS_PROP}` : "off"}`);
@@ -347,10 +377,14 @@ export class SurvivalService extends ClientListener {
   private refreshWhy = "";
   private pollAt = 0;
   private guardAt = 0;
+  private guardRanAt = 0;
+  // A hit or effect on the player since the last guard run
+  private harmed = false;
   private warmthDueAt = 0;
   private contagionAt = 0;
   private reported = "";
   private flameCloak = false;
+  private cloakDue = true;
   private hudLogKey = "";
   private unlistedSeen: number[] = [];
   private diseases: number[] | null = null;

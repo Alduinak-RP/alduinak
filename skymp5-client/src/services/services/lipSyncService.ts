@@ -87,7 +87,8 @@ export class LipSyncService extends ClientListener {
   private resetsDue = new Map<number, number>();
   // local id -> face this service wrote to
   private touched = new Map<number, Touched>();
-  private wasFirstPerson = false;
+  // Unknown while no face is written, so the first sweep after one is not a flip
+  private wasFirstPerson: boolean | undefined;
   private worldOrCellChanged = false;
   // remote id -> since when the report names it without a local actor
   private unmapped = new Map<number, number>();
@@ -224,8 +225,13 @@ export class LipSyncService extends ClientListener {
 
   // A face whose mouth is gone is closed again until trusted shut; a world or cell change or a camera flip re-closes every face written, a copy re-created under a new id is closed there instead, and a gone actor is forgotten after one close
   private sweep(now: number): void {
+    if (!this.touched.size) {
+      this.wasFirstPerson = undefined;
+      this.worldOrCellChanged = false;
+      return;
+    }
     const firstPerson = this.isFirstPerson();
-    const all = firstPerson !== this.wasFirstPerson || this.worldOrCellChanged;
+    const all = (this.wasFirstPerson !== undefined && firstPerson !== this.wasFirstPerson) || this.worldOrCellChanged;
     this.wasFirstPerson = firstPerson;
     this.worldOrCellChanged = false;
     this.touched.forEach((face, localId) => {

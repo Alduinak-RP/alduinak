@@ -13,6 +13,8 @@ const MOUNT_WAIT_MS = 3000;
 const HORSE_LOST_MS = 2000;
 // How long the climb off the horse is given before another Dismount is sent
 const DISMOUNT_WAIT_MS = 3000;
+// How long the idle saddle check runs after a handshake ends or the player activates something, and after each untracked saddle it finds
+const SADDLE_CHECK_MS = 15000;
 
 // Rider side of horse riding (skymp5-server petSystem.ts mount handshake): mounts the granted horse, reports mounted / dismounted,
 // and dismounts before death, teleports and host loss. Observers seat the rider's clone from ff_mount (sync/mountApply.ts).
@@ -21,6 +23,7 @@ export class MountService extends ClientListener {
     super();
     onCustomPacket(this.controller, ["petMount", "petDismount"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("connectionAccepted", () => this.reset());
+    this.controller.on("activate", (e) => { if (e.caster?.getFormID() === 0x14) this.armSaddleCheck(); });
     this.controller.on("update", () => this.onUpdate());
   }
 
@@ -119,7 +122,7 @@ export class MountService extends ClientListener {
 
   private onUpdate(): void {
     const now = Date.now();
-    if (now - this.lastPollMs < POLL_MS) {
+    if (now - this.lastPollMs < POLL_MS || (this.phase === "idle" && now >= this.saddleCheckUntil)) {
       return;
     }
     this.lastPollMs = now;
@@ -129,9 +132,12 @@ export class MountService extends ClientListener {
     }
     if (this.phase === "idle") {
       // A saddle reached after the handshake gave up has no rider server-side, but a dismount animation still runs
-      if (player.isOnMount() && now >= this.leavingUntil) {
-        player.dismount();
-        logTrace(this, "left an untracked saddle");
+      if (player.isOnMount()) {
+        this.armSaddleCheck();
+        if (now >= this.leavingUntil) {
+          player.dismount();
+          logTrace(this, "left an untracked saddle");
+        }
       }
       return;
     }
@@ -195,6 +201,11 @@ export class MountService extends ClientListener {
     this.phase = "idle";
     this.horseId = 0;
     this.lostSince = 0;
+    this.armSaddleCheck();
+  }
+
+  private armSaddleCheck(): void {
+    this.saddleCheckUntil = Date.now() + SADDLE_CHECK_MS;
   }
 
   private phase: Phase = "idle";
@@ -204,4 +215,5 @@ export class MountService extends ClientListener {
   private lastPollMs = 0;
   // While a dismount animation runs, so nothing sends Dismount again every poll
   private leavingUntil = 0;
+  private saddleCheckUntil = 0;
 }

@@ -13,7 +13,8 @@ const RETRY_MS = 500;
 export class CellAnimationsService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
-    this.controller.on("cellFullyLoaded", () => this.applied.clear());
+    this.controller.on("cellFullyLoaded", () => this.rearmCell());
+    this.controller.on("loadGame", () => this.rearmCell());
     this.controller.on("cellDetach", (e) => this.onCellDetach(e.refr?.getFormID() ?? 0));
     this.controller.on("update", () => this.onUpdate());
     this.controller.emitter.on("playerWorldOrCellChanged", (e) => this.onPlayerWorldOrCellChanged(e.worldOrCell));
@@ -31,11 +32,18 @@ export class CellAnimationsService extends ClientListener {
   // CELL_ANIMATIONS keys are interior cells, where the world or cell is the cell itself
   private onPlayerWorldOrCellChanged(worldOrCell: number): void {
     this.cellId = worldOrCell;
+    this.rearmCell();
+  }
+
+  // The player's cell entries are played again once its refs are back in
+  private rearmCell(): void {
     this.applied.clear();
+    this.cellDue = !!CELL_ANIMATIONS[this.cellId];
     this.nextTryAt = 0;
   }
 
   private onUpdate(): void {
+    if (!this.pending.size && !this.cellDue) return;
     const now = Date.now();
     if (now < this.nextTryAt) return;
     this.nextTryAt = now + RETRY_MS;
@@ -43,12 +51,13 @@ export class CellAnimationsService extends ClientListener {
       this.pending.forEach((anim, ref) => {
         if (this.play(ref, anim)) this.pending.delete(ref);
       });
-      const entries = CELL_ANIMATIONS[this.cellId];
-      if (!entries) return;
+      if (!this.cellDue) return;
+      const entries = CELL_ANIMATIONS[this.cellId] ?? [];
       for (const entry of entries) {
         if (this.applied.has(entry.ref)) continue;
         if (this.play(entry.ref, entry.anim)) this.applied.add(entry.ref);
       }
+      this.cellDue = entries.some((entry) => !this.applied.has(entry.ref));
     } catch (err) {
       logError(this, `update failed: ${err}`);
     }
@@ -62,6 +71,8 @@ export class CellAnimationsService extends ClientListener {
   }
 
   private cellId = 0;
+  // The cell has entries not played since it loaded
+  private cellDue = false;
   private nextTryAt = 0;
   private applied = new Set<number>();
   private pending = new Map<number, string>();
