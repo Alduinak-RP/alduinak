@@ -26,6 +26,8 @@ interface DocView {
   byline: string;
   copy: boolean;
   finished: boolean;
+  // Leading pages a finished book keeps as written; its author still writes on the pages after them
+  fixedPages: number;
   sealText: string;
   // Faction ids whose marks the seal and the signature carry, empty for none
   sealFaction: string;
@@ -77,7 +79,7 @@ const DEFAULT_LIMITS: Limits = { title: 40, letter: 2000, page: 1500, journalPag
 const CONFIRM_TEXT: Record<Exclude<Confirm, ''>, string> = {
   burn: 'Burn this writing? It is gone for good.',
   break: 'Break the seal? Everyone who reads it later will see it was opened.',
-  finish: 'Finish the book? Its pages can never be changed again, but it can be copied.',
+  finish: 'Finish the book? The pages written so far can never be changed again. You can still write on new pages, and the book can be copied.',
 };
 
 // Factions with artwork in ../../img/seals, by the faction id the server records (writingSystem.ts SEAL_FACTIONS); sign is the art under a signature when it differs
@@ -144,21 +146,25 @@ interface ComposerProps {
   startTitle: string;
   startPages: string[];
   editing: boolean;
+  // Leading pages shown as written and left out of every edit
+  locked: number;
   onSubmit: (title: string, pages: string[], signed: boolean) => void;
   onCancel: () => void;
 }
 
 // Raw markup in the fields, a toolbar that wraps the selection in tags, and a preview; journals and books show two pages at a time
-const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSubmit, onCancel }: ComposerProps) => {
+const Composer = ({ kind, limits, heading, startTitle, startPages, editing, locked, onSubmit, onCancel }: ComposerProps) => {
   const spread = kind !== 'letter';
   const maxPages = maxPagesOf(kind, limits);
   const pageLen = pageLenOf(kind, limits);
   const rawCap = pageLen * MARKUP_ROOM;
+  // A finished book opens at its first open page
+  const startAt = spread ? Math.min(locked, maxPages - 1) : 0;
   const [title, setTitle] = useState(startTitle);
   const [pages, setPages] = useState<string[]>(startPages.length ? startPages : ['']);
   const [signed, setSigned] = useState(true);
-  const [first, setFirst] = useState(0);
-  const [active, setActive] = useState(0);
+  const [first, setFirst] = useState(startAt - (startAt % 2));
+  const [active, setActive] = useState(startAt % 2);
   const [preview, setPreview] = useState(false);
   const [popup, setPopup] = useState<'' | 'font' | 'ink'>('');
   const [warn, setWarn] = useState('');
@@ -189,7 +195,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSu
     setPopup('');
     const side = active;
     const i = first + side;
-    if (i >= maxPages) return;
+    if (i >= maxPages || i < locked) return;
     const el = fields.current[side];
     const t = textAt(i);
     const out = change(t, el ? el.selectionStart : t.length, el ? el.selectionEnd : t.length);
@@ -241,7 +247,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSu
   };
   const turn = (to: number): void => {
     setFirst(to);
-    setActive(0);
+    setActive(to < locked ? 1 : 0);
   };
   const removeSpread = (): void => {
     const next = pages.filter((_, i) => i < first || i > first + 1);
@@ -260,6 +266,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSu
               className="writing__title-input"
               value={title}
               maxLength={limits.title}
+              disabled={locked > 0}
               placeholder={kind === 'letter' ? 'Title, for example Letter to Ysolda' : 'Title'}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -300,7 +307,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSu
             const shown = plainText(textAt(i)).length;
             return (
               <div key={side} className={'writing__page writing__page--' + (spread ? (side ? 'right' : 'left') : 'note')}>
-                {preview ? (
+                {preview || i < locked ? (
                   <div className="writing__view"><Markup text={textAt(i)} /></div>
                 ) : (
                   <textarea
@@ -308,7 +315,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSu
                     className="writing__field"
                     value={textAt(i)}
                     maxLength={rawCap}
-                    autoFocus={side === 0}
+                    autoFocus={i === Math.max(first, locked)}
                     spellCheck={false}
                     placeholder={i === 0 ? 'Dip the quill and write.' : ''}
                     onFocus={() => setActive(side)}
@@ -316,7 +323,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSu
                   />
                 )}
                 <span className={'writing__count' + (over(i) ? ' writing__count--over' : '')}>
-                  {(spread ? 'Page ' + (i + 1) + '   ' : '') + shown + ' / ' + pageLen}
+                  {(spread ? 'Page ' + (i + 1) + '   ' : '') + (i < locked ? 'Finished' : shown + ' / ' + pageLen)}
                 </span>
               </div>
             );
@@ -328,7 +335,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, onSu
               <button className="parchment__button" disabled={first === 0} onClick={() => turn(first - 2)}>Previous</button>
               <span className="parchment__hint">{'Pages ' + (first + 1) + '-' + Math.min(first + 2, maxPages) + ' of ' + maxPages}</span>
               <button className="parchment__button" disabled={first + 2 >= maxPages} onClick={() => turn(first + 2)}>Next</button>
-              <button className="parchment__button" disabled={pages.length <= first} onClick={removeSpread}>Remove these pages</button>
+              <button className="parchment__button" disabled={pages.length <= first || first < locked} onClick={removeSpread}>Remove these pages</button>
             </div>
           ) : <span className="parchment__hint">Select words, then a button above. Preview shows the result.</span>}
           {warn ? <span className="writing__warn">{warn}</span> : null}
@@ -429,7 +436,8 @@ const Writing = ({ data }: { data: WritingData }) => {
 
   if (menu.view === 'compose' || (editing && doc)) {
     const kind: Kind = (menu.view === 'compose' ? menu.compose && menu.compose.kind : doc && doc.kind) || 'letter';
-    const heading = editing && doc ? 'Edit ' + doc.title : 'Write on ' + ((menu.compose && menu.compose.blankName) || KIND_LABEL[kind]);
+    const locked = editing && doc ? doc.fixedPages || 0 : 0;
+    const heading = editing && doc ? (locked ? 'Continue ' : 'Edit ') + doc.title : 'Write on ' + ((menu.compose && menu.compose.blankName) || KIND_LABEL[kind]);
     return frame(
       <Composer
         key={editing && doc ? doc.id : 'new-' + kind}
@@ -439,6 +447,7 @@ const Writing = ({ data }: { data: WritingData }) => {
         startTitle={editing && doc ? doc.title : ''}
         startPages={editing && doc ? doc.pages.slice() : ['']}
         editing={editing}
+        locked={locked}
         onSubmit={(title, pages, signed) => {
           setSaving(true);
           if (editing && doc) send(ev.save, doc.id, title, JSON.stringify(pages));
@@ -522,6 +531,7 @@ const Writing = ({ data }: { data: WritingData }) => {
   const at = Math.min(page, Math.max(0, count - 1));
   const meta = (count > step ? [spread ? 'Pages ' + (at + 1) + '-' + Math.min(at + 2, count) + ' of ' + count : 'Page ' + (at + 1) + ' of ' + count] : [])
     .concat(doc.copy ? ['A copy'] : [])
+    .concat(doc.canEdit && doc.fixedPages ? ['Finished up to page ' + doc.fixedPages] : [])
     .concat(doc.brokenSeals)
     .concat(doc.staff ? [doc.id].concat(doc.staffLines) : []);
 
@@ -529,8 +539,8 @@ const Writing = ({ data }: { data: WritingData }) => {
     <>
       {count > step ? <button className="parchment__button" disabled={at === 0} onClick={() => setPage(Math.max(0, at - step))}>Previous</button> : null}
       {count > step ? <button className="parchment__button" disabled={at + step >= count} onClick={() => setPage(at + step)}>Next</button> : null}
-      {doc.canEdit ? <button className="parchment__button" onClick={() => setEditing(true)}>Edit</button> : null}
-      {doc.canFinish ? <button className="parchment__button" onClick={() => setConfirm('finish')}>Finish</button> : null}
+      {doc.canEdit ? <button className="parchment__button" onClick={() => setEditing(true)}>{doc.fixedPages ? 'Continue writing' : 'Edit'}</button> : null}
+      {doc.canFinish ? <button className="parchment__button" onClick={() => setConfirm('finish')}>{doc.fixedPages ? 'Finish the new pages' : 'Finish'}</button> : null}
       {doc.canSeal ? (
         <button className="parchment__button" disabled={!doc.hasWax} title={doc.hasWax ? '' : 'Needs Sealing Wax'} onClick={() => send(ev.seal, doc.id)}>
           {doc.hasWax ? 'Seal' : 'Seal (needs wax)'}

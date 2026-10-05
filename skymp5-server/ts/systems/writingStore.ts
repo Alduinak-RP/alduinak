@@ -42,6 +42,8 @@ export interface WritingDoc {
   pages: string[];
   signed: boolean;
   finished: boolean;
+  // Leading pages a finished book keeps as written, 0 while unfinished; the pages after them stay open to the author
+  fixedPages: number;
   author: WritingPerson;
   // Who made this document: the author, or whoever copied the book
   scribe: WritingPerson;
@@ -90,14 +92,19 @@ const seal = (raw: any): WritingSeal => ({ ...person(raw), at: num(raw?.at) });
 
 export function normaliseDoc(raw: any, id: string): WritingDoc | null {
   if (!raw || typeof raw !== "object" || raw.id !== id || !WRITING_KINDS.includes(raw.kind)) return null;
+  const pages: string[] = Array.isArray(raw.pages) ? raw.pages.slice(0, MAX_PAGES).map((p: unknown) => text(p, MAX_TEXT)) : [];
+  const finished = raw.finished === true;
+  // A book finished before pages could follow has every page fixed
+  const fixed = Number.isInteger(raw.fixedPages) && raw.fixedPages >= 0 ? raw.fixedPages : pages.length;
   return {
     v: 1,
     id,
     kind: raw.kind,
     title: text(raw.title, 100),
-    pages: Array.isArray(raw.pages) ? raw.pages.slice(0, MAX_PAGES).map((p: unknown) => text(p, MAX_TEXT)) : [],
+    pages,
     signed: raw.signed === true,
-    finished: raw.finished === true,
+    finished,
+    fixedPages: finished ? Math.min(fixed, pages.length) : 0,
     author: person(raw.author),
     scribe: person(raw.scribe ?? raw.author),
     copyOf: typeof raw.copyOf === "string" && WRITING_ID.test(raw.copyOf) ? raw.copyOf : "",

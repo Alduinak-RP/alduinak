@@ -386,9 +386,11 @@ export class WritingSystem implements System {
     if (!found) return;
     const { doc, carried } = found;
     if (!this.canEdit(actorId, doc, carried)) return this.notice(mp, userId, "You cannot change this writing.");
-    const title = cleanTitle(content["title"], this.cfg.writingTitleMaxLen);
-    const pages = this.readPages(mp, userId, doc.kind, content["pages"]);
-    if (!pages) return;
+    const title = doc.fixedPages ? doc.title : cleanTitle(content["title"], this.cfg.writingTitleMaxLen);
+    const sent = this.readPages(mp, userId, doc.kind, content["pages"]);
+    if (!sent) return;
+    // The finished pages stay as stored, whatever the client sent for them
+    const pages = doc.pages.slice(0, doc.fixedPages).concat(sent.slice(doc.fixedPages));
     const changed = pages.map((p, i) => (p !== doc.pages[i] ? i : -1)).filter((i) => i >= 0);
     for (let i = pages.length; i < doc.pages.length; i++) changed.push(i);
     const retitled = title !== doc.title;
@@ -407,12 +409,13 @@ export class WritingSystem implements System {
     const found = this.reconcile(mp, userId, actorId, id);
     if (!found) return;
     const { doc, carried } = found;
-    if (doc.kind !== "book" || !this.canEdit(actorId, doc, carried)) return;
+    if (!this.canFinish(actorId, doc, carried)) return;
     doc.finished = true;
+    doc.fixedPages = doc.pages.length;
     doc.updatedAt = Date.now();
     if (!this.persist(doc)) return this.notice(mp, userId, "The book could not be finished.");
-    this.appendLog(`${describeActor(mp, actorId)} finished book ${id} ${JSON.stringify(doc.title)}`);
-    this.notice(mp, userId, "The book is finished. Its pages are fixed now.");
+    this.appendLog(`${describeActor(mp, actorId)} finished book ${id} ${JSON.stringify(doc.title)} up to page ${doc.fixedPages}`);
+    this.notice(mp, userId, "The book is finished. Its pages are fixed now, and you can still write on new ones.");
     this.openDoc(mp, userId, actorId, id);
   }
 
@@ -463,6 +466,7 @@ export class WritingSystem implements System {
     const copy = this.newDoc("book", doc.title, doc.pages, doc.signed, doc.author, this.person(mp, actorId));
     if (!copy) return this.notice(mp, userId, "The copy could not be kept.");
     copy.finished = true;
+    copy.fixedPages = copy.pages.length;
     copy.copyOf = doc.copyOf || doc.id;
     const item: Item = { baseId: this.base("book"), count: 1, name: this.nameOf(copy, false) };
     if (!this.rewrite(mp, actorId, [[plain(blank), 1]], [item])) return;
@@ -672,13 +676,14 @@ export class WritingSystem implements System {
         byline: hidden ? "" : staff ? `${doc.signed ? "Signed" : "Unsigned"}, by ${nameFor(doc.author)}` : byline,
         copy: !!doc.copyOf,
         finished: doc.finished,
+        fixedPages: hidden ? 0 : doc.fixedPages,
         sealText: hidden ? `Closed with ${sealName(doc.seal || { ...this.nobody(), at: 0 })}.` : "",
         // Heraldry is public: the marks show to every reader, only the names follow the introductions rule
         sealFaction: hidden ? doc.seal?.factionId || "" : "",
         signFaction: !hidden && doc.signed ? doc.author.factionId : "",
         brokenSeals,
         canEdit: editable,
-        canFinish: editable && doc.kind === "book",
+        canFinish: !!carried && !staff && this.canFinish(actorId, doc, carried),
         canSeal: !staff && carried?.key === "letter",
         canBreak: !staff && sealed,
         canCopy: !staff && !!carried && doc.kind === "book" && doc.finished,
@@ -693,12 +698,17 @@ export class WritingSystem implements System {
 
   // ── Rules and limits ────────────────────────────────────────────────────────
 
-  // Letters until the first seal, journals always, books until finished; only the author, and never a copy
+  // Letters until the first seal, journals always, books while a page is open or free after the finished ones; only the author, and never a copy
   private canEdit(actorId: number, doc: WritingDoc, carried: Carried): boolean {
     if (doc.author.actorId !== actorId || doc.copyOf || carried.key === "sealed") return false;
     if (doc.kind === "letter") return !doc.seal && doc.brokenSeals.length === 0;
-    if (doc.kind === "book") return !doc.finished;
+    if (doc.kind === "book") return doc.fixedPages < this.cfg.writingBookMaxPages;
     return true;
+  }
+
+  // Finishing fixes every page written so far, the first time and after each continuation
+  private canFinish(actorId: number, doc: WritingDoc, carried: Carried): boolean {
+    return doc.kind === "book" && doc.pages.length > doc.fixedPages && this.canEdit(actorId, doc, carried);
   }
 
   private readPages(mp: Mp, userId: number, kind: WritingKind, raw: unknown): string[] | null {
@@ -835,7 +845,7 @@ export class WritingSystem implements System {
     if (!id) return null;
     const now = Date.now();
     return {
-      v: 1, id, kind, title, pages: pages.slice(), signed, finished: false, author, scribe, copyOf: "",
+      v: 1, id, kind, title, pages: pages.slice(), signed, finished: false, fixedPages: 0, author, scribe, copyOf: "",
       createdAt: now, updatedAt: now, seal: null, brokenSeals: [], destroyedAt: 0, destroyedBy: "",
     };
   }

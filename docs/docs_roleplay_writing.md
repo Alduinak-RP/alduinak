@@ -236,12 +236,34 @@ screen height: on 1080p the note reads about 860 px tall and the spread about
 
 | Action | Who | When |
 |---|---|---|
-| Edit | the author (the character, not the account) | letters until they are sealed for the first time, journals always, books until **Finish**; copies never |
-| Finish | the author | books only; the pages are fixed from then on |
+| Edit | the author (the character, not the account) | letters until they are sealed for the first time, journals always, books: the title and every page until **Finish**, after it only the pages that follow the finished ones; copies never |
+| Finish | the author | books only; the pages written so far are fixed from then on, and again for the pages added since the last Finish |
 | Seal | whoever holds the letter | costs one Sealing Wax; allowed again after a seal was broken |
 | Break the seal | whoever holds the sealed letter | always, behind a confirmation |
-| Copy | whoever holds the book | finished books only, onto a Blank Book; the copy credits the original author, is marked "A copy" and is itself finished |
+| Copy | whoever holds the book | finished books only, onto a Blank Book, with every page it has at that moment; the copy credits the original author, is marked "A copy" and is fixed whole |
 | Burn | whoever holds the writing | removes the item and marks the document destroyed |
+
+### Continuing a finished book (2026-10-05)
+
+Until this change **Finish** closed a book for good, so an author who finished
+a ledger or the first chapters to hand out copies could never write in it
+again. Now Finish fixes the pages written so far (`fixedPages` on the
+document) and the author keeps the book open behind them:
+
+- The reader shows **Continue writing** instead of **Edit**, and "Finished up
+  to page N" under the book. The composer opens at the first page after the
+  finished ones; the finished pages show as written with "Finished" in place of
+  the character count, the title field is off, the toolbar does nothing on
+  them and **Remove these pages** is off on a spread that holds one.
+- The server never trusts the client for them: `onSave` keeps the stored title
+  and the first `fixedPages` pages and takes only the pages after them from the
+  packet, so a forged save changes nothing that was finished.
+- The pages after them stay the author's to change, like an unfinished book,
+  until **Finish the new pages** fixes them too (`canFinish` is on while a page
+  after the finished ones exists).
+- A book whose finished pages fill `writingBookMaxPages` takes nothing more.
+- Copies made earlier keep the pages they were copied with. A book finished
+  before this change has every page fixed and takes new pages after them.
 
 ### Names on the page
 
@@ -267,7 +289,7 @@ the introductions rule (`ff_knownIds`, the same rule as "A stranger"):
   and documents written before titles were recorded show the plain name.
 
 `node tools/test-writing-rules.js` in `skymp5-server` checks who reads which
-name.
+name, and what a finished book still takes.
 
 ### Hold and faction marks
 
@@ -361,6 +383,7 @@ The folder is created on the first write. The store sits behind the
     {
       "v": 1, "id": "W1A7QZ", "kind": "letter" | "journal" | "book",
       "title": "...", "pages": ["..."], "signed": true, "finished": false,
+      "fixedPages": 0,            // leading pages a finished book keeps as written; absent on a finished book means all of them
       "author": { "actorId", "profileId", "realName", "shownName", "title", "factionId" },
       "scribe": { ... },          // who made this file: the author or a copier
       "copyOf": "",               // the original's id on a copy
@@ -462,7 +485,8 @@ but nothing in the game sends it.
 else `C:\logs`), in `bounty.log`'s format: JSON-quoted real name with the
 profile id in a fixed position and the mask shown, and **the full text** of
 every new writing and of every changed page, sealed letters included. One
-line each for write, edit, finish, seal (ending `as <factionId>` when a mark
+line each for write, edit, finish (ending `up to page N`, the pages fixed by
+it), seal (ending `as <factionId>` when a mark
 was pressed), break, copy, burn, duplicates cut back and staff renames and
 destructions. The staff reader's "Scribe" and "Sealed by" lines end the same
 way. The manager rotates it with the other
@@ -498,7 +522,7 @@ Every message is a CustomPacket carrying JSON:
       { customPacketType: "writingMenu", view: "compose" | "read" | "sealed" | "list",
         limits: { title, letter, page, journalPages, bookPages },
         compose?: { kind, blankName },
-        doc?: { id, kind, title, pages, byline, copy, finished, sealText, sealFaction, signFaction,
+        doc?: { id, kind, title, pages, byline, copy, finished, fixedPages, sealText, sealFaction, signFaction,
                 brokenSeals, canEdit, canFinish, canSeal, canBreak, canCopy, canBurn, hasWax,
                 blankBooks, staff, staffLines },
         list?: [{ id, kind, title, sealed }] }
@@ -621,6 +645,13 @@ In this order:
 - Dropping a writing puts it back with the message; the search and pet windows
   refuse it, except a PK body's, which lists it by name and lets it be taken.
 - Finish a book, copy it onto a Blank Book, read the copy ("A copy").
+- Continue a finished book: the author reads it and sees **Continue writing**
+  and "Finished up to page N"; the composer opens on the next page, the
+  finished pages cannot be typed in and the title field is off. Write a page,
+  Save, read it back, change that new page again, then **Finish the new
+  pages**: it is fixed too and `writing.log` reads `finished book W... up to
+  page N+1`. Another character holding the book, and anyone holding a copy,
+  sees neither button. A copy made before the new page still ends at page N.
 - Relog and restart: names and text persist.
 - Staff Read, Rename and Destroy from the Personal Menu, each in `admin.log`.
 - The missive board still posts, reads, backs out with Escape and refunds.
