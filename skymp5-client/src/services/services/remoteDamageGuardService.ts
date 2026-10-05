@@ -319,7 +319,8 @@ export class RemoteDamageGuardService extends ClientListener {
 
   // dispelSpellFrom takes only this NPC's copy, plain dispelSpell would take every caster's
   private dispel(aggressorId: number, entry: Landed, reason: string): void {
-    const spells = entry.spellIds.map((id) => Spell.from(Game.getFormEx(id))).filter((spell): spell is Spell => !!spell);
+    // Resolved in each update that uses them: a SkyrimPlatform object lasts only the update that made it
+    const resolve = () => entry.spellIds.map((id) => Spell.from(Game.getFormEx(id))).filter((spell): spell is Spell => !!spell);
     const byCaster = (this.sp as unknown as NativeDispel).dispelSpellFrom;
     const running = byCaster ? 0 : this.runningPoisonOf(aggressorId, entry);
     if (running) {
@@ -332,11 +333,12 @@ export class RemoteDamageGuardService extends ClientListener {
     this.controller.once("update", () => {
       const player = this.livePlayer();
       if (!player) return;
-      remove(player, spells);
+      remove(player, resolve());
       // A dispel that ran before the engine listed the effect misses it, so the next frame looks again; another caster's copy keeps the effect listed
       this.controller.once("update", () => {
         const player = this.livePlayer();
         if (!player) return;
+        const spells = resolve();
         const missed = byCaster ? [] : spells.filter((spell) => this.poisonEffects(spell).some((effect) => player.hasMagicEffect(effect)));
         remove(player, byCaster ? spells : missed);
         // Only the poison's own first tick is undone, damage the server sent in the same frame stays

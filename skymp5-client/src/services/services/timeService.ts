@@ -84,7 +84,6 @@ export class TimeService extends ClientListener {
 
   // The template save carries its own calendar, so the first pass after a load replaces all of it
   private onLoadGame(): void {
-    this.globals = undefined;
     this.weeks = undefined;
     this.samples = [];
     this.nextSyncAt = 0;
@@ -98,6 +97,7 @@ export class TimeService extends ClientListener {
     this.sync();
   }
 
+  // Resolved on every pass: a SkyrimPlatform object lasts only the update that made it
   private resolveGlobals(): TimeGlobals | undefined {
     const global = (id: number) => this.sp.GlobalVariable.from(this.sp.Game.getFormEx(id));
     const [year, month, day, hour, daysPassed, timeScale] = [GAME_YEAR, GAME_MONTH, GAME_DAY, GAME_HOUR, GAME_DAYS_PASSED, TIME_SCALE].map(global);
@@ -106,9 +106,9 @@ export class TimeService extends ClientListener {
   }
 
   private sync(): void {
-    this.globals = this.globals ?? this.resolveGlobals();
-    if (!this.globals) return;
-    const { year, month, day, hour, daysPassed, timeScale } = this.globals;
+    const globals = this.resolveGlobals();
+    if (!globals) return;
+    const { year, month, day, hour, daysPassed, timeScale } = globals;
 
     const { newGameHourValue, date } = this.getTime();
     if (timeScale.getValue() !== this.clock.timeScale) timeScale.setValue(this.clock.timeScale);
@@ -143,8 +143,6 @@ export class TimeService extends ClientListener {
   private clock: ServerClock = { offsetMs: 0, tzOffsetMin: new Date().getTimezoneOffset(), year: DEFAULT_YEAR, timeScale: 1 };
   private hasServerClock = false;
   private nextSyncAt = 0;
-  // Resolved once per load
-  private globals: TimeGlobals | undefined;
   private weeks: number | undefined;
   // Diagnostic: the first passes after a load, logged once so the engine's handling of GameDaysPassed can be checked in game
   private samples: string[] | undefined;

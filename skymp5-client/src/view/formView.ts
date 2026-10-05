@@ -42,8 +42,8 @@ const TIER_TAG_COLORS: Record<string, number[]> = {
   gm: [0.3, 0.9, 0.3, 0.9],
 };
 
-// Every invisibility effect carries MagicInvisibility, the spell and the potion alike; resolved at the first check
-let magicInvisibility: Keyword | null | undefined;
+// Every invisibility effect carries MagicInvisibility, the spell and the potion alike; its form id, 0 when the keyword is missing
+let magicInvisibilityId: number | undefined;
 
 const HEAD_NODE = "NPC Head [Head]";
 // Name tags sit this many units above the head node
@@ -770,11 +770,16 @@ export class FormView {
     return (tier && TIER_TAG_COLORS[tier]) || DEFAULT_TAG_COLOR;
   }
 
+  // A SkyrimPlatform object lasts one update, so only the keyword's id is kept
   private isInvisible(actor: Actor | null): boolean {
-    if (magicInvisibility === undefined) {
-      magicInvisibility = Keyword.getKeyword("MagicInvisibility");
+    if (!actor) {
+      return false;
     }
-    return !!actor && !!magicInvisibility && actor.hasMagicEffectWithKeyword(magicInvisibility);
+    if (magicInvisibilityId === undefined) {
+      magicInvisibilityId = Keyword.getKeyword("MagicInvisibility")?.getFormID() ?? 0;
+    }
+    const keyword = magicInvisibilityId ? Keyword.from(Game.getFormEx(magicInvisibilityId)) : null;
+    return !!keyword && actor.hasMagicEffectWithKeyword(keyword);
   }
 
   // A copy the engine runs here drops the keep-offset of its last applied packet; own companions and steered pets keep the one their service gives them

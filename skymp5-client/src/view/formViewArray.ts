@@ -32,9 +32,12 @@ export class FormViewArray {
     this.formViews.length = newSize;
   }
 
+  // One view's error must not cost the views after it their update, so the first one is thrown once all have run
   updateAll(model: WorldModel, tagPass: boolean) {
     const forms = model.forms;
     const n = forms.length;
+    let failed = false;
+    let firstError: unknown;
     for (let i = 0; i < n; ++i) {
       const form = forms[i];
 
@@ -43,7 +46,17 @@ export class FormViewArray {
         continue;
       }
 
-      this.updateForm(form, i, tagPass);
+      try {
+        this.updateForm(form, i, tagPass);
+      } catch (e) {
+        if (!failed) {
+          failed = true;
+          firstError = e;
+        }
+      }
+    }
+    if (failed) {
+      throw firstError;
     }
   }
 

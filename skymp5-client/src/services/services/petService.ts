@@ -287,7 +287,9 @@ export class PetService extends ClientListener {
     blockActivation(ref);
     // A player clone stays blocked as it always is; a world NPC must be talkable again on the next tick
     if (!isPlayerCharacterId(this.controller, remoteId)) {
-      this.controller.once("update", () => { try { ref.blockActivation(false); } catch { /* unloaded ref */ } });
+      // Looked up again by id: a SkyrimPlatform object lasts only the update that made it
+      const localId = ref.getFormID();
+      this.controller.once("update", () => ObjectReference.from(this.sp.Game.getFormEx(localId))?.blockActivation(false));
     }
     if (isOwnCompanion(commanded)) {
       sendCustomPacket(this.controller, { customPacketType: "companionCommand", action: "attack", targetId: remoteId, companionId: commanded });
