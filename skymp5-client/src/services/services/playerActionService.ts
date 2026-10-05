@@ -6,7 +6,8 @@ import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
 import { isFreeCamera } from "./adminModeService";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, Menu, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
-import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
+import { introducedName, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
+import { ModelApplyUtils } from "../../view/modelApplyUtils";
 import { logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
@@ -132,6 +133,7 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     onCustomPacket(this.controller, ["itemMenuState", "playerMenuState"], (content) => this.onCustomPacketMessage(content));
+    this.controller.emitter.on("openContainerMessage", (e) => this.onOpenContainer(e.message.target));
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
     this.launcherInteractKeyCode = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
@@ -166,6 +168,7 @@ export class PlayerActionService extends ClientListener {
     armHeldMenu(this.sp, this.controller, isInteract && this.holdMode ? this.interactKey : 0);
     this.menuWaitHeld = isInteract && this.holdMode;
     this.containerAsked = false;
+    this.strongboxAsked = false;
 
     const housing = this.controller.lookupListener(HousingService);
     const personal = this.controller.lookupListener(AdminMenuService);
@@ -200,6 +203,7 @@ export class PlayerActionService extends ClientListener {
     if (ref && this.controller.lookupListener(InteractionPromptService).isBoard(ref)) {
       sendCustomPacket(this.controller, { customPacketType: "bountyBoardManage", board: localIdToRemoteId(ref.getFormID()) });
       this.containerAsked = true;
+      this.strongboxAsked = true;
       return;
     }
     if (ref && isPropertyRef(ref)) {
@@ -216,6 +220,19 @@ export class PlayerActionService extends ClientListener {
       return;
     }
     if (claimHeldMenu(() => personal.isOpen, () => personal.closeMenu())) personal.open();
+  }
+
+  // FormView gives a container the server's inventory only under the crosshair, which this press left on the board: the strongbox gets it here, before RemoteServer opens it
+  private onOpenContainer(target: number): void {
+    if (!this.strongboxAsked) return;
+    this.strongboxAsked = false;
+    this.controller.once("update", () => {
+      const form = this.controller.lookupListener(RemoteServer).getFormByRefrId(target);
+      const box = ObjectReference.from(this.sp.Game.getFormEx(remoteIdToLocalId(target)));
+      if (!form?.inventory || !box) return;
+      ModelApplyUtils.applyModelInventory(box, form.inventory);
+      form.inventory = undefined;
+    });
   }
 
   // The strongbox and the search window are the engine's container menu, which the server opens after the request
@@ -442,6 +459,8 @@ export class PlayerActionService extends ClientListener {
   private holdMode = false;
   // The last press asked the server for a bounty board's strongbox or a search window
   private containerAsked = false;
+  // The last press asked for a board's strongbox, whose open message has not come yet
+  private strongboxAsked = false;
   private playerTarget = 0;
   // The placed item the menu is for, by server and local id, and what the server said about it
   private itemTarget = 0;

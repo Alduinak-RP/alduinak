@@ -53,7 +53,7 @@ type Mp = any;
 //   bountyBoardMaxNotes     notices one board holds, default 40
 //   bountyBoardMaxTextLen   characters per notice, default 500
 //   bountyBoardMaxDistance  posting reach in game units, default 512
-//   bountyBoardStashBase    CONT base of the strongbox, default 10aad2:Skyrim.esm
+//   bountyBoardStashBase    CONT base of the strongbox, default 9424c:Skyrim.esm
 //   bountyBoardStashLift    { "<board name>": units } the strongbox stands above the visible board's foot, over each board's lift
 
 const BOARD_PROP = "private.bountyBoard";
@@ -68,8 +68,8 @@ const DEFAULT_EXPIRY_DAYS = 7;
 const DEFAULT_MAX_NOTES = 40;
 const DEFAULT_MAX_TEXT_LEN = 500;
 const DEFAULT_MAX_DISTANCE = 512;
-// TreasStrongBox, the vanilla strongbox
-const DEFAULT_STASH_BASE = "10aad2:Skyrim.esm";
+// StrongBox, the vanilla strongbox without items; a base with leveled items (TreasStrongBox, 10aad2) shows each client its own rolled loot
+const DEFAULT_STASH_BASE = "9424c:Skyrim.esm";
 const NOT_MANAGER_NOTICE = "Only the territory's steward or jarl may open the board's strongbox.";
 
 const POST_COOLDOWN_MS = 5000;
@@ -196,10 +196,14 @@ export class BountyBoardSystem implements System {
       this.swapMisfiledNotes(ctx);
       // After the other systems' leftover sweeps, which could take a new box's reused ff id for a leftover
       setImmediate(() => {
+        const held: string[] = [];
         for (const primary of this.primaries()) {
-          try { this.stashOf(ctx, primary, this.read(ctx, primary) || emptyRecord(), true); }
-          catch (e) { this.log(`[bounty] strongbox check failed for ${primary.toString(16)}: ${e}`); }
+          try {
+            const stash = this.stashOf(ctx, primary, this.read(ctx, primary) || emptyRecord(), true);
+            if (stash) held.push(`${this.boardNameOf(primary)} ${this.holdingsOf(ctx, stash)}`);
+          } catch (e) { this.log(`[bounty] strongbox check failed for ${primary.toString(16)}: ${e}`); }
         }
+        this.log(`[bounty] strongboxes hold: ${held.join(", ") || "none placed"}`);
       });
     });
     // A character switch mid-connection voids the session, same as trade.
@@ -517,6 +521,16 @@ export class BountyBoardSystem implements System {
       }
     } catch { /* actor gone */ }
     return total;
+  }
+
+  // What a strongbox holds on the server, for the boot line: the fees, and whatever its managers put in
+  private holdingsOf(ctx: SystemContext, stash: number): string {
+    let other = 0;
+    try {
+      const entries = (ctx.svr as Mp).get(stash, "inventory")?.entries;
+      other = (Array.isArray(entries) ? entries : []).filter((e: any) => (Number(e?.baseId) >>> 0) !== GOLD_BASE_ID).length;
+    } catch { /* box gone */ }
+    return `${this.goldOf(ctx, stash)} gold${other ? ` and ${other} other stack${other === 1 ? "" : "s"}` : ""}`;
   }
 
   // False when the actor cannot pay; nothing is taken then.

@@ -129,13 +129,45 @@ it sits at that board's foot in the city worldspace; the canonical ref is the
 invisible primitive, which floats about 105-155 units above the visible board
 and to one side of it, where a strongbox would hang in the air and catch the
 crosshair meant for the board (the base should be small or flat). The posting fees pile
-up in it. Its base is `bountyBoardStashBase` (default `10aad2:Skyrim.esm`,
-`TreasStrongBox`, the vanilla strongbox); a base that is not a CONT is
-logged at startup and the fee is then simply destroyed, as before. The base's
-own loot (the strongbox has five leveled entries) never lands in it: placing
-it sets an empty inventory, and a reloot adds nothing while `emptyContainers`
-is on (the default). With `emptyContainers` off, or the base listed in
-`containerLootBaseIds`, an emptied strongbox would refill with loot.
+up in it. Its base is `bountyBoardStashBase` (default `9424c:Skyrim.esm`,
+`StrongBox`, the vanilla strongbox mesh with no items of its own); a base that
+is not a CONT is logged at startup and the fee is then simply destroyed, as
+before. The board itself is an activator and holds nothing but its notices
+(`private.bountyBoard`); every fee and everything a manager puts away is in the
+strongbox, which is the only container a board has.
+
+**Loot in the strongbox (2026-10-05).** Until then the default base was
+`10aad2:Skyrim.esm`, `TreasStrongBox`, whose record lists five leveled entries
+(`LItemJewelryRing25`, `LItemEnchJewelryAll15`, `LItemGems`,
+`LItemGemsSmall25`, two `LootGoldChange25`). The server never added them:
+placing the box sets an empty inventory, a reloot adds nothing while
+`emptyContainers` is on (the default), and the stored boxes held gold only.
+Each client did: it spawns its own copy of the box from the base and the
+engine rolls the leveled lists into it. `FormView` replaces that with the
+server's inventory, but only while the crosshair is on the container, and X on
+a board opens the box with the crosshair on the board. So a manager who pressed
+X read a rolled handful of gold, gems and jewelry instead of the fees, took the
+gold out of the real fees and was refused the rest, as on live on 2026-10-05
+(`[take] ff000525 takes f x17 from ff00079a`, then `takes 63b46 x1` answered
+`Source inventory doesn't have enough 0x63b46 (1 is required while 0
+present)`). Two changes end it:
+
+- the default base has no items, so no client has anything to roll, and the
+  start after the change swaps every board's box for one of the new base with
+  its contents moved (the swap described below);
+- `PlayerActionService` gives the box the server's inventory itself when the
+  open message for a box asked through a board arrives, on the update before
+  `RemoteServer` opens it (`onOpenContainer`, with `ModelApplyUtils`), so X on
+  the board shows what the box holds.
+
+Nothing has to be moved out of the boxes: the loot was never on the server.
+After the world has loaded the server logs what each box holds, `[bounty]
+strongboxes hold: Whiterun 50 gold, Riften 0 gold, Solitude 75 gold and 2
+other stacks, ...`; other stacks are what managers put in. With
+`bountyBoardStashBase` set to a base that lists items the rolled loot comes
+back for anyone whose client opens the box before the server's inventory
+reaches it, and with `emptyContainers` off or the base listed in
+`containerLootBaseIds` the server itself would add the base's loot.
 
 **On the ground (F10, 2026-10).** Several visible boards stand with their
 foot sunk into the landscape, so a box at the foot was buried: the vanilla
@@ -183,7 +215,8 @@ property-menu branch, and the server, once the player is within
 `bountyBoardMaxDistance` of that board and may manage it, activates the
 strongbox for the player through Papyrus `ObjectReference.Activate`, the
 engine's own container path (it records the occupant, so takes and puts pass
-the occupant check) and the client opens the vanilla ContainerMenu (with the
+the occupant check) and the client, after giving its copy of the box the
+inventory the server sent with the open, opens the vanilla ContainerMenu (with the
 chat settings' interact hold on, releasing X closes it by tapping Tab). A
 board whose strongbox could not be placed at startup gets it on the next paid
 post or manage. Because it sits in the city worldspace, a walled city's
@@ -282,15 +315,15 @@ mastery menu.
 | `bountyBoardMaxNotes` | 40 | notices one board holds |
 | `bountyBoardMaxTextLen` | 500 | characters per notice |
 | `bountyBoardMaxDistance` | 512 | posting reach in game units |
-| `bountyBoardStashBase` | `10aad2:Skyrim.esm` | CONT base of the strongbox, as a `hex:Plugin` desc or a load-order id |
+| `bountyBoardStashBase` | `9424c:Skyrim.esm` | CONT base of the strongbox, as a `hex:Plugin` desc or a load-order id; one with no items of its own |
 | `bountyBoardStashLift` | `{}` (table: Winterhold 40, Dawnstar 49, Falkreath 17) | `{ "<board name>": units }` the strongbox stands above the visible board's foot, over the table's lift; an existing box is moved at the next start |
 
 `bountyBoardCostGold` and `bountyBoardStashBase` also have rows in the manager
 **Settings** tab (Interactions group), so they can be changed there without
 editing the JSON by hand; a blank field removes the key and the server falls
 back to the default. The values are read once at startup, so restart the game
-service after changing them. Changing the strongbox base does not touch a
-strongbox already placed; its old container stays.
+service after changing them. A strongbox of another base than the one set is
+swapped at that start, contents moved (see Strongbox).
 
 ## Deployment
 

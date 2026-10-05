@@ -15,7 +15,7 @@ import fastesp
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ANCHORS = {'Whiterun': 0x12cc, 'Riften': 0x9491, 'Windhelm': 0x9477, 'Markarth': 0x94a2, 'Solitude': 0x948f,
            'Dawnstar': 0x94ae, 'Winterhold': 0x94b2, 'Morthal': 0x94aa, 'Falkreath': 0x94a6}
-# TreasStrongBox OBND x and y bounds
+# StrongBox OBND x and y bounds
 BOX = (-14, -9, 14, 9)
 MARGIN = 2
 
