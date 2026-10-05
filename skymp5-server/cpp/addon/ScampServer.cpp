@@ -542,6 +542,9 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
     ReadAuthorityBound(serverSettings, "maxMovementSpeed",
                        "enforceMovementSpeed",
                        partOne->worldState.movementSpeed);
+    ReadAuthorityBound(serverSettings, "maxActivateDistance",
+                       "enforceActivateDistance",
+                       partOne->worldState.activateDistance);
 
     partOne->worldState.isPapyrusHotReloadEnabled =
       serverSettings.count("isPapyrusHotReloadEnabled") != 0 &&

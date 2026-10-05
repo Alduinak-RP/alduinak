@@ -190,6 +190,11 @@ private:
   MpActor* SendToNeighbours(uint32_t idx, const RawMessageData& rawMsgData,
                             bool reliable = false, bool skipSender = false);
 
+  // Logs a caster farther than maxActivateDistance from the target, false only while enforceActivateDistance is on
+  bool IsActivateDistanceAllowed(Networking::UserId userId,
+                                 const MpObjectReference& caster,
+                                 const MpObjectReference& target);
+
   // sanitizedMsg replaces the owner's raw report when the server changed it
   void RelayEquipment(MpActor& actor, const RawMessageData& rawMsgData,
                       const UpdateEquipmentMessage* sanitizedMsg);

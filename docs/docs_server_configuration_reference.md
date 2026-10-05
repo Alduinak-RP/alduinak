@@ -1317,12 +1317,15 @@ native server at boot; it logs `<limit> is <n> and <switch> is <true|false>: ...
 | Limit | Switch | Default | What it bounds |
 |---|---|---|---|
 | `maxMovementSpeed` | `enforceMovementSpeed` | `2048` | Horizontal units per second a player's movement report may cover since the server last accepted one, counting at least 0.13 s, plus 256 units of slack. Logs `MovementValidation - <actor> moved <n> units in <s> s, over the <bound> units maxMovementSpeed allows, logged only\|refused`. A refused report puts the player back with Teleport2. Hosted NPCs are not checked. |
+| `maxActivateDistance` | `enforceActivateDistance` | `1024` | Units from the player, or the hosted NPC, to the object it activates (doors, containers, items, seats). Closing a container or leaving a seat is never checked, and an object in another cell or worldspace is left to the activation's own worldspace check. Logs `ActionListener::OnActivate - <caster> activates <target> from <n> units, farther than maxActivateDistance <max>, logged only\|refused`. Very large objects such as gates have far origins. Papyrus activations, lever links and activation children are not checked. |
 
 ```json5
 {
   // ...
   "maxMovementSpeed": 2048,
-  "enforceMovementSpeed": false
+  "enforceMovementSpeed": false,
+  "maxActivateDistance": 1024,
+  "enforceActivateDistance": false
   // ...
 }
 ```

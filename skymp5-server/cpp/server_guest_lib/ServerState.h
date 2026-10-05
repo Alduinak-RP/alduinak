@@ -43,6 +43,7 @@ struct RefusalLimits
 enum class AuthorityCheck
 {
   MovementSpeed,
+  ActivateDistance,
   Count
 };
 

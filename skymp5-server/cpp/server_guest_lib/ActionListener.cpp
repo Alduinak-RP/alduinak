@@ -1179,12 +1179,20 @@ void ActionListener::OnActivate(const RawMessageData& rawMsgData,
   if (!targetPtr)
     return;
 
+  MpObjectReference& caster = msg.data.caster == 0x14
+    ? *ac
+    : partOne.worldState.GetFormAt<MpObjectReference>(
+        static_cast<uint32_t>(msg.data.caster));
+
+  // Closing a container or leaving a seat is never refused
+  if (!msg.data.isSecondActivation &&
+      !IsActivateDistanceAllowed(rawMsgData.userId, caster, *targetPtr)) {
+    return;
+  }
+
   constexpr bool kDefaultProcessingOnlyFalse = false;
-  targetPtr->Activate(
-    msg.data.caster == 0x14 ? *ac
-                            : partOne.worldState.GetFormAt<MpObjectReference>(
-                                static_cast<uint32_t>(msg.data.caster)),
-    kDefaultProcessingOnlyFalse, msg.data.isSecondActivation);
+  targetPtr->Activate(caster, kDefaultProcessingOnlyFalse,
+                      msg.data.isSecondActivation);
   // A hosted NPC that picked up a weapon draws the best one it carries
   if (hosterId && targetPtr->GetBaseType() == espm::WEAP::kType) {
     auto actor =
@@ -1194,6 +1202,33 @@ void ActionListener::OnActivate(const RawMessageData& rawMsgData,
       actor->EquipBestWeapon();
     }
   }
+}
+
+bool ActionListener::IsActivateDistanceAllowed(
+  Networking::UserId userId, const MpObjectReference& caster,
+  const MpObjectReference& target)
+{
+  // Activate itself refuses another worldspace
+  if (caster.GetCellOrWorldFormId() != target.GetCellOrWorldFormId()) {
+    return true;
+  }
+
+  const auto& bound = partOne.worldState.activateDistance;
+  const float sqrDistance = (caster.GetPos() - target.GetPos()).SqrLength();
+  if (sqrDistance <= bound.max * bound.max) {
+    return true;
+  }
+
+  if (auto held = partOne.serverState.AllowAuthorityLog(
+        userId, AuthorityCheck::ActivateDistance)) {
+    spdlog::warn("ActionListener::OnActivate - {:x} activates {:x} from {} "
+                 "units, farther than maxActivateDistance {}, {} ({} more "
+                 "since the last line)",
+                 caster.GetFormId(), target.GetFormId(),
+                 std::sqrt(sqrDistance), bound.max,
+                 bound.enforce ? "refused" : "logged only", *held);
+  }
+  return !bound.enforce;
 }
 
 void ActionListener::OnPutItem(const RawMessageData& rawMsgData,
