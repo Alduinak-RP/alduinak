@@ -16,8 +16,8 @@ import { HEAT_INTERIORS, HEAT_SOURCE_INPUTS, HEAT_WORLDS } from "./heatSources";
 import { ARMOR_WARMTH } from "./armorWarmth";
 import { every } from "./timers";
 import {
-  AreaClass, COLD_MAX, COLD_STAGE_NAMES, ColdConfig, RATED_SLOTS, WeatherAdd, WornArmor, areaOf, areaRateOf, coldCapOf, coldLevelOf, coldRatePerSec, coldStageOf, gearWarmth,
-  isFreezingWater, isNight, nearHeatPoint, parseColdSettings, stepCold, temperatureLevelOf, warmthReduction, weatherAddOf,
+  AreaClass, COLD_MAX, COLD_STAGE_NAMES, ColdConfig, RATED_SLOTS, WeatherAdd, WornArmor, areaOf, areaRateOf, coldCapOf, coldLevelOf, coldRatePerSec, coldStageOf, freezingWaterDrain,
+  gearWarmth, isFreezingWater, isNight, nearHeatPoint, parseColdSettings, stepCold, temperatureLevelOf, warmthReduction, weatherAddOf,
 } from "./survivalClimate";
 import {
   DISEASE_STAGES, DiseaseConfig, DiseaseFactor, HeldDisease, carrierOf, diseaseFactor, exposureGapMs, factorLine, nextStageAt, parseDiseaseSettings,
@@ -32,10 +32,10 @@ type Mp = any;
 //
 // Body rules, at each login once the client's load settled and at creation finish: respawnPercentages.health = survivalRespawnHealthPoints
 // (1) of the race's base health, which the client is sent right after each native respawn and afterlife revive (the character wakes with
-// 1 health point), and the abilities AldSurvival_AbNoHealthRegen (no health regeneration on the client), AldSurvival_FreezingWaterDamage
-// (freezing water damage while swimming, inert until the client sets AldSurvival_FreezingArea) and the one survivalCarryWeightSpell names
-// (none by default, so carry weight stays 300) through the StageAbilityTracker, each with its own switch; a record the
-// plugin lacks is skipped with a log line. With survivalEnabled false, or a switch off, what an earlier session granted is undone at login.
+// 1 health point), and the abilities AldSurvival_AbNoHealthRegen (slow health regeneration on the client) and the one
+// survivalCarryWeightSpell names (none by default, so carry weight stays 300) through the StageAbilityTracker, each with its own switch; a
+// record the plugin lacks is skipped with a log line. With survivalEnabled false, or a switch off, what an earlier session granted is
+// undone at login, and so is an ability no rule grants any more (AldSurvival_FreezingWaterDamage, whose damage the server deals now).
 // Raw meat (Survival_FoodRawMeat, HuntingSystem's meats, survivalRawMeatExtra) gives Survival_DiseaseFoodPoisoning at
 // survivalFoodPoisoningChance x (1 - disease resist / 100) for survivalFoodPoisoningHours of wall clock, never to a race whose
 // racialPassives entry is rawMeatSafe and never twice at once.
@@ -48,6 +48,11 @@ type Mp = any;
 // water) and the race's coldRateMult; above the cap it falls unless the character fought in the last FIGHT_MS. Standing at a heat source
 // (heatSources.ts) warms, frost spells and venom chill, fire spells and hot food warm. The stage ability Survival_ColdStage0..5 follows
 // the stage and the client takes the maximum health penalty from survivalState. Cold falls while logged out and starts over at a respawn.
+// Freezing water (swimming without a flame cloak, as the client reports, in a freezing area, a cold interior or a survivalFreezingWaterWorlds
+// world) raises cold to the stage 3 value at once and takes survivalFreezingWaterDamage health points a second off the base maximum, less
+// the frost resistance of the race and abilities, written to percentages every WATER_TICK_MS and on leaving the water, so the native
+// bleedout and death rules apply; health that crept up between two ticks is regeneration and is taken back, a larger rise is healing and
+// stays; never in creation, dead or with the god, ghost or invis admin mode.
 // Afflictions, Survival's conditions: at a need's stage 5 (hunger Starving from NEEDS_STAGE_EVENT, cold Numb) a
 // character not holding its affliction rolls at most once per tickMinutes, like Survival's need update, so leaving stage 5 and coming
 // back inside that time rolls nothing: Weakened (hunger, 20% every 15 min), Frostbitten (cold, 16% every 5 min). The affliction ability
@@ -75,7 +80,7 @@ type Mp = any;
 //                       afflictions: [name], diseases: [{ name, stage }], contagion: { seconds, range } | null }
 //                     cold 0-1000 and coldStage 0-5, both -1 with cold off; coldPenalty is the 0-1 share of maximum health removed;
 //                     temperatureLevel sets Survival_TemperatureLevel (0 neutral, 1 near heat, 2 warming, 3 cooling, 4 freezing);
-//                     freezingArea sets AldSurvival_FreezingArea; diseases name each held disease with its stage 1-3, food poisoning
+//                     freezingArea is where the client reads and reports swimming; diseases name each held disease with its stage 1-3, food poisoning
 //                     first as { "Food poisoning", 1 } while it runs; contagion is the client's check interval and range, null when off
 //                     { customPacketType: "masteryNotice", text }
 //   Actor property ff_contagious (registered in gamemode.js, seen by the owner and neighbours): [contagious disease id] or null
@@ -93,7 +98,9 @@ type Mp = any;
 //   survivalCarryWeightSpell      editor id or desc of a carry weight ability to grant, default "" (none, carry weight stays 300);
 //                                 "Survival_abLowerCarryWeightSpell" is Survival's 150
 //   survivalNoHealthRegen         false grants no AldSurvival_AbNoHealthRegen, default true
-//   survivalFreezingWater         false grants no AldSurvival_FreezingWaterDamage and no freezing water cold, default true
+//   survivalFreezingWater         false: no freezing water cold or damage, default true
+//   survivalFreezingWaterDamage   health points a real second of swimming in freezing water takes before frost resistance, default 0.25
+//                                 (Survival's 5 at our 1:1 clock, 20 times slower like the cold rate); 0 for none
 //   survivalFoodPoisoningChance   chance raw meat poisons before disease resistance, 0 to 1, default 0.5; 0 turns it off
 //   survivalFoodPoisoningHours    real hours food poisoning lasts, offline included, default 24
 //   survivalRawMeatExtra          editor ids, hex ids or descs of more raw meat, default []
@@ -161,6 +168,10 @@ const HIT_EVENT = "onPapyrusEvent:OnHit";
 const POLL_MS = 1000;
 const TICK_MS = 60000;
 const COLD_TICK_MS = 15000;
+const WATER_TICK_MS = 5000;
+const WATER_NOTICE_GAP_MS = 60000;
+// A rise of up to this share of the bar between two water ticks is regeneration, more is healing
+const WATER_REGEN_SHARE = 0.05;
 const SAVE_MS = 5 * 60000;
 // A hit given or taken this recently stops cold falling above the cap
 const FIGHT_MS = 10000;
@@ -173,7 +184,6 @@ const EPSILON = 1e-4;
 const DEFAULT_RESPAWN_HEALTH = 0.01;
 const DEFAULT_RESPAWN_POINTS = 1;
 const NO_REGEN_SPELL = "AldSurvival_AbNoHealthRegen";
-const FREEZING_WATER_SPELL = "AldSurvival_FreezingWaterDamage";
 const DEFAULT_POISON_CHANCE = 0.5;
 const DEFAULT_POISON_HOURS = 24;
 const DEFAULT_CURE_MIN_HEALTH = 25;
@@ -251,7 +261,7 @@ export interface SurvivalAdminResult {
   catalog?: SurvivalCatalog;
 }
 
-type BodyKey = "carry" | "regen" | "water";
+type BodyKey = "carry" | "regen";
 
 interface BodySpell {
   key: BodyKey;
@@ -320,6 +330,10 @@ interface Online {
   swimming: boolean;
   flameCloak: boolean;
   inFreezingWater: boolean;
+  // Health was last taken for freezing water then, 0 out of it, and the share it left, -1 before the first tick
+  waterAt: number;
+  waterHealth: number;
+  waterNoticeAt: number;
   reportAt: number;
   fightAt: number;
   area: AreaClass | "";
@@ -442,7 +456,6 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.body = [
       { key: "carry", label: "carry weight", name: typeof carry === "string" ? carry.trim() : "", id: 0 },
       { key: "regen", label: "no regen", name: all["survivalNoHealthRegen"] !== false ? NO_REGEN_SPELL : "", id: 0 },
-      { key: "water", label: "freezing water", name: all["survivalFreezingWater"] !== false ? FREEZING_WATER_SPELL : "", id: 0 },
     ];
     const extra = all["survivalRawMeatExtra"];
     if (extra !== undefined && !(Array.isArray(extra) && extra.every((x) => typeof x === "string"))) problems.push("survivalRawMeatExtra is not a list of strings, none are added");
@@ -564,7 +577,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
 
   private coldLine(heat: { interiors: number; worlds: number; points: number; unknown: number }): string {
     const c = this.cold;
-    if (!c.enabled) return `[survival] cold off (survivalColdEnabled false): no cold, warmth or stage abilities; freezing water area ${c.freezingWater ? "still sent for the water damage" : "off"}`;
+    const drain = c.freezingWaterDamage > 0 ? `${c.freezingWaterDamage} health a second while swimming` : "no health damage";
+    if (!c.enabled) return `[survival] cold off (survivalColdEnabled false): no cold, warmth or stage abilities; freezing water ${c.freezingWater ? `still takes ${drain}` : "off"}`;
     const l = c.levels;
     const w = c.warmth;
     const classes: Record<string, number> = {};
@@ -574,7 +588,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       `; heatSources.ts was made from keywords ${HEAT_SOURCE_INPUTS.keywords.join("/") || "none"} and extra bases ${HEAT_SOURCE_INPUTS.extraBases.join("/") || "none"}, not survivalHeatKeywords ${c.heatKeywords.join("/") || "none"} and survivalHeatExtraBases ${c.heatExtraBases.join("/") || "none"}: rerun misc/gen-heat-sources.py`;
     const spells = this.coldSpells.filter((id) => id).length;
     const r = c.areaRate;
-    return `[survival] cold: +${c.levelMult} x level per ${c.hoursToNumb} h (level 20 bare fills the bar) times the area rate warm x${r.warm}, cool x${r.cool}, freezing x${r.freezing}, cold interior x${r.chillyInterior} (x1 in freezing water), stages ${c.stages.join("/")}, start ${c.start}; levels warm ${l.warm}, cool ${l.cool}, freezing ${l.freezing}, cold interior ${l.chillyInterior}, night +${l.warmNight}/+${l.coolNight}/+${l.freezingNight} (${c.night[0]}-${c.night[1]} h), rain +${l.rain}, snow +${l.snow}, blizzard +${l.blizzard} (${this.blizzard.size} blizzard weathers, ${this.ash.size} ash weathers count as no snow), freezing water ${l.freezingWater}${c.freezingWater ? ` (freezing areas, cold interiors, worlds ${c.freezingWaterWorlds.join("/") || "none"}), up to ${c.stages[2]} at once` : " off"}; caps at levels ${c.caps.join("/")}; falls ${c.warmPerMinute}/min above the cap unless fighting in the last ${FIGHT_MS / 1000} s, ${c.offlineWarmPerHour}/h offline down to ${c.start}; ` +
+    return `[survival] cold: +${c.levelMult} x level per ${c.hoursToNumb} h (level 20 bare fills the bar) times the area rate warm x${r.warm}, cool x${r.cool}, freezing x${r.freezing}, cold interior x${r.chillyInterior} (x1 in freezing water), stages ${c.stages.join("/")}, start ${c.start}; levels warm ${l.warm}, cool ${l.cool}, freezing ${l.freezing}, cold interior ${l.chillyInterior}, night +${l.warmNight}/+${l.coolNight}/+${l.freezingNight} (${c.night[0]}-${c.night[1]} h), rain +${l.rain}, snow +${l.snow}, blizzard +${l.blizzard} (${this.blizzard.size} blizzard weathers, ${this.ash.size} ash weathers count as no snow), freezing water ${l.freezingWater}${c.freezingWater ? ` (freezing areas, cold interiors, worlds ${c.freezingWaterWorlds.join("/") || "none"}), up to ${c.stages[2]} at once, ${drain}` : " off"}; caps at levels ${c.caps.join("/")}; falls ${c.warmPerMinute}/min above the cap unless fighting in the last ${FIGHT_MS / 1000} s, ${c.offlineWarmPerHour}/h offline down to ${c.start}; ` +
       `areas: ${this.oblivionAreas.size} Oblivion worlds none, ${this.interiorAreas.size} worlds as interiors, ${this.coldCells.size} cold cells and ${this.coldLocations.size} cold locations, worlds ${Object.entries(c.worldClimate).map(([k, v]) => `${k} ${v}`).join(", ")}, above ${c.freezingZ} freezing, regions ${Object.entries(classes).map(([k, n]) => `${n} ${k}`).join(", ")}, heights ${Object.entries(c.highRegions).map(([k, z]) => `${k} ${z}`).join(", ") || "none"}, anything else cool; ` +
       `heat ${heat.points} sources (${heat.interiors} interiors, ${heat.worlds} worlds${heat.unknown ? `, ${heat.unknown} cells or worlds not in the load order` : ""}) within ${c.heatRadius} warm ${c.heatRestore} every ${c.heatCheckSeconds} s to a character standing (moved under ${c.heatStillUnits} units)${genNote}; ` +
       `warmth normal ${w.normal.join("/")}, warm ${w.warm.join("/")}, cold ${w.cold.join("/")}, torch ${w.torch}, cloak ${w.cloak}, ${c.warmthTable ? `armorWarmth.ts rates ${WARMTH_TABLE.size} more pieces` : "armorWarmth.ts off (survivalWarmthTable false)"}, up to ${w.max} for ${pct(w.maxReduction)} less cold, race per racialPassives warmth, hot meal ${c.hotFoodWarmth} for ${c.hotFoodMinutes} min; ` +
@@ -706,7 +720,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const now = Date.now();
     const entry: Online = {
       actorId, userId, rec, bodyDue: !isCreationPending(mp, actorId), revoked: [], coldAt: 0, heatAt: 0, heatPos: null, nearHeat: false, heatFrom: -1,
-      swimming: false, flameCloak: false, inFreezingWater: false, reportAt: 0, fightAt: 0, area: "", areaWhy: "", freezingArea: false, level: 0, levelParts: [],
+      swimming: false, flameCloak: false, inFreezingWater: false, waterAt: 0, waterHealth: -1, waterNoticeAt: 0, reportAt: 0, fightAt: 0, area: "", areaWhy: "", freezingArea: false, level: 0, levelParts: [],
       temperature: 0, warmth: 0, gear: 0, engineGear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false,
       exposureAt: 0, exposureLogAt: 0, exposureRolls: new Map(), contagious: null,
     };
@@ -791,6 +805,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
             if (tick) this.expire(ctx, actorId, entry, now);
             if (this.enabled && now - entry.heatAt >= this.cold.heatCheckSeconds * 1000) this.heatCheck(ctx, actorId, entry, now);
             if (this.enabled && now - entry.coldAt >= COLD_TICK_MS) this.step(ctx, actorId, entry, now);
+            if (entry.waterAt && now - entry.waterAt >= WATER_TICK_MS) this.drainInWater(mp, entry, now);
           }
         }
         if (this.abilities.takeResend(actorId, now)) this.abilities.resend(mp, actorId, this.groupsOf(mp, entry));
@@ -1085,7 +1100,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   private hitDisease(ctx: SystemContext, targetId: number, aggressorId: number, sourceId: number): void {
     const mp = ctx.svr as Mp;
     const entry = this.online.get(targetId);
-    if (!entry || !entry.coldAt || !this.canCatch(mp, targetId)) return;
+    if (!entry || !entry.coldAt || !this.exposed(mp, targetId)) return;
     const sourceType = sourceId ? String(this.lookup(mp, sourceId)?.record?.type ?? "") : "";
     if (sourceType && sourceType !== "WEAP") return;
     if (isPlayerActor(mp, aggressorId) || this.isPet(mp, aggressorId)) return;
@@ -1111,7 +1126,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   }
 
   // Alive, out of creation and not hidden by an admin mode
-  private canCatch(mp: Mp, actorId: number): boolean {
+  private exposed(mp: Mp, actorId: number): boolean {
     return !isCreationPending(mp, actorId) && isAlive(mp, actorId) && !hasAdminMode(mp, actorId, UNSEEN_MODES);
   }
 
@@ -1263,7 +1278,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
 
   // Settled, alive, out of creation, outside the afterlife realms and not hidden by an admin mode
   private canSpreadOrCatch(mp: Mp, entry: Online): boolean {
-    return !!entry.coldAt && this.canCatch(mp, entry.actorId) && !afterlifeOf(mp, entry.actorId);
+    return !!entry.coldAt && this.exposed(mp, entry.actorId) && !afterlifeOf(mp, entry.actorId);
   }
 
   // Every stage spell of the disease is in the load order
@@ -1417,7 +1432,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const mp = ctx.svr as Mp;
     const seconds = Math.max(0, now - entry.coldAt) / 1000;
     entry.coldAt = now;
-    if (!this.climate(mp, actorId, entry)) return;
+    if (!this.climate(mp, actorId, entry, now)) return;
     if (this.cold.enabled && !isCreationPending(mp, actorId) && isAlive(mp, actorId)) {
       const rec = entry.rec;
       const before = rec.cold;
@@ -1438,7 +1453,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   }
 
   // Area, cold level and freezing water; logs a change of area or of freezing water; false when the character is in no known place
-  private climate(mp: Mp, actorId: number, entry: Online): boolean {
+  private climate(mp: Mp, actorId: number, entry: Online, now: number): boolean {
     let placeId = 0;
     let pos: number[] = [];
     try {
@@ -1464,11 +1479,42 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (entry.area && (area !== entry.area || freezingArea !== entry.freezingArea)) {
       this.log(`[survival] ${hexId} area ${area} (${why}, world ${place.worldEdid || "interior"}, z ${Math.round(Number(pos[2]) || 0)})${freezingArea !== entry.freezingArea ? `, freezing water ${freezingArea ? "yes" : "no"}` : ""}`);
     }
-    if (this.cold.enabled && inWater !== entry.inFreezingWater) {
-      this.log(`[survival] ${hexId} ${inWater ? "swimming in freezing water: level" : "out of the freezing water: level"} ${level}, cold ${Math.round(entry.rec.cold)}`);
+    if (inWater !== entry.inFreezingWater) {
+      const drain = this.cold.freezingWaterDamage;
+      const health = inWater ? -1 : this.drainInWater(mp, entry, now);
+      Object.assign(entry, { waterAt: inWater ? now : 0, waterHealth: -1 });
+      this.log(`[survival] ${hexId} ${inWater ? "swimming in" : "out of the"} freezing water: level ${level}, cold ${Math.round(entry.rec.cold)}` +
+        `${inWater ? `, health -${drain} a second x (1 - frost resist ${abilityResist(mp, actorId, ActorValue.FrostResist)}%)` : health >= 0 ? `, health ${pct(health)}` : ""}`);
+      if (inWater && drain > 0 && now - entry.waterNoticeAt >= WATER_NOTICE_GAP_MS && this.exposed(mp, actorId)) {
+        entry.waterNoticeAt = now;
+        this.notice(mp, actorId, "The water is freezing: it drains your health while you swim in it.");
+      }
     }
     Object.assign(entry, { area, areaWhy: why, freezingArea, inFreezingWater: inWater, level, levelParts: parts });
     return true;
+  }
+
+  // Takes the health the time since waterAt cost and the regeneration since the last tick; returns the share of the bar left, -1 when unread
+  private drainInWater(mp: Mp, entry: Online, now: number): number {
+    const actorId = entry.actorId;
+    // A stalled server counts two ticks at most
+    const seconds = entry.waterAt ? Math.min(now - entry.waterAt, 2 * WATER_TICK_MS) / 1000 : 0;
+    const last = entry.waterHealth;
+    Object.assign(entry, { waterAt: now, waterHealth: -1 });
+    try {
+      const held = mp.get(actorId, "percentages");
+      const health = Number(held?.health);
+      if (!(health > 0) || !this.exposed(mp, actorId)) return Number.isFinite(health) ? health : -1;
+      const share = freezingWaterDrain(this.cold.freezingWaterDamage, seconds, this.racial.maxHealth(actorId) * this.healthScaleOf(actorId), abilityResist(mp, actorId, ActorValue.FrostResist));
+      if (share <= 0) return health;
+      const from = last >= 0 && health > last && health - last <= WATER_REGEN_SHARE ? last : health;
+      entry.waterHealth = Math.max(0, from - share);
+      mp.set(actorId, "percentages", { ...held, health: entry.waterHealth });
+      return entry.waterHealth;
+    } catch (e) {
+      this.log(`[survival] freezing water health of ${hex(actorId)} failed: ${e}`);
+      return -1;
+    }
   }
 
   // Interior or world, the cold lists and Oblivion; cached per cell or world
@@ -1635,11 +1681,11 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const entry = this.online.get(actorId);
     const mp = ctx.svr as Mp;
     if (!entry) return;
+    Object.assign(entry, { swimming: false, inFreezingWater: false, waterAt: 0 });
     if (entry.coldAt && this.cold.enabled) {
       const before = entry.rec.cold;
       entry.rec.warmBonus = false;
       entry.killed = false;
-      entry.swimming = false;
       this.setCold(mp, actorId, entry, this.cold.start, "");
       this.save(mp, entry);
       this.log(`[survival] ${hex(actorId)} respawned: cold ${Math.round(before)} -> ${this.cold.start}`);

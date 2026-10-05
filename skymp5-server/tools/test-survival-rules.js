@@ -36,6 +36,8 @@ const FROSTBITTEN = 0x913
 const ROCKJOINT = 0xb8782
 const RESIST_DISEASE_50 = 0x9001
 const RESIST_EFFECT = 0x9002
+const RESIST_FROST_75 = 0x9003
+const RESIST_FROST_EFFECT = 0x9004
 const NORD_RACE = 0x13746
 const REDGUARD_RACE = 0x13748
 const KHAJIIT_RACE = 0x13745
@@ -71,6 +73,8 @@ const RECORDS = new Map([
   [ROCKJOINT, spell('DiseaseRockjoint', 1)],
   [RESIST_DISEASE_50, spell('TestResistDisease50', 4, [[RESIST_EFFECT, 50]])],
   [RESIST_EFFECT, record('MGEF', 'AbResistDisease', [field('DATA', mgefData(0, 0, 45))])],
+  [RESIST_FROST_75, spell('TestResistFrost75', 4, [[RESIST_FROST_EFFECT, 75]])],
+  [RESIST_FROST_EFFECT, record('MGEF', 'AbResistFrost', [field('DATA', mgefData(0, 0, 43))])],
   [NORD_RACE, record('RACE', 'NordRace')],
   [REDGUARD_RACE, record('RACE', 'RedguardRace', [field('SPLO', u32(RESIST_DISEASE_50))])],
   [KHAJIIT_RACE, record('RACE', 'KhajiitRace')],
@@ -238,7 +242,7 @@ const setup = (settings = { survivalEnabled: true }, cold = false, plugin = true
   const hunting = { rawMeatIds: () => [VENISON] }
   const sys = new SurvivalSystem((l) => logs.push(String(l)), racial, hunting, weather)
   const { problems } = sys.configure(settings)
-  const ids = { Survival_abLowerCarryWeightSpell: CARRY, AldSurvival_AbNoHealthRegen: REGEN, AldSurvival_FreezingWaterDamage: WATER }
+  const ids = { Survival_abLowerCarryWeightSpell: CARRY, AldSurvival_AbNoHealthRegen: REGEN }
   for (const b of sys.body) b.id = b.name ? ids[b.name] || 0 : 0
   sys.foodPoison = FOOD_POISON
   const afflictionIds = { Survival_AfflictionWeakened: WEAKENED, Survival_AfflictionFrostbitten: FROSTBITTEN }
@@ -308,7 +312,7 @@ async function main() {
     assert.equal(off.sys.cureMinHealth, 25)
     assert.equal(off.sys.poisonChance, 0.5)
     assert.equal(off.sys.poisonMs, 24 * HOUR)
-    assert.deepEqual(off.sys.body.map((b) => b.name), ['', 'AldSurvival_AbNoHealthRegen', 'AldSurvival_FreezingWaterDamage'], 'no carry weight ability by default')
+    assert.deepEqual(off.sys.body.map((b) => b.name), ['', 'AldSurvival_AbNoHealthRegen'], 'no carry weight ability by default, and none for freezing water')
     assert.equal(setup({ survivalCarryWeightSpell: ' Survival_abLowerCarryWeightSpell ' }).sys.body[0].name, 'Survival_abLowerCarryWeightSpell')
     assert.deepEqual(setup({ survivalCarryWeightSpell: 150 }).problems, ['survivalCarryWeightSpell 150 is not a string, no carry weight ability is granted'])
     const bad = setup({ survivalEnabled: 'yes', survivalRespawnHealth: 0, survivalRespawnHealthPoints: -1, survivalCure: 'prayer', survivalFoodPoisoningChance: 2, survivalCarryWeightSpell: '', survivalNoHealthRegen: false, survivalRawMeatExtra: 'FoodBeef' })
@@ -316,7 +320,7 @@ async function main() {
     assert.equal(bad.sys.respawnHealth, 0.01)
     assert.equal(bad.sys.respawnPoints, 1)
     assert.equal(bad.sys.cureMode, 'cureDiseaseOrHealth')
-    assert.deepEqual(bad.sys.body.map((b) => b.name), ['', '', 'AldSurvival_FreezingWaterDamage'])
+    assert.deepEqual(bad.sys.body.map((b) => b.name), ['', ''])
     assert.deepEqual(bad.problems, [
       'survivalRespawnHealth 0 is out of range, 0.01 is used',
       'survivalRespawnHealthPoints -1 is out of range, 1 is used',
@@ -335,19 +339,19 @@ async function main() {
     later()
     await t.update()
     const h = a.toString(16)
-    assert.deepEqual(t.mp.calls, [`${h} +41340`, `${h} +41393`])
+    assert.deepEqual(t.mp.calls, [`${h} +41340`])
     const respawn = t.mp.get(a, 'respawnPercentages')
     assert.deepEqual(respawn, { health: 0.01, magicka: 0.5, stamina: 1 })
-    assert.deepEqual(t.rec(a).body, { spells: [desc(REGEN), desc(WATER)], respawn: 0.01 })
-    assert.deepEqual(t.logs, [`[survival] ${h} body: carry weight off, no regen AldSurvival_AbNoHealthRegen granted, freezing water AldSurvival_FreezingWaterDamage granted, respawn health 1 of 100 (set), no food poisoning; cold 55 (Comfortable), place not known yet, cold ability none`])
+    assert.deepEqual(t.rec(a).body, { spells: [desc(REGEN)], respawn: 0.01 })
+    assert.deepEqual(t.logs, [`[survival] ${h} body: carry weight off, no regen AldSurvival_AbNoHealthRegen granted, respawn health 1 of 100 (set), no food poisoning; cold 55 (Comfortable), place not known yet, cold ability none`])
     t.sys.goOffline(t.ctx, a)
     t.logs.length = 0
     t.mp.calls.length = 0
     t.sys.onActorAssigned(t.ctx, t.mp.users.get(a), a)
     later()
     await t.update()
-    assert.deepEqual(t.mp.calls, [`${h} +41340`, `${h} +41393`], 'AddSpell of a known spell changes nothing')
-    assert.deepEqual(t.logs, [`[survival] ${h} body: carry weight off, no regen AldSurvival_AbNoHealthRegen held, freezing water AldSurvival_FreezingWaterDamage held, respawn health 1 of 100, no food poisoning; cold 55 (Comfortable), place not known yet, cold ability none`])
+    assert.deepEqual(t.mp.calls, [`${h} +41340`], 'AddSpell of a known spell changes nothing')
+    assert.deepEqual(t.logs, [`[survival] ${h} body: carry weight off, no regen AldSurvival_AbNoHealthRegen held, respawn health 1 of 100, no food poisoning; cold 55 (Comfortable), place not known yet, cold ability none`])
     const named = setup({ survivalEnabled: true, survivalCarryWeightSpell: 'Survival_abLowerCarryWeightSpell' })
     const b = actor()
     named.join(b, NORD_RACE)
@@ -368,7 +372,7 @@ async function main() {
     later(RESYNC_DELAY_MS)
     await t.update()
     const h = a.toString(16)
-    assert.deepEqual(t.mp.calls, [`${h} -41340`, `${h} +41340`, `${h} -41393`, `${h} +41393`])
+    assert.deepEqual(t.mp.calls, [`${h} -41340`, `${h} +41340`])
     Math.random = () => 0
     t.mp.onEatItem(a, VENISON)
     await tick()
@@ -382,18 +386,19 @@ async function main() {
     assert.deepEqual(t.mp.calls.slice(-2), [`${h} +918`, `${h} -918`], 'the cured food poisoning is replayed as not held')
   })
 
-  await test('a record the plugin lacks is skipped with a log line, the carry weight ability an earlier login granted is removed by default', async () => {
+  await test('a record the plugin lacks is skipped with a log line, the carry weight and freezing water abilities an earlier login granted are removed', async () => {
     const t = setup({ survivalEnabled: true })
     t.sys.body.find((b) => b.key === 'regen').id = 0
     const a = actor()
-    t.join(a, NORD_RACE, { v: 1, at: T0, body: { spells: [desc(CARRY)], respawn: 0.01 }, foodPoisonUntil: 0, foodPoisonSpell: '' })
-    t.mp.learned(a).add(CARRY)
+    t.join(a, NORD_RACE, { v: 1, at: T0, body: { spells: [desc(CARRY), desc(WATER)], respawn: 0.01 }, foodPoisonUntil: 0, foodPoisonSpell: '' })
+    for (const id of [CARRY, WATER]) t.mp.learned(a).add(id)
     later()
     await t.update()
     const h = a.toString(16)
-    assert.deepEqual(t.mp.calls, [`${h} -887`, `${h} +41393`])
-    assert.deepEqual(t.logs, [`[survival] ${h} body: carry weight off, no regen AldSurvival_AbNoHealthRegen not in the plugin yet, skipped, freezing water AldSurvival_FreezingWaterDamage granted, respawn health 1 of 100 (set), removed Survival_abLowerCarryWeightSpell, no food poisoning; cold 55 (Comfortable), place not known yet, cold ability none`])
-    assert.deepEqual(t.rec(a).body.spells, [desc(WATER)])
+    assert.deepEqual(t.mp.calls, [`${h} -887`, `${h} -41393`])
+    assert.deepEqual(t.logs, [`[survival] ${h} body: carry weight off, no regen AldSurvival_AbNoHealthRegen not in the plugin yet, skipped, respawn health 1 of 100 (set), removed Survival_abLowerCarryWeightSpell, AldSurvival_FreezingWaterDamage, no food poisoning; cold 55 (Comfortable), place not known yet, cold ability none`])
+    assert.deepEqual(t.rec(a).body.spells, [])
+    assert.deepEqual(Array.from(t.mp.learned(a)), [])
   })
 
   await test('survival off: a character with body rules gets them undone at login, one without a record is not followed', async () => {
@@ -490,7 +495,7 @@ async function main() {
     t.mp.set(a, 'private.creationPending', false)
     t.sys.onCreationFinished(a)
     await t.update()
-    assert.equal(t.mp.calls.length, 2)
+    assert.equal(t.mp.calls.length, 1)
     assert.equal(t.mp.get(a, 'respawnPercentages').health, 0.01)
   })
 
@@ -751,8 +756,8 @@ async function main() {
     later()
     await t.update()
     const h = a.toString(16)
-    assert.deepEqual(t.logs, [`[survival] ${h} body: carry weight off, no regen AldSurvival_AbNoHealthRegen granted, freezing water AldSurvival_FreezingWaterDamage granted, respawn health 1 of 100 (set), no food poisoning; cold 55 (Comfortable), level 16 (freezing, night, snow; region coast), warmth 0 (0% less cold), freezing water area yes, cold ability Survival_ColdStage1`])
-    assert.deepEqual(t.mp.calls, [`${h} +41340`, `${h} +41393`, `${h} +86e`])
+    assert.deepEqual(t.logs, [`[survival] ${h} body: carry weight off, no regen AldSurvival_AbNoHealthRegen granted, respawn health 1 of 100 (set), no food poisoning; cold 55 (Comfortable), level 16 (freezing, night, snow; region coast), warmth 0 (0% less cold), freezing water area yes, cold ability Survival_ColdStage1`])
+    assert.deepEqual(t.mp.calls, [`${h} +41340`, `${h} +86e`])
     assert.deepEqual(t.states(a), [{ customPacketType: 'survivalState', cold: 55, coldStage: 1, coldStageName: 'Comfortable', coldPenalty: 0, temperatureLevel: 0, warmth: 0, freezingArea: true, afflictions: [], diseases: [], contagion: { seconds: 60, range: 150 } }])
     t.logs.length = 0
     t.mp.calls.length = 0
@@ -935,7 +940,7 @@ async function main() {
     later(10 * 60000)
     await immune.update()
     assert.equal(immune.rec(i).cold, 55)
-    assert.ok(t.logs.includes(`[survival] ${h} swimming in freezing water: level 30, cold 55`), t.logs.join('\n'))
+    assert.ok(t.logs.includes(`[survival] ${h} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 0%)`), t.logs.join('\n'))
     const s = t.states(a).pop()
     assert.deepEqual([s.coldStage, s.freezingArea], [3, true])
     later(300)
@@ -946,6 +951,112 @@ async function main() {
     t.sys.customPacket(ua, 'survivalReport', { swimming: true, flameCloak: false }, t.ctx)
     assert.equal(t.states(a).pop().freezingArea, false)
     assert.ok(t.rec(a).cold <= 300)
+  })
+
+  await test('freezing water: 0.25 health a second off the base maximum less frost resistance, taken every 5 s and on leaving with the regeneration since, told once a minute; creation, the dead and hidden staff are spared', async () => {
+    assert.equal(C.parseColdSettings({}, []).freezingWaterDamage, 0.25)
+    const problems = []
+    assert.equal(C.parseColdSettings({ survivalFreezingWaterDamage: -1 }, problems).freezingWaterDamage, 0.25)
+    assert.deepEqual(problems, ['survivalFreezingWaterDamage -1 is out of range, the default is used'])
+    // A full bar of 100 lasts 400 s, an Orc's 150 last 600 s and a Nord's at 75 frost resistance 1600 s; Survival's 5 a second took 20 s and 80 s
+    assert.deepEqual([C.freezingWaterDrain(0.25, 400, 100), C.freezingWaterDrain(0.25, 600, 150), C.freezingWaterDrain(0.25, 1600, 100, 75), C.freezingWaterDrain(5, 20, 100), C.freezingWaterDrain(5, 80, 100, 75)], [1, 1, 1, 1, 1])
+    assert.deepEqual([C.freezingWaterDrain(0.25, 100, 0), C.freezingWaterDrain(0.25, 100, 100, -25), C.freezingWaterDrain(0.25, 100, 100, 150)], [0.25, 0.3125, 0])
+    const t = setup({ survivalEnabled: true, survivalNightHours: [24, 0] }, true)
+    t.weather.kind = 'pleasant'
+    const [a, orc, nord, god, dead, born] = [actor(), actor(), actor(), actor(), actor(), actor()]
+    const users = new Map()
+    for (const [id, race] of [[a, REDGUARD_RACE], [orc, ORC_RACE], [nord, NORD_RACE], [god, NORD_RACE], [dead, NORD_RACE], [born, NORD_RACE]]) {
+      users.set(id, t.join(id, race))
+      t.put(id, TAMRIEL)
+      t.mp.set(id, 'percentages', { health: 1, magicka: 0.5, stamina: 0.25 })
+    }
+    t.mp.learned(nord).add(RESIST_FROST_75)
+    later()
+    await t.update()
+    t.mp.set(god, 'ff_adminModes', { god: true })
+    t.mp.set(dead, 'isDead', true)
+    t.mp.set(born, 'private.creationPending', true)
+    t.mp.healthSent.length = 0
+    const swim = (id, swimming) => t.sys.customPacket(users.get(id), 'survivalReport', { swimming, flameCloak: false }, t.ctx)
+    const told = (id) => t.notices(id).filter((n) => n === 'The water is freezing: it drains your health while you swim in it.').length
+    const health = (id) => t.mp.get(id, 'percentages').health
+    const setHealth = (id, value) => t.mp.set(id, 'percentages', { ...t.mp.get(id, 'percentages'), health: value })
+    const near = (actual, expected, why) => assert.ok(Math.abs(actual - expected) < 1e-12, `${why || ''} ${actual} is not ${expected}`)
+    const [ha, hn] = [a, nord].map((id) => id.toString(16))
+    for (const id of users.keys()) swim(id, true)
+    assert.deepEqual(t.mp.healthSent, [], 'nothing is taken on entering')
+    assert.deepEqual([a, orc, nord, god, dead, born].map(told), [1, 1, 1, 0, 0, 0])
+    assert.ok(t.logs.includes(`[survival] ${ha} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 0%)`), t.logs.join('\n'))
+    assert.ok(t.logs.includes(`[survival] ${hn} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 75%)`), t.logs.join('\n'))
+    later(4000)
+    await t.update()
+    assert.deepEqual(t.mp.healthSent, [], 'the first tick is 5 s in')
+    later(1000)
+    await t.update()
+    assert.deepEqual(t.mp.healthSent, [[a, 0.9875], [orc, 1 - 1.25 / 150], [nord, 1 - 0.3125 / 100]], 'a Nord loses a quarter; the god, the dead and the one in creation lose nothing')
+    assert.deepEqual(t.mp.get(a, 'percentages'), { health: 0.9875, magicka: 0.5, stamina: 0.25 })
+    setHealth(a, 0.99)
+    later(5000)
+    await t.update()
+    near(health(a), 0.975, 'the regeneration since the last tick is taken back')
+    setHealth(a, 0.5)
+    later(5000)
+    await t.update()
+    near(health(a), 0.4875, 'damage from elsewhere stays')
+    setHealth(a, 0.7375)
+    later(5000)
+    await t.update()
+    near(health(a), 0.725, 'a rise above 5% of the bar is healing and stays')
+    later(2000)
+    swim(a, false)
+    near(health(a), 0.72, 'the 2 s since the last tick count on leaving')
+    assert.ok(t.logs.some((l) => /^\[survival\] \w+ out of the freezing water: level 6, cold \d+, health 72%$/.test(l) && l.includes(ha)), t.logs.join('\n'))
+    setHealth(a, 0.73)
+    later(5000)
+    await t.update()
+    near(health(a), 0.73, 'nothing out of the water')
+    swim(a, true)
+    assert.equal(told(a), 1, 'told at most once a minute')
+    later(1000)
+    swim(a, false)
+    near(health(a), 0.7275, 'a new swim starts from the health of its first tick')
+    later(60000)
+    swim(a, true)
+    assert.equal(told(a), 2)
+    // A stalled server counts two ticks at most
+    later(60000)
+    await t.update()
+    near(health(a), 0.7275 - 0.025)
+    // The last of the bar goes to 0, which the native turns into a bleedout or a death, and nothing is written after it
+    setHealth(orc, 0.005)
+    t.mp.healthSent.length = 0
+    later(5000)
+    await t.update()
+    later(5000)
+    await t.update()
+    assert.deepEqual(t.mp.healthSent.filter(([id]) => id === orc), [[orc, 0]])
+    // A respawn starts out of the water until the client reports again
+    t.mp.onRespawn(a)
+    await tick()
+    setHealth(a, 0.01)
+    later(5000)
+    await t.update()
+    assert.equal(health(a), 0.01)
+    const none = setup({ survivalEnabled: true, survivalFreezingWaterDamage: 0, survivalNightHours: [24, 0] }, true)
+    const coldOff = setup({ survivalEnabled: true, survivalColdEnabled: false }, true)
+    const [b, c] = [actor(), actor()]
+    for (const [s, id] of [[none, b], [coldOff, c]]) {
+      const user = s.join(id, REDGUARD_RACE)
+      s.put(id, TAMRIEL)
+      s.mp.set(id, 'percentages', { health: 1, magicka: 1, stamina: 1 })
+      later()
+      await s.update()
+      s.sys.customPacket(user, 'survivalReport', { swimming: true, flameCloak: false }, s.ctx)
+      later(5000)
+      await s.update()
+    }
+    assert.deepEqual([none.rec(b).cold, none.mp.get(b, 'percentages').health, none.notices(b).filter((n) => n.startsWith('The water'))], [300, 1, []], 'at 0 the water still chills')
+    assert.deepEqual([coldOff.rec(c).cold, coldOff.mp.get(c, 'percentages').health], [55, 0.9875], 'with cold off the water still takes health')
   })
 
   await test('survivalColdHealthScale: the scale follows the cold penalty, a revive counts its health point against the scaled maximum, a respawn against the full one', async () => {

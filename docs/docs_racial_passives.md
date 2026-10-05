@@ -154,8 +154,9 @@ venom hits), `warmth` (added to worn warmth; the `Survival_FortifyWarmthConstant
 ability, 25, makes the inventory's Warmth total agree, and the boot report warns if the two differ) and `rawMeatSafe`
 (no food poisoning).
 `freezingWaterImmune` is parsed and printed in the boot report, but no system reads it in this build: freezing water
-cold follows `coldRateMult` (1 for a Nord, so the water chills them like anyone), and its damage is frost damage the
-Nord's resistance cuts to a quarter (O2). See the Survival section of `docs_roleplay_creations_and_needs.md`.
+cold follows `coldRateMult` (1 for a Nord, so the water chills them like anyone), and its damage, which the server
+deals since 2026-10-05 (`survivalFreezingWaterDamage`), is cut to a quarter by the Nord's frost resistance (O2). See the
+Survival section of `docs_roleplay_creations_and_needs.md`.
 
 ### Start items (the Imperial's gold)
 

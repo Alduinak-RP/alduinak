@@ -18,8 +18,6 @@ const ALDUINAK_PLUGIN = "AlduinakAdditions.esp";
 // Survival_ColdAttributePenaltyPercent (SRCP), the health meter's red end, and Survival_TemperatureLevel (SRTP), the compass thermometer
 const COLD_PENALTY_GLOBAL = 0x2ede;
 const TEMPERATURE_GLOBAL = 0x2edd;
-// AldSurvival_FreezingArea: AldSurvival_FreezingWaterDamage hurts only while it is 1 and the player swims
-const FREEZING_AREA_GLOBAL = 0x041392;
 // Skyrim.esm FireCloakFFSelf, MGRJZargoFireCloakFFSelf and PowerDarkElfFireCloakFFSelf, the cloaks Survival_FreezingWaterCheck spares
 const FLAME_CLOAK_EFFECTS = [0x3ae9e, 0x97ee2, 0xb8f30];
 
@@ -103,10 +101,12 @@ const listText = (items: string[]): string => items.join(", ") || "none";
 /**
  * Survival on the client. The server (SurvivalSystem) owns cold, afflictions and diseases and pushes survivalState; this
  * service takes the cold share of maximum health like the hunger and fatigue penalties, drives the health meter's red
- * end, the compass thermometer and the freezing water global, refreshes the movement speed when the stage or disease
- * spells change, reports swimming, a flame cloak and the engine's warmth total, and drops a disease the player's own
- * engine gave that the server never granted. What the server granted is the spawn's learnedSpells plus every Actor
- * AddSpell and RemoveSpell snippet it sent the player since. Nothing runs until a survivalState arrives.
+ * end and the compass thermometer, refreshes the movement speed when the stage or disease spells change, reports
+ * swimming, a flame cloak and the engine's warmth total, and drops a disease the player's own engine gave that the
+ * server never granted. The server deals the freezing water damage from the swimming report, so AldSurvival_FreezingArea
+ * is never set and the plugin's own water damage spell stays inert. What the server granted is the spawn's
+ * learnedSpells plus every Actor AddSpell and RemoveSpell snippet it sent the player since. Nothing runs until a
+ * survivalState arrives.
  * Contagion is checked here so the server does no proximity work: every contagion.seconds, from a random first second,
  * the players this client has loaded within contagion.range (the chat whisper range) whose ff_contagious names a
  * disease the player's own ff_contagious lacks go out in one survivalExposure; nothing is sent when nobody is near. The
@@ -192,23 +192,19 @@ export class SurvivalService extends ClientListener {
     this.setHud();
   }
 
-  // The freezing water global stays 0 under a flame cloak, as Survival_FreezingWaterCheck spares it
   private setHud(): void {
     const state = this.state;
     if (!state) return;
-    const set = (id: number, plugin: string, value: number): void => globalOf(this.sp, id, plugin)?.setValue(value);
-    const penalty = Math.round(state.coldPenalty * 100);
-    set(COLD_PENALTY_GLOBAL, UPDATE_ESM, penalty);
-    set(TEMPERATURE_GLOBAL, UPDATE_ESM, state.temperatureLevel);
-    set(FREEZING_AREA_GLOBAL, ALDUINAK_PLUGIN, state.freezingArea && !this.flameCloak ? 1 : 0);
+    const set = (id: number, value: number): void => globalOf(this.sp, id, UPDATE_ESM)?.setValue(value);
+    set(COLD_PENALTY_GLOBAL, Math.round(state.coldPenalty * 100));
+    set(TEMPERATURE_GLOBAL, state.temperatureLevel);
     const cold = readGlobal(this.sp, COLD_PENALTY_GLOBAL, UPDATE_ESM);
     const temperature = readGlobal(this.sp, TEMPERATURE_GLOBAL, UPDATE_ESM);
-    const freezing = readGlobal(this.sp, FREEZING_AREA_GLOBAL, ALDUINAK_PLUGIN);
-    const key = `${typeof cold === "number" ? Math.floor(cold / PENALTY_LOG_STEP) : cold}|${temperature}|${freezing}|${state.coldStage}`;
+    const key = `${typeof cold === "number" ? Math.floor(cold / PENALTY_LOG_STEP) : cold}|${temperature}|${state.freezingArea}|${state.coldStage}`;
     if (key === this.hudLogKey) return;
     this.hudLogKey = key;
-    logToPlatformLog(this, `survival hud cold=${cold} temperature=${temperature} freezingArea=${freezing} (area ${state.freezingArea ? "freezing" : "not freezing"}, ` +
-      `flame cloak ${this.flameCloak ? "on" : "off"}), cold ${state.cold} stage ${state.coldStage} ${state.coldStageName || "off"}, warmth ${state.warmth}, ` +
+    logToPlatformLog(this, `survival hud cold=${cold} temperature=${temperature} (freezing water area ${state.freezingArea ? "yes" : "no"}), ` +
+      `cold ${state.cold} stage ${state.coldStage} ${state.coldStageName || "off"}, warmth ${state.warmth}, ` +
       `afflictions ${listText(state.afflictions)}, diseases ${this.diseaseText(state)}, ${this.describeHealth()}`);
   }
 
@@ -297,10 +293,7 @@ export class SurvivalService extends ClientListener {
 
   private readFlameCloak(player: Actor): void {
     this.cloakDue = false;
-    const flameCloak = FLAME_CLOAK_EFFECTS.some((id) => player.hasMagicEffect(this.sp.MagicEffect.from(this.sp.Game.getFormEx(id))));
-    if (flameCloak === this.flameCloak) return;
-    this.flameCloak = flameCloak;
-    this.setHud();
+    this.flameCloak = FLAME_CLOAK_EFFECTS.some((id) => player.hasMagicEffect(this.sp.MagicEffect.from(this.sp.Game.getFormEx(id))));
   }
 
   // The server's spell grants and removals on the player after the spawn's learnedSpells, which the world model never gets
@@ -357,7 +350,6 @@ export class SurvivalService extends ClientListener {
     const state = this.state!;
     const total = DISEASE_SPELLS.reduce((n, [, ids]) => n + ids.length, 0);
     const cloaks = FLAME_CLOAK_EFFECTS.filter((id) => this.sp.Game.getFormEx(id)).length;
-    const freezing = globalOf(this.sp, FREEZING_AREA_GLOBAL, ALDUINAK_PLUGIN) ? "found" : `not in ${ALDUINAK_PLUGIN}`;
     logToPlatformLog(this, `survival client on: cold ${state.cold} (${state.coldStageName || "off"}, stage ${state.coldStage}), penalty ${Math.round(state.coldPenalty * 100)}%, ` +
       `temperature ${state.temperatureLevel}, warmth ${state.warmth}, freezing area ${state.freezingArea ? "yes" : "no"}, afflictions ${listText(state.afflictions)}, ` +
       `diseases ${this.diseaseText(state)}; swim poll every ${POLL_MS} ms, flame cloak read on its effectStart and every poll while on ` +
@@ -366,7 +358,6 @@ export class SurvivalService extends ClientListener {
       `disease guard every ${GUARD_MS / 1000} s, ${GUARD_AFTER_HARM_MS / 1000} s after a hit or effect on the player and again ${GUARD_CONFIRM_MS / 1000} s later ` +
       `(a harm never brings it under ${GUARD_CONFIRM_MS / 1000} s after the last run), over ${this.diseaseIds().length} of ${total} disease spells (dropped when neither the spawn list nor a later ` +
       `server AddSpell names it at two checks in a row, ${this.serverSpells.size} server grant(s) and removal(s) so far), ` +
-      `freezing water global AldSurvival_FreezingArea ${freezing}, ` +
       `contagion ${state.contagion ? `check every ${state.contagion.seconds} s within ${state.contagion.range} units of the loaded players' ${CONTAGIOUS_PROP}` : "off"}`);
   }
 

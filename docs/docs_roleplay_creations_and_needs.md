@@ -513,7 +513,9 @@ older than r27 does not undo them, so a rollback first runs one session with the
 
 **Plugin r27a** (`AlduinakAdditions.esp`, proficiency patcher `survival` section) carries the records the server grants:
 `AldSurvival_AbNoHealthRegen` (0x041340; since plugin r29 it slows health regeneration, up to r28 it stopped it), the 81 disease stage spells `AldDisease_<Id>1..3` (0x041341 to 0x041391), the
-global `AldSurvival_FreezingArea` (0x041392) and `AldSurvival_FreezingWaterDamage` (0x041393); it strips the screen
+global `AldSurvival_FreezingArea` (0x041392) and `AldSurvival_FreezingWaterDamage` (0x041393; both unused since
+2026-10-05, when the server took over the freezing water damage: the global stays 0 and the spell is taken back at
+login); it strips the screen
 effects of `Survival_ColdStage0..5` (the Freezing and Numb frost shader stays), removes Cure Disease from the HearthFires
 garlic bread and moves the Cure Disease potion to Alchemist Adept. With an older plugin those records are missing: the
 server logs them as skipped and runs the rest.
@@ -569,12 +571,11 @@ re-send as the hunger stages), and at creation finish:
     Potions, food, Restoration spells and the staff heal modes heal as before.
   - `survivalRespawnHealthPoints: 0` uses the share `survivalRespawnHealth` (0.01) instead, as before S3;
     `survivalRespawnHealth: 1` turns the rule off whatever the points say.
-- **Freezing water**: `AldSurvival_FreezingWaterDamage`, granted once. Its two effects (5 health a second, resisted by
-  frost resistance, and no health regeneration) run only while the engine says `IsSwimming` and the client holds
-  `AldSurvival_FreezingArea` at 1, which `SurvivalService` sets from `survivalState.freezingArea`, so a region border
-  never costs a spell change (critique A.14).
+- **Freezing water** is no body rule any more (2026-10-05): the server deals its damage itself, see Cold and warmth.
+  A character that holds `AldSurvival_FreezingWaterDamage` from an earlier login loses it at its next login (`removed
+  AldSurvival_FreezingWaterDamage` in the body line).
 - One line per login: `[survival] <id> body: carry weight off, no regen
-  AldSurvival_AbNoHealthRegen granted, freezing water AldSurvival_FreezingWaterDamage granted, respawn health 1 of 100 (set),
+  AldSurvival_AbNoHealthRegen granted, respawn health 1 of 100 (set),
   no food poisoning, weakened until 14:05, rockjoint 2 (stage 3 at 10-04 14:00); cold 55 (Comfortable), level 16
   (freezing, night, snow; region coast), warmth 71 (29.3% less cold), freezing water area yes, cold ability
   Survival_ColdStage1` (later logins read `held`; a record the plugin lacks reads `not in the plugin yet, skipped`).
@@ -645,7 +646,30 @@ they weigh nothing again.
 - **Hits**: a frost spell +30 up to 500, a fire spell -30 down to 120, a hit by a frostbite spider or a Falmer +30 up to
   500 (not when blocked), gains times the race multiplier and Chills.
 - **Freezing water**: a freezing area, a cold interior or Fort Dawnguard's world. Swimming there without a flame cloak
-  (reported by the client) raises cold to 300 at once and holds level 30.
+  (reported by the client, which reads `IsSwimming` only while `survivalState.freezingArea` is true) raises cold to 300
+  at once and holds level 30.
+  - **Health**: the server takes `survivalFreezingWaterDamage` (0.25) health points a second off the base maximum
+    (100, an Orc 150), less the frost resistance of the race and abilities (a Nord at 75 loses a quarter, a High Elf
+    at -25 a quarter more; worn enchantments and potions do not count), written to the character's health every 5 s
+    and on leaving the water. Survival Mode's own spell took 5 a second in real seconds whatever the timescale, so
+    with the game clock at 1:1 a swim killed in seconds while every other cold number had been slowed 20 times; the
+    drain is now 20 times slower too:
+
+    | From a full bar | Before (5 a second on the client) | Now (0.25 a second on the server) |
+    |---|---|---|
+    | 100 health | 20 s, 16 s under the 20% cold penalty the water brings | 400 s (6 min 40 s) |
+    | Orc, 150 health | 30 s, 24 s under the penalty | 600 s (10 min) |
+    | Nord, 100 health, frost resistance 75 | 80 s, 64 s under the penalty | 1600 s (26 min 40 s) |
+
+    The time is to 0 health, where the bleedout rules take over (down first, dead if the drain goes on past the
+    grace). Health does not regenerate in the water, as under the old spell: health that crept up by 5% of the bar
+    or less between two ticks is taken back, a larger rise (a potion, a healing spell, being helped up) stays. The
+    cold penalty no longer shortens the swim, since the server counts against the base maximum. Nothing is taken
+    in creation, from the dead or from staff in god, ghost or invis mode. The player is told once a minute at most:
+    "The water is freezing: it drains your health while you swim in it." `survivalFreezingWaterDamage: 0` keeps
+    the cold and takes no health; `survivalFreezingWater: false` turns both off.
+  - Log: `[survival] <id> swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist
+    0%)` and `[survival] <id> out of the freezing water: level 6, cold 312, health 97%`.
 - **Stage abilities** `Survival_ColdStage0..5` follow the stage: Warm +10 frost resistance, Chilly to Numb -10% to -40%
   speed and lockpicking and pickpocketing penalties, and the frost shader at Freezing and Numb. The client refreshes
   movement 2 s after a stage change so the speed counts.
@@ -886,7 +910,7 @@ cure, cure all, the cap refusal, survival off).
   `unknown`); `... rockjoint worsened 1 -> 3 (AldDisease_Rockjoint3, due 10-01 09:00), stays until cured`; `... cured by
   ...`; `... prayed at <shrine> <ref>: no cure, notice sent`; `... given rockjoint stage 2 by profile N, ...`.
 - Client (`skyrim-platform.log`): `SurvivalService: survival client on: ..., contagion check every 60 s within 150
-  units of the loaded players' ff_contagious`, `survival hud cold=.. temperature=.. freezingArea=..`, `movement
+  units of the loaded players' ff_contagious`, `survival hud cold=.. temperature=.. (freezing water area yes)`, `movement
   refreshed after cold stage ...`, `local disease dropped ...`, `contagion exposure reported: ff000a12
   collywobbles/chills at 96 units` (each report sent).
 
@@ -904,7 +928,10 @@ unblocked skeever bite infects (staged in `Desktop/alduinak-r13/live/r36-S1/`).
 2. Warming: an inn takes 40 a minute, a campfire 75 every 6 s, a hot soup 200.
 3. Races: a naked Nord shows warmth 25 and gains cold about 10% slower than a Redguard, a Khajiit or an Argonian 25%
    faster; an Orc's needs lines show `race x0.85`.
-4. Freezing water at the Solitude docks: about 5 health a second and cold 300 at once; not in Whiterun's river.
+4. Freezing water at the Solitude docks: cold 300 at once, the notice "The water is freezing: ...", and the health bar
+   falls in small steps every 5 s, about 1 of 100 in 4 s (a full bar lasts 6 min 40 s, a Nord's four times as long) and
+   does not creep back up while swimming; the server logs the `swimming in` and `out of the freezing water` lines. Not
+   in Whiterun's river.
 5. Body: carry weight 300 (a character that had 150 reads 300 in the inventory a few seconds after its login), slow
    regeneration, a death wakes with 1 health point: the bar is a sliver as the character
    stands up (not full for a few seconds first), the server logs `[survival] <id> respawned: health 1 of 100 sent to the

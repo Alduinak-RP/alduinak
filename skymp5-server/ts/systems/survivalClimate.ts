@@ -80,6 +80,8 @@ export interface ColdConfig {
   healthScale: boolean;
   freezingWater: boolean;
   freezingWaterWorlds: string[];
+  // Health points a real second swimming in freezing water takes
+  freezingWaterDamage: number;
 }
 
 export const DEFAULT_COLD_LEVELS: ColdLevels = { warm: 0, cool: 3, freezing: 6, chillyInterior: 6, warmNight: 1, coolNight: 2, freezingNight: 4, rain: 3, snow: 6, blizzard: 10, freezingWater: 30 };
@@ -136,6 +138,8 @@ const DEFAULTS: Omit<ColdConfig, "levels" | "areaRate" | "warmth" | "regionClima
   healthScale: false,
   freezingWater: true,
   freezingWaterWorlds: ["DLC1HunterHQWorld"],
+  // Survival_FreezingWaterDamage's 5 a second at our 1:1 clock, 20 times slower like the cold rate
+  freezingWaterDamage: 0.25,
 };
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -248,6 +252,7 @@ export const parseColdSettings = (all: Record<string, unknown>, problems: string
     healthScale: flag("survivalColdHealthScale", DEFAULTS.healthScale),
     freezingWater: flag("survivalFreezingWater", DEFAULTS.freezingWater),
     freezingWaterWorlds: strings("survivalFreezingWaterWorlds", DEFAULTS.freezingWaterWorlds),
+    freezingWaterDamage: num("survivalFreezingWaterDamage", DEFAULTS.freezingWaterDamage, (v) => v >= 0),
   };
 };
 
@@ -283,6 +288,10 @@ export const areaOf = (p: Place, cfg: ColdConfig): { area: AreaClass; why: strin
 // Water freezes in freezing areas, cold interiors and the listed worlds
 export const isFreezingWater = (area: AreaClass, worldEdid: string, cfg: ColdConfig): boolean =>
   cfg.freezingWater && (area === "freezing" || area === "chillyInterior" || cfg.freezingWaterWorlds.indexOf(worldEdid) !== -1);
+
+// Share of the health bar the seconds in freezing water take: points a second, less the frost resistance, against the maximum (100 for an unreadable one)
+export const freezingWaterDrain = (perSec: number, seconds: number, maxHealth: number, frostResist = 0): number =>
+  Math.max(0, perSec) * Math.max(0, seconds) * Math.max(0, 1 - frostResist / 100) / (maxHealth > 0 ? maxHealth : 100);
 
 export const isNight = (hour: number, night: number[]): boolean =>
   night[0] > night[1] ? hour >= night[0] || hour < night[1] : hour >= night[0] && hour < night[1];
