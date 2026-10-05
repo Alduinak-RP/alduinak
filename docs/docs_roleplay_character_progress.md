@@ -82,17 +82,25 @@ Each accepted change logs one line, e.g.
 - The client asks for the state on every own `createActor`. Nothing is
   restored or recorded until the answer for the current actor arrives and the
   world has run 3 s after the spawn or the last `loadGame` event.
-- Markers: one pass over the table every 10 s (60 per frame), plus a pass
-  right after `locationDiscovery` or `cellFullyLoaded`. A missing known flag is
-  re-added; a flag nobody explains is recorded.
-- Ingredients: a poll every 5 s, 0.7 s after the player eats an ingredient and
-  when the Crafting menu closes, read at 5 ingredients per frame. The poll
-  covers every ingredient carried, eaten or brought into a crafting menu this
-  session plus every known one, so eating or brewing the last one of a stack
-  still records its effects.
+- Markers: there is no periodic pass. A pass over the table (60 per frame)
+  runs 2 s after `locationDiscovery`, `cellFullyLoaded`, a change of the
+  player's world or cell, or `bookRead`, so a burst of cell loads shares one
+  pass, and at the next update after `loadGame`, the `knowledgeState` answer
+  or the map opening. A request that comes during a pass queues one more. A
+  missing known flag is re-added; a flag nobody explains is recorded. A marker
+  a script reveals without a cell load or a book is recorded at the next map
+  or Journal opening.
+- Ingredients: there is no poll. An ingredient that enters the player's pack
+  (a pickup, a harvest, a server inventory apply) or that the player eats is
+  read 0.7 s later. When the Crafting menu closes, after `loadGame` and after
+  the `knowledgeState` answer, every ingredient carried, eaten or brought into
+  a crafting menu this session plus every known one is read, at 5 ingredients
+  per frame, so brewing the last one of a stack still records its effects and
+  a load gets every known effect back.
 - Opening the Journal (pause) menu runs one full marker pass and reads every
-  polled ingredient at once, then sends everything. Both quits (to the Main
-  Menu and to the desktop) pass through it while the world is still loaded.
+  ingredient of that list at once, then sends everything. Both quits (to the
+  Main Menu and to the desktop) pass through it while the world is still
+  loaded.
 - The whole pending backlog is sent on the next own spawn and when the Main
   Menu opens. After a reconnect of the same character, whatever the server
   lacks is sent again.

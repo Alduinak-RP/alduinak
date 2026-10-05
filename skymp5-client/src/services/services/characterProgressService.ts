@@ -1,9 +1,9 @@
-import { EquipEvent, FormType, Menu } from "skyrimPlatform";
+import { ContainerChangedEvent, EquipEvent, FormType, Menu } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logError, logTrace } from "../../logging";
 import { RemoteServer } from "./remoteServer";
 import { SinglePlayerService } from "./singlePlayerService";
-import { getInventory } from "../../sync/inventory";
+import { getPlayerInventory } from "../../sync/inventory";
 import { MAP_MARKER_REFS } from "../../data/mapMarkerRefs";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { formDesc } from "../../lib/formDesc";
@@ -14,9 +14,9 @@ const LEGACY_PLUGIN_NAME = "character-progress-no-load";
 const STORAGE_KEY = "characterKnowledgeState";
 const SETTLE_MS = 3000;
 const REQUEST_RETRY_MS = 15000;
-const MARKER_SCAN_MS = 10000;
-const INGR_POLL_MS = 5000;
-const INGR_EQUIP_DELAY_MS = 700;
+// Cell loads come in bursts, so one marker pass covers the whole burst
+const SCAN_DELAY_MS = 2000;
+const INGR_READ_DELAY_MS = 700;
 const SEND_DEBOUNCE_MS = 1500;
 const ERROR_LOG_MS = 5000;
 const SCAN_BATCH = 60;
@@ -92,15 +92,20 @@ export class CharacterProgressService extends ClientListener {
     this.controller.on("locationDiscovery", () => this.scanSoon());
     this.controller.on("cellFullyLoaded", () => this.scanSoon());
     this.controller.emitter.on("playerWorldOrCellChanged", () => this.scanSoon());
+    // Notes and books reveal markers with no cell load
+    this.controller.on("bookRead", () => this.scanSoon());
     this.controller.on("equip", (e) => this.onEquip(e));
+    this.controller.on("containerChanged", (e) => this.onContainerChanged(e));
     this.controller.on("menuOpen", (e) => {
-      if (e.name === Menu.Crafting) this.trackCarried();
+      if (e.name === Menu.Crafting) this.guarded(() => this.trackCarried());
+      if (e.name === Menu.Map) this.scanSoon(0);
       // Both quits pass through the pause menu while the world is still loaded
       if (e.name === Menu.Journal) this.guarded(() => this.captureAll());
       if (e.name === Menu.Main) this.flush();
     });
+    // Alchemy teaches the effects of the ingredients it combines
     this.controller.on("menuClose", (e) => {
-      if (e.name === Menu.Crafting) this.ingrPollAt = 0;
+      if (e.name === Menu.Crafting) this.ingrAllDue = true;
     });
   }
 
@@ -108,9 +113,11 @@ export class CharacterProgressService extends ClientListener {
   private requestAt = 0;
   private settleFrom = 0;
   private scanCursor = MAP_MARKER_REFS.length;
-  private nextScanAt = 0;
-  private ingrPollAt = 0;
-  private ingrQueue: string[] = [];
+  // When the next marker pass starts, 0 when none is due; the first ready update runs one
+  private scanAt = 1;
+  private ingrAllDue = true;
+  private ingrReadAt = 0;
+  private readonly ingrQueue = new Set<string>();
   private sendAt = 0;
   private lastErrorAt = 0;
   // Ingredients carried or eaten this session, still read after the last one is gone
@@ -146,7 +153,8 @@ export class CharacterProgressService extends ClientListener {
     s.baselineDone = false;
     this.settleFrom = 0;
     this.scanCursor = MAP_MARKER_REFS.length;
-    this.nextScanAt = 0;
+    this.scanSoon(0);
+    this.ingrAllDue = true;
   }
 
   private request(now: number): void {
@@ -170,21 +178,37 @@ export class CharacterProgressService extends ClientListener {
     const legacy = this.legacyEntry(actorId);
     if (legacy) this.learn(legacy.markers, legacy.ingredients, true);
     this.awaiting = false;
-    this.scanSoon();
-    this.ingrPollAt = 0;
+    this.scanSoon(0);
+    this.ingrAllDue = true;
     logTrace(this, `Knowledge of ${actorId.toString(16)}: ${Object.keys(s.markers).length} markers, ${Object.keys(s.ingredients).length} ingredients`);
   }
 
+  // Eating an ingredient teaches its effects
   private onEquip(e: EquipEvent): void {
     try {
       if (e.actor.getFormID() !== PLAYER_FORM_ID || e.baseObj.getType() !== FormType.Ingredient) return;
-      this.track(e.baseObj.getFormID());
-      this.ingrPollAt = Math.min(this.ingrPollAt, Date.now() + INGR_EQUIP_DELAY_MS);
+      this.readSoon(this.track(e.baseObj.getFormID()));
     } catch (err) { /* stale event object */ }
   }
 
-  private scanSoon(): void {
-    this.nextScanAt = 0;
+  // Pickups, harvests and server adds into the player's pack
+  private onContainerChanged(e: ContainerChangedEvent): void {
+    try {
+      if (!e.baseObj || e.newContainer?.getFormID() !== PLAYER_FORM_ID) return;
+      this.readSoon(this.track(e.baseObj.getFormID()));
+    } catch (err) { /* stale event object */ }
+  }
+
+  // Requests within the delay share one pass, and a request during a pass queues another
+  private scanSoon(delayMs = SCAN_DELAY_MS): void {
+    const at = Date.now() + delayMs;
+    if (!this.scanAt || at < this.scanAt) this.scanAt = at;
+  }
+
+  private readSoon(desc: string | null): void {
+    if (!desc) return;
+    this.ingrQueue.add(desc);
+    this.ingrReadAt = Math.max(this.ingrReadAt, Date.now() + INGR_READ_DELAY_MS);
   }
 
   // Retries the request while awaiting; true once the world has run SETTLE_MS since the spawn or the last load
@@ -205,12 +229,8 @@ export class CharacterProgressService extends ClientListener {
     const now = Date.now();
     if (!this.ready(now)) return;
     this.scanMarkers(now);
-    if (this.ingrQueue.length) {
-      this.ingrQueue.splice(0, INGR_READ_BATCH).forEach((desc) => this.readIngredient(desc));
-    } else if (now >= this.ingrPollAt) {
-      this.ingrPollAt = now + INGR_POLL_MS;
-      this.pollIngredients();
-    }
+    if (this.ingrAllDue) this.queueIngredients();
+    if (this.ingrQueue.size && now >= this.ingrReadAt) this.readQueued(INGR_READ_BATCH);
     if (this.sendAt && now >= this.sendAt) this.send();
   }
 
@@ -219,8 +239,8 @@ export class CharacterProgressService extends ClientListener {
     const now = Date.now();
     if (!this.ready(now)) return;
     this.scanMarkers(now, true);
-    this.pollIngredients();
-    this.ingrQueue.splice(0).forEach((desc) => this.readIngredient(desc));
+    this.queueIngredients();
+    this.readQueued(this.ingrQueue.size);
     this.flush();
   }
 
@@ -265,10 +285,11 @@ export class CharacterProgressService extends ClientListener {
     const s = this.state;
     if (all) {
       this.scanCursor = 0;
+      this.scanAt = 0;
     } else if (this.scanCursor >= MAP_MARKER_REFS.length) {
-      if (now < this.nextScanAt) return;
+      if (!this.scanAt || now < this.scanAt) return;
       this.scanCursor = 0;
-      this.nextScanAt = now + MARKER_SCAN_MS;
+      this.scanAt = 0;
     }
     const end = all ? MAP_MARKER_REFS.length : Math.min(this.scanCursor + SCAN_BATCH, MAP_MARKER_REFS.length);
     for (; this.scanCursor < end; ++this.scanCursor) {
@@ -292,22 +313,31 @@ export class CharacterProgressService extends ClientListener {
     if (this.scanCursor >= MAP_MARKER_REFS.length) s.baselineDone = true;
   }
 
-  // Collects the descs to read; onUpdate then reads INGR_READ_BATCH of them per frame
-  private pollIngredients(): void {
+  // Queues every carried, tracked and known ingredient; onUpdate then reads INGR_READ_BATCH of them per frame
+  private queueIngredients(): void {
+    this.ingrAllDue = false;
     this.trackCarried();
-    const known = Object.keys(this.state.ingredients).filter((desc) => !this.tracked[desc]);
-    this.ingrQueue = Object.keys(this.tracked).concat(known);
+    Object.keys(this.tracked).forEach((desc) => this.ingrQueue.add(desc));
+    Object.keys(this.state.ingredients).forEach((desc) => this.ingrQueue.add(desc));
+  }
+
+  private readQueued(max: number): void {
+    Array.from(this.ingrQueue).slice(0, max).forEach((desc) => {
+      this.ingrQueue.delete(desc);
+      this.readIngredient(desc);
+    });
   }
 
   private trackCarried(): void {
     const player = this.sp.Game.getPlayer();
     if (!player) return;
-    getInventory(player).entries.forEach((e) => {
+    getPlayerInventory(player).entries.forEach((e) => {
       if (e.count > 0) this.track(e.baseId);
     });
   }
 
-  private track(baseId: number): void {
+  // The ingredient's desc, or null for any other base
+  private track(baseId: number): string | null {
     let desc = this.ingrDescs.get(baseId);
     if (desc === undefined) {
       desc = null;
@@ -317,6 +347,7 @@ export class CharacterProgressService extends ClientListener {
       this.ingrDescs.set(baseId, desc);
     }
     if (desc) this.tracked[desc] = true;
+    return desc;
   }
 
   // Re-teaches known effects the engine lost and records effects it learned since
