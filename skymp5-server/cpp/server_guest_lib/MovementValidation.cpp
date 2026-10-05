@@ -9,10 +9,9 @@
 namespace MovementValidation {
 
 bool Validate(PartOne& partOne, const NiPoint3& currentPos,
-              const NiPoint3& currentRot, const FormDesc& currentCellOrWorld,
-              const NiPoint3& newPos, const FormDesc& newCellOrWorld,
-              Networking::UserId userId, MpActor* actor,
-              const EspmFileTable& espmFiles)
+              const NiPoint3& currentRot, uint32_t currentCellOrWorld,
+              const NiPoint3& newPos, uint32_t newCellOrWorld,
+              Networking::UserId userId, MpActor* actor)
 {
   constexpr float kSqrMaxDistance = 4096.f * 4096.f;
 
@@ -28,7 +27,7 @@ bool Validate(PartOne& partOne, const NiPoint3& currentPos,
       TeleportMessage2 msg;
       msg.pos = { currentPos[0], currentPos[1], currentPos[2] };
       msg.rot = { currentRot[0], currentRot[1], currentRot[2] };
-      msg.worldOrCell = currentCellOrWorld.ToFormId(espmFiles);
+      msg.worldOrCell = currentCellOrWorld;
       sendTarget.Send(userId, msg, true);
     }
     return false;

@@ -640,19 +640,15 @@ void ActionListener::OnUpdateMovement(const RawMessageData& rawMsgData,
       std::numeric_limits<float>::infinity()
     };
 
-    auto& espmFiles = actor->GetParent()->espmFiles;
-
     const auto& currentPos = actor->GetPos();
     const auto& currentRot = actor->GetAngle();
-    const auto& currentCellOrWorld = actor->GetCellOrWorld();
 
     if (!MovementValidation::Validate(
-          partOne, currentPos, currentRot, currentCellOrWorld,
+          partOne, currentPos, currentRot, actor->GetCellOrWorldFormId(),
           teleportFlag
             ? kInfinityPos
             : NiPoint3{ msg.data.pos[0], msg.data.pos[1], msg.data.pos[2] },
-          FormDesc::FromFormId(msg.data.worldOrCell, espmFiles),
-          rawMsgData.userId, actor, espmFiles)) {
+          msg.data.worldOrCell, rawMsgData.userId, actor)) {
       return;
     }
 

@@ -20,9 +20,8 @@ TEST_CASE("Returns true and sends nothing for normal movement",
   auto& actor = partOne.worldState.GetFormAt<MpActor>(0xff000000);
 
   partOne.Messages().clear();
-  bool res = MovementValidation::Validate(
-    partOne, { 0, 0, 0 }, { 0, 0, 0 }, FormDesc::Tamriel(), { 1, 1, 1 },
-    FormDesc::Tamriel(), 0, &actor, { "Skyrim.esm" });
+  bool res = MovementValidation::Validate(partOne, { 0, 0, 0 }, { 0, 0, 0 },
+                                          0x3c, { 1, 1, 1 }, 0x3c, 0, &actor);
   REQUIRE(res);
   REQUIRE(partOne.Messages().empty());
 }
@@ -41,9 +40,9 @@ TEST_CASE("Returns false and sends teleport packet when moving too fast",
   partOne.Messages().clear();
   float maxLegalMove = 4096.f;
   bool res = MovementValidation::Validate(
-    partOne, { 1, -1, 1 }, { 123, 111, 123 }, FormDesc::Tamriel(),
-    NiPoint3{ 1, -1, 1 } + NiPoint3{ maxLegalMove + 1.f, 0, 0 },
-    FormDesc::Tamriel(), 0, &actor, { "Skyrim.esm" });
+    partOne, { 1, -1, 1 }, { 123, 111, 123 }, 0x3c,
+    NiPoint3{ 1, -1, 1 } + NiPoint3{ maxLegalMove + 1.f, 0, 0 }, 0x3c, 0,
+    &actor);
   REQUIRE(!res);
   REQUIRE(partOne.Messages().size() == 1);
   REQUIRE(partOne.Messages()[0].j ==
@@ -67,10 +66,9 @@ TEST_CASE(
   auto& actor = partOne.worldState.GetFormAt<MpActor>(0xff000000);
 
   partOne.Messages().clear();
-  bool res = MovementValidation::Validate(
-    partOne, { 1, -1, 1 }, { 123, 111, 123 }, FormDesc::Tamriel(),
-    { 1, -1, 1 }, FormDesc::FromString("ffffff:Skyrim.esm"), 0, &actor,
-    { "Skyrim.esm" });
+  bool res =
+    MovementValidation::Validate(partOne, { 1, -1, 1 }, { 123, 111, 123 },
+                                 0x3c, { 1, -1, 1 }, 0xffffff, 0, &actor);
   REQUIRE(!res);
   REQUIRE(partOne.Messages().size() == 1);
   REQUIRE(partOne.Messages()[0].j ==

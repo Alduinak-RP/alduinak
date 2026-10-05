@@ -228,6 +228,9 @@ public:
   bool teleportFlag = false;
   bool setPropertyCalled = false;
   std::optional<Inventory::ExtraData> pickupExtras;
+
+  // Form id of worldOrCellDesc, 0 until read; reset wherever the desc is written
+  uint32_t cellOrWorldFormId = 0;
 };
 
 namespace {
@@ -289,6 +292,15 @@ const NiPoint3& MpObjectReference::GetAngle() const
 const FormDesc& MpObjectReference::GetCellOrWorld() const
 {
   return ChangeForm().worldOrCellDesc;
+}
+
+uint32_t MpObjectReference::GetCellOrWorldFormId() const
+{
+  if (!pImpl->cellOrWorldFormId) {
+    pImpl->cellOrWorldFormId =
+      GetCellOrWorld().ToFormId(GetParent()->espmFiles);
+  }
+  return pImpl->cellOrWorldFormId;
 }
 
 const uint32_t& MpObjectReference::GetBaseId() const
@@ -1313,6 +1325,7 @@ void MpObjectReference::ApplyChangeForm(const MpChangeForm& changeForm)
       f.nextRelootDatetime = 0;
     },
     Mode::NoRequestSave);
+  pImpl->cellOrWorldFormId = 0;
   if (changeForm.nextRelootDatetime) {
     auto tp =
       std::chrono::system_clock::from_time_t(changeForm.nextRelootDatetime);
@@ -1360,6 +1373,7 @@ void MpObjectReference::SetCellOrWorldObsolete(const FormDesc& newWorldOrCell)
   EditChangeForm([&](MpChangeFormREFR& changeForm) {
     changeForm.worldOrCellDesc = newWorldOrCell;
   });
+  pImpl->cellOrWorldFormId = 0;
 }
 
 void MpObjectReference::VisitNeighbours(const Visitor& visitor)

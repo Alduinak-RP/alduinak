@@ -95,6 +95,7 @@ public:
   const NiPoint3& GetPos() const;
   const NiPoint3& GetAngle() const;
   const FormDesc& GetCellOrWorld() const;
+  uint32_t GetCellOrWorldFormId() const;
   const uint32_t& GetBaseId() const;
   const std::string& GetBaseType() const;
   const Inventory& GetInventory() const;
