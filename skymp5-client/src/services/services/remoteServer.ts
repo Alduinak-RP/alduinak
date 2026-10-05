@@ -28,7 +28,7 @@ import { Inventory, applyInventory, getDiff, getInventory, isBoundItem, removeSi
 import { applyDurabilityNames } from '../../sync/durabilityNames';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { applyWeapDrawn } from '../../sync/movementApply';
-import { CASTING_CONCENTRATION, describeRaceAbilities, dropUnlistedBaseSpells, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
+import { describeRaceAbilities, dropUnlistedBaseSpells, isConcentration, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormView } from '../../view/formView';
 import { resetHostAttempts } from '../../view/hostAttempts';
@@ -1979,9 +1979,9 @@ export class RemoteServer extends ClientListener {
       const damageGuard = this.controller.lookupListener(RemoteDamageGuardService);
 
       // Keep-alives and recasts of a running channel at any target only refresh the clone, recasting would stack concentration casts
+      const channel = spellId !== undefined && this.isConcentrationSpell(spellId);
       const watch = this.cloneCastWatch.get(key);
-      const sameChannel = watch !== undefined && spellId !== undefined && watch.spellId === spellId
-        && this.isConcentrationSpell(spellId);
+      const sameChannel = channel && watch !== undefined && watch.spellId === spellId;
       if (watch && (msg.data.keepAlive || sameChannel)) {
         watch.expiresAt = now + this.cloneCastTimeoutMs;
         if (spellId) {
@@ -1995,11 +1995,10 @@ export class RemoteServer extends ClientListener {
       }
       this.cloneCastStoppedAt.delete(key);
 
-      // Casters refresh channeled casts every ~3s; a clone whose refresh and
-      // stop both got lost is interrupted by sweepCloneCasts
+      // sweepCloneCasts ends a fire-and-forget replay, which gets no stop, and a channel whose refresh and stop both got lost
       this.cloneCastWatch.set(key, {
         casterRemoteId: msg.data.caster,
-        expiresAt: now + this.cloneCastTimeoutMs,
+        expiresAt: now + (channel ? this.cloneCastTimeoutMs : this.cloneReplayTimeoutMs),
         castingSource: msg.data.castingSource,
         animVars: actorAnimationVariables,
         wasDrawn: ac.isWeaponDrawn(),
@@ -2048,7 +2047,7 @@ export class RemoteServer extends ClientListener {
   }
 
   private isConcentrationSpell(spellId: number): boolean {
-    return this.sp.Spell.from(Game.getFormEx(spellId))?.getNthEffectMagicEffect(0)?.getCastingType() === CASTING_CONCENTRATION;
+    return isConcentration(this.sp.Spell.from(Game.getFormEx(spellId)));
   }
 
   private sweepCloneCasts(): void {
@@ -2107,13 +2106,22 @@ export class RemoteServer extends ClientListener {
 
       if (!isApplyed) {
         logError(this, 'Failed apply AnimationVariables to actor with id: ' + ac.getFormID().toString(16));
+        return;
       }
+
+      // A replay that ends without a stop gets the caster's newest snapshot, not its cast-time one
+      this.cloneCastWatch.forEach((watch) => {
+        if (watch.casterRemoteId === msg.data.actorRemoteId) {
+          watch.animVars = actorAnimationVariables;
+        }
+      });
     });
   }
 
   private cloneCastWatch = new Map<string, { casterRemoteId: number, expiresAt: number, castingSource: number, animVars: ActorAnimationVariables, wasDrawn: boolean, spellId: number }>();
   private cloneCastStoppedAt = new Map<string, number>();
   private readonly cloneCastTimeoutMs = 8000;
+  private readonly cloneReplayTimeoutMs = 600;
   private readonly cloneCastStopMemoryMs = 2000;
   private lastCloneCastSweep = 0;
   private playerSpawnSeq = 0;

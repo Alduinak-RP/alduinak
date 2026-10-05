@@ -8,7 +8,7 @@ import { ClientListener, CombinedController, Sp } from './clientListener';
 import { MountService } from './mountService';
 import { CustomPacketContent, onCustomPacket } from './customPacketUtil';
 import { logTrace, logToPlatformLog } from '../../logging';
-import { DELIVERY_SELF } from '../../sync/spell';
+import { DELIVERY_SELF, isConcentration } from '../../sync/spell';
 
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
@@ -49,7 +49,7 @@ const formatWait = (ms: number): string => {
     return rest ? `${hours} h ${rest} min` : `${hours} h`;
 };
 
-// A relayed cast, tracked per caster and hand until its stop and echoes are sent
+// A relayed channel, tracked per caster and hand until its stop and echoes are sent
 interface RelayedCast {
     msg: SpellCastMsgData;
     // The player's remote id has no form view, so the caster is never mapped back from msg.caster
@@ -237,6 +237,11 @@ export class MagicSyncService extends ClientListener {
 
         const msg: SpellCastMsgData = this.getSpellCastEventData(event, false);
         this.sendSpellCast(msg);
+
+        // Receivers end a fire-and-forget replay on their own, so only a channel needs its stop
+        if (!isConcentration(event.spell)) {
+            return;
+        }
 
         const now = Date.now();
         this.relayedCasts.set(this.getCastKey(casterLocalId, msg.castingSource), {

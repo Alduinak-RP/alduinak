@@ -16,6 +16,10 @@ export const CASTING_CONCENTRATION = 2;
 export const isHarmfulEffect = (effect: MagicEffect): boolean =>
   effect.isEffectFlagSet(EFFECT_FLAG_HOSTILE) || effect.isEffectFlagSet(EFFECT_FLAG_DETRIMENTAL);
 
+// By the first effect's casting type
+export const isConcentration = (spell: Spell | null | undefined): boolean =>
+  spell?.getNthEffectMagicEffect(0)?.getCastingType() === CASTING_CONCENTRATION;
+
 // Listed spells stay, removing and re-adding one in the same frame would dispel and recast it
 export const removeUnlistedSpells = (actor: Actor, spellsIds: Array<number>) => {
   let spellToRemove = new Array<Spell>();
