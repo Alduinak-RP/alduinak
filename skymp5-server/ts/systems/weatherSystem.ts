@@ -115,8 +115,8 @@ export class WeatherSystem implements System {
   // Areas per world id, in lookup order
   private worldAreas = new Map<number, Area[]>();
   private byDesc = new Map<string, WeatherEntry>();
-  // Unlisted worlds and interiors by whether they keep their own sky
-  private ownSky = new Map<number, boolean>();
+  // Unlisted worlds and interiors by whether they keep their own sky, and the world an interior's sky region (CELL XCCM) belongs to
+  private skies = new Map<number, { own: boolean; world: number }>();
   private lastRegion = new Map<number, string | null>();
   private lastSent = new Map<number, string>();
   // Where the poll last worked out each actor's region
@@ -369,18 +369,23 @@ export class WeatherSystem implements System {
 
   // An unlisted world, and an interior whose sky region (CELL XCCM) belongs to one, keep their own sky
   private keepsOwnSky(mp: Mp, place: number): boolean {
-    let own = this.ownSky.get(place);
-    if (own === undefined) {
-      own = false;
+    return this.skyOf(mp, place).own;
+  }
+
+  private skyOf(mp: Mp, place: number): { own: boolean; world: number } {
+    let sky = this.skies.get(place);
+    if (!sky) {
+      sky = { own: false, world: 0 };
       try {
         const rec = mp.lookupEspmRecordById(place);
         const [skyRegion] = espmFieldFormIds(rec, "XCCM");
         const [world] = skyRegion ? espmFieldFormIds(mp.lookupEspmRecordById(skyRegion), "WNAM") : [];
-        own = String(rec?.record?.type ?? "") === "WRLD" || (!!world && !this.worldAreas.has(world));
+        sky.world = world || 0;
+        sky.own = String(rec?.record?.type ?? "") === "WRLD" || (!!world && !this.worldAreas.has(world));
       } catch { }
-      this.ownSky.set(place, own);
+      this.skies.set(place, sky);
     }
-    return own;
+    return sky;
   }
 
   // The last region (exact lookups refresh it too) until the actor changes cell or travels RESOLVE_MOVE from the last resolve
@@ -404,18 +409,21 @@ export class WeatherSystem implements System {
       }
       return this.lastKnown(mp, actorId);
     }
-    return this.keepsOwnSky(mp, place) ? this.remember(mp, actorId, null) : this.lastKnown(mp, actorId);
+    return this.keepsOwnSky(mp, place) ? this.remember(mp, actorId, null) : this.lastKnown(mp, actorId, place);
   }
 
-  // The current region, or the stored one after a relog or a place with its own sky
-  private lastKnown(mp: Mp, actorId: number): string | null {
+  // The current region, or the stored one after a relog or a place with its own sky; an interior with neither (a character whose region a realm
+  // erased before fba155e7) takes a region of the world its sky region belongs to, unstored, so the client holds the clear sky indoors
+  private lastKnown(mp: Mp, actorId: number, interior = 0): string | null {
     const current = this.lastRegion.get(actorId);
     if (current) return current;
     let saved: unknown = null;
     try { saved = mp.get(actorId, REGION_PROP); } catch { }
     const id = typeof saved === "string" && this.regions.has(saved) ? saved : null;
     this.lastRegion.set(actorId, id);
-    return id;
+    if (id || !interior) return id;
+    const areas = this.worldAreas.get(this.skyOf(mp, interior).world) ?? [...this.worldAreas.values()][0];
+    return areas?.[0]?.region.def.id ?? null;
   }
 
   private remember(mp: Mp, actorId: number, id: string | null): string | null {

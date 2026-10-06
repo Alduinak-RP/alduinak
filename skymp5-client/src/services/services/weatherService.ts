@@ -72,7 +72,10 @@ export class WeatherService extends ClientListener {
   // A door, or a teleport to another world or cell
   private onArrival(indoors: boolean): void {
     this.indoors = indoors;
-    this.outrightUntil = Date.now() + ARRIVAL_MS;
+    const now = Date.now();
+    this.outrightUntil = now + ARRIVAL_MS;
+    // A packet that landed during the load screen was applied as a fade before this event; a fade this young is the new place's sky and is set outright instead
+    if (this.fadeSince && now - this.fadeSince < ARRIVAL_MS) this.applied = 0;
     this.fadeSince = 0;
     this.dirty = !!this.pending;
     this.nextApplyAt = 0;
@@ -119,7 +122,8 @@ export class WeatherService extends ClientListener {
       // The engine takes the weather up in its own update, so the recheck waits
       this.recheckAt = now + RECHECK_MS;
     }
-    if (first) logToPlatformLog(this, `${p.region ?? "no region"} ${p.weatherId.toString(16)} ${p.transition}${this.indoors ? ", indoors" : ""}: ${did}`);
+    // A new packet, or the same one set again after a door or a teleport
+    if (first || did !== "kept") logToPlatformLog(this, `${p.region ?? "no region"} ${p.weatherId.toString(16)} ${p.transition}${this.indoors ? ", indoors" : ""}: ${did}`);
     this.seen = p;
     this.dirty = false;
   }

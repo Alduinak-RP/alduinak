@@ -137,6 +137,17 @@ assert.deepEqual(pollAt(REALM), ['3:null:-:accelerate'])
 assert.deepEqual(pollAt(REALM), [], 'standing in the realm keeps the release')
 assert.deepEqual(pollAt(TEMPLE), ['3:b:3:accelerate'])
 assert.deepEqual(pollAt(WORLD), [], 'out of the temple door the region is the one already sent')
+
+// A character whose stored region a realm erased under the old code still holds the clear sky in a temple: a region of the world the
+// temple's sky belongs to (or the first region) is sent, unstored; the realm's hall keeps its own sky and the first step outside stores the real one
+props.set(`${0xff000003}|private.weatherRegion`, null)
+ws.disconnect(3, ctx)
+assert.deepEqual(pollAt(TEMPLE), ['3:a:' + A.state.weatherId + ':accelerate'])
+assert.equal(props.get(`${0xff000003}|private.weatherRegion`), null, 'the fallback is not stored')
+assert.deepEqual(pollAt(HALL), ['3:null:-:accelerate'])
+players.get(0xff000003).pos = [20000, 5000, 0]
+assert.deepEqual(pollAt(WORLD), ['3:b:3:accelerate'])
+assert.equal(props.get(`${0xff000003}|private.weatherRegion`), 'b')
 Date.now = realNow
 
 // weatherGameSettings replaces single values of the default fade

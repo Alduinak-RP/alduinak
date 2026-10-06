@@ -88,7 +88,11 @@ the Black Book realms, the one cave lit by an FX light region). A place
 without a region never erases `private.weatherRegion`: a character revived
 from Sovngarde wakes in the Temple of Kynareth, an interior that shows the
 sky, with the last region back at once, so the client holds the clear sky
-there instead of the realm's. The check reads cell and position from the server's
+there instead of the realm's. A character with nothing stored (one whose
+region a realm erased under the code before 2026-10-05, or a new one) gets,
+in such an interior, a region of the world its `XCCM` sky region belongs to
+(the first region when it has none), sent but not stored, so the clear sky
+holds there too; the first step outside stores the real one. The check reads cell and position from the server's
 shared 500 ms online snapshot and works a player's region out again only
 after a cell change or 1,024 units (about 15 m) of travel across the map
 since the last time; in between the player keeps the last region, which the
@@ -117,10 +121,14 @@ unavailable in the packet handler). A weather is set outright with
 template save's own sky never fades over, and on the way back from a world
 without a region), within 10 s of a door or of a teleport to another world or
 cell, indoors, and when the packet says `instant`; any other change fades
-with `setActive`. Indoors the client holds SkyrimClear instead of the
+with `setActive`. A packet that lands during the load screen of such a
+teleport is applied before the arrival event reaches the service, as a fade;
+the arrival then takes a fade under 10 s old as the new place's sky and sets
+it outright on the next pass. Indoors the client holds SkyrimClear instead of the
 packet's weather; a packet with no region releases the override indoors too,
 so the Sovngarde and Soul Cairn halls keep their own sky. Each packet leaves
-one line in `skyrim-platform.log` saying what the client did with it:
+one line in `skyrim-platform.log` saying what the client did with it, and so
+does a door or teleport that set the same packet again:
 `WeatherService: tundra d9329 instant: set outright`, `tundra 10a242
 accelerate: fading in`, `no region 0 accelerate: released`, or `kept` when
 the sky already showed it (`, indoors` marks a packet that came in under a
