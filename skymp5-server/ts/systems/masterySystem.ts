@@ -638,7 +638,8 @@ export class MasterySystem implements System {
     this.settleClock(actorId, char, now);
     this.save(ctx, actorId, char);
     this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour banked (${queue.length}/${this.bankMax}: ${queue.join(", ")}), next paid in ${this.payWaitMin(actorId, char, now)} ${this.payUnit()}`);
-    const whose = slot.index > 0 ? loc("mastery.bankedFor", { slot: this.slotNameOf(slot.index) }) : "";
+    // The slot is named only while every banked hour is its craft's
+    const whose = slot.index > 0 && queue.every((p) => p === slot.rec.profession) ? loc("mastery.bankedFor", { slot: this.slotNameOf(slot.index) }) : "";
     const userId = this.userOf(ctx, actorId);
     this.notice(ctx, userId, loc(this.bankOffline ? "mastery.extraBankedOffline" : "mastery.extraBankedOnline", { whose, hours: hoursText(queue.length) }));
     this.sendState(ctx, actorId, userId);

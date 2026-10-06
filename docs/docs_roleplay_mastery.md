@@ -72,8 +72,9 @@ announced at once and its marker handed over with the other login grants, after 
 see "Login" under "Secondary and tertiary crafts"); online, the bank is checked
 once a minute, so a banked hour is counted within a minute of falling due. A craft right after a banked hour is paid
 refills the bank. The player sees "Extra work banked for your secondary craft: 2 hours will be counted, one per hour,
-online or not." and "Your banked work as a Blacksmith is counted: H hours at the craft, 1 hour still banked." The
-server logs:
+online or not." (the slot is named only while every banked hour is its craft's; a bank holding hours of two crafts
+reads "Extra work banked: 2 hours will be counted, ..." and the strip says which) and "Your banked work as a
+Blacksmith is counted: H hours at the craft, 1 hour still banked." The server logs:
 
 - `[mastery] <id> <profession> hour counted by work: <H>h[, N hours still banked]`
 - `[mastery] <id> <profession> hour banked (<N>/<max>: <craft>, <craft>), next paid in <M> min`
