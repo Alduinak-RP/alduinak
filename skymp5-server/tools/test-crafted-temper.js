@@ -133,7 +133,7 @@ const makeMp = () => {
   }
 }
 
-const rulesOf = (keywords) => ({ craftKeywords: new Set(keywords), craftStations: new Set(), activatePrefixes: [], activateTypes: new Set(), killKeywords: new Set() })
+const rulesOf = (keywords) => ({ craftKeywords: new Set(keywords), craftStations: new Set(), killKeywords: new Set() })
 
 // The three systems as initAsync leaves them, the character online with a full bar and a frozen clock
 const setup = ({ slots = THREE } = {}) => {
