@@ -256,6 +256,11 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   zone NPC whose body moved 64 or more units between two 2 second polls is logged
   (at most every 10 s per body), and one that lies 32 or more units under the
   navmesh is logged once when it sinks, as evidence for the corpse sync reports.
+  The same setting makes the poll read the living NPCs of occupied zones: one
+  that moved 1500 or more units between two polls or stands within 32 units of
+  a player is logged with its host and spawn spot, at most once per 30 s per
+  NPC, as the server-side trace of a copy a client placed at its own player.
+  Off, the poll reads no NPC position.
 - A failed spawn (`PlaceAtMe` error) puts the slot on a 30 second cooldown
   instead of retrying every poll.
 
@@ -547,11 +552,11 @@ Everything goes through the server log and the manager console, prefixed
   `navmesh scan failed, ...` or `navmesh scan missed unreadable plugins, ...` when the result is not cached
 - `'<Name>' spawned 4/4 npc(s) (navmesh): 23a99:Skyrim.esm x4; ff000123 at x,y,z, ...`, `(rings)` for `Spread: 0` or a zone without navmesh; the ids and spawn spots match the clients' `FormView` placement lines
 - `'<Name>' respawned 23a99:Skyrim.esm (ff000123 -> ff000456) at x,y,z`
-- `npc ff000123 of '<Name>' jumped 1800 units since the last poll, now at x,y,z, 900 units from its spawn spot x,y,z, host ff000456` / `stands 12 units from <player> (ff000456)` for a living NPC of an occupied zone that moved 1500 units within one 2 s poll or stands within 32 units of a player, at most once per 30 s per NPC: the server-side trace of a copy a client placed at its player
+- `npc ff000123 of '<Name>' jumped 1800 units since the last poll, now at x,y,z, 900 units from its spawn spot x,y,z, host ff000456` / `stands 12 units from <player> (ff000456)` for a living NPC of an occupied zone that moved 1500 units within one 2 s poll or stands within 32 units of a player, at most once per 30 s per NPC: the server-side trace of a copy a client placed at its player, only with `npcCorpseWatch` on
 - `'<Name>' despawned 4 npc(s)`
 - `removed a/b leftover npc(s) from previous runs (c found by their tag)` on boot, once the world DB has loaded (the ids come from `zone-spawns.json` and from a scan of every persisted `ff` form for the spawner tag)
 - `corpse ff000123 of '<Name>' consumed, removed at once` after a skinning
-- `corpse ff000123 of '<Name>' moved 200 units, now at x,y,z (navmesh z n), dead 40 s` / `lies 50 units under the navmesh` for a dead NPC whose body jumped or sank, only with `npcCorpseWatch` on (boot line `npcCorpseWatch on, zone corpses that jump or sink are logged`)
+- `corpse ff000123 of '<Name>' moved 200 units, now at x,y,z (navmesh z n), dead 40 s` / `lies 50 units under the navmesh` for a dead NPC whose body jumped or sank, only with `npcCorpseWatch` on (boot line `npcCorpseWatch on, zone corpses that jump or sink and living zone NPCs that jump or stand on a player are logged`)
 - `'<Name>' npc ff000123 vanished, its slot's Respawn starts now` from the once-a-minute check of living zone NPCs; `found dead without an onDeath` in place of `vanished` means the death hook missed a death
 - skipped entries, unreadable plugins and spawn failures, each naming the zone
 

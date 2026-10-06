@@ -4860,7 +4860,7 @@
       },
       "npcCorpseWatch": {
         "label": "NPC corpse watch (debug)",
-        "help": "On: every 2 s the spawn-zone poll reads each zone corpse's position and navmesh height and logs a body that jumped 64+ units or lies 32+ units under the navmesh (evidence for corpse sync reports). Off (default, also when unset): no corpse is read; keep it off on live. Protected: Migrate settings never copies it to live. Read at boot."
+        "help": "On: every 2 s the spawn-zone poll reads each zone corpse's position and navmesh height and logs a body that jumped 64+ units or lies 32+ units under the navmesh (evidence for corpse sync reports), and reads the living NPCs of occupied zones to log one that jumped 1500+ units or stands within 32 units of a player, with its host. Off (default, also when unset): no NPC position is read; keep it off on live. Protected: Migrate settings never copies it to live. Read at boot."
       },
       "masteryResetsPerCharacter": {
         "label": "Profession resets per character",

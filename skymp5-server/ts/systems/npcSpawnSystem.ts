@@ -61,7 +61,7 @@ const DEFAULT_CORPSE_SECONDS = 300;
 const CORPSE_JUMP_UNITS = 64;
 const CORPSE_SINK_UNITS = 32;
 const CORPSE_LOG_MS = 10000;
-// A living zone NPC that moved this far between polls or stands this close to a player is logged with its host, once per LIVE_LOG_MS
+// Living position log (npcCorpseWatch too): a zone NPC that moved this far between polls or stands this close to a player is logged with its host, once per LIVE_LOG_MS
 const LIVE_JUMP_UNITS = 1500;
 const AT_PLAYER_UNITS = 32;
 const LIVE_LOG_MS = 30000;
@@ -278,7 +278,7 @@ export class NpcSpawnSystem implements System {
   private corpsePos = new Map<number, { pos: number[]; loggedAt: number; sunkLogged: boolean }>();
   // Living zone NPC id -> last polled position and when it was last logged
   private livePos = new Map<number, { pos: number[]; loggedAt: number }>();
-  // npcCorpseWatch, read at boot
+  // npcCorpseWatch, read at boot; it gates the corpse watch and the living watch
   private corpseWatch = false;
   // Navmesh spots by area for the whole run, since plugins only change with a restart
   private spotCache = new Map<string, Spots | null>();
@@ -290,7 +290,7 @@ export class NpcSpawnSystem implements System {
     const rawCorpse = Number(all?.["npcCorpseSeconds"]);
     if (Number.isFinite(rawCorpse) && rawCorpse > 0) this.corpseMs = rawCorpse * 1000;
     this.corpseWatch = all?.["npcCorpseWatch"] === true;
-    if (this.corpseWatch) this.log("NpcSpawnSystem: npcCorpseWatch on, zone corpses that jump or sink are logged");
+    if (this.corpseWatch) this.log("NpcSpawnSystem: npcCorpseWatch on, zone corpses that jump or sink and living zone NPCs that jump or stand on a player are logged");
     this.cleanupLeftovers(this.mp);
     ctx.gm.once(WORLD_LOADED_EVENT, () => this.removeLeftovers());
     ctx.gm.on(CORPSE_CONSUMED_EVENT, (bodyId: number) => this.consumeCorpse(Number(bodyId) >>> 0));
@@ -583,7 +583,7 @@ export class NpcSpawnSystem implements System {
       if (occupied) {
         zone.emptySince = 0;
         zone.holdSince = 0;
-        if (zone.spawned.length) this.watchLiving(mp, zone, now, players);
+        if (this.corpseWatch && zone.spawned.length) this.watchLiving(mp, zone, now, players);
         if (!this.awaitingSpots(zone)) this.fillSlots(mp, zone, now);
       } else if (zone.spawned.length && zone.despawnSeconds > 0) {
         if (this.heldByFight(mp, zone, now)) {

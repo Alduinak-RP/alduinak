@@ -759,7 +759,7 @@ For this many seconds after a player and a zone NPC exchanged a damaging hit, th
 
 ## npcCorpseWatch
 
-`true`: every 2 s the spawn-zone poll (`npcSpawnSystem.ts`) reads the position of each dead zone NPC and, where the zone has navmesh, the navmesh height under it, and logs a body that moved 64 or more units between two polls (at most every 10 s per body) or lies 32 or more units under the navmesh (once per sinking), as evidence for corpse sync reports. `false` (default, also when unset): no corpse is read. Turn it on only on the Test Server while investigating; live keeps it off. Protected: **Migrate settings** never copies it to live. Read at boot. Zone NPC deaths themselves come from the server's `onDeath` hook whatever this says (`docs_roleplay_npc_spawns.md`).
+`true`: every 2 s the spawn-zone poll (`npcSpawnSystem.ts`) reads the position of each dead zone NPC and, where the zone has navmesh, the navmesh height under it, and logs a body that moved 64 or more units between two polls (at most every 10 s per body) or lies 32 or more units under the navmesh (once per sinking), as evidence for corpse sync reports. It also reads the living NPCs of occupied zones and logs one that moved 1500 or more units between two polls or stands within 32 units of a player, with its host and spawn spot (at most once per 30 s per NPC), the server-side trace of a copy a client placed at its own player. `false` (default, also when unset): no NPC position is read. Turn it on only on the Test Server while investigating; live keeps it off. Protected: **Migrate settings** never copies it to live. Read at boot. Zone NPC deaths themselves come from the server's `onDeath` hook whatever this says (`docs_roleplay_npc_spawns.md`).
 
 ```json5
 {
