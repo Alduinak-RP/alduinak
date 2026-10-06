@@ -101,10 +101,10 @@ function slotFromSelect(value) {
 
 // Names come from the game server's character report (player.characters)
 function slotLabel(slot, player) {
-  if (slot === null || slot === undefined) return 'All'
+  if (slot === null || slot === undefined) return dashLoc('slots.all')
   const character = ((player && player.characters) || []).find(c => c.slot === Number(slot))
-  const label = `Character ${Number(slot) + 1}`
-  return character && character.name ? `${label}: ${character.name}${character.dead ? ' (dead)' : ''}` : label
+  const label = dashLoc('slots.character', { n: Number(slot) + 1 })
+  return character && character.name ? dashLoc(character.dead ? 'slots.namedDead' : 'slots.named', { label, name: character.name }) : label
 }
 
 // Every reported character of the player, or three unnamed slots before the first report; a new player starts on their first character
@@ -114,7 +114,7 @@ function renderSlotOptions(select, player) {
   const owner = player ? String(player.profileId) : ''
   const previous = select.dataset.owner === owner ? select.value : null
   select.dataset.owner = owner
-  select.innerHTML = '<option value="">All characters</option>' + slots
+  select.innerHTML = `<option value="">${escapeHtml(dashLoc('slots.allCharacters'))}</option>` + slots
     .map(slot => `<option value="${slot}">${escapeHtml(slotLabel(slot, player))}</option>`)
     .join('')
   select.value = previous !== null && [...select.options].some(o => o.value === previous) ? previous : String(slots[0])
@@ -147,7 +147,7 @@ async function api(path, options = {}) {
   const text = await res.text()
   const data = text ? JSON.parse(text) : null
   if (!res.ok) {
-    const err = new Error(data?.error || `Request failed with ${res.status}`)
+    const err = new Error(data?.error || dashLoc('common.requestFailed', { status: res.status }))
     err.status = res.status
     throw err
   }
@@ -167,7 +167,7 @@ function captureTokenFromUrl() {
   } catch {}
   window.history.replaceState({}, '', url.pathname)
   if (!expected || hashParams.get('nonce') !== expected) {
-    toast('Login link ignored: start the login from this page')
+    toast(dashLoc('session.linkIgnored'))
     return
   }
   state.token = token
@@ -180,7 +180,7 @@ async function login() {
   sessionStorage.setItem(loginNonceKey, nonce)
   const data = await fetch(`${apiBaseUrl}/auth/dashboard/url?redirect=${encodeURIComponent(redirect)}&nonce=${nonce}`)
     .then(res => res.json())
-  if (!data.url) throw new Error(data.error || 'OAuth URL unavailable')
+  if (!data.url) throw new Error(data.error || dashLoc('session.oauthUnavailable'))
   window.location.href = data.url
 }
 
@@ -225,12 +225,12 @@ async function loadPermissions() {
 
 function renderAuth() {
   const signedIn = !!state.user
-  nodes.apiStatus.textContent = signedIn ? 'Online' : 'Offline'
+  nodes.apiStatus.textContent = signedIn ? dashLoc('session.online') : dashLoc('session.offline')
   nodes.apiStatus.classList.toggle('online', signedIn)
-  nodes.userName.textContent = signedIn ? state.user.username : 'Signed out'
+  nodes.userName.textContent = signedIn ? state.user.username : dashLoc('session.signedOut')
   nodes.statusText.textContent = signedIn
-    ? `Signed in as ${state.user.username}`
-    : 'Connect with Discord to manage the realm.'
+    ? dashLoc('session.signedInAs', { name: state.user.username })
+    : dashLoc('session.connect')
   nodes.loginButton.classList.toggle('hidden', signedIn)
   nodes.logoutButton.classList.toggle('hidden', !signedIn)
   nodes.signedOut.classList.toggle('hidden', signedIn)
@@ -265,17 +265,17 @@ function filteredPlayers() {
 
 function renderPlayers() {
   const rows = filteredPlayers()
-  nodes.playerCount.textContent = `${rows.length} shown`
+  nodes.playerCount.textContent = dashLoc('common.shown', { n: rows.length })
   nodes.playersTable.innerHTML = `
     <table>
       <thead>
         <tr>
-          <th>Profile</th>
-          <th>Name</th>
-          <th>Discord ID</th>
-          <th>Access</th>
-          <th>HWID</th>
-          <th>Factions</th>
+          <th>${dashLoc('players.colProfile')}</th>
+          <th>${dashLoc('players.colName')}</th>
+          <th>${dashLoc('common.discordId')}</th>
+          <th>${dashLoc('players.colAccess')}</th>
+          <th>${dashLoc('players.colHwid')}</th>
+          <th>${dashLoc('players.colFactions')}</th>
           <th></th>
         </tr>
       </thead>
@@ -283,12 +283,12 @@ function renderPlayers() {
         ${rows.map(player => `
           <tr class="${player.profileId === state.selectedProfileId ? 'selected' : ''}">
             <td>#${player.profileId}</td>
-            <td>${escapeHtml(player.displayName || player.username || 'Unnamed')}</td>
+            <td>${escapeHtml(player.displayName || player.username || dashLoc('common.unnamed'))}</td>
             <td>${escapeHtml(player.discordId)}</td>
-            <td><span class="tag ${player.access?.allowed ? '' : 'locked'}">${escapeHtml(player.access?.allowed ? 'allowed' : (player.access?.error || 'blocked'))}</span>${player.ban ? ' <span class="tag locked">banned</span>' : ''}</td>
+            <td><span class="tag ${player.access?.allowed ? '' : 'locked'}">${escapeHtml(player.access?.allowed ? dashLoc('players.allowed') : (player.access?.error || dashLoc('players.blocked')))}</span>${player.ban ? ` <span class="tag locked">${escapeHtml(dashLoc('players.banned'))}</span>` : ''}</td>
             <td>${escapeHtml(player.hwid ? player.hwid.slice(0, 12) : '-')}</td>
             <td>${escapeHtml((player.assignments || []).map(a => a.requirement ? `${a.requirement.group} ${a.requirement.rank}` : a.requirementId).join(', '))}</td>
-            <td><button class="ghost mini" data-select-player="${player.profileId}" type="button">Open</button></td>
+            <td><button class="ghost mini" data-select-player="${player.profileId}" type="button">${dashLoc('players.open')}</button></td>
           </tr>
         `).join('')}
       </tbody>
@@ -299,7 +299,7 @@ function renderPlayers() {
 
 function renderPlayerDetail() {
   const player = selectedPlayer()
-  nodes.selectedPlayerLabel.textContent = player ? `Profile #${player.profileId}` : 'New player'
+  nodes.selectedPlayerLabel.textContent = player ? dashLoc('players.profile', { id: player.profileId }) : dashLoc('players.newPlayer')
   nodes.playerDiscordIdInput.value = player?.discordId || ''
   nodes.playerDiscordIdInput.disabled = !!player
   nodes.playerUsernameInput.value = player?.username || ''
@@ -308,14 +308,14 @@ function renderPlayerDetail() {
   nodes.whitelistPlayerButton.disabled = !player
   nodes.banPlayerButton.disabled = !player
   nodes.whitelistPlayerButton.textContent = player?.access?.roles?.includes(state.access?.whitelistRoleId)
-    ? 'Remove Whitelist'
-    : 'Add Whitelist'
+    ? dashLoc('players.removeWhitelist')
+    : dashLoc('players.addWhitelist')
   nodes.banPlayerButton.textContent = playerIsBanned(player)
-    ? 'Remove Ban'
-    : 'Add Ban'
+    ? dashLoc('players.removeBan')
+    : dashLoc('players.addBan')
   nodes.playerAssignmentsTable.innerHTML = player
     ? renderPlayerAssignments(player)
-    : '<div class="empty-row">Save the player before assigning factions.</div>'
+    : `<div class="empty-row">${dashLoc('players.saveFirst')}</div>`
   nodes.playerRequirementSelect.innerHTML = state.requirements
     .map(req => `<option value="${escapeHtml(req.id)}">${escapeHtml(req.group)} - ${escapeHtml(req.rank)}</option>`)
     .join('')
@@ -325,14 +325,14 @@ function renderPlayerDetail() {
 
 function renderPlayerAssignments(player) {
   const assignments = player.assignments || []
-  if (!assignments.length) return '<div class="empty-row">No faction slots assigned.</div>'
+  if (!assignments.length) return `<div class="empty-row">${dashLoc('players.noAssignments')}</div>`
   return `
     <table>
       <thead>
         <tr>
-          <th>Group</th>
-          <th>Rank</th>
-          <th>Character</th>
+          <th>${dashLoc('common.group')}</th>
+          <th>${dashLoc('common.rank')}</th>
+          <th>${dashLoc('common.character')}</th>
           <th></th>
         </tr>
       </thead>
@@ -342,7 +342,7 @@ function renderPlayerAssignments(player) {
             <td>${escapeHtml(assignment.requirement?.group || assignment.requirementId)}</td>
             <td>${escapeHtml(assignment.requirement?.rank || '')}</td>
             <td>${escapeHtml(slotLabel(assignment.slot, player))}</td>
-            <td><button class="danger mini" data-delete-player-assignment="${escapeHtml(assignment.id)}" type="button">Remove</button></td>
+            <td><button class="danger mini" data-delete-player-assignment="${escapeHtml(assignment.id)}" type="button">${dashLoc('common.remove')}</button></td>
           </tr>
         `).join('')}
       </tbody>
@@ -373,10 +373,10 @@ function renderStats() {
   const openUnique = state.requirements.filter(req => req.capacity === 1 && req.assigned === 0).length
   const repeatable = state.requirements.filter(req => req.capacity === null).length
   nodes.stats.innerHTML = [
-    ['Assignments', state.assignments.length],
-    ['Unique Open', openUnique],
-    ['Unique Slots', uniqueSlots],
-    ['Repeatable Ranks', repeatable],
+    [dashLoc('factions.statAssignments'), state.assignments.length],
+    [dashLoc('factions.statUniqueOpen'), openUnique],
+    [dashLoc('factions.statUniqueSlots'), uniqueSlots],
+    [dashLoc('factions.statRepeatable'), repeatable],
   ].map(([label, value]) => `
     <div class="stat">
       <strong>${value}</strong>
@@ -388,7 +388,7 @@ function renderStats() {
 function renderFilters() {
   const groups = [...new Set(state.requirements.map(req => req.group))].sort()
   const selected = nodes.groupFilter.value
-  nodes.groupFilter.innerHTML = '<option value="">All</option>' + groups
+  nodes.groupFilter.innerHTML = `<option value="">${escapeHtml(dashLoc('common.all'))}</option>` + groups
     .map(group => `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`)
     .join('')
   nodes.groupFilter.value = groups.includes(selected) ? selected : ''
@@ -396,28 +396,28 @@ function renderFilters() {
 
 function renderRequirements() {
   const rows = filteredRequirements()
-  nodes.slotCount.textContent = `${rows.length} shown`
+  nodes.slotCount.textContent = dashLoc('common.shown', { n: rows.length })
   nodes.requirementsTable.innerHTML = `
     <table>
       <thead>
         <tr>
-          <th>Scope</th>
-          <th>Group</th>
-          <th>Rank</th>
-          <th>Slots</th>
-          <th>Permission</th>
+          <th>${dashLoc('factions.scope')}</th>
+          <th>${dashLoc('common.group')}</th>
+          <th>${dashLoc('common.rank')}</th>
+          <th>${dashLoc('factions.colSlots')}</th>
+          <th>${dashLoc('common.permission')}</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         ${rows.map(req => `
           <tr class="${req.id === state.selectedRequirementId ? 'selected' : ''}">
-            <td><span class="tag">${escapeHtml(req.scope === 'hold' ? 'territory' : req.scope)}</span></td>
+            <td><span class="tag">${escapeHtml(req.scope === 'hold' ? dashLoc('factions.territoryTag') : req.scope)}</span></td>
             <td>${escapeHtml(req.group)}</td>
             <td>${escapeHtml(req.rank)}</td>
-            <td>${req.capacity === null ? 'Open' : `${req.assigned}/${req.capacity}`}</td>
+            <td>${req.capacity === null ? dashLoc('factions.open') : `${req.assigned}/${req.capacity}`}</td>
             <td>${escapeHtml(req.permission)}</td>
-            <td><button class="ghost mini" data-select="${escapeHtml(req.id)}" type="button">Select</button></td>
+            <td><button class="ghost mini" data-select="${escapeHtml(req.id)}" type="button">${dashLoc('factions.select')}</button></td>
           </tr>
         `).join('')}
       </tbody>
@@ -453,22 +453,22 @@ function renderRoleSelect() {
 
 function renderSelectedSlot() {
   const req = state.requirements.find(item => item.id === state.selectedRequirementId)
-  nodes.selectedSlot.textContent = req ? `${req.group} - ${req.rank}` : 'No slot selected'
+  nodes.selectedSlot.textContent = req ? `${req.group} - ${req.rank}` : dashLoc('factions.noSlot')
 }
 
 function renderAssignments() {
   const byReq = new Map(state.requirements.map(req => [req.id, req]))
-  nodes.assignmentCount.textContent = `${state.assignments.length} total`
+  nodes.assignmentCount.textContent = dashLoc('factions.total', { n: state.assignments.length })
   nodes.assignmentsTable.innerHTML = `
     <table>
       <thead>
         <tr>
-          <th>Player</th>
-          <th>Discord ID</th>
-          <th>Character</th>
-          <th>Group</th>
-          <th>Rank</th>
-          <th>Permission</th>
+          <th>${dashLoc('factions.colPlayer')}</th>
+          <th>${dashLoc('common.discordId')}</th>
+          <th>${dashLoc('common.character')}</th>
+          <th>${dashLoc('common.group')}</th>
+          <th>${dashLoc('common.rank')}</th>
+          <th>${dashLoc('common.permission')}</th>
           <th></th>
         </tr>
       </thead>
@@ -477,13 +477,13 @@ function renderAssignments() {
           const req = byReq.get(assignment.requirementId) || {}
           return `
             <tr>
-              <td>${escapeHtml(assignment.playerName || 'Unnamed')}</td>
+              <td>${escapeHtml(assignment.playerName || dashLoc('common.unnamed'))}</td>
               <td>${escapeHtml(assignment.discordId)}</td>
               <td>${escapeHtml(slotLabel(assignment.slot, playerByDiscordId(assignment.discordId)))}</td>
               <td>${escapeHtml(req.group || '')}</td>
               <td>${escapeHtml(req.rank || '')}</td>
               <td>${escapeHtml(req.permission || '')}</td>
-              <td><button class="danger mini" data-delete-assignment="${escapeHtml(assignment.id)}" type="button">Remove</button></td>
+              <td><button class="danger mini" data-delete-assignment="${escapeHtml(assignment.id)}" type="button">${dashLoc('common.remove')}</button></td>
             </tr>
           `
         }).join('')}
@@ -532,14 +532,14 @@ function renderPermissionChecks(selected = []) {
 
 function renderRoles() {
   const entries = Object.entries(state.roles)
-  nodes.roleCount.textContent = `${entries.length} configured`
+  nodes.roleCount.textContent = dashLoc('roles.configured', { n: entries.length })
   nodes.rolesTable.innerHTML = `
     <table>
       <thead>
         <tr>
-          <th>Role</th>
-          <th>Role ID</th>
-          <th>Permissions</th>
+          <th>${dashLoc('roles.colRole')}</th>
+          <th>${dashLoc('roles.colRoleId')}</th>
+          <th>${dashLoc('roles.colPermissions')}</th>
           <th></th>
         </tr>
       </thead>
@@ -550,8 +550,8 @@ function renderRoles() {
             <td>${escapeHtml(roleId)}</td>
             <td>${escapeHtml((role.permissions || []).join(', '))}</td>
             <td>
-              <button class="ghost mini" data-edit-role="${escapeHtml(roleId)}" type="button">Edit</button>
-              <button class="danger mini" data-delete-role="${escapeHtml(roleId)}" type="button">Delete</button>
+              <button class="ghost mini" data-edit-role="${escapeHtml(roleId)}" type="button">${dashLoc('roles.edit')}</button>
+              <button class="danger mini" data-delete-role="${escapeHtml(roleId)}" type="button">${dashLoc('roles.delete')}</button>
             </td>
           </tr>
         `).join('')}
@@ -573,7 +573,7 @@ async function refreshAll() {
     await loadPermissions()
     renderRoles()
   } catch (err) {
-    nodes.permissionsView.innerHTML = `<section class="empty-state"><h2>Permission access unavailable</h2><p>${escapeHtml(err.message)}</p></section>`
+    nodes.permissionsView.innerHTML = `<section class="empty-state"><h2>${escapeHtml(dashLoc('roles.unavailable'))}</h2><p>${escapeHtml(err.message)}</p></section>`
   }
 }
 
@@ -609,7 +609,7 @@ async function saveAccess(event) {
     }),
   })
   renderAccess()
-  toast('Server access policy saved')
+  toast(dashLoc('access.saved'))
 }
 
 async function checkAccess(event) {
@@ -617,8 +617,8 @@ async function checkAccess(event) {
   const discordId = nodes.accessCheckDiscordId.value.trim()
   const result = await api(`/api/server-access/check/${encodeURIComponent(discordId)}`)
   nodes.accessCheckResult.textContent = result.allowed
-    ? `Allowed (${result.roles.length} role${result.roles.length === 1 ? '' : 's'})`
-    : `Blocked: ${result.error || 'accessDenied'}`
+    ? dashLoc(result.roles.length === 1 ? 'access.allowedOne' : 'access.allowedMany', { n: result.roles.length })
+    : dashLoc('access.blocked', { error: result.error || 'accessDenied' })
 }
 
 async function savePlayer(event) {
@@ -635,7 +635,7 @@ async function savePlayer(event) {
     : await api('/api/players', { method: 'POST', body: JSON.stringify(body) })
   state.selectedProfileId = saved.profileId
   await refreshPlayers()
-  toast('Player saved')
+  toast(dashLoc('players.saved'))
 }
 
 async function toggleWhitelist() {
@@ -647,7 +647,7 @@ async function toggleWhitelist() {
     body: JSON.stringify({ enabled }),
   })
   await refreshPlayers()
-  toast(enabled ? 'Player whitelisted' : 'Player removed from whitelist')
+  toast(enabled ? dashLoc('players.whitelisted') : dashLoc('players.unwhitelisted'))
 }
 
 // Banned when a bans.json snapshot exists or the discord ban role is present
@@ -664,7 +664,7 @@ async function toggleBan() {
     body: JSON.stringify({ enabled }),
   })
   await refreshPlayers()
-  toast(enabled ? 'Player banned' : 'Player unbanned')
+  toast(enabled ? dashLoc('players.bannedToast') : dashLoc('players.unbanned'))
 }
 
 async function assignSelectedPlayerFaction(event) {
@@ -684,7 +684,7 @@ async function assignSelectedPlayerFaction(event) {
   await loadFactions()
   renderFactions()
   await refreshPlayers()
-  toast('Faction assigned')
+  toast(dashLoc('players.factionAssigned'))
 }
 
 async function saveAssignment(event) {
@@ -703,7 +703,7 @@ async function saveAssignment(event) {
   nodes.assignmentForm.reset()
   await loadFactions()
   renderFactions()
-  toast('Assignment saved')
+  toast(dashLoc('factions.assignmentSaved'))
 }
 
 async function saveRole(event) {
@@ -717,10 +717,10 @@ async function saveRole(event) {
     }),
   })
   nodes.roleForm.reset()
-  nodes.selectedRole.textContent = 'New role'
+  nodes.selectedRole.textContent = dashLoc('roles.newRole')
   await loadPermissions()
   renderRoles()
-  toast('Role permissions saved')
+  toast(dashLoc('roles.saved'))
 }
 
 function bindEvents() {
@@ -783,7 +783,7 @@ function bindEvents() {
         .then(loadFactions)
         .then(renderFactions)
         .then(refreshPlayers)
-        .then(() => toast('Assignment removed'))
+        .then(() => toast(dashLoc('factions.assignmentRemoved')))
         .catch(err => toast(err.message))
       return
     }
@@ -798,7 +798,7 @@ function bindEvents() {
         .then(loadFactions)
         .then(renderFactions)
         .then(refreshPlayers)
-        .then(() => toast('Faction removed'))
+        .then(() => toast(dashLoc('players.factionRemoved')))
         .catch(err => toast(err.message))
       return
     }
@@ -819,7 +819,7 @@ function bindEvents() {
       api(`/api/role-permissions/${encodeURIComponent(deleteRole.dataset.deleteRole)}`, { method: 'DELETE' })
         .then(loadPermissions)
         .then(renderRoles)
-        .then(() => toast('Role removed'))
+        .then(() => toast(dashLoc('roles.removed')))
         .catch(err => toast(err.message))
     }
   })

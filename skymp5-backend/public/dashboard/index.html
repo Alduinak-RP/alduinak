@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Alduinak Management</title>
+  <title data-loc="page.title">Alduinak Management</title>
   <link rel="icon" href="/images/favicon.ico">
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/manager.css">
@@ -16,79 +16,79 @@
         <img class="brand-mark" src="/images/logo-96.png" alt="">
         <div>
           <strong>Alduinak</strong>
-          <span>Management</span>
+          <span data-loc="page.brand">Management</span>
         </div>
       </div>
       <nav class="nav" aria-label="Dashboard sections">
-        <button class="nav-button active" data-view="access" type="button">Access</button>
-        <button class="nav-button" data-view="players" type="button">Players</button>
-        <button class="nav-button" data-view="factions" type="button">Factions</button>
-        <button class="nav-button" data-view="permissions" type="button">Permissions</button>
+        <button class="nav-button active" data-view="access" type="button" data-loc="nav.access">Access</button>
+        <button class="nav-button" data-view="players" type="button" data-loc="nav.players">Players</button>
+        <button class="nav-button" data-view="factions" type="button" data-loc="nav.factions">Factions</button>
+        <button class="nav-button" data-view="permissions" type="button" data-loc="nav.permissions">Permissions</button>
       </nav>
       <div class="session-panel">
-        <div id="userName" class="muted">Signed out</div>
-        <button id="loginButton" class="primary" type="button">Discord Login</button>
-        <button id="logoutButton" class="ghost hidden" type="button">Logout</button>
+        <div id="userName" class="muted" data-loc="session.signedOut">Signed out</div>
+        <button id="loginButton" class="primary" type="button" data-loc="session.login">Discord Login</button>
+        <button id="logoutButton" class="ghost hidden" type="button" data-loc="session.logout">Logout</button>
       </div>
     </aside>
 
     <main class="content">
       <header class="topbar">
         <div>
-          <h1>Whitelist Control</h1>
-          <p id="statusText">Connect with Discord to manage the realm.</p>
+          <h1 data-loc="page.heading">Whitelist Control</h1>
+          <p id="statusText" data-loc="session.connect">Connect with Discord to manage the realm.</p>
         </div>
-        <div class="status-pill" id="apiStatus">Offline</div>
+        <div class="status-pill" id="apiStatus" data-loc="session.offline">Offline</div>
       </header>
 
       <section id="signedOut" class="empty-state">
-        <h2>Discord access required</h2>
-        <p>Management role access is checked through the backend OAuth flow.</p>
+        <h2 data-loc="session.requiredTitle">Discord access required</h2>
+        <p data-loc="session.requiredText">Management role access is checked through the backend OAuth flow.</p>
       </section>
 
       <section id="accessView" class="view hidden">
         <div class="split">
           <section class="panel">
             <div class="panel-head">
-              <h2>Server Access</h2>
-              <span class="muted">Role-backed join policy</span>
+              <h2 data-loc="access.title">Server Access</h2>
+              <span class="muted" data-loc="access.subtitle">Role-backed join policy</span>
             </div>
             <form id="accessForm" class="form">
               <label class="check-row">
                 <input id="serverLockedInput" type="checkbox">
-                <span>Server locked</span>
+                <span data-loc="access.locked">Server locked</span>
               </label>
               <label>
-                Locked Allowed Role IDs
-                <textarea id="lockedRoleIdsInput" rows="5" placeholder="One Discord role ID per line"></textarea>
+                <span data-loc="access.lockedRoles">Locked Allowed Role IDs</span>
+                <textarea id="lockedRoleIdsInput" rows="5" placeholder="One Discord role ID per line" data-loc-placeholder="access.rolePerLine"></textarea>
               </label>
               <label>
-                Legacy Locked User IDs
-                <textarea id="lockedDiscordIdsInput" rows="4" placeholder="One Discord user ID per line"></textarea>
+                <span data-loc="access.lockedUsers">Legacy Locked User IDs</span>
+                <textarea id="lockedDiscordIdsInput" rows="4" placeholder="One Discord user ID per line" data-loc-placeholder="access.userPerLine"></textarea>
               </label>
               <label>
-                Whitelist Role ID
+                <span data-loc="access.whitelistRole">Whitelist Role ID</span>
                 <input id="whitelistRoleIdInput" autocomplete="off">
               </label>
               <label>
-                Banned Role ID
+                <span data-loc="access.bannedRole">Banned Role ID</span>
                 <input id="bannedRoleIdInput" autocomplete="off">
               </label>
-              <button class="primary" type="submit">Save Access Policy</button>
+              <button class="primary" type="submit" data-loc="access.save">Save Access Policy</button>
             </form>
           </section>
 
           <section class="panel">
             <div class="panel-head">
-              <h2>Check Player</h2>
-              <span id="accessCheckResult" class="muted">No check run</span>
+              <h2 data-loc="access.checkTitle">Check Player</h2>
+              <span id="accessCheckResult" class="muted" data-loc="access.noCheck">No check run</span>
             </div>
             <form id="accessCheckForm" class="form">
               <label>
-                Discord ID
+                <span data-loc="common.discordId">Discord ID</span>
                 <input id="accessCheckDiscordId" autocomplete="off" required>
               </label>
-              <button class="ghost" type="submit">Check Access</button>
+              <button class="ghost" type="submit" data-loc="access.check">Check Access</button>
             </form>
           </section>
         </div>
@@ -98,63 +98,63 @@
         <div class="split">
           <section class="panel">
             <div class="panel-head">
-              <h2>Players</h2>
+              <h2 data-loc="players.title">Players</h2>
               <span id="playerCount" class="muted"></span>
             </div>
             <div class="toolbar">
               <label>
-                Search
-                <input id="playerSearchInput" autocomplete="off" placeholder="Name, profile ID, Discord ID">
+                <span data-loc="players.search">Search</span>
+                <input id="playerSearchInput" autocomplete="off" placeholder="Name, profile ID, Discord ID" data-loc-placeholder="players.searchPlaceholder">
               </label>
-              <button id="newPlayerButton" class="ghost" type="button">New Player</button>
-              <button id="playersRefreshButton" class="ghost" type="button">Refresh</button>
+              <button id="newPlayerButton" class="ghost" type="button" data-loc="players.new">New Player</button>
+              <button id="playersRefreshButton" class="ghost" type="button" data-loc="common.refresh">Refresh</button>
             </div>
             <div id="playersTable" class="table"></div>
           </section>
 
           <section class="panel">
             <div class="panel-head">
-              <h2>Player Detail</h2>
-              <span id="selectedPlayerLabel" class="muted">No player selected</span>
+              <h2 data-loc="players.detailTitle">Player Detail</h2>
+              <span id="selectedPlayerLabel" class="muted" data-loc="players.noneSelected">No player selected</span>
             </div>
             <form id="playerForm" class="form">
               <label>
-                Discord ID
+                <span data-loc="common.discordId">Discord ID</span>
                 <input id="playerDiscordIdInput" autocomplete="off" required>
               </label>
               <label>
-                Username
+                <span data-loc="players.username">Username</span>
                 <input id="playerUsernameInput" autocomplete="off">
               </label>
               <label>
-                Display Name
+                <span data-loc="common.displayName">Display Name</span>
                 <input id="playerDisplayNameInput" autocomplete="off">
               </label>
               <label>
-                Notes
+                <span data-loc="common.notes">Notes</span>
                 <textarea id="playerNotesInput" rows="4"></textarea>
               </label>
-              <button class="primary" type="submit">Save Player</button>
+              <button class="primary" type="submit" data-loc="players.save">Save Player</button>
             </form>
             <div class="actions-row">
-              <button id="whitelistPlayerButton" class="ghost" type="button">Toggle Whitelist</button>
-              <button id="banPlayerButton" class="danger mini" type="button">Toggle Ban</button>
+              <button id="whitelistPlayerButton" class="ghost" type="button" data-loc="players.toggleWhitelist">Toggle Whitelist</button>
+              <button id="banPlayerButton" class="danger mini" type="button" data-loc="players.toggleBan">Toggle Ban</button>
             </div>
             <div id="playerAssignmentsTable" class="table compact-table"></div>
             <form id="playerFactionForm" class="form">
               <label>
-                Faction Slot
+                <span data-loc="players.factionSlot">Faction Slot</span>
                 <select id="playerRequirementSelect"></select>
               </label>
               <label>
-                Character
+                <span data-loc="common.character">Character</span>
                 <select id="playerSlotSelect"></select>
               </label>
               <label>
-                Notes
+                <span data-loc="common.notes">Notes</span>
                 <input id="playerFactionNotesInput" autocomplete="off">
               </label>
-              <button class="ghost" type="submit">Assign Faction</button>
+              <button class="ghost" type="submit" data-loc="players.assignFaction">Assign Faction</button>
             </form>
           </section>
         </div>
@@ -165,34 +165,34 @@
 
         <section class="panel">
           <div class="panel-head">
-            <h2>Definitions</h2>
-            <span class="muted">Factions, ranks and what each rank may do</span>
+            <h2 data-loc="factions.definitionsTitle">Definitions</h2>
+            <span class="muted" data-loc="factions.definitionsSubtitle">Factions, ranks and what each rank may do</span>
           </div>
           <div id="factionEditorRoot"></div>
         </section>
 
         <div class="toolbar">
           <label>
-            Scope
+            <span data-loc="factions.scope">Scope</span>
             <select id="scopeFilter">
-              <option value="">All</option>
-              <option value="hold">Territories</option>
-              <option value="faction">Factions</option>
+              <option value="" data-loc="common.all">All</option>
+              <option value="hold" data-loc="factions.territories">Territories</option>
+              <option value="faction" data-loc="factions.factions">Factions</option>
             </select>
           </label>
           <label>
-            Group
+            <span data-loc="common.group">Group</span>
             <select id="groupFilter">
-              <option value="">All</option>
+              <option value="" data-loc="common.all">All</option>
             </select>
           </label>
-          <button id="refreshButton" class="ghost" type="button">Refresh</button>
+          <button id="refreshButton" class="ghost" type="button" data-loc="common.refresh">Refresh</button>
         </div>
 
         <div class="split">
           <section class="panel">
             <div class="panel-head">
-              <h2>Slots</h2>
+              <h2 data-loc="factions.slotsTitle">Slots</h2>
               <span id="slotCount" class="muted"></span>
             </div>
             <div id="requirementsTable" class="table"></div>
@@ -200,42 +200,42 @@
 
           <section class="panel">
             <div class="panel-head">
-              <h2>Assign Player</h2>
-              <span id="selectedSlot" class="muted">No slot selected</span>
+              <h2 data-loc="factions.assignTitle">Assign Player</h2>
+              <span id="selectedSlot" class="muted" data-loc="factions.noSlot">No slot selected</span>
             </div>
             <form id="assignmentForm" class="form">
               <label>
-                Faction / Territory
+                <span data-loc="factions.factionOrTerritory">Faction / Territory</span>
                 <select id="assignGroupSelect" required></select>
               </label>
               <label>
-                Role
+                <span data-loc="factions.role">Role</span>
                 <select id="requirementSelect" required></select>
               </label>
               <label>
-                Discord ID
+                <span data-loc="common.discordId">Discord ID</span>
                 <input id="discordIdInput" name="discordId" autocomplete="off" required>
               </label>
               <label>
-                Character
+                <span data-loc="common.character">Character</span>
                 <select id="slotSelect" name="slot"></select>
               </label>
               <label>
-                Player Name
+                <span data-loc="common.playerName">Player Name</span>
                 <input id="playerNameInput" name="playerName" autocomplete="off">
               </label>
               <label>
-                Notes
+                <span data-loc="common.notes">Notes</span>
                 <textarea id="notesInput" name="notes" rows="4"></textarea>
               </label>
-              <button class="primary" type="submit">Save Assignment</button>
+              <button class="primary" type="submit" data-loc="factions.saveAssignment">Save Assignment</button>
             </form>
           </section>
         </div>
 
         <section class="panel">
           <div class="panel-head">
-            <h2>Assignments</h2>
+            <h2 data-loc="factions.assignmentsTitle">Assignments</h2>
             <span id="assignmentCount" class="muted"></span>
           </div>
           <div id="assignmentsTable" class="table"></div>
@@ -246,7 +246,7 @@
         <div class="split">
           <section class="panel">
             <div class="panel-head">
-              <h2>Discord Roles</h2>
+              <h2 data-loc="roles.title">Discord Roles</h2>
               <span id="roleCount" class="muted"></span>
             </div>
             <div id="rolesTable" class="table"></div>
@@ -254,20 +254,20 @@
 
           <section class="panel">
             <div class="panel-head">
-              <h2>Role Access</h2>
-              <span id="selectedRole" class="muted">New role</span>
+              <h2 data-loc="roles.accessTitle">Role Access</h2>
+              <span id="selectedRole" class="muted" data-loc="roles.newRole">New role</span>
             </div>
             <form id="roleForm" class="form">
               <label>
-                Discord Role ID
+                <span data-loc="roles.roleIdLabel">Discord Role ID</span>
                 <input id="roleIdInput" name="roleId" autocomplete="off" required>
               </label>
               <label>
-                Display Name
+                <span data-loc="common.displayName">Display Name</span>
                 <input id="roleNameInput" name="name" autocomplete="off" required>
               </label>
               <div id="permissionChecks" class="checks"></div>
-              <button class="primary" type="submit">Save Role</button>
+              <button class="primary" type="submit" data-loc="roles.save">Save Role</button>
             </form>
           </section>
         </div>
@@ -277,6 +277,8 @@
 
   <div id="toast" class="toast hidden"></div>
   <script src="/dashboard-config.js"></script>
+  <script src="/en_loc_dashboard.js"></script>
+  <script src="/dash-loc.js"></script>
   <script src="/faction-editor.js"></script>
   <script src="/app.js"></script>
   <script src="/manager.js"></script>

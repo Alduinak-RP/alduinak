@@ -1,6 +1,7 @@
 'use strict'
 
 const fs = require('fs')
+const { loc } = require('../loc')
 const path = require('path')
 const config = require('../../config')
 const discordBot = require('../discord/bot')
@@ -42,7 +43,7 @@ function load(server = mainServer()) {
 function save(data, server) {
   const settings = readSettingsFile(server)
   if (!settings) {
-    const err = new Error(`${server.settingsPath} is missing or unreadable`)
+    const err = new Error(loc('access.unreadableSettings', { file: server.settingsPath }))
     err.status = 404
     throw err
   }
@@ -65,7 +66,7 @@ function normalize(data) {
 function assertAssignableRole(roleId, label) {
   const privileged = roleId ? permissions.privilegedPermissionsOfRole(roleId) : []
   if (!privileged.length) return
-  const err = new Error(`the ${label} role ${roleId} holds ${privileged.join(', ')}, so the whitelist and bans may not assign it`)
+  const err = new Error(loc('access.privilegedRole', { label, roleId, permissions: privileged.join(', ') }))
   err.status = 403
   throw err
 }
@@ -174,7 +175,7 @@ async function setWhitelisted(discordId, enabled) {
 async function setBanned(discordId, enabled) {
   const settings = load()
   if (!settings.bannedRoleId) {
-    const err = new Error('bannedRoleId is not configured')
+    const err = new Error(loc('access.bannedRoleMissing'))
     err.status = 400
     throw err
   }

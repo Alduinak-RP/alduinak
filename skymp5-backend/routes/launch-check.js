@@ -12,6 +12,7 @@
  */
 
 const router = require('express').Router()
+const { loc } = require('../sources/loc')
 const path   = require('path')
 const config = require('../config')
 const { lookupSession, recordLaunchCheck, currentFilesVersion } = require('./master-api')
@@ -30,10 +31,10 @@ function normalizePlugins(list) {
 
 router.post('/', async (req, res) => {
   const token = req.headers['x-session']
-  if (!token) return res.status(401).json({ error: 'Missing x-session header.' })
+  if (!token) return res.status(401).json({ error: loc('launchCheck.missingSessionHeader') })
 
   const entry = lookupSession(token)
-  if (!entry) return res.status(401).json({ error: 'Invalid or expired session.' })
+  if (!entry) return res.status(401).json({ error: loc('launchCheck.invalidSession') })
 
   const { filesVersion, plugins, server: serverId } = req.body || {}
   const server = config.serverOrMain(serverId)

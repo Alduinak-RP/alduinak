@@ -2,6 +2,7 @@
 // Character names per profile and slot, reported by the game server so the dashboard and faction rosters can name characters
 
 const db = require('./db')
+const { loc } = require('./loc')
 
 // MongoDB characters: one document per profile id
 const store = db.store('characters')
@@ -29,12 +30,12 @@ function toList(entry) {
 function setCharacters(profileId, list) {
   const id = Number(profileId)
   if (!Number.isInteger(id) || id <= 0) {
-    const err = new Error('invalid profileId')
+    const err = new Error(loc('players.invalidProfileId'))
     err.status = 400
     throw err
   }
   if (!Array.isArray(list)) {
-    const err = new Error('characters must be a list of { slot, name, dead }')
+    const err = new Error(loc('players.charactersNotList'))
     err.status = 400
     throw err
   }

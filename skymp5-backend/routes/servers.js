@@ -1,6 +1,7 @@
 'use strict'
 
 const router = require('express').Router()
+const { loc } = require('../sources/loc')
 const http   = require('http')
 const config = require('../config')
 
@@ -31,7 +32,7 @@ router.get('/', (_req, res) => {
 // Called by the SkyMP in-game client for the game server's host/port; sessionValid/allowed are extra UI hints when X-Session is sent
 router.get('/:key/serverinfo', async (req, res) => {
   const server = config.serverByKey(req.params.key)
-  if (!server) return res.status(403).json({ error: 'Invalid master key.' })
+  if (!server) return res.status(403).json({ error: loc('master.invalidMasterKey') })
 
   const { sessionHints } = require('./master-api')
   const { locked, sessionValid, allowed } = await sessionHints(req.headers['x-session'], server)
@@ -76,7 +77,7 @@ const modsCache = new Map()
 // BSAs and .esl files are filtered out: the client counts only full plugins (Game.getModCount excludes light plugins).
 router.get('/:key/manifest.json', async (req, res) => {
   const server = config.serverByKey(req.params.key)
-  if (!server) return res.status(403).json({ error: 'Invalid master key.' })
+  if (!server) return res.status(403).json({ error: loc('master.invalidMasterKey') })
   const now = Date.now()
   let cached = modsCache.get(server.id)
   if (!cached || now >= cached.expiresAt) {

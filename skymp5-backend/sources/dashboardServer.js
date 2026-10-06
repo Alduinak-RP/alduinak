@@ -3,6 +3,7 @@
 const express = require('express')
 const path    = require('path')
 const config  = require('../config')
+const { table: locTable } = require('./loc')
 
 function originOf(url) {
   try { return new URL(url).origin } catch { return '' }
@@ -53,6 +54,10 @@ function start() {
         dashboardUrl: config.dashboardPublicUrl,
       })};`
     )
+  })
+
+  app.get('/en_loc_dashboard.js', (_req, res) => {
+    res.type('application/javascript').send(`window.EN_LOC_DASHBOARD = ${JSON.stringify(locTable.dashboard)};`)
   })
 
   app.use(express.static(publicDir))

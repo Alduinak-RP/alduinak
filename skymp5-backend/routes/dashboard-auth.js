@@ -3,6 +3,7 @@
 // Discord app settings must list DISCORD_DASHBOARD_REDIRECT_URI under Redirects
 
 const { Router }              = require('express')
+const { loc } = require('../sources/loc')
 const https                   = require('https')
 const crypto                  = require('crypto')
 const rateLimit               = require('express-rate-limit')
@@ -26,7 +27,7 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   handler: (req, res) => {
     audit.append({ ...requestActor(req, null), action: 'login', outcome: 'rate-limited' })
-    res.status(429).json({ error: 'Too many login attempts. Try again in a minute.' })
+    res.status(429).json({ error: loc('auth.tooManyLogins') })
   },
 })
 
@@ -43,7 +44,7 @@ function audienceFor(redirectUrl) {
 // GET /auth/dashboard/url?redirect=<return-url>&nonce=<hex>: returns the Discord authorization URL; the nonce comes back beside the token so the page only accepts a login it started
 router.get('/url', loginLimiter, (req, res) => {
   if (!config.discordClientId) {
-    return res.status(503).json({ error: 'Discord not configured on this server.' })
+    return res.status(503).json({ error: loc('auth.discordNotConfigured') })
   }
 
   const state       = crypto.randomBytes(16).toString('hex')
@@ -85,7 +86,7 @@ router.get('/callback', loginLimiter, async (req, res) => {
   }
 
   if (!code || !state) {
-    return res.status(400).send('Missing code or state.')
+    return res.status(400).send(loc('auth.missingCodeOrState'))
   }
 
   const pend = pending.get(String(state))
@@ -134,7 +135,7 @@ router.get('/callback', loginLimiter, async (req, res) => {
 // GET /auth/dashboard/me: validates a session token and returns the user's Discord info; the website uses it to confirm the session after page load
 router.get('/me', (req, res) => {
   const session = sessionFromRequest(req)
-  if (!session) return res.status(401).json({ error: 'invalid or expired session' })
+  if (!session) return res.status(401).json({ error: loc('auth.invalidSession') })
   const { id: _id, ...user } = session
   res.json({ ok: true, user })
 })

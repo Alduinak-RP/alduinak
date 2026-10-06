@@ -1,4 +1,5 @@
 const router = require('express').Router()
+const { loc } = require('../sources/loc')
 const crypto = require('crypto')
 const fs     = require('fs')
 const config = require('../config')
@@ -20,7 +21,7 @@ function manifestHash(file) {
 router.get('/', (req, res) => {
   const file = manifestPath(config.serverOrMain(req.query.server).id)
   if (!fs.existsSync(file)) {
-    return res.status(404).json({ error: 'This server has not published a mod manifest yet. Ask the admin to run Update modlist in the server manager.' })
+    return res.status(404).json({ error: loc('files.manifestNotPublished') })
   }
   const etag = `"${manifestHash(file)}"`
   if (req.headers['if-none-match'] === etag) return res.status(304).set('ETag', etag).end()

@@ -2,6 +2,7 @@
 // Signed loopback calls from the backend to the AlduinakManager agent
 
 const http     = require('http')
+const { loc } = require('../loc')
 const liveEnv  = require('../liveEnv')
 const { signedHeaders } = require('./protocol')
 
@@ -11,7 +12,7 @@ const MAX_RESPONSE = 4 * 1024 * 1024
 function callAgent({ method, path, actor, body }) {
   return new Promise(resolve => {
     const secret = liveEnv.get('MANAGER_AGENT_SECRET')
-    if (!secret) return resolve({ status: 503, data: { error: 'MANAGER_AGENT_SECRET is not set in skymp5-backend/.env' } })
+    if (!secret) return resolve({ status: 503, data: { error: loc('manager.agentSecretMissing') } })
     const port = parseInt(liveEnv.get('MANAGER_AGENT_PORT') || '4003', 10)
     const payload = body === undefined ? '' : JSON.stringify(body)
     const req = http.request({
@@ -35,13 +36,13 @@ function callAgent({ method, path, actor, body }) {
       })
       res.on('end', () => {
         try { resolve({ status: res.statusCode, data: JSON.parse(Buffer.concat(chunks).toString('utf8')) }) }
-        catch { resolve({ status: 502, data: { error: 'manager agent sent an unreadable reply' } }) }
+        catch { resolve({ status: 502, data: { error: loc('manager.agentUnreadable') } }) }
       })
     })
     req.on('timeout', () => req.destroy(new Error('timeout')))
     req.on('error', err => {
       const down = err.code === 'ECONNREFUSED'
-      resolve({ status: 502, data: { error: down ? 'manager agent is not running (AlduinakManager service)' : `manager agent unreachable: ${err.message}`, agentDown: down } })
+      resolve({ status: 502, data: { error: down ? loc('manager.agentDown') : loc('manager.agentUnreachable', { error: err.message }), agentDown: down } })
     })
     req.end(payload)
   })

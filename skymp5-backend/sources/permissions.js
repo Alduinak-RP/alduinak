@@ -2,6 +2,7 @@
 // Maps Discord role IDs to flat permission strings using data/role-permissions.json
 
 const fs   = require('fs')
+const { loc } = require('./loc')
 const path = require('path')
 const liveEnv = require('./liveEnv')
 
@@ -27,12 +28,12 @@ function listRolePermissions() {
 function setRolePermissions(roleId, name, permissions) {
   const normalizedRoleId = String(roleId || '').trim()
   if (!normalizedRoleId) {
-    const err = new Error('roleId is required')
+    const err = new Error(loc('roles.roleIdRequired'))
     err.status = 400
     throw err
   }
   if (!Array.isArray(permissions)) {
-    const err = new Error('permissions must be an array')
+    const err = new Error(loc('roles.permissionsNotArray'))
     err.status = 400
     throw err
   }

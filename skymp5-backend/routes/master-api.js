@@ -36,6 +36,7 @@
  */
 
 const router = require('express').Router()
+const { loc } = require('../sources/loc')
 const crypto = require('crypto')
 const config = require('../config')
 const factionWhitelist = require('../sources/factionWhitelist')
@@ -170,11 +171,11 @@ function launchGateStatus(entry, server = config.servers[0]) {
 function checkKey(req, res, { write = req.method !== 'GET' } = {}) {
   req.server = config.serverByKey(req.params.key)
   if (!req.server) {
-    res.status(403).json({ error: 'Invalid master key.' })
+    res.status(403).json({ error: loc('master.invalidMasterKey') })
     return false
   }
   if (write && req.server.readOnly) {
-    res.status(403).json({ error: 'This server has read-only access.' })
+    res.status(403).json({ error: loc('master.readOnly') })
     return false
   }
   return true
@@ -182,7 +183,7 @@ function checkKey(req, res, { write = req.method !== 'GET' } = {}) {
 
 function checkWriteToken(req, res) {
   if (!safeEqual(req.headers['x-auth-token'], config.masterApiAuthToken)) {
-    res.status(403).json({ error: 'Invalid auth token.' })
+    res.status(403).json({ error: loc('master.invalidAuthToken') })
     return false
   }
   return true
@@ -191,7 +192,7 @@ function checkWriteToken(req, res) {
 function getProfileDiscordId(req, res) {
   const profileId = parseInt(req.params.profileId, 10)
   if (isNaN(profileId)) {
-    res.status(400).json({ error: 'Invalid profileId.' })
+    res.status(400).json({ error: loc('master.invalidProfileId') })
     return null
   }
 
@@ -238,7 +239,7 @@ router.get('/:key/sessions/:session', async (req, res) => {
   const ip = typeof req.query.ip === 'string' ? req.query.ip.trim().slice(0, 64) : ''
   const entry = redeemPlayToken(req.params.session, ip) || (config.playTokenEnforce ? null : sessions.get(req.params.session))
   if (!entry)
-    return res.status(404).json({ error: 'Session not found or expired.' })
+    return res.status(404).json({ error: loc('master.sessionNotFound') })
 
   let access
   try {
@@ -321,7 +322,7 @@ router.post('/:key/connection-check', (req, res) => {
 
   const { profileId, ip } = req.body || {}
   const id = parseInt(profileId, 10)
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid profileId.' })
+  if (isNaN(id)) return res.status(400).json({ error: loc('master.invalidProfileId') })
 
   const discordId = profiles.getDiscordIdByProfileId(id)
   if (!discordId) return res.status(404).json({ error: 'profileNotFound' })
@@ -348,7 +349,7 @@ router.post('/:key/ban', (req, res) => {
 
   const { profileId, reason, bannedBy } = req.body || {}
   const id = parseInt(profileId, 10)
-  if (isNaN(id)) return res.status(400).json({ error: 'Invalid profileId.' })
+  if (isNaN(id)) return res.status(400).json({ error: loc('master.invalidProfileId') })
 
   const discordId = profiles.getDiscordIdByProfileId(id)
   if (!discordId) return res.status(404).json({ error: 'profileNotFound' })
@@ -381,7 +382,7 @@ function dropSessionsByDiscord(discordId) {
 router.delete('/:key/sessions-by-discord/:discordId', (req, res) => {
   if (!checkKey(req, res) || !checkWriteToken(req, res)) return
   const discordId = String(req.params.discordId || '').trim()
-  if (!discordId) return res.status(400).json({ error: 'Invalid discordId.' })
+  if (!discordId) return res.status(400).json({ error: loc('master.invalidDiscordId') })
   res.json({ ok: true, dropped: dropSessionsByDiscord(discordId) })
 })
 
@@ -391,8 +392,8 @@ router.delete('/:key/sessions-by-discord/:discordId', (req, res) => {
 router.post('/:key/security-alerts', (req, res) => {
   if (!checkKey(req, res) || !checkWriteToken(req, res)) return
   const { type, key, details } = req.body || {}
-  if (type !== 'goldSpawn' || typeof key !== 'string' || !key || key.length > 200) return res.status(400).json({ error: 'Invalid alert.' })
-  if (!details || typeof details !== 'object' || JSON.stringify(details).length > 4000) return res.status(400).json({ error: 'Invalid alert details.' })
+  if (type !== 'goldSpawn' || typeof key !== 'string' || !key || key.length > 200) return res.status(400).json({ error: loc('master.invalidAlert') })
+  if (!details || typeof details !== 'object' || JSON.stringify(details).length > 4000) return res.status(400).json({ error: loc('master.invalidAlertDetails') })
   res.json({ ok: security.raise(type, key, details) })
 })
 
@@ -413,7 +414,7 @@ router.get('/:key/players', (req, res) => {
     }))
     res.json({ players: rows })
   } catch (err) {
-    res.status(500).json({ error: err.message || 'failed to load players' })
+    res.status(500).json({ error: err.message || loc('master.loadPlayersFailed') })
   }
 })
 
@@ -434,7 +435,7 @@ router.get('/:key/factions', (req, res) => {
     }))
     res.json(definitions)
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to load factions' })
+    res.status(err.status || 500).json({ error: err.message || loc('master.loadFactionsFailed') })
   }
 })
 
@@ -448,7 +449,7 @@ router.put('/:key/groups/:scope/:group/regency', (req, res) => {
     const body = req.body || {}
     const input = { enabled: body.enabled }
     if (body.regents !== undefined) {
-      if (!Array.isArray(body.regents)) return res.status(400).json({ error: 'regents must be a list' })
+      if (!Array.isArray(body.regents)) return res.status(400).json({ error: loc('master.regentsNotList') })
       input.regents = body.regents.map(regent => ({
         discordId: profiles.getDiscordIdByProfileId(parseInt(regent && regent.profileId, 10)) || '',
         slot: regent && Number.isInteger(regent.slot) ? regent.slot : null,
@@ -459,7 +460,7 @@ router.put('/:key/groups/:scope/:group/regency', (req, res) => {
     const result = factionWhitelist.setRegency(factionId, input, by ? `skymp-server (${by})` : 'skymp-server')
     res.json({ ok: true, regencyEnabled: result.faction.regencyEnabled, regents: result.faction.regents.length })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to set regency' })
+    res.status(err.status || 500).json({ error: err.message || loc('master.setRegencyFailed') })
   }
 })
 
@@ -472,7 +473,7 @@ router.get('/:key/groups/:scope/:group/roster', (req, res) => {
     const factionId = `${factionWhitelist.slug(req.params.scope)}:${factionWhitelist.slug(req.params.group)}`
     res.json({ factionId, members: factionWhitelist.namedRoster(factionWhitelist.getFactionRoster(factionId)) })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to load roster' })
+    res.status(err.status || 500).json({ error: err.message || loc('master.loadRosterFailed') })
   }
 })
 
@@ -492,7 +493,7 @@ router.delete('/:key/profiles/:profileId/characters/:slot/factions', (req, res) 
       ...getProfileFactionPayload(discordId),
     })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to release character' })
+    res.status(err.status || 500).json({ error: err.message || loc('master.releaseFailed') })
   }
 })
 
@@ -506,7 +507,7 @@ router.put('/:key/profiles/:profileId/characters', (req, res) => {
   try {
     res.json({ characters: characters.setCharacters(req.params.profileId, req.body && req.body.characters) })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to store characters' })
+    res.status(err.status || 500).json({ error: err.message || loc('master.storeCharactersFailed') })
   }
 })
 
@@ -529,7 +530,7 @@ router.post('/:key/profiles/:profileId/factions', (req, res) => {
       ...getProfileFactionPayload(discordId),
     })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to assign faction' })
+    res.status(err.status || 500).json({ error: err.message || loc('players.assignFactionFailed') })
   }
 })
 
@@ -545,7 +546,7 @@ router.delete('/:key/profiles/:profileId/factions/:assignmentId', (req, res) => 
     const belongsToPlayer = factionWhitelist
       .getPlayerAssignments(discordId)
       .some(assignment => assignment.id === req.params.assignmentId)
-    if (!belongsToPlayer) return res.status(404).json({ error: 'assignment not found for player' })
+    if (!belongsToPlayer) return res.status(404).json({ error: loc('players.assignmentNotFound') })
 
     factionWhitelist.deleteAssignment(req.params.assignmentId, 'skymp-server')
     res.json({
@@ -553,7 +554,7 @@ router.delete('/:key/profiles/:profileId/factions/:assignmentId', (req, res) => 
       ...getProfileFactionPayload(discordId),
     })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to remove faction' })
+    res.status(err.status || 500).json({ error: err.message || loc('players.removeFactionFailed') })
   }
 })
 
@@ -565,7 +566,7 @@ router.get('/:key/sessions/:session/balance', (req, res) => {
   pruneExpired()
   const entry = gameSession(req.params.session)
   if (!entry)
-    return res.status(404).json({ error: 'Session not found or expired.' })
+    return res.status(404).json({ error: loc('master.sessionNotFound') })
 
   const balance = getBalance(entry.profileId)
   res.json({ user: { id: entry.profileId, balance } })
@@ -581,11 +582,11 @@ router.post('/:key/sessions/:session/purchase', (req, res) => {
   pruneExpired()
   const entry = gameSession(req.params.session)
   if (!entry)
-    return res.status(404).json({ error: 'Session not found or expired.' })
+    return res.status(404).json({ error: loc('master.sessionNotFound') })
 
   const { balanceToSpend } = req.body || {}
   if (typeof balanceToSpend !== 'number' || balanceToSpend < 0)
-    return res.status(400).json({ error: 'balanceToSpend must be a non-negative number.' })
+    return res.status(400).json({ error: loc('master.balanceInvalid') })
 
   const current = getBalance(entry.profileId)
   if (current < balanceToSpend)

@@ -1,4 +1,5 @@
 const router = require('express').Router()
+const { loc } = require('../sources/loc')
 const fs     = require('fs')
 const config = require('../config')
 
@@ -19,7 +20,7 @@ const page = body => `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Alduinak mod downloads</title>
+<title>${loc('downloads.pageTitle')}</title>
 <style>
   body { font-family: system-ui, sans-serif; background:#1b1b1f; color:#e9e9ee; margin:0; padding:2rem; line-height:1.5; }
   .wrap { max-width: 760px; margin: 0 auto; }
@@ -52,8 +53,8 @@ router.get('/', (req, res) => {
     manifest = expand(JSON.parse(fs.readFileSync(manifestPath(config.serverOrMain(req.query.server).id), 'utf8')))
   } catch (err) {
     return res.status(404).type('text/html').send(page(
-      `<h1>Mod downloads aren't ready yet</h1>` +
-      `<p class="empty">The install manifest has not been built on the server.</p>`))
+      `<h1>${loc('downloads.notReadyTitle')}</h1>` +
+      `<p class="empty">${loc('downloads.notReady')}</p>`))
   }
 
   // One link per unique Nexus file (modId+fileId) from the manifest's archives.
@@ -84,26 +85,26 @@ router.get('/', (req, res) => {
   ).join('\n')
 
   res.type('text/html').send(page(`
-  <h1>Alduinak mod downloads</h1>
+  <h1>${loc('downloads.heading')}</h1>
   <div class="note">
-    <p><strong>Ctrl+click</strong> (Cmd+click on macOS) each link below to open it in a background tab, then click
-    <strong>Slow Download</strong> on each Nexus page. Do about <strong>5 at a time</strong> so Nexus doesn't throttle you.</p>
-    <p>Move every zip/7z archive you download into your <code>Alduinak/downloads</code> folder, which the launcher opened for you.</p>
-    ${hiddenCount > 0 ? `<p>${hiddenCount} mod${hiddenCount === 1 ? '' : 's'} you already downloaded ${hiddenCount === 1 ? 'is' : 'are'} hidden.</p>` : ''}
+    <p>${loc('downloads.instructionsHtml')}</p>
+    <p>${loc('downloads.moveHtml')}</p>
+    ${hiddenCount > 0 ? `<p>${loc(hiddenCount === 1 ? 'downloads.hiddenOne' : 'downloads.hiddenMany', { n: hiddenCount })}</p>` : ''}
     ${shown.length ? `<p>
-      <button class="open-all" id="open-batch">Open the first ${Math.min(5, shown.length)} links</button>
-      <span class="open-all-hint">Opens 5 tabs per click, working down the list, so Nexus never gets hit all at once.
-      Your browser will ask you to allow pop-ups for this site the first time.</span>
+      <button class="open-all" id="open-batch">${loc('downloads.openFirst', { n: Math.min(5, shown.length) })}</button>
+      <span class="open-all-hint">${loc('downloads.openHint')}</span>
     </p>` : ''}
   </div>
   ${shown.length
     ? `<ol>\n${rows}\n</ol>`
-    : `<p class="empty">${hiddenCount > 0 ? 'Every mod is already downloaded. Go back to the launcher and continue the install.' : 'No Nexus mods in the current manifest.'}</p>`}
+    : `<p class="empty">${hiddenCount > 0 ? loc('downloads.allDownloaded') : loc('downloads.none')}</p>`}
   <script>
     var batchBtn = document.getElementById('open-batch')
     if (batchBtn) {
       var BATCH = 5
       var links = document.querySelectorAll('ol a')
+      var TEXT  = ${JSON.stringify({ blocked: loc('downloads.blocked'), allOpened: loc('downloads.allOpened'), openNext: loc('downloads.openNext') })}
+      var fill  = function (s, v) { return s.replace(/\{(\w+)\}/g, function (m, k) { return k in v ? String(v[k]) : m }) }
       var next  = 0
       batchBtn.addEventListener('click', function () {
         // Synchronous loop on purpose: pop-up blockers only honour window.open calls
@@ -119,14 +120,12 @@ router.get('/', (req, res) => {
           next++
         }
         if (blocked) {
-          batchBtn.textContent = 'Pop-ups blocked - allow them for this site, then click again (' +
-            next + ' of ' + links.length + ' opened)'
+          batchBtn.textContent = fill(TEXT.blocked, { next: next, total: links.length })
         } else if (next >= links.length) {
           batchBtn.disabled    = true
-          batchBtn.textContent = 'All ' + links.length + ' links opened'
+          batchBtn.textContent = fill(TEXT.allOpened, { total: links.length })
         } else {
-          batchBtn.textContent = 'Open the next ' + Math.min(BATCH, links.length - next) +
-            ' links (' + next + ' of ' + links.length + ' opened)'
+          batchBtn.textContent = fill(TEXT.openNext, { n: Math.min(BATCH, links.length - next), next: next, total: links.length })
         }
       })
     }

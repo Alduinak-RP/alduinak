@@ -3,7 +3,7 @@
 ;(() => {
   const POLL_MS = 3000
   const LOG_TEXT_MAX = 1024 * 1024
-  const TABS = [['status', 'Status'], ['jobs', 'Jobs'], ['logs', 'Logs'], ['console', 'Console'], ['settings', 'Settings']]
+  const TABS = [['status', dashLoc('manager.tabStatus')], ['jobs', dashLoc('manager.tabJobs')], ['logs', dashLoc('manager.tabLogs')], ['console', dashLoc('manager.tabConsole')], ['settings', dashLoc('manager.tabSettings')]]
 
   const m = {
     user: null, me: null, tab: 'status', stopped: false, inFlight: false, opening: false,
@@ -32,10 +32,10 @@
   const fmtBytes = n => (n === null || n === undefined ? '-' : n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`)
 
   // DOM
-  const navButton = h('button', { class: 'nav-button hidden', type: 'button', dataset: { view: 'manager' } }, 'Server')
+  const navButton = h('button', { class: 'nav-button hidden', type: 'button', dataset: { view: 'manager' } }, dashLoc('nav.server'))
   const banner = h('div', { class: 'manager-banner hidden' })
   const sessionInfo = h('span', { class: 'muted' })
-  const agentPill = h('span', { class: 'status-pill' }, 'Agent unknown')
+  const agentPill = h('span', { class: 'status-pill' }, dashLoc('manager.agentUnknown'))
   const tabButtons = TABS.map(([key, label]) => h('button', { class: 'ghost mini manager-tab', type: 'button', dataset: { managerTab: key }, onclick: () => selectTab(key) }, label))
 
   const servicesTable = h('div', { class: 'table compact-table' })
@@ -44,7 +44,7 @@
   const buildButtons = h('div', { class: 'actions-row' })
 
   const jobsTable = h('div', { class: 'table compact-table' })
-  const jobTitle = h('span', { class: 'muted' }, 'No job selected')
+  const jobTitle = h('span', { class: 'muted' }, dashLoc('manager.noJob'))
   const jobPre = h('pre', { class: 'manager-pre' })
 
   const logSelect = h('select', { onchange: () => openLog(logSelect.value) })
@@ -54,37 +54,37 @@
 
   const consoleState = h('span', { class: 'muted' })
   const consolePre = h('pre', { class: 'manager-pre tall' })
-  const consoleInput = h('input', { autocomplete: 'off', maxlength: '500', placeholder: 'say <text> | notify <name|all> <text> | kick <name> | players | status' })
+  const consoleInput = h('input', { autocomplete: 'off', maxlength: '500', placeholder: dashLoc('manager.consolePlaceholder') })
 
   const settingsBox = h('div', { class: 'manager-settings' })
 
   const panels = {
     status: h('div', { class: 'manager-panel' },
       h('section', { class: 'panel' },
-        h('div', { class: 'panel-head' }, h('h2', {}, 'Services'), busyLine),
+        h('div', { class: 'panel-head' }, h('h2', {}, dashLoc('manager.services')), busyLine),
         purgeLine,
         servicesTable),
       h('section', { class: 'panel' },
-        h('div', { class: 'panel-head' }, h('h2', {}, 'Builds'), h('span', { class: 'muted' }, 'Runs on the box from main; refused while the checkout has uncommitted changes. gamemode_extensions is not in git, so each job records its file hashes instead')),
+        h('div', { class: 'panel-head' }, h('h2', {}, dashLoc('manager.builds')), h('span', { class: 'muted' }, dashLoc('manager.buildsNote'))),
         buildButtons)),
     jobs: h('div', { class: 'split' },
-      h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Job history'), h('button', { class: 'ghost mini', type: 'button', onclick: () => refreshJobs() }, 'Refresh')), jobsTable),
-      h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Job log'), jobTitle), jobPre)),
+      h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, dashLoc('manager.jobHistory')), h('button', { class: 'ghost mini', type: 'button', onclick: () => refreshJobs() }, dashLoc('common.refresh'))), jobsTable),
+      h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, dashLoc('manager.jobLog')), jobTitle), jobPre)),
     logs: h('section', { class: 'panel' },
       h('div', { class: 'toolbar' },
-        h('label', {}, 'Log', logSelect),
-        h('button', { class: 'ghost mini', type: 'button', onclick: () => loadLogList() }, 'Refresh list'),
-        h('button', { class: 'ghost mini', type: 'button', onclick: () => loadOlder() }, 'Load older'),
-        h('label', { class: 'check-row' }, followInput, h('span', {}, 'Follow')),
+        h('label', {}, dashLoc('manager.log'), logSelect),
+        h('button', { class: 'ghost mini', type: 'button', onclick: () => loadLogList() }, dashLoc('manager.refreshList')),
+        h('button', { class: 'ghost mini', type: 'button', onclick: () => loadOlder() }, dashLoc('manager.loadOlder')),
+        h('label', { class: 'check-row' }, followInput, h('span', {}, dashLoc('manager.follow'))),
         logInfo),
       logPre),
     console: h('section', { class: 'panel' },
-      h('div', { class: 'panel-head' }, h('h2', {}, 'Game console'), consoleState),
+      h('div', { class: 'panel-head' }, h('h2', {}, dashLoc('manager.gameConsole')), consoleState),
       consolePre,
       h('form', { class: 'manager-console-form', onsubmit: event => { event.preventDefault(); sendConsole() } },
-        consoleInput, h('button', { class: 'primary', type: 'submit' }, 'Send'))),
+        consoleInput, h('button', { class: 'primary', type: 'submit' }, dashLoc('manager.send')))),
     settings: h('div', {},
-      h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, 'Read-only. Secrets only show whether they are set; edit settings on the box.'), h('button', { class: 'ghost mini', type: 'button', onclick: () => loadSettings() }, 'Refresh')),
+      h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, dashLoc('manager.settingsNote')), h('button', { class: 'ghost mini', type: 'button', onclick: () => loadSettings() }, dashLoc('common.refresh'))),
       settingsBox),
   }
 
@@ -124,9 +124,9 @@
     } catch (err) {
       if (err.status === 401 || err.status === 403) {
         m.stopped = true
-        showBanner(`${err.message}. The Server tab stopped refreshing.`)
+        showBanner(dashLoc('manager.stopped', { error: err.message }))
       } else if (err.status === 502 || err.status === 503) {
-        agentPill.textContent = 'Agent offline'
+        agentPill.textContent = dashLoc('manager.agentOffline')
         agentPill.classList.remove('online')
         showBanner(err.message)
       }
@@ -160,10 +160,10 @@
   // Status and builds
 
   async function startJob(kind, label) {
-    if (!window.confirm(`${label}?`)) return
+    if (!window.confirm(dashLoc('manager.confirmJob', { label }))) return
     try {
       const r = await post('/jobs', { kind })
-      toast(`${label} started`)
+      toast(dashLoc('manager.jobStarted', { label }))
       m.jobId = r.jobId
       m.jobFrom = 0
       m.jobDone = false
@@ -181,12 +181,12 @@
       h('td', {}, h('span', { class: `tag ${s.status === 'SERVICE_RUNNING' ? '' : 'locked'}` }, s.status.replace(/^SERVICE_/, '').toLowerCase())),
       h('td', {}, s.controllable
         ? h('div', { class: 'manager-buttons' },
-          h('button', { class: 'ghost mini', type: 'button', onclick: () => startJob('game.start', 'Start the game server') }, 'Start'),
-          h('button', { class: 'ghost mini', type: 'button', onclick: () => startJob('game.restart', 'Restart the game server') }, 'Restart'),
-          h('button', { class: 'danger mini', type: 'button', onclick: () => startJob('game.stop', 'Stop the game server') }, 'Stop'))
-        : h('span', { class: 'muted' }, 'local only'))))
-    servicesTable.replaceChildren(h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Service'), h('th', {}, 'Windows service'), h('th', {}, 'Status'), h('th', {}, ''))), h('tbody', {}, rows)))
-    busyLine.textContent = data.busy ? `Busy: ${data.busy.kind} (${data.busy.source}${data.busy.actor ? `, ${data.busy.actor}` : ''}) since ${fmtTime(data.busy.startedAt)}` : 'No build or job running'
+          h('button', { class: 'ghost mini', type: 'button', onclick: () => startJob('game.start', dashLoc('manager.startServer')) }, dashLoc('manager.start')),
+          h('button', { class: 'ghost mini', type: 'button', onclick: () => startJob('game.restart', dashLoc('manager.restartServer')) }, dashLoc('manager.restart')),
+          h('button', { class: 'danger mini', type: 'button', onclick: () => startJob('game.stop', dashLoc('manager.stopServer')) }, dashLoc('manager.stop')))
+        : h('span', { class: 'muted' }, dashLoc('manager.localOnly')))))
+    servicesTable.replaceChildren(h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, dashLoc('manager.colService')), h('th', {}, dashLoc('manager.colWindowsService')), h('th', {}, dashLoc('manager.colStatus')), h('th', {}, ''))), h('tbody', {}, rows)))
+    busyLine.textContent = data.busy ? dashLoc(data.busy.actor ? 'manager.busyBy' : 'manager.busy', { kind: data.busy.kind, source: data.busy.source, actor: data.busy.actor, since: fmtTime(data.busy.startedAt) }) : dashLoc('manager.idle')
     purgeLine.textContent = data.purgePending || ''
     purgeLine.classList.toggle('hidden', !data.purgePending)
   }
@@ -208,12 +208,12 @@
       h('td', {}, fmtTime(job.startedAt)),
       h('td', {}, job.label || job.kind),
       h('td', {}, job.actor ? job.actor.username : '-'),
-      h('td', { class: 'muted', title: job.gamemode ? `gamemode_extensions sha256 ${job.gamemode.sha256}` : null }, job.commit ? job.commit.slice(0, 10) : '-', job.gamemode ? ` / gm ${job.gamemode.sha256.slice(0, 10)}` : ''),
+      h('td', { class: 'muted', title: job.gamemode ? dashLoc('manager.gamemodeHash', { sha: job.gamemode.sha256 }) : null }, job.commit ? job.commit.slice(0, 10) : '-', job.gamemode ? dashLoc('manager.gamemodeShort', { sha: job.gamemode.sha256.slice(0, 10) }) : ''),
       h('td', {}, h('span', { class: `tag ${job.status === 'ok' || job.status === 'running' ? '' : 'locked'}` }, job.status)),
-      h('td', {}, h('button', { class: 'ghost mini', type: 'button', onclick: () => openJob(job.id) }, 'Log'))))
+      h('td', {}, h('button', { class: 'ghost mini', type: 'button', onclick: () => openJob(job.id) }, dashLoc('manager.logButton')))))
     jobsTable.replaceChildren(rows.length
-      ? h('table', {}, h('thead', {}, h('tr', {}, ['Started', 'Job', 'By', 'Commit', 'Status', ''].map(t => h('th', {}, t)))), h('tbody', {}, rows))
-      : h('div', { class: 'empty-row' }, 'No web jobs yet'))
+      ? h('table', {}, h('thead', {}, h('tr', {}, [dashLoc('manager.colStarted'), dashLoc('manager.colJob'), dashLoc('manager.colBy'), dashLoc('manager.colCommit'), dashLoc('manager.colStatus'), ''].map(t => h('th', {}, t)))), h('tbody', {}, rows))
+      : h('div', { class: 'empty-row' }, dashLoc('manager.noJobs')))
     if (m.jobId && !data.jobs.some(j => j.id === m.jobId)) jobTitle.textContent = m.jobId
   }
 
@@ -246,7 +246,7 @@
   async function loadLogList() {
     const data = await call('/logs')
     const previous = logSelect.value
-    logSelect.replaceChildren(h('option', { value: '' }, 'Choose a log'), ...data.logs.map(l => h('option', { value: l.id }, `${l.label} - ${l.name} (${fmtBytes(l.size)})`)))
+    logSelect.replaceChildren(h('option', { value: '' }, dashLoc('manager.chooseLog')), ...data.logs.map(l => h('option', { value: l.id }, `${l.label} - ${l.name} (${fmtBytes(l.size)})`)))
     if (data.logs.some(l => l.id === previous)) logSelect.value = previous
   }
 
@@ -260,7 +260,7 @@
     logPre.textContent = data.text
     m.logStart = data.start
     m.logEnd = data.end
-    logInfo.textContent = `${fmtBytes(data.size)} total`
+    logInfo.textContent = dashLoc('manager.logTotal', { size: fmtBytes(data.size) })
     logPre.scrollTop = logPre.scrollHeight
   }
 
@@ -287,14 +287,14 @@
       if (atBottom) logPre.scrollTop = logPre.scrollHeight
     }
     m.logEnd = data.end
-    logInfo.textContent = `${fmtBytes(data.size)} total`
+    logInfo.textContent = dashLoc('manager.logTotal', { size: fmtBytes(data.size) })
   }
 
   // Console
 
   async function pollConsole() {
     const data = await call(`/console?after=${m.consoleAfter}`)
-    consoleState.textContent = data.connected ? 'Connected to the game server' : 'Relay offline'
+    consoleState.textContent = data.connected ? dashLoc('manager.connected') : dashLoc('manager.relayOffline')
     if (data.last < m.consoleAfter) m.consoleAfter = 0
     if (data.lines.length) {
       const atBottom = consolePre.scrollTop + consolePre.clientHeight >= consolePre.scrollHeight - 8
@@ -319,11 +319,11 @@
   // Settings
 
   function settingValue(entry) {
-    if (entry.secret) return h('span', { class: `tag ${entry.secretSet ? '' : 'locked'}` }, entry.secretSet ? 'secret set' : 'not set')
-    if (entry.value === undefined || entry.value === null || entry.value === '') return h('span', { class: 'muted' }, 'unset')
+    if (entry.secret) return h('span', { class: `tag ${entry.secretSet ? '' : 'locked'}` }, entry.secretSet ? dashLoc('manager.secretSet') : dashLoc('manager.notSet'))
+    if (entry.value === undefined || entry.value === null || entry.value === '') return h('span', { class: 'muted' }, dashLoc('manager.unset'))
     if (typeof entry.value !== 'object') return String(entry.value)
     const text = JSON.stringify(entry.value, (key, value) => (value && typeof value === 'object' && Object.keys(value).length === 1 && 'secretSet' in value
-      ? (value.secretSet ? '[secret set]' : '[secret not set]')
+      ? (value.secretSet ? dashLoc('manager.secretSetJson') : dashLoc('manager.secretNotSetJson'))
       : value), 2)
     return h('pre', { class: 'manager-json' }, text)
   }
@@ -332,16 +332,16 @@
     const rows = [...data.fields, ...data.extra].map(entry => h('tr', {},
       h('td', {}, h('div', {}, entry.label), h('div', { class: 'muted' }, entry.key)),
       h('td', {}, settingValue(entry)),
-      h('td', {}, entry.locked ? h('span', { class: 'tag locked' }, 'locked') : '')))
+      h('td', {}, entry.locked ? h('span', { class: 'tag locked' }, dashLoc('manager.locked')) : '')))
     return h('section', { class: 'panel' },
-      h('div', { class: 'panel-head' }, h('h2', {}, title), h('span', { class: 'muted' }, data.exists === false ? `missing: ${data.path}` : data.path)),
+      h('div', { class: 'panel-head' }, h('h2', {}, title), h('span', { class: 'muted' }, data.exists === false ? dashLoc('manager.missing', { path: data.path }) : data.path)),
       data.error ? h('p', { class: 'manager-warning' }, data.error) : null,
-      h('div', { class: 'table' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Setting'), h('th', {}, 'Value'), h('th', {}, 'Web'))), h('tbody', {}, rows))))
+      h('div', { class: 'table' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, dashLoc('manager.colSetting')), h('th', {}, dashLoc('manager.colValue')), h('th', {}, dashLoc('manager.colWeb')))), h('tbody', {}, rows))))
   }
 
   async function loadSettings() {
     const [server, env] = await Promise.all([call('/settings/serverSettings'), call('/settings/backendEnv')])
-    settingsBox.replaceChildren(settingsTable('server-settings.json', server), settingsTable('Backend .env', env))
+    settingsBox.replaceChildren(settingsTable('server-settings.json', server), settingsTable(dashLoc('manager.backendEnv'), env))
   }
 
   // Polling, paused while the tab or the browser window is hidden
@@ -358,7 +358,7 @@
       if (m.tab === 'logs') await followLog()
       if (m.tab === 'console') await pollConsole()
       const health = await call('/health')
-      agentPill.textContent = health.relayConnected ? 'Agent online' : 'Agent online, relay offline'
+      agentPill.textContent = health.relayConnected ? dashLoc('manager.agentOnline') : dashLoc('manager.agentRelayOffline')
       agentPill.classList.add('online')
       hideBanner()
     } catch {
@@ -374,8 +374,8 @@
     if (user.aud !== 'dashboard' || user.mfa !== true) {
       m.me = null
       showBanner(user.mfa !== true
-        ? 'The server manager needs two-factor authentication on your Discord account. Turn it on in Discord, then log out and log in again.'
-        : 'The server manager only accepts logins started from this dashboard. Log out and log in again here.')
+        ? dashLoc('manager.needsMfa')
+        : dashLoc('manager.wrongAudience'))
       for (const panel of Object.values(panels)) panel.classList.add('hidden')
       return
     }
@@ -384,7 +384,7 @@
       m.stopped = false
       m.me = await call('/me')
       hideBanner()
-      sessionInfo.textContent = `Signed out after ${Math.round(m.me.idleTimeoutMs / 60000)} minutes without input; session ends ${fmtTime(new Date(m.me.expiresAt).toISOString())}`
+      sessionInfo.textContent = dashLoc('manager.sessionInfo', { minutes: Math.round(m.me.idleTimeoutMs / 60000), ends: fmtTime(new Date(m.me.expiresAt).toISOString()) })
       renderBuildButtons()
       selectTab(m.tab)
     } catch {

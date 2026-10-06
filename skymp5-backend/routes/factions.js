@@ -3,6 +3,7 @@
 // Faction and rank definitions for the dashboard and the Server Manager Factions tab; API in docs/docs_roleplay_property_factions.md section 6
 
 const { Router }          = require('express')
+const { loc } = require('../sources/loc')
 const managerOrPermission = require('../middleware/managerOrPermission')
 const { hasPermission }   = require('../sources/permissions')
 const store               = require('../sources/factionWhitelist')
@@ -14,7 +15,7 @@ const canView = managerOrPermission('factions.view')
 const canDefine = managerOrPermission('factions.define')
 
 for (const name of ['scope', 'group', 'rank']) {
-  router.param(name, (_req, res, next, value) => (SLUG_RE.test(value) ? next() : res.status(404).json({ error: 'not found' })))
+  router.param(name, (_req, res, next, value) => (SLUG_RE.test(value) ? next() : res.status(404).json({ error: loc('factions.notFound') })))
 }
 
 const factionId = req => `${req.params.scope}:${req.params.group}`
@@ -26,7 +27,7 @@ const reply = (status, fn) => (req, res) => {
     res.status(status).json(fn(req))
   } catch (err) {
     if (!err.status) console.error('[factions]', err)
-    res.status(err.status || 500).json({ error: err.message || 'faction change failed', ...(err.extra || {}) })
+    res.status(err.status || 500).json({ error: err.message || loc('factions.changeFailed'), ...(err.extra || {}) })
   }
 }
 

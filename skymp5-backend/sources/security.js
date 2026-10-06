@@ -4,6 +4,7 @@
 // one document per key, so the same finding raised again adds nothing.
 
 const db = require('./db')
+const { loc } = require('./loc')
 const config = require('../config')
 
 const TYPES = new Set(['banEvasion', 'goldSpawn'])
@@ -23,10 +24,13 @@ function raise(type, key, details) {
 
 function describe(type, d) {
   if (type === 'banEvasion') {
-    const accounts = (d.accounts || []).map(a => `${a.name || a.discordId} (profile ${a.profileId}, <@${a.discordId}>)${a.banned ? ' BANNED' : ''}`).join(', ')
-    return `**Ban evasion?** ${d.kind === 'hwid' ? 'HWID' : 'IP'} \`${d.value}\` is shared by ${accounts}`
+    const accounts = (d.accounts || []).map(a => {
+      const account = loc('security.banEvasionAccount', { name: a.name || a.discordId, profileId: a.profileId, discordId: a.discordId })
+      return a.banned ? loc('security.banEvasionBanned', { account }) : account
+    }).join(', ')
+    return loc('security.banEvasion', { kind: d.kind === 'hwid' ? 'HWID' : 'IP', value: d.value, accounts })
   }
-  return `**Gold spawning?** ${d.name || d.actorId} (profile ${d.profileId}) went from ${Number(d.before || 0).toLocaleString()} to ${Number(d.after || 0).toLocaleString()} gold (+${Number(d.gain || 0).toLocaleString()})`
+  return loc('security.goldSpawn', { name: d.name || d.actorId, profileId: d.profileId, before: Number(d.before || 0).toLocaleString(), after: Number(d.after || 0).toLocaleString(), gain: Number(d.gain || 0).toLocaleString() })
 }
 
 // New alerts also go to the Discord channel named by securityAlertChannelId in server-settings.json

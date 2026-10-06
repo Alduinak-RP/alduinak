@@ -18,6 +18,7 @@ for (const rel of ['config.js', 'package.json', 'routes', 'sources', 'middleware
   fs.cpSync(path.join(backendDir, rel), path.join(root, 'skymp5-backend', rel), { recursive: true, filter: skip })
 }
 fs.cpSync(path.join(repoRoot, 'server-manager', 'src'), path.join(root, 'server-manager', 'src'), { recursive: true, filter: skip })
+fs.cpSync(path.join(repoRoot, 'localization'), path.join(root, 'localization'), { recursive: true })
 
 const testDir = path.join(root, 'skymp5-backend', 'test')
 const testFiles = fs.readdirSync(testDir).filter(f => f.endsWith('.test.js')).map(f => path.join(testDir, f))

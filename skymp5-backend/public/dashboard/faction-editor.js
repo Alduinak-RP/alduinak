@@ -3,21 +3,21 @@
 // Faction and rank definition editor shared by the dashboard Factions view and the Server Manager Factions tab; the host supplies request(method, path, body)
 ;(function () {
   const RANK_LISTS = [
-    ['recruit', 'Recruit into'],
-    ['promote', 'Promote to'],
+    ['recruit', dashLoc('editor.recruitInto')],
+    ['promote', dashLoc('editor.promoteTo')],
   ]
   const RANK_FLAGS = [
-    ['leader', 'Leader (every permission)', false],
-    ['remove', 'Removes members', false],
-    ['craft', 'Crafts faction gear', false],
-    ['housing', 'Manages property (faction claims, a territory rank also its hold\'s)', false],
-    ['arrest', 'Arrests (cuffs and cells)', false],
-    ['execute', 'Executes players', false],
-    ['factionAccess', 'Opens faction doors and chests', false],
+    ['leader', dashLoc('editor.flagLeader'), false],
+    ['remove', dashLoc('editor.flagRemove'), false],
+    ['craft', dashLoc('editor.flagCraft'), false],
+    ['housing', dashLoc('editor.flagHousing'), false],
+    ['arrest', dashLoc('editor.flagArrest'), false],
+    ['execute', dashLoc('editor.flagExecute'), false],
+    ['factionAccess', dashLoc('editor.flagFactionAccess'), false],
   ]
   // The stored type hold reads Territory in every label
-  const TYPE_NAMES = { hold: 'Territory', military: 'Military', guild: 'Guild' }
-  const SCOPE_NAMES = { hold: 'Territory', faction: 'Army or guild' }
+  const TYPE_NAMES = { hold: dashLoc('editor.typeHold'), military: dashLoc('editor.typeMilitary'), guild: dashLoc('editor.typeGuild') }
+  const SCOPE_NAMES = { hold: dashLoc('editor.typeHold'), faction: dashLoc('editor.scopeFaction') }
   const PROVINCES = ['Skyrim', 'Cyrodiil', 'Morrowind', 'High Rock', 'Valenwood', 'Elsweyr', 'Black Marsh', 'Summerset']
   const HOLD_NAMES = { reach: 'The Reach', rift: 'The Rift', pale: 'The Pale' }
   const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/
@@ -29,9 +29,9 @@
   const slugOf = rank => String(rank.id).split(':')[2]
   const holdName = key => HOLD_NAMES[key] || key.charAt(0).toUpperCase() + key.slice(1)
   const holdKey = groupSlug => String(groupSlug || '').replace(/^the-/, '')
-  const landText = faction => (faction.land ? `land ${holdName(faction.land)}` : 'no land in Skyrim, so no border limits its ranks until it is given land')
-  const slotText = slot => (slot === null || slot === undefined ? 'every character' : `character ${Number(slot) + 1}`)
-  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`
+  const landText = faction => (faction.land ? dashLoc('editor.land', { hold: holdName(faction.land) }) : dashLoc('editor.noLand'))
+  const slotText = slot => (slot === null || slot === undefined ? dashLoc('editor.everyCharacter') : dashLoc('editor.character', { n: Number(slot) + 1 }))
+  const plural = (n, one, many) => dashLoc(n === 1 ? one : many, { n })
   const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x))
   const provinceOf = faction => faction.province || 'Skyrim'
   const byName = (a, b) => (a.scope === 'hold' ? 0 : 1) - (b.scope === 'hold' ? 0 : 1) || a.name.localeCompare(b.name)
@@ -43,12 +43,12 @@
   // Faction ids are "<scope>:<group>" slugs, so paths never need encoding and cannot leave /api/factions
   function factionPath(id, suffix = '') {
     const [scope, group, extra] = String(id).split(':')
-    if (extra !== undefined || !SLUG_RE.test(scope || '') || !SLUG_RE.test(group || '')) throw new Error(`unexpected faction id ${id}`)
+    if (extra !== undefined || !SLUG_RE.test(scope || '') || !SLUG_RE.test(group || '')) throw new Error(dashLoc('editor.unexpectedFaction', { id }))
     return `/${scope}/${group}${suffix}`
   }
 
   function rankPath(faction, slug) {
-    if (!SLUG_RE.test(slug)) throw new Error(`unexpected rank id ${slug}`)
+    if (!SLUG_RE.test(slug)) throw new Error(dashLoc('editor.unexpectedRank', { id: slug }))
     return factionPath(faction.id, `/ranks/${slug}`)
   }
 
@@ -61,16 +61,16 @@
     root.classList.add('fe')
     root.innerHTML = `
       <div class="fe-toolbar">
-        <input class="fe-search" type="search" placeholder="Search factions or provinces" autocomplete="off">
-        <select class="fe-sort" title="List order">
-          <option value="name"${state.sort === 'name' ? ' selected' : ''}>Sort by name</option>
-          <option value="province"${state.sort === 'province' ? ' selected' : ''}>Group by province</option>
+        <input class="fe-search" type="search" placeholder="${esc(dashLoc('editor.search'))}" autocomplete="off">
+        <select class="fe-sort" title="${esc(dashLoc('editor.listOrder'))}">
+          <option value="name"${state.sort === 'name' ? ' selected' : ''}>${esc(dashLoc('editor.sortName'))}</option>
+          <option value="province"${state.sort === 'province' ? ' selected' : ''}>${esc(dashLoc('editor.sortProvince'))}</option>
         </select>
-        <button class="fe-btn fe-primary" type="button" data-act="new" data-write>New faction</button>
-        <button class="fe-btn" type="button" data-act="refresh">Refresh</button>
+        <button class="fe-btn fe-primary" type="button" data-act="new" data-write>${esc(dashLoc('editor.newFaction'))}</button>
+        <button class="fe-btn" type="button" data-act="refresh">${esc(dashLoc('editor.refresh'))}</button>
         <span class="fe-status" role="status"></span>
       </div>
-      <p class="fe-note">Edits reach the game server within about 20 seconds. Faction doors and chests are listed in the game server's faction-access.json.</p>
+      <p class="fe-note">${esc(dashLoc('editor.note'))}</p>
       <div class="fe-split">
         <ul class="fe-list"></ul>
         <div class="fe-detail"></div>
@@ -101,13 +101,13 @@
       }
       if (res && res.ok) return res.data
       const data = (res && res.data) || {}
-      const err = new Error(data.error || (res && res.error) || `request failed (${res ? res.status : 'no response'})`)
+      const err = new Error(data.error || (res && res.error) || dashLoc('editor.requestFailed', { status: res ? res.status : dashLoc('editor.noResponse') }))
       err.data = data
       if (data.stale && data.faction) {
         replaceFaction(data.faction)
         state.confirm = null
         render()
-        err.message = 'Someone else changed this faction; it has been reloaded, apply your change again.'
+        err.message = dashLoc('editor.staleReloaded')
       }
       throw err
     }
@@ -175,14 +175,14 @@
       const heading = (f, i) => {
         if (!grouped || (i > 0 && provinceOf(shown[i - 1]) === provinceOf(f))) return ''
         const count = shown.filter(x => provinceOf(x) === provinceOf(f)).length
-        return `<li class="fe-group">${esc(provinceOf(f))} <span class="fe-muted">${plural(count, 'faction', 'factions')}</span></li>`
+        return `<li class="fe-group">${esc(provinceOf(f))} <span class="fe-muted">${plural(count, 'editor.factionOne', 'editor.factionMany')}</span></li>`
       }
-      $('.fe-list').innerHTML = !state.loaded ? '<li class="fe-empty">Loading…</li>'
-        : !shown.length ? `<li class="fe-empty">${q ? 'No matches.' : 'No factions yet.'}</li>`
+      $('.fe-list').innerHTML = !state.loaded ? `<li class="fe-empty">${esc(dashLoc('editor.loading'))}</li>`
+        : !shown.length ? `<li class="fe-empty">${esc(q ? dashLoc('editor.noMatches') : dashLoc('editor.noFactions'))}</li>`
           : shown.map((f, i) => `${heading(f, i)}
             <li data-act="select" data-id="${esc(f.id)}" class="${f.id === state.selected ? 'fe-selected' : ''}">
               <div class="fe-line">${swatch(f.color)}<span class="fe-name">${esc(f.name)}</span><span class="fe-badge">${esc(provinceOf(f))}</span><span class="fe-badge">${esc(TYPE_NAMES[f.type] || f.type || SCOPE_NAMES[f.scope])}</span></div>
-              <div class="fe-sub">${esc(f.id)} · ${plural(f.ranks.length, 'rank', 'ranks')} · ${plural(f.members, 'member', 'members')}</div>
+              <div class="fe-sub">${esc(f.id)} · ${plural(f.ranks.length, 'editor.rankOne', 'editor.rankMany')} · ${plural(f.members, 'editor.memberOne', 'editor.memberMany')}</div>
             </li>`).join('')
     }
 
@@ -193,7 +193,7 @@
     function colorFields(color) {
       const hex = COLOR_RE.test(color) ? color : 'c9a36b'
       return `
-        <label>Colour
+        <label>${esc(dashLoc('editor.colour'))}
           <span class="fe-color"><input type="color" name="colorPicker" value="#${hex}" data-write><input name="color" value="${esc(color)}" maxlength="7" placeholder="c9a36b" data-write></span>
         </label>`
     }
@@ -203,62 +203,62 @@
       if (state.creating) { detail.innerHTML = createForm(); return }
       const faction = current()
       if (!faction) {
-        detail.innerHTML = `<p class="fe-muted">${state.loaded ? 'Pick a faction to edit it, or create a new one.' : ''}</p>${state.loaded && !state.canDefine ? readOnlyNote() : ''}`
+        detail.innerHTML = `<p class="fe-muted">${state.loaded ? esc(dashLoc('editor.pickFaction')) : ''}</p>${state.loaded && !state.canDefine ? readOnlyNote() : ''}`
         return
       }
       detail.innerHTML = `
         <h3 class="fe-title">${swatch(faction.color)}${esc(faction.name)} <code>${esc(faction.id)}</code></h3>
         ${state.canDefine ? '' : readOnlyNote()}
         <form class="fe-card" data-form="faction">
-          <h4>Faction</h4>
+          <h4>${esc(dashLoc('editor.factionCard'))}</h4>
           <div class="fe-grid">
-            <label>Display name <input name="name" value="${esc(faction.name)}" maxlength="48" required data-write></label>
-            <label>Province <select name="province" data-write>${provinceOptions(faction.province || 'Skyrim')}</select></label>
+            <label>${esc(dashLoc('editor.displayName'))} <input name="name" value="${esc(faction.name)}" maxlength="48" required data-write></label>
+            <label>${esc(dashLoc('editor.province'))} <select name="province" data-write>${provinceOptions(faction.province || 'Skyrim')}</select></label>
             ${colorFields(faction.color)}
           </div>
-          <p class="fe-muted">Type ${esc(TYPE_NAMES[faction.type] || faction.type)}, group ${esc(faction.group || faction.id)}${faction.type === 'hold' ? `, ${esc(landText(faction))}` : ''}.</p>
-          <div class="fe-row"><button class="fe-btn fe-primary" type="submit" data-write>Save faction</button></div>
+          <p class="fe-muted">${esc(dashLoc(faction.type === 'hold' ? 'editor.typeLineLand' : 'editor.typeLine', { type: TYPE_NAMES[faction.type] || faction.type, group: faction.group || faction.id, land: landText(faction) }))}</p>
+          <div class="fe-row"><button class="fe-btn fe-primary" type="submit" data-write>${esc(dashLoc('editor.saveFaction'))}</button></div>
         </form>
         ${ranksCard(faction)}
         ${state.rank ? rankCard(faction) : ''}
-        <section class="fe-card"><h4>Members</h4><div class="fe-members"></div></section>
+        <section class="fe-card"><h4>${esc(dashLoc('editor.members'))}</h4><div class="fe-members"></div></section>
         <section class="fe-card fe-danger-zone">
-          <h4>Delete faction</h4>
-          <p class="fe-muted">A deleted faction's id and rank ids are never reused${faction.land ? ', so this hold can never get a new territory' : ''}.</p>
-          ${confirmBlock(`faction:${faction.id}`, 'delete-faction', 'Delete faction')}
+          <h4>${esc(dashLoc('editor.deleteFaction'))}</h4>
+          <p class="fe-muted">${esc(dashLoc(faction.land ? 'editor.deleteNoteLand' : 'editor.deleteNote'))}</p>
+          ${confirmBlock(`faction:${faction.id}`, 'delete-faction', esc(dashLoc('editor.deleteFaction')))}
         </section>`
       renderMembers()
     }
 
     function readOnlyNote() {
-      return '<p class="fe-note fe-warn">Read only: creating, editing and deleting factions needs the factions.define permission.</p>'
+      return `<p class="fe-note fe-warn">${esc(dashLoc('editor.readOnly'))}</p>`
     }
 
     function ranksCard(faction) {
       const last = faction.ranks.length - 1
       return `
         <section class="fe-card">
-          <h4>Ranks <span class="fe-muted">leader first</span></h4>
+          <h4>${esc(dashLoc('editor.ranks'))} <span class="fe-muted">${esc(dashLoc('editor.leaderFirst'))}</span></h4>
           ${faction.ranks.length ? `
           <table class="fe-table">
-            <thead><tr><th></th><th>Rank</th><th>Capacity</th><th>Members</th><th></th></tr></thead>
+            <thead><tr><th></th><th>${esc(dashLoc('editor.colRank'))}</th><th>${esc(dashLoc('editor.colCapacity'))}</th><th>${esc(dashLoc('editor.colMembers'))}</th><th></th></tr></thead>
             <tbody>${faction.ranks.map((r, i) => `
               <tr class="${slugOf(r) === state.rank ? 'fe-selected' : ''}">
                 <td class="fe-order">
-                  <button class="fe-btn fe-small" type="button" data-act="move" data-rank="${esc(slugOf(r))}" data-dir="-1" ${i === 0 ? 'disabled' : 'data-write'} title="Move up">▲</button>
-                  <button class="fe-btn fe-small" type="button" data-act="move" data-rank="${esc(slugOf(r))}" data-dir="1" ${i === last ? 'disabled' : 'data-write'} title="Move down">▼</button>
+                  <button class="fe-btn fe-small" type="button" data-act="move" data-rank="${esc(slugOf(r))}" data-dir="-1" ${i === 0 ? 'disabled' : 'data-write'} title="${esc(dashLoc('editor.moveUp'))}">▲</button>
+                  <button class="fe-btn fe-small" type="button" data-act="move" data-rank="${esc(slugOf(r))}" data-dir="1" ${i === last ? 'disabled' : 'data-write'} title="${esc(dashLoc('editor.moveDown'))}">▼</button>
                 </td>
-                <td>${esc(r.rank)}${i === 0 ? ' <span class="fe-badge">leader</span>' : ''}</td>
-                <td>${r.capacity === null ? 'open' : r.capacity}</td>
+                <td>${esc(r.rank)}${i === 0 ? ` <span class="fe-badge">${esc(dashLoc('editor.leaderBadge'))}</span>` : ''}</td>
+                <td>${r.capacity === null ? esc(dashLoc('editor.open')) : r.capacity}</td>
                 <td>${r.assigned}</td>
-                <td><button class="fe-btn fe-small" type="button" data-act="edit-rank" data-rank="${esc(slugOf(r))}">${slugOf(r) === state.rank ? 'Editing' : 'Edit'}</button></td>
+                <td><button class="fe-btn fe-small" type="button" data-act="edit-rank" data-rank="${esc(slugOf(r))}">${esc(slugOf(r) === state.rank ? dashLoc('editor.editing') : dashLoc('editor.edit'))}</button></td>
               </tr>`).join('')}
             </tbody>
-          </table>` : '<p class="fe-muted">No ranks yet.</p>'}
+          </table>` : `<p class="fe-muted">${esc(dashLoc('editor.noRanks'))}</p>`}
           <form class="fe-row" data-form="add-rank">
-            <input name="rank" placeholder="New rank name" maxlength="48" required data-write>
-            <input name="capacity" type="number" min="0" max="999" placeholder="Capacity" title="Empty is open" data-write>
-            <button class="fe-btn" type="submit" data-write>Add rank</button>
+            <input name="rank" placeholder="${esc(dashLoc('editor.newRankName'))}" maxlength="48" required data-write>
+            <input name="capacity" type="number" min="0" max="999" placeholder="${esc(dashLoc('editor.capacity'))}" title="${esc(dashLoc('editor.emptyIsOpen'))}" data-write>
+            <button class="fe-btn" type="submit" data-write>${esc(dashLoc('editor.addRank'))}</button>
           </form>
         </section>`
     }
@@ -278,23 +278,23 @@
       const targets = faction.ranks.filter(r => r !== rank)
       return `
         <form class="fe-card" data-form="rank">
-          <h4>Rank: ${esc(rank.rank)} <code>${esc(rank.id)}</code></h4>
+          <h4>${esc(dashLoc('editor.rankTitle', { name: rank.rank }))} <code>${esc(rank.id)}</code></h4>
           <div class="fe-grid">
-            <label>Name <input name="rank" value="${esc(rank.rank)}" maxlength="48" required data-write></label>
-            <label>Capacity <input name="capacity" type="number" min="0" max="999" value="${rank.capacity === null ? '' : rank.capacity}" placeholder="open" data-write></label>
-            <label>Title <input name="title" value="${esc(rank.title || '')}" maxlength="48" placeholder="${esc(rank.rank)}" data-write></label>
-            <label>Title (female) <input name="titleFemale" value="${esc(rank.titleFemale || '')}" maxlength="48" placeholder="same as title" data-write></label>
+            <label>${esc(dashLoc('editor.name'))} <input name="rank" value="${esc(rank.rank)}" maxlength="48" required data-write></label>
+            <label>${esc(dashLoc('editor.capacity'))} <input name="capacity" type="number" min="0" max="999" value="${rank.capacity === null ? '' : rank.capacity}" placeholder="${esc(dashLoc('editor.open'))}" data-write></label>
+            <label>${esc(dashLoc('editor.title'))} <input name="title" value="${esc(rank.title || '')}" maxlength="48" placeholder="${esc(rank.rank)}" data-write></label>
+            <label>${esc(dashLoc('editor.titleFemale'))} <input name="titleFemale" value="${esc(rank.titleFemale || '')}" maxlength="48" placeholder="${esc(dashLoc('editor.sameAsTitle'))}" data-write></label>
           </div>
-          <p class="fe-muted">Permission string <code>${esc(rank.permission || '')}</code>, fixed by the rank id.</p>
+          <p class="fe-muted">${esc(dashLoc('editor.permissionString'))} <code>${esc(rank.permission || '')}</code>${esc(dashLoc('editor.permissionFixed'))}</p>
           <div class="fe-flags">${RANK_FLAGS.filter(([, , holdOnly]) => !holdOnly || faction.scope === 'hold').map(([key, label]) => `
             <label class="fe-check"><input type="checkbox" name="${key}" ${rank[key] ? 'checked' : ''} data-write> ${esc(label)}</label>`).join('')}
           </div>
           <p class="fe-muted">${leader
-            ? 'A leader carries every permission of the faction: it recruits, promotes, removes, crafts, arrests and executes, and the ticks below are ignored. Nobody leads two factions at once.'
-            : 'Recruit into: the ranks this rank may bring outsiders in at; Recruit takes the lowest of them. Promote to: the ranks it may move a member below it to. Removes members covers the whole faction.'}</p>
+            ? esc(dashLoc('editor.leaderNote'))
+            : esc(dashLoc('editor.rankNote'))}</p>
           ${targets.length ? `
           <table class="fe-table fe-matrix">
-            <thead><tr><th>Rank</th>${listsFor(faction, rank).map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead>
+            <thead><tr><th>${esc(dashLoc('editor.colRank'))}</th>${listsFor(faction, rank).map(([, label]) => `<th>${esc(label)}</th>`).join('')}</tr></thead>
             <tbody>${targets.map(t => `
               <tr><td>${esc(t.rank)}</td>${listsFor(faction, rank).map(([key]) => `
                 <td><input type="checkbox" data-list="${key}" value="${esc(slugOf(t))}" ${effectiveList(faction, rank, key).includes(slugOf(t)) ? 'checked' : ''} data-write></td>`).join('')}
@@ -302,10 +302,10 @@
             </tbody>
           </table>` : ''}
           <div class="fe-row">
-            <button class="fe-btn fe-primary" type="submit" data-write>Save rank</button>
-            <button class="fe-btn" type="button" data-act="close-rank">Close</button>
+            <button class="fe-btn fe-primary" type="submit" data-write>${esc(dashLoc('editor.saveRank'))}</button>
+            <button class="fe-btn" type="button" data-act="close-rank">${esc(dashLoc('editor.close'))}</button>
           </div>
-          ${confirmBlock(`rank:${rank.id}`, 'delete-rank', 'Delete rank')}
+          ${confirmBlock(`rank:${rank.id}`, 'delete-rank', esc(dashLoc('editor.deleteRank')))}
         </form>`
     }
 
@@ -314,13 +314,13 @@
       const armed = state.confirm && state.confirm.key === key ? state.confirm : null
       if (!armed) return `<div class="fe-row"><button class="fe-btn fe-danger" type="button" data-act="${act}" data-write>${label}</button></div>`
       const sample = armed.sample || []
-      const list = sample.length ? `<ul class="fe-sample">${sample.map(m => `<li>${esc(m.playerName || 'Unknown')} (${esc(slotText(m.slot))}${m.rank ? `, ${esc(m.rank)}` : ''})</li>`).join('')}${armed.members > sample.length ? `<li>and ${armed.members - sample.length} more</li>` : ''}</ul>` : ''
+      const list = sample.length ? `<ul class="fe-sample">${sample.map(m => `<li>${esc(m.playerName || dashLoc('editor.unknown'))} (${esc(slotText(m.slot))}${m.rank ? `, ${esc(m.rank)}` : ''})</li>`).join('')}${armed.members > sample.length ? `<li>${esc(dashLoc('editor.andMore', { n: armed.members - sample.length }))}</li>` : ''}</ul>` : ''
       return `
         <div class="fe-confirm">
-          ${armed.members ? `<p>${plural(armed.members, 'membership still holds', 'memberships still hold')} ${act === 'delete-rank' ? 'this rank' : "this faction's ranks"}, so a plain delete is refused.</p>${list}` : '<p>Nobody holds these ranks.</p>'}
+          ${armed.members ? `<p>${esc(act === 'delete-rank' ? plural(armed.members, 'editor.holdsRankOne', 'editor.holdsRankMany') : plural(armed.members, 'editor.holdsFactionOne', 'editor.holdsFactionMany'))}</p>${list}` : `<p>${esc(dashLoc('editor.nobodyHolds'))}</p>`}
           <div class="fe-row">
-            <button class="fe-btn fe-danger" type="button" data-act="${act}" data-write>${armed.members ? `Remove ${plural(armed.members, 'membership', 'memberships')} and delete` : 'Click again to delete'}</button>
-            <button class="fe-btn" type="button" data-act="cancel-confirm">Cancel</button>
+            <button class="fe-btn fe-danger" type="button" data-act="${act}" data-write>${esc(armed.members ? plural(armed.members, 'editor.removeOneAndDelete', 'editor.removeManyAndDelete') : dashLoc('editor.clickAgain'))}</button>
+            <button class="fe-btn" type="button" data-act="cancel-confirm">${esc(dashLoc('editor.cancel'))}</button>
           </div>
         </div>`
     }
@@ -329,12 +329,12 @@
       const box = $('.fe-members')
       const faction = current()
       if (!box || !faction) return
-      if (state.members === null) { box.innerHTML = '<p class="fe-muted">Loading…</p>'; return }
-      if (!state.members.length) { box.innerHTML = '<p class="fe-muted">Nobody holds a rank. Players join in game by invitation.</p>'; return }
+      if (state.members === null) { box.innerHTML = `<p class="fe-muted">${esc(dashLoc('editor.loading'))}</p>`; return }
+      if (!state.members.length) { box.innerHTML = `<p class="fe-muted">${esc(dashLoc('editor.noMembers'))}</p>`; return }
       const order = new Map(faction.ranks.map((r, i) => [slugOf(r), i]))
       const rows = [...state.members].sort((a, b) => (order.get(a.rankSlug) ?? 99) - (order.get(b.rankSlug) ?? 99) || String(a.playerName).localeCompare(String(b.playerName)))
       box.innerHTML = `<ul class="fe-member-list">${rows.map(m => `
-        <li>${onSelectPlayer && m.discordId ? `<button class="fe-link" type="button" data-act="player" data-discord="${esc(m.discordId)}">${esc(m.playerName || 'Unknown')}</button>` : esc(m.playerName || 'Unknown')}
+        <li>${onSelectPlayer && m.discordId ? `<button class="fe-link" type="button" data-act="player" data-discord="${esc(m.discordId)}">${esc(m.playerName || dashLoc('editor.unknown'))}</button>` : esc(m.playerName || dashLoc('editor.unknown'))}
           <span class="fe-muted">${esc(m.rank || m.rankSlug)}, ${esc(slotText(m.slot))}</span></li>`).join('')}</ul>`
     }
 
@@ -344,20 +344,20 @@
       const scope = free.length ? 'hold' : 'guild'
       return `
         <form class="fe-card" data-form="create">
-          <h4>New faction</h4>
+          <h4>${esc(dashLoc('editor.newFaction'))}</h4>
           ${state.canDefine ? '' : readOnlyNote()}
           <div class="fe-grid">
-            <label>Type <select name="scope" data-write>${Object.entries(TYPE_NAMES).map(([k, v]) => `<option value="${k}"${k === scope ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
-            <label data-scope="hold"${scope === 'hold' ? '' : ' hidden'}>Land <select name="hold" data-write>${free.map(h => `<option value="${esc(h)}">${esc(holdName(h))}</option>`).join('')}<option value="">No land in Skyrim</option></select></label>
-            <label data-scope="group"${scope === 'hold' ? ' hidden' : ''}>Group <input name="group" maxlength="48" placeholder="Vigilants of Stendarr, or Indoril for a territory" data-write></label>
-            <label>Display name <input name="name" maxlength="48" placeholder="Same as the group" data-write></label>
-            <label>Province <select name="province" data-write>${provinceOptions('Skyrim')}</select></label>
+            <label>${esc(dashLoc('editor.type'))} <select name="scope" data-write>${Object.entries(TYPE_NAMES).map(([k, v]) => `<option value="${k}"${k === scope ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+            <label data-scope="hold"${scope === 'hold' ? '' : ' hidden'}>${esc(dashLoc('editor.landLabel'))} <select name="hold" data-write>${free.map(h => `<option value="${esc(h)}">${esc(holdName(h))}</option>`).join('')}<option value="">${esc(dashLoc('editor.noLandOption'))}</option></select></label>
+            <label data-scope="group"${scope === 'hold' ? ' hidden' : ''}>${esc(dashLoc('editor.group'))} <input name="group" maxlength="48" placeholder="${esc(dashLoc('editor.groupPlaceholder'))}" data-write></label>
+            <label>${esc(dashLoc('editor.displayName'))} <input name="name" maxlength="48" placeholder="${esc(dashLoc('editor.sameAsGroup'))}" data-write></label>
+            <label>${esc(dashLoc('editor.province'))} <select name="province" data-write>${provinceOptions('Skyrim')}</select></label>
             ${colorFields('')}
           </div>
-          <p class="fe-muted">The id comes from the kind and group, cannot change once created, and is never reused after a delete. A territory with no land in Skyrim (a Morrowind house) answers to no border until it is given land. ${free.length ? '' : 'Every hold has a territory, and a hold whose territory was deleted cannot get a new one.'}</p>
+          <p class="fe-muted">${esc(dashLoc('editor.createNote'))} ${free.length ? '' : esc(dashLoc('editor.allHoldsTaken'))}</p>
           <div class="fe-row">
-            <button class="fe-btn fe-primary" type="submit" data-write>Create faction</button>
-            <button class="fe-btn" type="button" data-act="cancel-create">Cancel</button>
+            <button class="fe-btn fe-primary" type="submit" data-write>${esc(dashLoc('editor.createFaction'))}</button>
+            <button class="fe-btn" type="button" data-act="cancel-create">${esc(dashLoc('editor.cancel'))}</button>
           </div>
         </form>`
     }
@@ -376,35 +376,35 @@
     function createFaction(form) {
       const type = form.elements.scope.value
       const group = type === 'hold' && form.elements.hold.value ? holdName(form.elements.hold.value) : form.elements.group.value
-      return run('Creating…', async () => {
+      return run(dashLoc('editor.creating'), async () => {
         const data = await call('POST', '', { type, group, name: form.elements.name.value, province: form.elements.province.value, color: colorValue(form) })
         replaceFaction(data.faction)
         state.creating = false
         state.selected = data.faction.id
         state.members = []
         render()
-        changed(`Created ${data.faction.name}.`)
+        changed(dashLoc('editor.created', { name: data.faction.name }))
       })
     }
 
     function saveFaction(form) {
       const faction = current()
       const body = { rev: faction.rev, name: form.elements.name.value, province: form.elements.province.value, color: colorValue(form) }
-      return run('Saving…', async () => {
+      return run(dashLoc('editor.saving'), async () => {
         const data = await call('PATCH', factionPath(faction.id), body)
         replaceFaction(data.faction)
         render()
-        changed('Faction saved.')
+        changed(dashLoc('editor.factionSaved'))
       })
     }
 
     function addRank(form) {
       const faction = current()
-      return run('Adding rank…', async () => {
+      return run(dashLoc('editor.addingRank'), async () => {
         const data = await call('POST', factionPath(faction.id, '/ranks'), { rev: faction.rev, rank: form.elements.rank.value, capacity: form.elements.capacity.value })
         replaceFaction(data.faction)
         render()
-        changed('Rank added.')
+        changed(dashLoc('editor.rankAdded'))
       })
     }
 
@@ -415,11 +415,11 @@
       const to = from + dir
       if (from < 0 || to < 0 || to >= ids.length) return
       ;[ids[from], ids[to]] = [ids[to], ids[from]]
-      return run('Reordering…', async () => {
+      return run(dashLoc('editor.reordering'), async () => {
         const data = await call('PUT', factionPath(faction.id, '/ranks'), { rev: faction.rev, ranks: ids })
         replaceFaction(data.faction)
         render()
-        changed(to === 0 || from === 0 ? 'Ranks reordered; the leader changed.' : 'Ranks reordered.')
+        changed(to === 0 || from === 0 ? dashLoc('editor.leaderChanged') : dashLoc('editor.reordered'))
       })
     }
 
@@ -433,11 +433,11 @@
       const ticked = Object.fromEntries(lists.map(([key]) => [key, [...form.querySelectorAll(`input[data-list="${key}"]:checked`)].map(i => i.value)]))
       // Lists are sent together once any tick changed, so what was shown is what is saved
       if (lists.some(([key]) => !sameSet(ticked[key], effectiveList(faction, rank, key)))) Object.assign(body, ticked)
-      return run('Saving rank…', async () => {
+      return run(dashLoc('editor.savingRank'), async () => {
         const data = await call('PATCH', rankPath(faction, state.rank), body)
         replaceFaction(data.faction)
         render()
-        changed('Rank saved.')
+        changed(dashLoc('editor.rankSaved'))
       })
     }
 
@@ -455,7 +455,7 @@
       }
       const members = state.confirm.members
       const path = kind === 'rank' ? rankPath(faction, slugOf(rank)) : factionPath(faction.id)
-      await run('Deleting…', async () => {
+      await run(dashLoc('editor.deleting'), async () => {
         try {
           const data = await call('DELETE', path, { rev: faction.rev, ...(members ? { removeMembers: true, expectedMembers: members } : {}) })
           state.confirm = null
@@ -468,7 +468,9 @@
             state.selected = ''
           }
           render()
-          changed(`${kind === 'rank' ? 'Rank' : 'Faction'} deleted${data.removedMembers ? `, ${plural(data.removedMembers, 'membership', 'memberships')} removed` : ''}.`)
+          changed(data.removedMembers
+            ? plural(data.removedMembers, kind === 'rank' ? 'editor.rankDeletedOne' : 'editor.factionDeletedOne', kind === 'rank' ? 'editor.rankDeletedMany' : 'editor.factionDeletedMany')
+            : dashLoc(kind === 'rank' ? 'editor.rankDeleted' : 'editor.factionDeleted'))
           if (state.selected) await loadMembers()
         } catch (err) {
           // The count changed since it was shown: arm again with the new list
@@ -497,7 +499,7 @@
         state.creating = false
         render()
       } else if (act === 'refresh') {
-        run('Loading…', async () => { await load(); setStatus('') })
+        run(dashLoc('editor.loading'), async () => { await load(); setStatus('') })
       } else if (act === 'edit-rank') {
         Object.assign(state, { rank: target.dataset.rank, confirm: null })
         render()
@@ -552,8 +554,8 @@
     })
 
     render()
-    run('Loading…', async () => { await load(); setStatus('') })
-    return { refresh: () => run('Loading…', async () => { await load(); setStatus('') }) }
+    run(dashLoc('editor.loading'), async () => { await load(); setStatus('') })
+    return { refresh: () => run(dashLoc('editor.loading'), async () => { await load(); setStatus('') }) }
   }
 
   window.FactionEditor = { mount }

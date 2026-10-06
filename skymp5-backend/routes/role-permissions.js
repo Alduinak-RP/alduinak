@@ -1,6 +1,7 @@
 'use strict'
 
 const { Router }        = require('express')
+const { loc } = require('../sources/loc')
 const requirePermission = require('../middleware/requirePermission')
 const permissions       = require('../sources/permissions')
 const { revokeStaleSessions } = require('../sources/dashboardAuth')
@@ -33,7 +34,7 @@ function currentPermissions(roleId) {
 async function guardPrivileged(req, res, before, after) {
   const changed = permissions.privilegedChanges(before, after)
   if (!changed.length) return true
-  return guardPrivilegedChange(req, res, { action: `role-permissions.${req.method.toLowerCase()}`, target: req.params.roleId, what: `grant or remove ${changed.join(', ')}` })
+  return guardPrivilegedChange(req, res, { action: `role-permissions.${req.method.toLowerCase()}`, target: req.params.roleId, what: loc('roles.grantOrRemove', { permissions: changed.join(', ') }) })
 }
 
 router.get('/', requirePermission('permissions.manage'), (_req, res) => {
@@ -46,14 +47,14 @@ router.get('/', requirePermission('permissions.manage'), (_req, res) => {
 router.put('/:roleId', requirePermission('permissions.manage'), async (req, res) => {
   try {
     const { name, permissions: rolePermissions } = req.body || {}
-    if (!Array.isArray(rolePermissions)) return res.status(400).json({ error: 'permissions must be an array' })
+    if (!Array.isArray(rolePermissions)) return res.status(400).json({ error: loc('roles.permissionsNotArray') })
     const next = rolePermissions.map(p => String(p || '').trim()).filter(Boolean)
     if (!await guardPrivileged(req, res, currentPermissions(req.params.roleId), next)) return
     const role = permissions.setRolePermissions(req.params.roleId, name, next)
     revokeStaleSessions()
     res.json(role)
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to save role permissions' })
+    res.status(err.status || 500).json({ error: err.message || loc('roles.saveFailed') })
   }
 })
 

@@ -2,6 +2,7 @@
 // Dashboard Bearer session with a permission, or the Server Manager's master API token sent straight to this process over loopback
 
 const config            = require('../config')
+const { loc } = require('../sources/loc')
 const requirePermission = require('./requirePermission')
 const { safeEqual }     = require('../sources/safeEqual')
 
@@ -29,7 +30,7 @@ function managerOrPermission(perm) {
       })
     }
     if (!isDirectLoopback(req) || !safeEqual(req.headers['x-auth-token'], config.masterApiAuthToken)) {
-      return res.status(403).json({ error: 'the manager token is accepted only from this machine' })
+      return res.status(403).json({ error: loc('manager.tokenLocalOnly') })
     }
     req.actor = MANAGER_ACTOR
     next()

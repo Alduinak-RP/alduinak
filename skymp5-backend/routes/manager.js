@@ -2,6 +2,7 @@
 // Web Server Manager gateway: authenticates, rate-limits and audits, then relays to the loopback AlduinakManager agent
 
 const { Router } = require('express')
+const { loc } = require('../sources/loc')
 const rateLimit  = require('express-rate-limit')
 const { requireManager } = require('../middleware/requireManager')
 const { ADMIN_IDLE_MS, ADMIN_ABSOLUTE_MS } = require('../sources/dashboardAuth')
@@ -15,7 +16,7 @@ const audit  = auditLog('backend')
 function limited(scope) {
   return (req, res) => {
     audit.append({ ...requestActor(req, req.managerSession), action: `manager ${req.method} ${req.baseUrl}${req.path}`, outcome: 'rate-limited', detail: scope })
-    res.status(429).json({ error: 'too many requests, slow down' })
+    res.status(429).json({ error: loc('manager.tooManyRequests') })
   }
 }
 
@@ -74,28 +75,28 @@ router.get('/services', (req, res) => relay(req, res, 'GET', '/services'))
 router.get('/logs', (req, res) => relay(req, res, 'GET', '/logs'))
 
 router.get('/logs/:id', (req, res) => {
-  if (!/^[a-f0-9]{12}$/.test(req.params.id)) return bad(res, 'unknown log')
+  if (!/^[a-f0-9]{12}$/.test(req.params.id)) return bad(res, loc('manager.unknownLog'))
   const from = intParam(req.query.from), before = intParam(req.query.before), max = intParam(req.query.max, { min: 1024, max: 262144 })
-  if ([from, before, max].some(Number.isNaN)) return bad(res, 'from, before and max must be byte offsets')
+  if ([from, before, max].some(Number.isNaN)) return bad(res, loc('manager.byteOffsets'))
   relay(req, res, 'GET', `/logs/${req.params.id}${query({ from, before, max })}`)
 })
 
 router.get('/jobs', (req, res) => {
   const limit = intParam(req.query.limit, { min: 1, max: 200 })
-  if (Number.isNaN(limit)) return bad(res, 'limit must be 1-200')
+  if (Number.isNaN(limit)) return bad(res, loc('manager.limitRange'))
   relay(req, res, 'GET', `/jobs${query({ limit })}`)
 })
 
 const JOB_ID_RE = /^\d{8}-\d{6}-[a-f0-9]{6}$/
 
 router.get('/jobs/:id', (req, res) => {
-  if (!JOB_ID_RE.test(req.params.id)) return bad(res, 'unknown job')
+  if (!JOB_ID_RE.test(req.params.id)) return bad(res, loc('manager.unknownJob'))
   relay(req, res, 'GET', `/jobs/${req.params.id}`)
 })
 
 router.get('/jobs/:id/log', (req, res) => {
   const from = intParam(req.query.from)
-  if (!JOB_ID_RE.test(req.params.id) || Number.isNaN(from)) return bad(res, 'unknown job or offset')
+  if (!JOB_ID_RE.test(req.params.id) || Number.isNaN(from)) return bad(res, loc('manager.unknownJobOffset'))
   relay(req, res, 'GET', `/jobs/${req.params.id}/log${query({ from })}`)
 })
 
@@ -105,7 +106,7 @@ router.post('/jobs', async (req, res) => {
   const base = { ...requestActor(req, req.managerSession), action: 'job.start', target: String(kind || '') }
   if (Object.keys(body).some(k => k !== 'kind') || typeof kind !== 'string' || !Object.prototype.hasOwnProperty.call(JOB_KINDS, kind)) {
     audit.append({ ...base, outcome: 'refused', detail: 'unknown job kind or options' }, { mirror: true })
-    return bad(res, `kind must be one of ${Object.keys(JOB_KINDS).join(', ')} with no other options`)
+    return bad(res, loc('manager.jobKind', { kinds: Object.keys(JOB_KINDS).join(', ') }))
   }
   const r = await relay(req, res, 'POST', '/jobs', { kind })
   audit.append({ ...base, outcome: r.status === 202 ? 'started' : 'refused', status: r.status, jobId: r.data && r.data.jobId, commit: r.data && r.data.commit, detail: r.data && r.data.error }, { mirror: true })
@@ -113,7 +114,7 @@ router.post('/jobs', async (req, res) => {
 
 router.get('/console', (req, res) => {
   const after = intParam(req.query.after)
-  if (Number.isNaN(after)) return bad(res, 'after must be a line number')
+  if (Number.isNaN(after)) return bad(res, loc('manager.afterLine'))
   relay(req, res, 'GET', `/console${query({ after })}`)
 })
 
@@ -129,7 +130,7 @@ router.post('/console', async (req, res) => {
 })
 
 router.get('/settings/:file', async (req, res) => {
-  if (!['serverSettings', 'backendEnv'].includes(req.params.file)) return bad(res, 'unknown settings file')
+  if (!['serverSettings', 'backendEnv'].includes(req.params.file)) return bad(res, loc('manager.unknownSettingsFile'))
   const r = await relay(req, res, 'GET', `/settings/${req.params.file}`)
   audit.append({ ...requestActor(req, req.managerSession), action: 'settings.view', target: req.params.file, outcome: r.status === 200 ? 'ok' : 'failed', status: r.status })
 })

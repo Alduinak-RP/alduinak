@@ -1,6 +1,7 @@
 'use strict'
 
 const db               = require('./db')
+const { loc } = require('./loc')
 const profiles         = require('./profiles')
 const security         = require('./security')
 const factionWhitelist = require('./factionWhitelist')
@@ -46,7 +47,7 @@ function upsertFromDiscordUser(discordUser) {
 function createManual(input) {
   const discordId = String(input.discordId || '').trim()
   if (!discordId) {
-    const err = new Error('discordId is required')
+    const err = new Error(loc('players.discordIdRequired'))
     err.status = 400
     throw err
   }
@@ -143,7 +144,7 @@ function updateIdentity(discordId, { hwid, ip } = {}) {
 function updateByProfileId(profileId, patch) {
   const discordId = profiles.getDiscordIdByProfileId(profileId)
   if (!discordId) {
-    const err = new Error('player not found')
+    const err = new Error(loc('players.notFound'))
     err.status = 404
     throw err
   }
@@ -189,7 +190,7 @@ function getByProfileId(profileId) {
 function deleteByProfileId(profileId) {
   const discordId = profiles.getDiscordIdByProfileId(profileId)
   if (!discordId) {
-    const err = new Error('player not found')
+    const err = new Error(loc('players.notFound'))
     err.status = 404
     throw err
   }

@@ -1,6 +1,7 @@
 'use strict'
 
 const { Router }        = require('express')
+const { loc } = require('../sources/loc')
 const requirePermission = require('../middleware/requirePermission')
 const whitelist         = require('../sources/factionWhitelist')
 
@@ -25,7 +26,7 @@ router.post('/assignments', requirePermission('factions.manage'), (req, res) => 
     const assignment = whitelist.createAssignment(req.body || {}, req.session.discordId)
     res.status(201).json(assignment)
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to create assignment' })
+    res.status(err.status || 500).json({ error: err.message || loc('factions.createAssignmentFailed') })
   }
 })
 
@@ -33,7 +34,7 @@ router.put('/assignments/:id', requirePermission('factions.manage'), (req, res) 
   try {
     res.json(whitelist.updateAssignment(req.params.id, req.body || {}, req.session.discordId))
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to update assignment' })
+    res.status(err.status || 500).json({ error: err.message || loc('factions.updateAssignmentFailed') })
   }
 })
 
@@ -42,7 +43,7 @@ router.delete('/assignments/:id', requirePermission('factions.manage'), (req, re
     whitelist.deleteAssignment(req.params.id, req.session.discordId)
     res.json({ ok: true })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to delete assignment' })
+    res.status(err.status || 500).json({ error: err.message || loc('factions.deleteAssignmentFailed') })
   }
 })
 

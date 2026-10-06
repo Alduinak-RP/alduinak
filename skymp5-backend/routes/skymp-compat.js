@@ -24,6 +24,7 @@
  */
 
 const router  = require('express').Router()
+const { loc } = require('../sources/loc')
 const https   = require('https')
 const crypto  = require('crypto')
 const config  = require('../config')
@@ -84,12 +85,12 @@ function pruneAuthStates() {
 
 router.get('/login-discord', (req, res) => {
   const { state } = req.query
-  if (!state) return res.status(400).send('Missing state parameter.')
+  if (!state) return res.status(400).send(loc('login.missingStateParam'))
 
   if (!config.discordClientId) {
     return res.status(503).send(authPage({
-      ok: false, title: 'Login unavailable',
-      message: 'Discord login is not configured on this server yet. Tell the server admin to set DISCORD_CLIENT_ID.',
+      ok: false, title: loc('login.unavailableTitle'),
+      message: loc('login.unavailable'),
     }))
   }
 
@@ -121,23 +122,23 @@ router.get('/login-discord/callback', async (req, res) => {
   if (error) {
     if (state && authStates.has(state)) { authStates.delete(state); saveAuthStates() }
     return res.status(400).send(authPage({
-      ok: false, title: 'Login cancelled',
-      message: `Discord reported: ${escapeHtml(String(error))}. Return to the launcher and try again.`,
+      ok: false, title: loc('login.cancelledTitle'),
+      message: loc('login.cancelled', { error: escapeHtml(String(error)) }),
     }))
   }
 
   if (!code || !state) {
     return res.status(400).send(authPage({
-      ok: false, title: 'Login failed',
-      message: 'The Discord response was missing its code or state. Return to the launcher and try again.',
+      ok: false, title: loc('login.failedTitle'),
+      message: loc('login.missingCode'),
     }))
   }
 
   const entry = authStates.get(state)
   if (!entry || entry.status !== 'pending') {
     return res.status(400).send(authPage({
-      ok: false, title: 'Login expired',
-      message: 'This login link is no longer valid (it may have expired or already been used). Return to the launcher and try again.',
+      ok: false, title: loc('login.expiredTitle'),
+      message: loc('login.expired'),
     }))
   }
 
@@ -174,8 +175,8 @@ router.get('/login-discord/callback', async (req, res) => {
     console.log(`[skymp-compat] auth completed for ${username} (state ${String(state).slice(0, 8)}…)`)
 
     res.send(authPage({
-      ok: true, title: 'Logged in',
-      message: `Welcome, <strong>${escapeHtml(username)}</strong>. You can return to the launcher.`,
+      ok: true, title: loc('login.doneTitle'),
+      message: loc('login.welcome', { name: `<strong>${escapeHtml(username)}</strong>` }),
       autoClose: true,
     }))
   } catch (err) {
@@ -183,8 +184,8 @@ router.get('/login-discord/callback', async (req, res) => {
     authStates.delete(state)
     saveAuthStates()
     res.status(500).send(authPage({
-      ok: false, title: 'Login failed',
-      message: 'Something went wrong while talking to Discord. Return to the launcher and try again.',
+      ok: false, title: loc('login.failedTitle'),
+      message: loc('login.discordError'),
     }))
   }
 })
@@ -193,14 +194,14 @@ router.get('/login-discord/callback', async (req, res) => {
 
 router.get('/login-discord/status', (req, res) => {
   const { state } = req.query
-  if (!state) return res.status(400).json({ error: 'Missing state.' })
+  if (!state) return res.status(400).json({ error: loc('login.missingState') })
 
   pruneAuthStates()
 
   const entry = authStates.get(state)
 
-  if (!entry)          return res.status(403).json({ error: 'Unknown or expired state.' })
-  if (entry.status === 'pending') return res.status(401).json({ error: 'Auth not completed yet.' })
+  if (!entry)          return res.status(403).json({ error: loc('login.unknownState') })
+  if (entry.status === 'pending') return res.status(401).json({ error: loc('login.pending') })
 
   // Don't consume on first read: a lost response must let the next poll succeed, so just shorten the entry's life to a grace window for pruning to collect
   if (!entry.deliveredAt) {
@@ -223,15 +224,15 @@ router.get('/login-discord/status', (req, res) => {
 
 router.post('/me/play/:serverKey', (req, res) => {
   const token = req.headers['authorization']
-  if (!token) return res.status(401).json({ error: 'Missing authorization header.' })
+  if (!token) return res.status(401).json({ error: loc('login.missingAuthHeader') })
 
   if (!config.serverByKey(req.params.serverKey)) {
-    return res.status(403).json({ error: 'Invalid server key.' })
+    return res.status(403).json({ error: loc('login.invalidServerKey') })
   }
 
   const { lookupSession } = require('./master-api')
   const session = lookupSession(token)
-  if (!session) return res.status(401).json({ error: 'Invalid or expired session token.' })
+  if (!session) return res.status(401).json({ error: loc('login.invalidSessionToken') })
 
   // Optional hardware id from the client; used by the ban system
   const hwid = sanitizeHwid(req.body && req.body.hwid)
@@ -247,11 +248,11 @@ router.post('/me/hwid', (req, res) => {
   // The launcher sends "Bearer <token>"; the game client convention is the raw token
   const rawAuth = req.headers['authorization'] || (req.body && req.body.token) || ''
   const token = rawAuth.startsWith('Bearer ') ? rawAuth.slice(7) : rawAuth
-  if (!token) return res.status(401).json({ error: 'Missing authorization header.' })
+  if (!token) return res.status(401).json({ error: loc('login.missingAuthHeader') })
 
   const { lookupSession } = require('./master-api')
   const session = lookupSession(token)
-  if (!session) return res.status(401).json({ error: 'Invalid or expired session token.' })
+  if (!session) return res.status(401).json({ error: loc('login.invalidSessionToken') })
 
   const hwid = sanitizeHwid(req.body && req.body.hwid)
   if (!hwid) return res.json({ ok: false })
@@ -276,7 +277,7 @@ function authPage({ ok, title, message, autoClose = false }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Alduinak - ${escapeHtml(title)}</title>
+<title>${escapeHtml(loc('login.pageTitle', { title }))}</title>
 <style>
   html, body { height: 100%; margin: 0; }
   body {
@@ -305,13 +306,13 @@ function authPage({ ok, title, message, autoClose = false }) {
     <div class="mark">${mark}</div>
     <h1>${escapeHtml(title)}</h1>
     <p>${message}</p>
-    <p class="note" id="note">${autoClose ? 'This tab will close itself…' : ''}</p>
+    <p class="note" id="note">${autoClose ? loc('login.closing') : ''}</p>
   </div>
 ${autoClose ? `<script>
   window.close()
   setTimeout(function () {
     var n = document.getElementById('note')
-    if (n) n.textContent = 'You can close this tab now.'
+    if (n) n.textContent = ${JSON.stringify(loc('login.closeNow'))}
   }, 600)
 </script>` : ''}
 </body>

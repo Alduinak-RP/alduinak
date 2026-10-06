@@ -1,6 +1,7 @@
 'use strict'
 
 const { Router }        = require('express')
+const { loc } = require('../sources/loc')
 const managerOrPermission = require('../middleware/managerOrPermission')
 const profiles          = require('../sources/profiles')
 const players           = require('../sources/players')
@@ -19,13 +20,13 @@ router.post('/', managerOrPermission('players.manage'), async (req, res) => {
     const player = players.createManual(req.body || {})
     res.status(201).json(await enrichPlayer(player))
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to create player' })
+    res.status(err.status || 500).json({ error: err.message || loc('players.createFailed') })
   }
 })
 
 router.get('/:profileId', managerOrPermission('players.view'), async (req, res) => {
   const player = players.getByProfileId(req.params.profileId)
-  if (!player) return res.status(404).json({ error: 'player not found' })
+  if (!player) return res.status(404).json({ error: loc('players.notFound') })
   res.json(await enrichPlayer(player))
 })
 
@@ -33,7 +34,7 @@ router.put('/:profileId', managerOrPermission('players.manage'), async (req, res
   try {
     res.json(await enrichPlayer(players.updateByProfileId(req.params.profileId, req.body || {})))
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to update player' })
+    res.status(err.status || 500).json({ error: err.message || loc('players.updateFailed') })
   }
 })
 
@@ -43,7 +44,7 @@ router.delete('/:profileId', managerOrPermission('players.manage'), (req, res) =
     const { discordId } = players.deleteByProfileId(req.params.profileId)
     res.json({ ok: true, discordId, droppedSessions: require('./master-api').dropSessionsByDiscord(discordId) })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to delete player' })
+    res.status(err.status || 500).json({ error: err.message || loc('players.deleteFailed') })
   }
 })
 
@@ -64,7 +65,7 @@ router.post('/:profileId/factions', managerOrPermission('factions.manage'), (req
     }, req.actor)
     res.status(201).json(assignment)
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to assign faction' })
+    res.status(err.status || 500).json({ error: err.message || loc('players.assignFactionFailed') })
   }
 })
 
@@ -75,14 +76,14 @@ router.delete('/:profileId/factions/:assignmentId', managerOrPermission('faction
       .getPlayerAssignments(discordId)
       .some(assignment => assignment.id === req.params.assignmentId)
     if (!belongsToPlayer) {
-      const err = new Error('assignment not found for player')
+      const err = new Error(loc('players.assignmentNotFound'))
       err.status = 404
       throw err
     }
     factions.deleteAssignment(req.params.assignmentId, req.actor)
     res.json({ ok: true })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to remove faction' })
+    res.status(err.status || 500).json({ error: err.message || loc('players.removeFactionFailed') })
   }
 })
 
@@ -114,14 +115,14 @@ async function mutateAccess(req, res, type) {
     }
     res.json({ ok: true, ...result, player: await enrichPlayer(players.getByProfileId(req.params.profileId)) })
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message || 'failed to update access' })
+    res.status(err.status || 500).json({ error: err.message || loc('players.accessUpdateFailed') })
   }
 }
 
 function requireDiscordId(profileId) {
   const discordId = profiles.getDiscordIdByProfileId(profileId)
   if (!discordId) {
-    const err = new Error('player not found')
+    const err = new Error(loc('players.notFound'))
     err.status = 404
     throw err
   }

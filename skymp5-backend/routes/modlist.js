@@ -1,4 +1,5 @@
 const router = require('express').Router()
+const { loc } = require('../sources/loc')
 const fs     = require('fs')
 const path   = require('path')
 const config = require('../config')
@@ -10,7 +11,7 @@ router.get('/', (req, res) => {
   try {
     res.json(JSON.parse(fs.readFileSync(file, 'utf8')))
   } catch (err) {
-    res.status(500).json({ error: `${path.basename(file)} is missing or invalid: ${err.message}` })
+    res.status(500).json({ error: loc('files.modlistUnreadable', { file: path.basename(file), error: err.message }) })
   }
 })
 
