@@ -1,5 +1,130 @@
 {
-  "gamemode": {},
+  "gamemode": {
+    "names": {
+      "unknown": "Unknown",
+      "playerSuffix": "{name} (player)",
+      "maskDefault": "Masked Person",
+      "stranger": "A stranger",
+      "someone": "Someone"
+    },
+    "intro": {
+      "lookAtPlayer": "Look at a player to introduce yourself.",
+      "tooFar": "They are too far away.",
+      "alreadyKnown": "They already know you.",
+      "introducedToYou": "{name} introduced themselves to you.",
+      "introducedTo": "You introduced yourself to {name}.",
+      "introducedOneWay": "You introduced yourself. They must introduce themselves for you to learn their name."
+    },
+    "examine": {
+      "fallback": "You notice nothing remarkable.",
+      "nobodyLikeThat": "You see nobody like that nearby.",
+      "nobodyClose": "There is nobody close enough to examine.",
+      "stranger": "A stranger. {desc}"
+    },
+    "staff": {
+      "line": "[{label}] {text}",
+      "label": {
+        "gm": "GM",
+        "ticket": "Ticket",
+        "prayer": "Prayer"
+      },
+      "callUsage": "Usage: /{cmd} <message>",
+      "callCooldown": "You contacted the staff recently, try again in {seconds} seconds.",
+      "callLine": "{who}: {text}",
+      "callAlert": "{label} from {who}: {text}",
+      "callSent": "Your message was sent to the staff.",
+      "broadcastAlert": "{who} broadcast: {text}"
+    },
+    "chat": {
+      "say": "{name} says: \"{text}\"",
+      "low": "{name} says quietly: \"{text}\"",
+      "whisper": "{name} whispers: \"{text}\"",
+      "wide": "{name} says loudly: \"{text}\"",
+      "my": "{name}'s {text}",
+      "looc": "{name} (OOC): \"{text}\"",
+      "shout": "{name} shouts: \"{text}\"",
+      "systemDenied": "You do not have permission to use /system.",
+      "adminDenied": "You do not have permission to use the admin channel.",
+      "staffChannel": "[Staff] {name}: {text}",
+      "rollUsage": "Usage: /roll [NdM], e.g. /roll 1d20",
+      "roll": "{name} rolls {n}d{sides}: {total}{detail}",
+      "help": "Chat: plain text talks nearby. /low /whisper /wide change range, /me /my /do emote, /looc out of character, /shout carries, /pm <name> <msg>, /roll [NdM], /mask hides your name, /gm /ticket /pray <msg> reach the staff.",
+      "commandFailed": "Command failed, see server log.",
+      "unknownCommand": "Unknown or unavailable command: /{cmd}"
+    },
+    "mask": {
+      "removeFailed": "Could not remove the mask, try again.",
+      "removed": "You are no longer masked.",
+      "notMasked": "You are not masked.",
+      "cannotMask": "Your name cannot be masked right now.",
+      "maskFailed": "Could not mask your name, try again.",
+      "masked": "You are now masked as \"{name}\". Use /mask again to remove it."
+    },
+    "pm": {
+      "usage": "Usage: /pm <name> <message>",
+      "unknownToThem": "They do not know you. Introduce yourself in person first."
+    },
+    "lookup": {
+      "ambiguous": "\"{query}\" matches several players: {names}. Be more specific.",
+      "notFound": "No online player found matching \"{query}\"."
+    },
+    "combat": {
+      "critDealt": "Critical hit! {damage} damage.",
+      "critTaken": "You took a critical hit: {damage} damage.",
+      "gearUnreadable": "That gear cannot be read right now.",
+      "gearOf": "Gear of {name}:"
+    },
+    "repair": {
+      "cannotOpen": "The repair menu cannot be opened right now."
+    },
+    "console": {
+      "help": {
+        "title": "Gamemode console commands:",
+        "help": "  help                       this help",
+        "status": "  status                     online count and uptime",
+        "players": "  players                    list online players",
+        "say": "  say <text>                 server broadcast into every chat tab",
+        "notify": "  notify <name|all> <text>   corner notification (System tab)",
+        "kick": "  kick <name>                disconnect a player",
+        "admin": "  admin list|add <profileId>|remove <profileId>   runtime chat admins (not persisted)",
+        "grantspell": "  grantspell <name> <0xFormId>    teach a spell/power server-side (persists)",
+        "revokespell": "  revokespell <name> <0xFormId>   remove a granted spell/power",
+        "revive": "  revive <formDesc>          return a fallen character (Sovngarde, Soul Cairn, perma-dead) to the living"
+      },
+      "reviveTooOld": "server code too old: build the server and restart the game service",
+      "reviveBadId": "not a character id: {desc}",
+      "reviveUsage": "usage: revive <formDesc>  (the character id the Players tab shows, e.g. 97)",
+      "reviveRefused": "revive refused: {error}",
+      "revived": "revived {id}, they wake at the Temple of Kynareth",
+      "status": "online: {count} player(s), server uptime: {minutes} min",
+      "noPlayers": "no players online",
+      "playerRow": "{name} (profile {profileId}, actor {actorId}, user {userId})",
+      "unnamed": "(unnamed)",
+      "sayUsage": "usage: say <text>",
+      "broadcast": "broadcast: {text}",
+      "notifyUsage": "usage: notify <name|all> <text>",
+      "notifiedAll": "notified everyone: {text}",
+      "ambiguous": "\"{query}\" matches several players: {names}",
+      "noMatch": "no online player matching \"{query}\"",
+      "notified": "notified {name}: {text}",
+      "kickUsage": "usage: kick <name>",
+      "kickReason": "You were kicked from the server by an admin.",
+      "kickFailed": "kick failed: {error}",
+      "kicked": "kicked {name}",
+      "spellUsage": "usage: {verb} <name> <0xFormId>  (hex form id, e.g. 92c48 for Beast Form)",
+      "spellGranted": "granted spell 0x{spell} to {name}",
+      "spellRevoked": "revoked spell 0x{spell} from {name}",
+      "spellFailed": "{verb} failed: {error}",
+      "adminList": "runtime admins: {ids}",
+      "adminNone": "no runtime admin overrides (backend admin.* permissions still apply)",
+      "adminAdded": "profile {id} added as runtime admin",
+      "adminRemoved": "profile {id} removed from runtime admins",
+      "adminUsage": "usage: admin list | admin add <profileId> | admin remove <profileId>",
+      "pluginError": "plugin command error: {error}",
+      "unknown": "unknown command: {verb} (try help)",
+      "commandError": "command error: {error}"
+    }
+  },
   "server": {},
   "client": {},
   "front": {},
