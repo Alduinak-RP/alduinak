@@ -216,8 +216,8 @@ export class Login implements System {
             roles = currentRoles;
           }
 
-          // Null while every guild answered; the last status Discord could not answer with otherwise
-          let unavailable: number | null = null;
+          // Null while every guild answered; how the last guild Discord could not answer for failed otherwise
+          let unavailable: string | null = null;
           for (const guildConfig of discordAuth.guilds) {
             await discordPacer.acquire();
             requireSameConnection("the Discord member check wait");
@@ -232,11 +232,12 @@ export class Login implements System {
                 },
               );
             } catch (e: any) {
-              unavailable = 0;
+              unavailable = "unreachable";
               console.error(`discordAuth: Discord API unreachable for guild ${guildConfig.guildId} (profile ${profile.id}): ${e?.message || e}`);
               continue;
             }
-            const body = response.ok || response.status === 404 ? await response.json().catch(() => null) : null;
+            // Every answer's body is read, since Discord's code and message are what name a misconfiguration
+            const body = await response.json().catch(() => null);
             const answer = classifyDiscordAnswer(response.status, body);
             if (answer.kind === "member") {
               isMemberOfAny = true;
@@ -248,9 +249,9 @@ export class Login implements System {
                 shouldHideIp = true;
               }
             } else if (answer.kind === "unavailable") {
-              unavailable = answer.status;
+              unavailable = `HTTP ${answer.status}`;
               const hint = answer.status === 401 || answer.status === 403 ? " - check that the bot token is valid and Server Members Intent is enabled" : "";
-              console.error(`discordAuth: Discord API returned ${answer.status} for guild ${guildConfig.guildId} (profile ${profile.id})${hint}`);
+              console.error(`discordAuth: Discord API returned ${answer.status}${answer.detail ? ` (${answer.detail})` : ""} for guild ${guildConfig.guildId} (profile ${profile.id})${hint}`);
             }
           }
           requireSameConnection("the Discord member check");
@@ -270,10 +271,10 @@ export class Login implements System {
                 shouldHideIp = true;
               }
             }
-            console.log(`discordAuth: Discord API unavailable (HTTP ${unavailable}) for profile ${profile.id}, logged in with ${roles.length} stored role(s)`);
+            console.log(`discordAuth: Discord API unavailable (${unavailable}) for profile ${profile.id}, logged in with ${roles.length} stored role(s)`);
             if (Date.now() - discordOutageAlertedAt >= DISCORD_OUTAGE_ALERT_MS) {
               discordOutageAlertedAt = Date.now();
-              discordAlert("admin", loc("login.discordUnavailable", { status: String(unavailable) }));
+              discordAlert("admin", loc("login.discordUnavailable", { reason: unavailable }));
             }
           }
 

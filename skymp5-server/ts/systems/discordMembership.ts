@@ -3,6 +3,7 @@
 // Retry-After the API names, and only Discord's own "unknown member" code refuses a player.
 
 export const UNKNOWN_MEMBER_CODE = 10007;
+export const UNKNOWN_USER_CODE = 10013;
 export const DISCORD_RATE_WINDOW_MS = 1100;
 export const DISCORD_RATE_LIMIT = 4;
 export const DISCORD_RETRIES = 6;
@@ -14,16 +15,21 @@ const MAX_RETRY_AFTER_MS = 10000;
 export type DiscordAnswer =
   | { kind: "member"; roles: string[] }
   | { kind: "notMember" }
-  | { kind: "unavailable"; status: number };
+  | { kind: "unavailable"; status: number; detail: string };
 
 export const classifyDiscordAnswer = (status: number, body: unknown): DiscordAnswer => {
   const record = body && typeof body === "object" ? body as Record<string, unknown> : null;
-  if (status >= 200 && status < 300) {
-    const roles = Array.isArray(record?.roles) ? (record!.roles as unknown[]).filter((r): r is string => typeof r === "string") : [];
+  if (status >= 200 && status < 300 && record) {
+    const roles = Array.isArray(record.roles) ? (record.roles as unknown[]).filter((r): r is string => typeof r === "string") : [];
     return { kind: "member", roles };
   }
-  if (status === 404 && record?.code === UNKNOWN_MEMBER_CODE) return { kind: "notMember" };
-  return { kind: "unavailable", status };
+  // A deleted Discord account (unknown user) is as much a non-member as one that never joined
+  if (status === 404 && (record?.code === UNKNOWN_MEMBER_CODE || record?.code === UNKNOWN_USER_CODE)) return { kind: "notMember" };
+  // Discord's code and message tell an unknown guild or a missing intent apart where the status cannot
+  const detail = record
+    ? [record.code !== undefined ? `code ${record.code}` : "", typeof record.message === "string" ? record.message : ""].filter(Boolean).join(": ")
+    : status < 300 ? "no JSON body" : "";
+  return { kind: "unavailable", status, detail };
 };
 
 type RetryResponse = { status: number; headers: { get(name: string): string | null } } | null;

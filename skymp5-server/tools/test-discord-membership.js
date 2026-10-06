@@ -22,17 +22,19 @@ const load = async () => {
 }
 
 const main = async () => {
-  const { classifyDiscordAnswer, discordRetryOptions, RequestPacer, DISCORD_RETRIES, UNKNOWN_MEMBER_CODE } = await load()
+  const { classifyDiscordAnswer, discordRetryOptions, RequestPacer, DISCORD_RETRIES, UNKNOWN_MEMBER_CODE, UNKNOWN_USER_CODE } = await load()
 
-  // Classification: only a 2xx is a member, only Discord's unknown member code is a non-member
+  // Classification: only a 2xx with a JSON body is a member, only Discord's unknown member and unknown user codes are a non-member
   assert.deepEqual(classifyDiscordAnswer(200, { roles: ['1', '2', 5] }), { kind: 'member', roles: ['1', '2'] })
   assert.deepEqual(classifyDiscordAnswer(200, {}), { kind: 'member', roles: [] })
+  assert.deepEqual(classifyDiscordAnswer(200, null), { kind: 'unavailable', status: 200, detail: 'no JSON body' }, 'a body cut off by the deadline is no member answer')
   assert.deepEqual(classifyDiscordAnswer(404, { code: UNKNOWN_MEMBER_CODE, message: 'Unknown Member' }), { kind: 'notMember' })
-  assert.deepEqual(classifyDiscordAnswer(404, { code: 10004 }), { kind: 'unavailable', status: 404 }, 'unknown guild is a config problem, not a refusal')
-  assert.deepEqual(classifyDiscordAnswer(404, null), { kind: 'unavailable', status: 404 })
-  assert.deepEqual(classifyDiscordAnswer(429, null), { kind: 'unavailable', status: 429 })
-  assert.deepEqual(classifyDiscordAnswer(502, null), { kind: 'unavailable', status: 502 })
-  assert.deepEqual(classifyDiscordAnswer(401, null), { kind: 'unavailable', status: 401 })
+  assert.deepEqual(classifyDiscordAnswer(404, { code: UNKNOWN_USER_CODE, message: 'Unknown User' }), { kind: 'notMember' }, 'a deleted Discord account is a non-member')
+  assert.deepEqual(classifyDiscordAnswer(404, { code: 10004, message: 'Unknown Guild' }), { kind: 'unavailable', status: 404, detail: 'code 10004: Unknown Guild' }, 'unknown guild is a config problem, not a refusal')
+  assert.deepEqual(classifyDiscordAnswer(404, null), { kind: 'unavailable', status: 404, detail: '' })
+  assert.deepEqual(classifyDiscordAnswer(429, { message: 'You are being rate limited.', retry_after: 1.2 }), { kind: 'unavailable', status: 429, detail: 'You are being rate limited.' })
+  assert.deepEqual(classifyDiscordAnswer(502, null), { kind: 'unavailable', status: 502, detail: '' })
+  assert.deepEqual(classifyDiscordAnswer(401, { message: '401: Unauthorized', code: 0 }), { kind: 'unavailable', status: 401, detail: 'code 0: 401: Unauthorized' })
 
   // Retry rules: 429 and 5xx and network errors retry up to the cap, 2xx and 404 do not
   const logged = []
