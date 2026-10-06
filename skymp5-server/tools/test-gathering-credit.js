@@ -76,7 +76,7 @@ const setup = ({ tired = false, hoe = true } = {}) => {
     rankOf: () => 1,
     rankIn: () => 1,
     hoeFormId: () => HOE,
-    creditWork: (id, ...professions) => credited.push([id, professions]),
+    creditWork: (id, professions) => credited.push([id, professions]),
   }
   const needs = { canPay: () => !tired, pay: (_ctx, id, effort, rank, what) => paid.push([id, effort, rank, what]) }
   const sys = new GatheringSystem((line) => lines.push(line), mastery, needs, { seatOf: () => null })

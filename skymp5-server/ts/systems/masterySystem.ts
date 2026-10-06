@@ -317,7 +317,7 @@ const HOE_EDID = "AldToolHoe";
 
 const ACTIVITY_KINDS = ["craft", "kill", "cast", "work"] as const;
 type ActivityKind = typeof ACTIVITY_KINDS[number];
-// Crafts and verified work bank inside the counted hour; kills and casts never do
+// Crafts and verified work bank inside the counted hour, unless the work was credited with bank false; kills and casts never do
 const BANKING_KINDS: ActivityKind[] = ["craft", "work"];
 
 interface ActivityEvent {
@@ -575,10 +575,10 @@ export class MasterySystem implements System {
     }
   }
 
-  // One piece of work another system verified (a gathering yield, a skinning), work of any of the professions named: the first slot in slot order following one of them is credited
-  creditWork(actorId: number, ...professionIds: string[]): void {
+  // One piece of work another system verified (a gathering yield, a skinning), work of any of the professions named: the first slot in slot order following one of them is credited; bank false for work that earns nothing inside the counted hour
+  creditWork(actorId: number, professionIds: string[], bank = true): void {
     const professions = professionIds.reduce((mask, id) => mask | professionBit(id), 0);
-    if (professions) this.enqueue("work", actorId, { professions });
+    if (professions) this.enqueue("work", actorId, { professions, bank: bank ? 1 : 0 });
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -602,7 +602,7 @@ export class MasterySystem implements System {
     // A banked hour that fell due since the last bank check is paid first, so the work cannot take its place in the clock
     if (char.primary.queue.length) this.payDue(ctx, ev.actorId, char, now);
     const counted = this.countedMs(char, now) > 0;
-    if (counted && (BANKING_KINDS.indexOf(ev.kind) === -1 || char.primary.queue.length >= this.bankMax)) return;
+    if (counted && (BANKING_KINDS.indexOf(ev.kind) === -1 || ev.detail["bank"] === 0 || char.primary.queue.length >= this.bankMax)) return;
     const gates = ev.kind === "craft" ? this.recipeGates(ctx, ev.detail["recipeId"]) : [];
     for (const slot of slots) {
       const profession = slot.rec.profession || "";

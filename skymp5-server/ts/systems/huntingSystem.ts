@@ -307,7 +307,7 @@ export class HuntingSystem implements System {
         }
       }
       this.needs.pay(ctx, skinnerId, "fight", this.mastery.rankOf(ctx, skinnerId, "hunter"), "skin", true);
-      this.mastery.creditWork(skinnerId, "hunter");
+      this.mastery.creditWork(skinnerId, ["hunter"], false);
       const peltPart = khajiit ? `, ${pelt ? `Khajiit pelt ${hex(this.khajiitPeltId)}` : "no Khajiit pelt"} (${pct(this.khajiitPeltChance)} chance)` : "";
       this.log(`[hunting] ${hex(skinnerId)} skinned ${bodyName(job)} (profile ${job.profileId}): ${hex(this.humanFleshId)} x1, ${heart ? `heart ${hex(this.humanHeartId)}` : "no heart"}${this.humanHeartId ? ` (${pct(this.heartChance)} chance)` : ""}${peltPart}, ${packPart}`);
       if (!job.pk) this.respawnSkinned(mp, job.victimId);
@@ -373,7 +373,7 @@ export class HuntingSystem implements System {
         if (butcher) this.notice(ctx, this.userOf(ctx, actorId), loc("hunting.butcherEye"));
       }
       this.needs.pay(ctx, actorId, "fight", this.mastery.rankOf(ctx, actorId, "hunter"), "skin", true);
-      this.mastery.creditWork(actorId, "hunter");
+      this.mastery.creditWork(actorId, ["hunter"], false);
       this.log(`[hunting] ${hex(actorId)} skinned ${hex(bodyId)} for ${hex(peltId)} and ${stacks} stack(s) of the carcass`);
       if (!pet) this.consumeBody(ctx, bodyId);
     } catch (e) {

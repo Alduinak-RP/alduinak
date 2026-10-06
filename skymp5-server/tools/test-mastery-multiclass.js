@@ -128,7 +128,7 @@ const setup = ({ slots = THREE, bonus = null } = {}) => {
   const reset = (profession) => { sys.lastChooseMs.clear(); sys.onResetRequest(ctx, USER, profession ? { profession } : {}) }
   const craft = (recipeId) => sys.creditActivity(ctx, { kind: 'craft', actorId: ACTOR, detail: { recipeId, held: 1 } })
   const cast = () => sys.creditActivity(ctx, { kind: 'cast', actorId: ACTOR, detail: { spellId: FLAMES } })
-  const work = (...professions) => sys.creditActivity(ctx, { kind: 'work', actorId: ACTOR, detail: { professions: workOf(...professions) } })
+  const work = (...professions) => sys.creditActivity(ctx, { kind: 'work', actorId: ACTOR, detail: { professions: workOf(...professions), bank: 1 } })
   const notices = () => mp.packets.filter((p) => p.customPacketType === 'masteryNotice').map((p) => p.text)
   const last = (type) => mp.packets.filter((p) => p.customPacketType === type).pop()
   const primary = () => mp.props.get(`${ACTOR}:private.mastery`)
@@ -342,13 +342,32 @@ test('a harvest is farmer or alchemist work and credits the first slot in slot o
   const realImmediate = global.setImmediate
   global.setImmediate = (fn) => queued.push(fn)
   try {
-    u.sys.creditWork(ACTOR, 'farmer', 'alchemist')
-    u.sys.creditWork(ACTOR, 'bard')
+    u.sys.creditWork(ACTOR, ['farmer', 'alchemist'])
+    u.sys.creditWork(ACTOR, ['bard'])
   } finally {
     global.setImmediate = realImmediate
   }
-  assert.deepEqual(u.sys.events.map((e) => [e.kind, e.detail.professions]), [['work', workOf('farmer', 'alchemist')]], 'creditWork names every profession of the work in one event and queues nothing for an unknown craft')
+  assert.deepEqual(u.sys.events.map((e) => [e.kind, e.detail.professions, e.detail.bank]), [['work', workOf('farmer', 'alchemist'), 1]], 'creditWork names every profession of the work in one event, banking by default, and queues nothing for an unknown craft')
   queued[0]()
+})
+
+test('work credited with bank false counts the hour but earns nothing inside it, like a kill', () => {
+  const t = setup()
+  t.choose('hunter', 0)
+  const queued = []
+  const realImmediate = global.setImmediate
+  global.setImmediate = (fn) => queued.push(fn)
+  try {
+    t.sys.creditWork(ACTOR, ['hunter'], false)
+    t.sys.creditWork(ACTOR, ['hunter'], false)
+  } finally {
+    global.setImmediate = realImmediate
+  }
+  assert.deepEqual(t.sys.events.map((e) => e.detail.bank), [0, 0])
+  queued[0]()
+  assert.deepEqual([t.primary().points, t.primary().queue], [1, []], 'the first skinning counts the hour, the second banks nothing')
+  t.work('hunter')
+  assert.deepEqual(t.primary().queue, ['hunter'], 'the same work credited with bank true banks')
 })
 
 test('the bank check reads only online characters with banked hours, saves their online time and lets them go once paid', () => {
@@ -648,8 +667,8 @@ test('activity events are credited on the next turn, one drain for a burst', () 
   const realImmediate = global.setImmediate
   global.setImmediate = (fn) => queued.push(fn)
   try {
-    t.sys.creditWork(ACTOR, 'blacksmith')
-    t.sys.creditWork(ACTOR, 'blacksmith')
+    t.sys.creditWork(ACTOR, ['blacksmith'])
+    t.sys.creditWork(ACTOR, ['blacksmith'])
   } finally {
     global.setImmediate = realImmediate
   }

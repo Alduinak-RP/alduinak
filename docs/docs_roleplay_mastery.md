@@ -66,9 +66,10 @@ not read, and `masteryActivities` has no `activatePrefixes` or `activateTypes` k
 hour going to the first craft slot in slot order that qualifies. A craft made inside that counted hour (a craft or
 temper that would have counted, at a bench of the profession, with the inputs in the bag) banks one hour for its own
 craft instead, up to `masteryHourBank` (default 2; 0 turns the bank off) banked hours per character, shared by every
-craft it holds. Verified work banks the same way: a swing's firewood, an ore collection, a harvest or a skinning inside
+craft it holds. Gathering banks the same way: a swing's firewood, an ore collection or a harvest inside
 the counted hour banks an hour for its craft, so a chopper's first swing counts the hour, the second and third bank one
-each and the fourth earns nothing until an hour is paid out. Kills and casts never bank, and inside the counted hour
+each and the fourth earns nothing until an hour is paid out. Kills, casts and skinnings never bank (a hunter's kill
+counts the hour and a skinning inside it earns nothing, so two animals cannot be three hours), and inside the counted hour
 they earn nothing. The bank is a queue in craft order: a banked hour is counted one interval after the
 character's last counted hour, whether that came from work or from the bank, the head of the queue first, and a
 counted hour of work restarts that wait, so no hour is ever counted twice in one interval (a banked hour that fell due

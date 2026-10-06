@@ -121,7 +121,7 @@ async function setup (settings = {}, missing = []) {
   const credited = []
   const mastery = {
     rankOf: (_ctx, id, prof) => prof === 'hunter' && (id === HUNTER || id === OTHER_HUNTER) ? 1 : 0,
-    creditWork: (id, prof) => credited.push([id, prof]),
+    creditWork: (id, professions, bank) => credited.push([id, professions, bank]),
     actorHasKeyword: (_ctx, id) => id === WOLF,
   }
   const tired = new Set()
@@ -188,7 +188,7 @@ async function setup (settings = {}, missing = []) {
     assert.deepEqual(t.notices(VICTIM), [], 'the victim reads nothing in the chat')
     assert.deepEqual(t.notices(HUNTER), [], 'nor does the skinner')
     assert.deepEqual(t.paid, [[HUNTER, 'fight', 'skin', true]])
-    assert.deepEqual(t.credited, [[HUNTER, 'hunter']])
+    assert.deepEqual(t.credited, [[HUNTER, ['hunter'], false]], 'hunter work that never banks')
     assert.match(t.lines.join('\n'), /ff000a01 skinned the body of player ff000b01 \(profile 4\): 1016b3 x1, heart b18cd \(10% chance\), nothing of the pack taken, the victim respawns now/)
     assert.equal(t.sys.searchRefusal(VICTIM), '', 'the respawn clears the mark')
     assert.equal(t.skin(OTHER_HUNTER), false, 'the body is gone with the respawn')

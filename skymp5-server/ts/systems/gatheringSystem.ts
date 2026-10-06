@@ -415,7 +415,7 @@ export class GatheringSystem implements System {
       const extra = alchemist ? `, alchemist -${Math.round(this.alchemistFloraDiscount * 100)}%` : priceRank !== rank ? `, alchemist r${rank} pays the Free crop price` : "";
       if (!props["free"]) {
         this.needs.pay(ctx, actorId, "gather", priceRank, `harvest ${name} ${flora ? "flora" : "crop"} r${priceRank}${extra}`, flora, multiplier);
-        this.mastery.creditWork(actorId, ...(flora ? PICKERS : CROP_PRICERS));
+        this.mastery.creditWork(actorId, flora ? PICKERS : CROP_PRICERS);
       }
       if (kneelMs > 0) sendActionLock(mp, actorId, flora ? HARVEST_ANIM : CROP_ANIM, kneelMs / 1000, flora ? undefined : CROP_EXIT_ANIM);
     };
@@ -615,7 +615,7 @@ export class GatheringSystem implements System {
     this.addItem(ctx, s.actorId, s.resource, count);
     s.given += count;
     this.needs.pay(ctx, s.actorId, "gather", rank, "chop");
-    this.mastery.creditWork(s.actorId, "woodworker");
+    this.mastery.creditWork(s.actorId, ["woodworker"]);
     if (!this.needs.canPay(s.actorId, "gather", rank)) this.finish(ctx, s, CHOP_TIRED);
   }
 
@@ -630,7 +630,7 @@ export class GatheringSystem implements System {
     if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, loc("gathering.mineTired"));
     this.addItem(ctx, s.actorId, s.resource, s.perStrike * YIELD_BY_RANK[rank]);
     this.needs.pay(ctx, s.actorId, "gather", rank, "ore");
-    this.mastery.creditWork(s.actorId, "miner");
+    this.mastery.creditWork(s.actorId, ["miner"]);
     if (Math.random() < GEM_CHANCE) {
       const gem = this.rollItem(ctx, GEM_LIST);
       if (gem !== GEM_LIST) this.addItem(ctx, s.actorId, gem, 1);
