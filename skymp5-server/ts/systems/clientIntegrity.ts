@@ -10,11 +10,15 @@ import { loc } from "../loc";
 // at login (gameData.integrity) and every few minutes (integrityReport). Plugins are compared with this server's
 // data/manifest.json, dlls with the backend's client-modules list (every dll the launcher manifest ships).
 //
+// Client problems (an extra, missing or modified plugin or dll, no report) are alerted and in kick mode kicked.
+// Server problems (no manifest, no dll list from the backend) skip that check: logged per login, alerted once per outage.
+//
 // server-settings.json keys:
 //   clientIntegrity.mode          "off" (default), "log" (log and alert staff) or "kick" (also kick the player)
 //   clientIntegrity.allowModules  extra dll names allowed with any hash, e.g. ["dxgi.dll"]
 
 type Mode = "off" | "log" | "kick";
+type When = "login" | "recheck";
 
 interface PluginReport { name: string; crc32: number; size: number }
 interface ModuleReport { path: string; size: number; sha256: string }
@@ -22,8 +26,11 @@ interface Report { plugins: PluginReport[] | null; modules: ModuleReport[] | nul
 interface ModuleEntry { sha256: string; size: number | null }
 interface ModuleList { modules: Record<string, ModuleEntry[]>; anyHashRoot: string[] }
 interface ManifestMod { filename: string; crc32: number; size: number }
+interface Skipped { check: string; reason: string }
+interface Check { problems: string[]; skipped: Skipped[] }
 
 const MODULES_TTL_MS = 10 * 60000;
+const FETCH_TIMEOUT_MS = 5000;
 const MAX_ENTRIES = 4096;
 const MAX_TEXT = 512;
 const MAX_KICK_PROBLEMS = 5;
@@ -117,6 +124,10 @@ export class ClientIntegritySystem implements System {
   private dataDir = "";
   private moduleList: { value: ModuleList; at: number } | null = null;
   private moduleListPending: Promise<ModuleList | null> | null = null;
+  // Why the last fetch gave no list, for the skip lines and the boot line
+  private listDetail = "";
+  // Checks whose server-side source is down right now, each alerted once
+  private outages = new Set<string>();
 
   constructor(private log: Log, private masterUrl: string | null, private masterKey: string) { }
 
@@ -135,44 +146,76 @@ export class ClientIntegritySystem implements System {
       this.log("ClientIntegrity: no master url, dll checks cannot run");
     }
     this.log(`ClientIntegrity: mode ${this.mode}${this.allowModules.size ? `, extra dlls allowed: ${[...this.allowModules].join(", ")}` : ""}`);
+    if (this.mode !== "off" && this.masterUrl) {
+      this.prefetchModuleList().catch((err) => console.error("ClientIntegrity: boot prefetch failed:", err));
+    }
   }
 
   get enabled(): boolean {
     return this.mode !== "off";
   }
 
+  // Boot: fetch the dll list once, so a backend problem is in the log before the first login
+  async prefetchModuleList(): Promise<void> {
+    const list = await this.getModuleList();
+    this.trackOutage(loc("integrity.dllCheck"), list ? null : this.noModuleList());
+    this.log(`ClientIntegrity: ${list
+      ? loc("integrity.listLoaded", { count: Object.keys(list.modules).length })
+      : loc("integrity.listMissing", { detail: this.listDetail })}`);
+  }
+
   // False when the login must stop (kicked, or the slot changed hands during the check)
   async checkLogin(userId: number, profileId: number, discordId: string | null, raw: unknown, ctx: SystemContext): Promise<boolean> {
     if (!this.enabled) return true;
     const guid = ctx.svr.getUserGuid(userId);
-    const problems = await this.problems(raw);
+    const check = await this.check(raw, "login");
     if (!ctx.svr.isConnected(userId) || ctx.svr.getUserGuid(userId) !== guid) return false;
-    return this.act(userId, profileId, discordId, problems, "login", ctx);
+    return this.act(userId, profileId, discordId, check, "login", ctx);
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     if (type !== "integrityReport" || !this.enabled) return;
     const guid = ctx.svr.getUserGuid(userId);
-    this.problems(content["integrity"]).then((problems) => {
+    this.check(content["integrity"], "recheck").then((check) => {
       if (!ctx.svr.isConnected(userId) || ctx.svr.getUserGuid(userId) !== guid) return;
-      this.act(userId, null, null, problems, "recheck", ctx);
+      this.act(userId, null, null, check, "recheck", ctx);
     }).catch((err) => console.error("ClientIntegrity: recheck failed:", err));
   }
 
-  private async problems(raw: unknown): Promise<string[]> {
+  // Client problems can kick; a source the server cannot read skips its check instead
+  private async check(raw: unknown, when: When): Promise<Check> {
+    const out: Check = { problems: [], skipped: [] };
     const report = parseReport(raw);
-    if (!report) return [loc("integrity.noReport")];
+    if (!report) {
+      out.problems.push(loc("integrity.noReport"));
+      return out;
+    }
     const manifest = this.readManifest();
     const list = await this.getModuleList();
-    return [
-      ...(manifest ? pluginProblems(report.plugins, manifest.loadOrder, manifest.mods) : [loc("integrity.noServerManifest")]),
-      ...(list ? moduleProblems(report.modules, list, this.allowModules) : [loc("integrity.noModuleList")]),
-    ];
+    const pluginCheck = loc("integrity.pluginCheck");
+    const dllCheck = loc("integrity.dllCheck");
+    this.trackOutage(pluginCheck, manifest ? null : loc("integrity.noServerManifest"));
+    this.trackOutage(dllCheck, list ? null : this.noModuleList());
+    if (!manifest) {
+      out.skipped.push({ check: pluginCheck, reason: loc("integrity.noServerManifest") });
+    } else if (when === "login" && report.plugins === null && report.modules !== null) {
+      // Clients up to 1.0.1 read their plugin list in game, so a main menu login carries none yet
+      out.skipped.push({ check: pluginCheck, reason: loc("integrity.pluginsNotRead") });
+    } else {
+      out.problems.push(...pluginProblems(report.plugins, manifest.loadOrder, manifest.mods));
+    }
+    if (list) out.problems.push(...moduleProblems(report.modules, list, this.allowModules));
+    else out.skipped.push({ check: dllCheck, reason: this.noModuleList() });
+    return out;
   }
 
-  private act(userId: number, profileId: number | null, discordId: string | null, problems: string[], when: string, ctx: SystemContext): boolean {
-    if (problems.length === 0) return true;
+  private act(userId: number, profileId: number | null, discordId: string | null, check: Check, when: When, ctx: SystemContext): boolean {
     const who = profileId !== null ? `profile ${profileId}` : this.describeUser(userId, ctx);
+    for (const s of check.skipped) {
+      this.log(`ClientIntegrity: ${loc("integrity.skipped", { check: s.check, when, who, slot: userId, reason: s.reason })}`);
+    }
+    const problems = check.problems;
+    if (problems.length === 0) return true;
     const line = loc("integrity.alert", { who, slot: userId, when, action: this.mode === "kick" ? loc("integrity.kicked") : loc("integrity.logged"), problems: problems.join("; ") });
     console.log(`[ClientIntegrity] ${line}`);
     discordAlert("integrity", line, { discordIds: discordId ? [discordId] : [] });
@@ -181,6 +224,23 @@ export class ClientIntegritySystem implements System {
     const more = problems.length > MAX_KICK_PROBLEMS ? `\n${loc("integrity.more", { count: problems.length - MAX_KICK_PROBLEMS })}` : "";
     kickWithReason(ctx.svr, userId, loc("integrity.kick", { problems: shown + more }));
     return false;
+  }
+
+  // One alert when a server-side source fails, none while it stays down, one log line when it answers again
+  private trackOutage(check: string, reason: string | null): void {
+    if (!reason) {
+      if (this.outages.delete(check)) this.log(`ClientIntegrity: ${loc("integrity.outageOver", { check })}`);
+      return;
+    }
+    if (this.outages.has(check)) return;
+    this.outages.add(check);
+    const line = loc("integrity.outage", { check, reason });
+    console.log(`[ClientIntegrity] ${line}`);
+    discordAlert("integrity", line);
+  }
+
+  private noModuleList(): string {
+    return loc("integrity.noModuleList", { detail: this.listDetail });
   }
 
   private describeUser(userId: number, ctx: SystemContext): string {
@@ -212,20 +272,35 @@ export class ClientIntegritySystem implements System {
     return value || (this.moduleList ? this.moduleList.value : null);
   }
 
+  // Null with listDetail set when the backend gives no usable list; bounded by FETCH_TIMEOUT_MS so logins never hang on it
   private async fetchModuleList(): Promise<ModuleList | null> {
-    if (!this.masterUrl) return null;
+    if (!this.masterUrl) {
+      this.listDetail = loc("integrity.detail.noMaster");
+      return null;
+    }
     try {
-      const response = await fetch(`${this.masterUrl}/api/servers/${this.masterKey}/client-modules`, { headers: { "X-Auth-Token": this.authToken } });
+      const response = await fetch(`${this.masterUrl}/api/servers/${this.masterKey}/client-modules`, {
+        headers: { "X-Auth-Token": this.authToken },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
       if (!response.ok) {
-        console.error(`ClientIntegrity: client-modules HTTP ${response.status}`);
+        this.listDetail = loc("integrity.detail.http", { status: response.status });
+        console.error(`ClientIntegrity: client-modules ${this.listDetail}`);
         return null;
       }
       const value = await response.json() as ModuleList;
-      if (!value || typeof value.modules !== "object" || !Array.isArray(value.anyHashRoot)) return null;
+      if (!value || typeof value.modules !== "object" || !Array.isArray(value.anyHashRoot)) {
+        this.listDetail = loc("integrity.detail.malformed");
+        console.error(`ClientIntegrity: client-modules ${this.listDetail}`);
+        return null;
+      }
       this.moduleList = { value, at: Date.now() };
       return value;
     } catch (e) {
-      console.error("ClientIntegrity: client-modules request failed:", e);
+      this.listDetail = e instanceof Error && e.name === "TimeoutError"
+        ? loc("integrity.detail.timeout", { ms: FETCH_TIMEOUT_MS })
+        : loc("integrity.detail.failed", { error: e instanceof Error ? e.message : String(e) });
+      console.error(`ClientIntegrity: client-modules ${this.listDetail}`);
       return null;
     }
   }
