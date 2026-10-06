@@ -940,7 +940,7 @@ async function main() {
     later(10 * 60000)
     await immune.update()
     assert.equal(immune.rec(i).cold, 55)
-    assert.ok(t.logs.includes(`[survival] ${h} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 0%)`), t.logs.join('\n'))
+    assert.ok(t.logs.includes(`[survival] ${h} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 0%, client 0%)`), t.logs.join('\n'))
     const s = t.states(a).pop()
     assert.deepEqual([s.coldStage, s.freezingArea], [3, true])
     later(300)
@@ -986,8 +986,8 @@ async function main() {
     for (const id of users.keys()) swim(id, true)
     assert.deepEqual(t.mp.healthSent, [], 'nothing is taken on entering')
     assert.deepEqual([a, orc, nord, god, dead, born].map(told), [1, 1, 1, 0, 0, 0])
-    assert.ok(t.logs.includes(`[survival] ${ha} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 0%)`), t.logs.join('\n'))
-    assert.ok(t.logs.includes(`[survival] ${hn} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 75%)`), t.logs.join('\n'))
+    assert.ok(t.logs.includes(`[survival] ${ha} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 0%, client 0%)`), t.logs.join('\n'))
+    assert.ok(t.logs.includes(`[survival] ${hn} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 75%, client 0%)`), t.logs.join('\n'))
     later(4000)
     await t.update()
     assert.deepEqual(t.mp.healthSent, [], 'the first tick is 5 s in')
@@ -1006,7 +1006,7 @@ async function main() {
     setHealth(a, 0.7375)
     later(5000)
     await t.update()
-    near(health(a), 0.725, 'a rise above 5% of the bar is healing and stays')
+    near(health(a), 0.725, 'a rise above what the regeneration rate yields (4.9% of the bar at multiplier 1) is healing and stays')
     later(2000)
     swim(a, false)
     near(health(a), 0.72, 'the 2 s since the last tick count on leaving')
@@ -1057,6 +1057,52 @@ async function main() {
     }
     assert.deepEqual([none.rec(b).cold, none.mp.get(b, 'percentages').health, none.notices(b).filter((n) => n.startsWith('The water'))], [300, 1, []], 'at 0 the water still chills')
     assert.deepEqual([coldOff.rec(c).cold, coldOff.mp.get(c, 'percentages').health], [55, 0.9875], 'with cold off the water still takes health')
+  })
+
+  await test('freezing water: the frost resistance the client reports counts when larger than the records give, capped at 85; two reports bunched inside the gap both step; the regeneration ceiling follows healthRegenerationMultiplier', async () => {
+    const t = setup({ survivalEnabled: true, survivalNightHours: [24, 0], healthRegenerationMultiplier: 0.08 }, true)
+    t.weather.kind = 'pleasant'
+    const [ring, nord, bunch] = [actor(), actor(), actor()]
+    const users = new Map()
+    for (const [id, race] of [[ring, REDGUARD_RACE], [nord, NORD_RACE], [bunch, REDGUARD_RACE]]) {
+      users.set(id, t.join(id, race))
+      t.put(id, TAMRIEL)
+      t.mp.set(id, 'percentages', { health: 1, magicka: 0.5, stamina: 0.25 })
+    }
+    t.mp.learned(nord).add(RESIST_FROST_75)
+    later()
+    await t.update()
+    const heat = { interiors: 0, worlds: 0, points: 0, unknown: 0 }
+    assert.ok(t.sys.coldLine(heat).includes('a rise under 0.4% of the bar between two 5 s ticks is regeneration and is taken back'), t.sys.coldLine(heat))
+    t.logs.length = 0
+    const health = (id) => t.mp.get(id, 'percentages').health
+    const setHealth = (id, value) => t.mp.set(id, 'percentages', { ...t.mp.get(id, 'percentages'), health: value })
+    const near = (actual, expected, why) => assert.ok(Math.abs(actual - expected) < 1e-12, `${why || ''} ${actual} is not ${expected}`)
+    // A Resist Frost ring the records never see, a Nord whose ring is weaker than his blood, and a report over the cap
+    t.sys.customPacket(users.get(ring), 'survivalReport', { swimming: true, flameCloak: false, frostResist: 50 }, t.ctx)
+    t.sys.customPacket(users.get(nord), 'survivalReport', { swimming: true, flameCloak: false, frostResist: 30 }, t.ctx)
+    t.sys.customPacket(users.get(bunch), 'survivalReport', { swimming: true, flameCloak: false, frostResist: 400 }, t.ctx)
+    assert.ok(t.logs.includes(`[survival] ${ring.toString(16)} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 50%, client 50%)`), t.logs.join('\n'))
+    assert.ok(t.logs.includes(`[survival] ${nord.toString(16)} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 75%, client 30%)`), t.logs.join('\n'))
+    assert.ok(t.logs.includes(`[survival] ${bunch.toString(16)} swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist 85%, client 85%)`), t.logs.join('\n'))
+    // The second of two reports inside REPORT_GAP_MS still steps: out of the water at once, nothing drained later
+    t.sys.customPacket(users.get(bunch), 'survivalReport', { swimming: false, flameCloak: false }, t.ctx)
+    assert.ok(t.logs.some((l) => l.includes(`${bunch.toString(16)} out of the freezing water`)), t.logs.join('\n'))
+    later(5000)
+    await t.update()
+    near(health(ring), 1 - 0.25 * 5 * 0.5 / 100, 'the ring halves the drain')
+    near(health(nord), 1 - 0.25 * 5 * 0.25 / 100, 'the Nord keeps his 75')
+    assert.equal(health(bunch), 1, 'the one who left at once loses nothing')
+    // At 0.08 the ceiling is 0.39% of the bar: a 0.2% creep is taken back, a cheese wedge (5 on 100) stays
+    setHealth(ring, health(ring) + 0.002)
+    later(5000)
+    await t.update()
+    near(health(ring), 1 - 0.25 * 10 * 0.5 / 100, 'regeneration under the ceiling is taken back')
+    const before = health(ring)
+    setHealth(ring, before + 0.05)
+    later(5000)
+    await t.update()
+    near(health(ring), before + 0.05 - 0.25 * 5 * 0.5 / 100, 'a 5% heal stays')
   })
 
   await test('survivalColdHealthScale: the scale follows the cold penalty, a revive counts its health point against the scaled maximum, a respawn against the full one', async () => {

@@ -2,7 +2,7 @@ import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, CREATION_FINISHED_EVENT, AFTERLIFE_REVIVED_EVENT } from "./system";
 import { isEditorId, resolveEditorIds } from "./espmEditorIds";
 import { espmFieldFormIds } from "./formIdUtil";
-import { ActorValue, SpellType, abilityResist, actorRaceId, fieldData, hasCureDisease, learnedSpells, potionHealing, spellEffects, spellInfo, view } from "./espmMagic";
+import { ActorValue, RESIST_CAP, SpellType, abilityResist, actorRaceId, fieldData, hasCureDisease, learnedSpells, potionHealing, spellEffects, spellInfo, view } from "./espmMagic";
 import { baseIdOf, chainMpHook, hasAdminMode, hex, isAlive, isCreationPending, isPlayerActor, removeSpellFrom, userOf } from "./actorUtil";
 import { afterlifeOf } from "./afterlifeSystem";
 import { describeActor, sendJson } from "./playerText";
@@ -50,9 +50,12 @@ type Mp = any;
 // the stage and the client takes the maximum health penalty from survivalState. Cold falls while logged out and starts over at a respawn.
 // Freezing water (swimming without a flame cloak, as the client reports, in a freezing area, a cold interior or a survivalFreezingWaterWorlds
 // world) raises cold to the stage 3 value at once and takes survivalFreezingWaterDamage health points a second off the base maximum, less
-// the frost resistance of the race and abilities, written to percentages every WATER_TICK_MS and on leaving the water, so the native
-// bleedout and death rules apply; health that crept up between two ticks is regeneration and is taken back, a larger rise is healing and
-// stays; never in creation, dead or with the god, ghost or invis admin mode.
+// the frost resistance (the larger of the race's and abilities' from the records and the FrostResist value the client reports with the swim,
+// capped at RESIST_CAP), written to percentages every WATER_TICK_MS and on leaving the water, so the native bleedout and death rules apply;
+// health that crept up between two ticks by what the regeneration rate allows (base HealRate x healthRegenerationMultiplier over a tick plus
+// the client's 2 s report gap) is taken back, a larger rise is healing and stays; never in creation, dead or with the god, ghost or invis
+// admin mode. Each write stamps the native regeneration clock of every attribute, so a magicka report arriving right after one is cropped
+// against that shorter time: magicka regenerates a little slower and may step back while swimming there, a known cost of the 5 s tick.
 // Afflictions, Survival's conditions: at a need's stage 5 (hunger Starving from NEEDS_STAGE_EVENT, cold Numb) a
 // character not holding its affliction rolls at most once per tickMinutes, like Survival's need update, so leaving stage 5 and coming
 // back inside that time rolls nothing: Weakened (hunger, 20% every 15 min), Frostbitten (cold, 16% every 5 min). The affliction ability
@@ -74,7 +77,7 @@ type Mp = any;
 //
 // Wire protocol - CustomPacket JSON:
 //   Client -> Server: { customPacketType: "survivalRequest" }  state again; it, needsRequest, weatherRequest and gameTimeRequest schedule the login re-send
-//                     { customPacketType: "survivalReport", swimming, flameCloak, engineWarmth? }  on change, engineWarmth after equipment changes
+//                     { customPacketType: "survivalReport", swimming, flameCloak, frostResist?, engineWarmth? }  on change, frostResist with a swim, engineWarmth after equipment changes
 //                     { customPacketType: "survivalExposure", sources: [{ actorId, diseases: [id] }] }  at a contagion check with a carrier in range
 //   Server -> Client: { customPacketType: "survivalState", cold, coldStage, coldStageName, coldPenalty, temperatureLevel, warmth, freezingArea,
 //                       afflictions: [name], diseases: [{ name, stage }], contagion: { seconds, range } | null }
@@ -170,8 +173,10 @@ const TICK_MS = 60000;
 const COLD_TICK_MS = 15000;
 const WATER_TICK_MS = 5000;
 const WATER_NOTICE_GAP_MS = 60000;
-// A rise of up to this share of the bar between two water ticks is regeneration, more is healing
-const WATER_REGEN_SHARE = 0.05;
+// A rise between two water ticks of up to what the regeneration rate yields in this many seconds (a tick plus the client's 2 s report gap) is regeneration, more is healing
+const WATER_REGEN_SECONDS = WATER_TICK_MS / 1000 + 2;
+// The player's HealRate actor value, percent of the bar a second before healthRegenerationMultiplier
+const BASE_HEAL_RATE_PCT = 0.7;
 const SAVE_MS = 5 * 60000;
 // A hit given or taken this recently stops cold falling above the cap
 const FIGHT_MS = 10000;
@@ -329,6 +334,8 @@ interface Online {
   heatFrom: number;
   swimming: boolean;
   flameCloak: boolean;
+  // The FrostResist actor value the client reported with the swim, 0..RESIST_CAP
+  frostResist: number;
   inFreezingWater: boolean;
   // Health was last taken for freezing water then, 0 out of it, and the share it left, -1 before the first tick
   waterAt: number;
@@ -461,6 +468,9 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (extra !== undefined && !(Array.isArray(extra) && extra.every((x) => typeof x === "string"))) problems.push("survivalRawMeatExtra is not a list of strings, none are added");
     const extraMeat = Array.isArray(extra) ? extra.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim()) : [];
     this.cold = parseColdSettings(all, problems);
+    // The native crop allows HealRate x this x seconds; a rise under that between two water ticks is regeneration, not healing
+    const regenMult = all["healthRegenerationMultiplier"] !== undefined ? num("healthRegenerationMultiplier", 1, (v) => v >= 0) : num("regenerationMultiplier", 1, (v) => v >= 0);
+    this.waterRegenShare = BASE_HEAL_RATE_PCT / 100 * regenMult * WATER_REGEN_SECONDS;
     this.afflictionMs = num("survivalAfflictionHours", DEFAULT_AFFLICTION_HOURS, (v) => v > 0) * HOUR_MS;
     this.afflictions = this.parseAfflictions(all["survivalAfflictions"], problems);
     this.dis = parseDiseaseSettings(all, problems);
@@ -577,7 +587,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
 
   private coldLine(heat: { interiors: number; worlds: number; points: number; unknown: number }): string {
     const c = this.cold;
-    const drain = c.freezingWaterDamage > 0 ? `${c.freezingWaterDamage} health a second while swimming` : "no health damage";
+    const drain = c.freezingWaterDamage > 0 ? `${c.freezingWaterDamage} health a second while swimming (less the larger of the records' and the client's frost resistance, up to ${RESIST_CAP}%; a rise under ${pct(this.waterRegenShare)} of the bar between two ${WATER_TICK_MS / 1000} s ticks is regeneration and is taken back)` : "no health damage";
     if (!c.enabled) return `[survival] cold off (survivalColdEnabled false): no cold, warmth or stage abilities; freezing water ${c.freezingWater ? `still takes ${drain}` : "off"}`;
     const l = c.levels;
     const w = c.warmth;
@@ -720,7 +730,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const now = Date.now();
     const entry: Online = {
       actorId, userId, rec, bodyDue: !isCreationPending(mp, actorId), revoked: [], coldAt: 0, heatAt: 0, heatPos: null, nearHeat: false, heatFrom: -1,
-      swimming: false, flameCloak: false, inFreezingWater: false, waterAt: 0, waterHealth: -1, waterNoticeAt: 0, reportAt: 0, fightAt: 0, area: "", areaWhy: "", freezingArea: false, level: 0, levelParts: [],
+      swimming: false, flameCloak: false, frostResist: 0, inFreezingWater: false, waterAt: 0, waterHealth: -1, waterNoticeAt: 0, reportAt: 0, fightAt: 0, area: "", areaWhy: "", freezingArea: false, level: 0, levelParts: [],
       temperature: 0, warmth: 0, gear: 0, engineGear: 0, wornKey: "", offline: "", sent: "", savedAt: now, savedCold: rec.cold, engineSeen: "", healthScale: -1, killed: false,
       exposureAt: 0, exposureLogAt: 0, exposureRolls: new Map(), contagious: null,
     };
@@ -768,8 +778,9 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     }
   }
 
-  // Swimming and a flame cloak, as the client's engine sees them, applied at once unless reports come faster than REPORT_GAP_MS;
-  // engineWarmth is the inventory's Warmth total
+  // Swimming, a flame cloak and the frost resistance, as the client's engine sees them, stepped at once on a change (two reports bunched by a
+  // retransmit must both step, or the water flags and the drain would stay on until the next cold step); engineWarmth, the inventory's Warmth
+  // total, is checked at most once per REPORT_GAP_MS
   private onReport(ctx: SystemContext, userId: number, content: Content): void {
     const mp = ctx.svr as Mp;
     const now = Date.now();
@@ -777,14 +788,16 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       if (entry.userId !== userId || !entry.coldAt) continue;
       const swimming = content["swimming"] === true;
       const flameCloak = content["flameCloak"] === true;
+      const resist = Number(content["frostResist"]);
       const changed = swimming !== entry.swimming || flameCloak !== entry.flameCloak;
       entry.swimming = swimming;
       entry.flameCloak = flameCloak;
+      entry.frostResist = swimming && Number.isFinite(resist) ? clamp(resist, 0, RESIST_CAP) : 0;
+      if (changed) this.step(ctx, entry.actorId, entry, now);
       if (now - entry.reportAt < REPORT_GAP_MS) continue;
       entry.reportAt = now;
       const engineWarmth = content["engineWarmth"];
       if (typeof engineWarmth === "number" && Number.isFinite(engineWarmth)) this.checkWarmth(mp, entry, engineWarmth, now);
-      if (changed) this.step(ctx, entry.actorId, entry, now);
     }
   }
 
@@ -1484,7 +1497,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       const health = inWater ? -1 : this.drainInWater(mp, entry, now);
       Object.assign(entry, { waterAt: inWater ? now : 0, waterHealth: -1 });
       this.log(`[survival] ${hexId} ${inWater ? "swimming in" : "out of the"} freezing water: level ${level}, cold ${Math.round(entry.rec.cold)}` +
-        `${inWater ? `, health -${drain} a second x (1 - frost resist ${abilityResist(mp, actorId, ActorValue.FrostResist)}%)` : health >= 0 ? `, health ${pct(health)}` : ""}`);
+        `${inWater ? `, health -${drain} a second x (1 - frost resist ${this.frostResistOf(mp, entry)}%, client ${entry.frostResist}%)` : health >= 0 ? `, health ${pct(health)}` : ""}`);
       if (inWater && drain > 0 && now - entry.waterNoticeAt >= WATER_NOTICE_GAP_MS && this.exposed(mp, actorId)) {
         entry.waterNoticeAt = now;
         this.notice(mp, actorId, "The water is freezing: it drains your health while you swim in it.");
@@ -1492,6 +1505,11 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     }
     Object.assign(entry, { area, areaWhy: why, freezingArea, inFreezingWater: inWater, level, levelParts: parts });
     return true;
+  }
+
+  // The race's and abilities' frost resistance from the records, or the client's reported FrostResist value when that is larger (worn gear, potions)
+  private frostResistOf(mp: Mp, entry: Online): number {
+    return Math.max(abilityResist(mp, entry.actorId, ActorValue.FrostResist), entry.frostResist);
   }
 
   // Takes the health the time since waterAt cost and the regeneration since the last tick; returns the share of the bar left, -1 when unread
@@ -1505,9 +1523,9 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       const held = mp.get(actorId, "percentages");
       const health = Number(held?.health);
       if (!(health > 0) || !this.exposed(mp, actorId)) return Number.isFinite(health) ? health : -1;
-      const share = freezingWaterDrain(this.cold.freezingWaterDamage, seconds, this.racial.maxHealth(actorId) * this.healthScaleOf(actorId), abilityResist(mp, actorId, ActorValue.FrostResist));
+      const share = freezingWaterDrain(this.cold.freezingWaterDamage, seconds, this.racial.maxHealth(actorId) * this.healthScaleOf(actorId), this.frostResistOf(mp, entry));
       if (share <= 0) return health;
-      const from = last >= 0 && health > last && health - last <= WATER_REGEN_SHARE ? last : health;
+      const from = last >= 0 && health > last && health - last <= this.waterRegenShare ? last : health;
       entry.waterHealth = Math.max(0, from - share);
       mp.set(actorId, "percentages", { ...held, health: entry.waterHealth });
       return entry.waterHealth;
@@ -1940,6 +1958,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   private rawMeat = new Set<number>();
   private altars = new Set<number>();
   private cold: ColdConfig = parseColdSettings({}, []);
+  // Share of the bar the regeneration rate yields in WATER_REGEN_SECONDS
+  private waterRegenShare = BASE_HEAL_RATE_PCT / 100 * WATER_REGEN_SECONDS;
   private coldSpells: number[] = [];
   private oblivionAreas = new Set<number>();
   private interiorAreas = new Set<number>();

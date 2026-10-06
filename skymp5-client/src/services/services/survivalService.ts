@@ -116,7 +116,7 @@ const listText = (items: string[]): string => items.join(", ") || "none";
  * server checks the records and rolls. Skipping the report only spares this player; it can never infect anyone else.
  *
  *   Client -> Server: { "customPacketType": "survivalRequest" }
- *                     { "customPacketType": "survivalReport", "swimming", "flameCloak", "engineWarmth"? }
+ *                     { "customPacketType": "survivalReport", "swimming", "flameCloak", "frostResist"?, "engineWarmth"? }
  *                     { "customPacketType": "survivalExposure", "sources": [{ "actorId", "diseases": [id] }] }
  *   Server -> Client: { "customPacketType": "survivalState", "cold", "coldStage", "coldStageName", "coldPenalty",
  *                       "temperatureLevel", "warmth", "freezingArea", "afflictions", "diseases", "contagion": { "seconds", "range" } | null }
@@ -274,7 +274,8 @@ export class SurvivalService extends ClientListener {
     logToPlatformLog(this, `contagion exposure reported: ${seen.join(", ")}`);
   }
 
-  // Swimming in a freezing water area and a flame cloak there on change, the engine's warmth total once due
+  // Swimming in a freezing water area and a flame cloak there on change, with the frost resistance the engine has at the swim's start (worn
+  // gear and potions included, which the server's records do not see), the engine's warmth total once due
   private report(state: SurvivalState, player: Actor, now: number): void {
     const swimming = state.freezingArea && player.isSwimming();
     const flameCloak = swimming && FLAME_CLOAK_EFFECTS.some((id) => player.hasMagicEffect(this.sp.MagicEffect.from(this.sp.Game.getFormEx(id))));
@@ -283,6 +284,7 @@ export class SurvivalService extends ClientListener {
     if (key === this.reported && !warmthDue) return;
     this.reported = key;
     const payload: Record<string, unknown> = { customPacketType: "survivalReport", swimming, flameCloak };
+    if (swimming) payload["frostResist"] = Math.round(player.getActorValue("FrostResist"));
     if (warmthDue) {
       this.warmthDueAt = 0;
       payload["engineWarmth"] = player.getWarmthRating();

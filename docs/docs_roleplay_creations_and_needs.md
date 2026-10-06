@@ -651,8 +651,10 @@ they weigh nothing again.
   (reported by the client, which reads `IsSwimming` only while `survivalState.freezingArea` is true) raises cold to 300
   at once and holds level 30.
   - **Health**: the server takes `survivalFreezingWaterDamage` (0.25) health points a second off the base maximum
-    (100, an Orc 150), less the frost resistance of the race and abilities (a Nord at 75 loses a quarter, a High Elf
-    at -25 a quarter more; worn enchantments and potions do not count), written to the character's health every 5 s
+    (100, an Orc 150), less the frost resistance: the larger of what the records give the race and its abilities (a
+    Nord at 75 loses a quarter, a High Elf at -25 a quarter more) and the `FrostResist` value the client reports with
+    the swim (worn enchantments and potions in force when the swim starts; a potion drunk mid-swim counts from the
+    next swim), capped at 85% like every resistance, written to the character's health every 5 s
     and on leaving the water. Survival Mode's own spell took 5 a second in real seconds whatever the timescale, so
     with the game clock at 1:1 a swim killed in seconds while every other cold number had been slowed 20 times; the
     drain is now 20 times slower too:
@@ -664,14 +666,20 @@ they weigh nothing again.
     | Nord, 100 health, frost resistance 75 | 80 s, 64 s under the penalty | 1600 s (26 min 40 s) |
 
     The time is to 0 health, where the bleedout rules take over (down first, dead if the drain goes on past the
-    grace). Health does not regenerate in the water, as under the old spell: health that crept up by 5% of the bar
-    or less between two ticks is taken back, a larger rise (a potion, a healing spell, being helped up) stays. The
-    cold penalty no longer shortens the swim, since the server counts against the base maximum. Nothing is taken
+    grace). Health does not regenerate in the water, as under the old spell: health that crept up between two ticks
+    by no more than the regeneration rate yields in 7 s (a tick plus the client's 2 s report gap: HealRate 0.7%/s x
+    `healthRegenerationMultiplier`, so 0.39% of the bar at the live 0.08, 4.9% at 1) is taken back, a larger rise
+    (a cheese wedge, a potion, a healing spell, being helped up) stays. Each 5 s write also stamps the native
+    regeneration clock of every attribute, so a magicka report arriving right after it is checked against that
+    shorter time: magicka regenerates a little slower and may step back while swimming there, a known cost of the
+    tick. The cold penalty no longer shortens the swim, since the server counts against the base maximum. Nothing is taken
     in creation, from the dead or from staff in god, ghost or invis mode. The player is told once a minute at most:
     "The water is freezing: it drains your health while you swim in it." `survivalFreezingWaterDamage: 0` keeps
     the cold and takes no health; `survivalFreezingWater: false` turns both off.
   - Log: `[survival] <id> swimming in freezing water: level 30, cold 55, health -0.25 a second x (1 - frost resist
-    0%)` and `[survival] <id> out of the freezing water: level 6, cold 312, health 97%`.
+    30%, client 30%)` (the resistance used, then the client's report) and `[survival] <id> out of the freezing water:
+    level 6, cold 312, health 97%`. Two swim reports that arrive together (a retransmit) both step, so the water flags
+    never stay on after the player has left the water.
 - **Stage abilities** `Survival_ColdStage0..5` follow the stage: Warm +10 frost resistance, Chilly to Numb -10% to -40%
   speed and lockpicking and pickpocketing penalties, and the frost shader at Freezing and Numb. The client refreshes
   movement 2 s after a stage change so the speed counts.

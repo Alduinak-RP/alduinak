@@ -381,7 +381,7 @@ into the engine:
 | Path | Live clients (0.9, before Stage 2) | Release A (1.0.1-b6) | From 2026-10-05 |
 |---|---|---|---|
 | Every frame | one time compare | the same | the same |
-| Every 500 ms | 12 natives: the player, the Loading menu, `isSwimming`, three flame cloak effects at 3 each | 2: the player and `isSwimming`; the cloak after its `effectStart` only | none outside a freezing water area; 2 there, 11 while swimming there |
+| Every 500 ms | 12 natives: the player, the Loading menu, `isSwimming`, three flame cloak effects at 3 each | 2: the player and `isSwimming`; the cloak after its `effectStart` only | none outside a freezing water area; 2 there, 11 while swimming there, plus one `FrostResist` read when a swim starts |
 | Disease guard | 369 natives in one frame every 10 s (123 disease spells at 3 each) | the same 369 every 60 s, and 2 s and 12 s after a hit or effect on the player | 1 + 2 per added spell (about 31), same schedule |
 | Contagion check | 5 natives and a pass over the server forms every 60 s | the same | the same |
 | A `survivalState` (on change, 6 s apart at most) | about 21: three globals set and read back, the health penalty | the same | about 15: two globals |
