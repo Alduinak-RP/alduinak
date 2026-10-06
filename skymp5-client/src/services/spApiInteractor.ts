@@ -14,10 +14,20 @@ interface FrameCallback {
     runOnce: boolean;
 }
 
+// The engine's sub-millisecond clock when it has one
+declare const performance: { now(): number } | undefined;
+const precise = typeof performance !== "undefined" && performance && typeof performance.now === "function" ? performance : null;
+export const frameClock = (): number => (precise ? precise.now() : Date.now());
+
+// Told how long each update or tick dispatch took, every callback of the frame included
+export type DispatchWatcher = (eventName: "update" | "tick", ms: number) => void;
+
 // Every update or tick callback runs from one native subscription, in registration order
 class FrameEvent {
     constructor(private readonly eventName: "update" | "tick") {
     }
+
+    static watcher: DispatchWatcher | null = null;
 
     add(callback: () => void, runOnce: boolean): sp.EventHandle {
         if (!this.subscribed) {
@@ -36,6 +46,8 @@ class FrameEvent {
 
     // As in the native dispatch, callbacks added or removed by a callback count from the next frame
     private dispatch(): void {
+        const watcher = FrameEvent.watcher;
+        const startedAt = watcher ? frameClock() : 0;
         const callbacks = this.callbacks;
         if (this.hasOnce) {
             this.hasOnce = false;
@@ -48,6 +60,7 @@ class FrameEvent {
                 logToPlatformLog(`${entry.runOnce ? "once" : "on"}('${this.eventName}')`, e);
             }
         }
+        if (watcher) watcher(this.eventName, frameClock() - startedAt);
     }
 
     private callbacks = new Array<FrameCallback>();
@@ -91,6 +104,11 @@ export class SpApiInteractor {
             },
         }
         return SpApiInteractor.controller;
+    }
+
+    // One watcher, FrameStatsService
+    static watchDispatch(watcher: DispatchWatcher | null): void {
+        FrameEvent.watcher = watcher;
     }
 
     private static subscribe(eventName: string, callback: (...args: any[]) => void, runOnce: boolean): sp.EventHandle {

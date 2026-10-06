@@ -342,19 +342,27 @@ otherwise.
 
 ```
 FrameStatsService: frame stats 60 s: 58.9 fps (17.0 ms a frame, worst 212 ms, 3 over 100 ms, 1.2% over 33 ms);
-client script 2.31 ms a frame (update 1.94, worst 18.2; tick 0.37, worst 3.1); 41 server forms
+client script 2.31 ms a frame (update 1.94, worst 18.2; tick 0.37, worst 3.1; hooks and native events not counted); 41 server forms
 ```
 
-- A frame is the time between two `update` events; a gap over 1 s (a menu, a
-  load, a pause) is left out. `worst` is the longest frame of the minute.
-- `client script` is the time the `update` and `tick` callbacks of every client
-  service take together in an average frame, and the worst single dispatch. At
-  60 fps a frame has 16.7 ms, so 2 ms of script is 12% of it. Native event
-  handlers (hit, equip, menu events) are outside the measure.
+- A frame is the time between two `update` events; a gap over 1 s (a load, a
+  pause) is left out, and so is a gap with more than two `tick` events in it:
+  ticks go on while a menu pauses the Papyrus-driven updates, so a menu visit of
+  any length is never counted as a frame. `worst` is the longest frame of the
+  minute.
+- `client script` is the time the controller's `update` and `tick` dispatch
+  takes in an average frame, and the worst single dispatch. `SpApiInteractor`
+  times the whole dispatch, so every service's `on` callbacks and every `once`
+  callback queued for that frame (spawns, appearance and equipment applies,
+  inventory and property applies) are in it. At 60 fps a frame has 16.7 ms, so 2
+  ms of script is 12% of it. Outside the measure: the `sendAnimationEvent` and
+  Papyrus hooks, native event handlers (hit, equip, menu events) and the few
+  callbacks registered on the native `sp.on`/`sp.once` directly (`formView.ts`,
+  `remoteServer.ts`).
 - `server forms` is how many actors and references the server streams to this
   client at that moment; the per-frame view work grows with it.
-- Reading it: low fps with a small script share is the game or the machine
-  (graphics, mods, the browser overlay); a script share that grows with the
+- Reading it: low fps with a small script share is the game, the machine or the
+  hooks (graphics, mods, the browser overlay); a script share that grows with the
   server forms is the per-frame view code; a large `worst` beside a small
   average is a hitch from a single step.
 - The cost is two clock reads per update and per tick.
