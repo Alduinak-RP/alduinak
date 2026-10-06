@@ -40,8 +40,9 @@ Thresholds come from `masteryRankHours` in `server-settings.json` (default
 `[40, 100, 180, 6000]`, Adept to Legendary). The markers are found by editor id at
 boot; `masterySpells` (`{ "<id>": [novice, adept, expert, master, legendary] }`)
 overrides them. Legendary is only listed in the menu once reached; admins may grant
-it. An hour is earned by work of the profession, and the next cannot come sooner
-than `masteryPointIntervalMinutes` (default 60) after the last one:
+it. An hour is earned by work of the profession, and a character's next hour, whichever of its crafts works it,
+cannot come sooner than `masteryPointIntervalMinutes` (default 60) after the last one (one hour clock per
+character, see "Hour bank"):
 
 | Profession | Work that counts |
 |---|---|
@@ -82,8 +83,10 @@ server logs:
   from before the shared bank (see "Old records")
 
 A profession reset empties that craft's banked hours and leaves the others, and so does a profession changed or
-cleared in the manager's character editor (Players tab), which also restarts the hour clock; a sub-slot that reaches
-its cap drops its own banked hours. With `masteryBankOffline: false` (the owner's rule of 2026-09-30) the pay clock is
+cleared in the manager's character editor (Players tab); the character's hour clock (`clockAt`) keeps running either
+way, so the other crafts' banked hours are still paid in their turn, an interval after the last counted hour, never at
+once, and a fresh pick inside the counted hour banks like any other craft. A sub-slot that reaches its cap drops its
+own banked hours. With `masteryBankOffline: false` (the owner's rule of 2026-09-30) the pay clock is
 the character's online time since its last counted hour instead, saved at logout, at every counted or banked hour and,
 while hours are banked, at the first bank check 5 minutes after the last save, so a crash loses at most 6 minutes of
 it; nothing then falls due while logged out, and the texts say "one per hour you stay online", `next paid in <M>
@@ -101,7 +104,8 @@ until they are paid. The strip's caption states the rule in force (online or not
 `{ max, intervalMs, offline, countedMs, counted, payMs, queue }`, `countedMs` the time until work counts an hour
 again and `counted` the profession id of the hour counting now (`null` when work counts now), `payMs` the time until
 the first banked hour is counted and `queue` the profession id each banked hour pays, in order; the times are as left
-at sending and read from the stored record (the slots' `lastPointAt`, `queue`, `onlineMs`) plus the online time of
+at sending and read from the stored record (`clockAt`, `queue`, `onlineMs`, the slots' `lastPointAt` naming the hour
+counting now) plus the online time of
 this session, so the strip is right after a relog or a server restart, and at login the hours that fell due while away
 are paid before the first state is sent, so it never shows a due hour as pending. A banked hour sends a
 `professionState` as a counted one always did, and `AdminMenuService` lays every `professionState` over an open Skills
@@ -115,11 +119,13 @@ is oldest first and then in slot order; the `bank` fields are dropped, the sub-s
 stays as the character's. The next save writes the new shape, at login at the latest (with the log line above), nothing
 is paid twice, and a folded queue longer than `masteryHourBank` is paid down in order and takes no new hour until it is
 below the cap. A sub-slot out of force (multiclassing turned off) keeps its old `bank` count until it is back in force,
-when it is folded. The character's hour clock is the latest `lastPointAt` of its slots in force, so no new field holds
-it; a slot's own `lastPointAt` still says when its last hour was counted.
+when it is folded. The character's hour clock is `clockAt` on the primary record, set with every counted hour and
+left alone by a reset or a manager change; a record from before the field takes the latest `lastPointAt` of its slots
+in force when it is next loaded, and a slot's own `lastPointAt` still says when its last hour was counted (the strip
+names the hour counting now by it, so after a reset "Hour 1" is counted with no craft named).
 
 Hours are **per character**: the record `private.mastery`
-`{ v: 2, profession, points, lastPointAt, rank, granted, spellTier, resets, queue, onlineMs }` lives on the
+`{ v: 2, profession, points, lastPointAt, rank, granted, spellTier, resets, clockAt, queue, onlineMs }` lives on the
 actor form (the primary craft; a secondary and a tertiary live in `private.masterySlots`, see "Secondary and
 tertiary crafts"). A record without `v: 2` is migrated at login: its rank is recomputed,
 markers that are not the new ones are removed and the right ones granted. Common

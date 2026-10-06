@@ -44,9 +44,9 @@ Storage stays `private.mastery = { profession, points, lastPointAt, rank, grante
 `rank` uses the index above. Characters without `v: 2` are migrated at login: rank recomputed from points, markers
 re-synced. One hour is credited per profession activity when `lastPointAt` is at least 60 minutes old. Since 2026-10
 (F9) extra crafts inside the counted hour bank up to `masteryHourBank` (2) hours for the character, kept as `queue` (the
-craft each one pays, in craft order) and `onlineMs` in the same record and paid one per 60 minutes, online or not by
-default (see `docs_roleplay_mastery.md`); the per-slot `bank` counts of records from before 2026-10-05 are folded into
-the queue when the record is next loaded.
+craft each one pays, in craft order), `clockAt` (the character's last counted hour, whichever slot) and `onlineMs` in
+the same record and paid one per 60 minutes, online or not by default (see `docs_roleplay_mastery.md`); the per-slot
+`bank` counts of records from before 2026-10-05 are folded into the queue when the record is next loaded.
 
 Activities that credit hours: crafting at a station for crafters; gathering (mine, chop, pick, skin) for gatherers;
 killing NPCs (hunter: animals) and casting spells (mage) for fighters.

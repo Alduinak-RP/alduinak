@@ -54,9 +54,11 @@ type Mp = any;
 //   Skills tab needs no poll.
 //
 // Persistence on the actor: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets,
-// queue[], onlineMs } (the primary, queue and onlineMs being the character's) and `private.masterySlots` = { v: 1, secondary,
-// tertiary, granted[], kits[] }, each sub-slot a { profession, points, lastPointAt, rank } or null, granted the markers held for
-// either sub-slot. A record from before 2026-10-05 carries a per-slot `bank` count instead of the queue; load folds it in.
+// clockAt, queue[], onlineMs } (the primary, clockAt, queue and onlineMs being the character's) and `private.masterySlots` =
+// { v: 1, secondary, tertiary, granted[], kits[] }, each sub-slot a { profession, points, lastPointAt, rank } or null, granted the
+// markers held for either sub-slot. A record from before 2026-10-05 carries a per-slot `bank` count instead of the queue and no
+// clockAt; load folds the banks in and takes the latest hour of the slots in force as the clock. A sub-slot out of force keeps
+// its craft's banked hours as `bank` until it is back in force.
 //
 // server-settings.json keys (all optional):
 //   masteryRankHours             [adept, expert, master, legendary] thresholds, default [40, 100, 180, 6000]
@@ -339,6 +341,8 @@ interface MasteryRecord {
   spellTier: number;
   // Profession resets the player has used
   resets: number;
+  // Epoch ms of the character's last counted hour, whichever slot earned it; 0 before any. A reset leaves it running
+  clockAt: number;
   // The shared hour bank: the profession each banked hour pays, in pay order
   queue: string[];
   // Online time since the character's last counted hour, up to the last save
@@ -446,7 +450,7 @@ interface Location {
   pos: number[];
 }
 
-const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0, queue: [], onlineMs: 0 });
+const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0, clockAt: 0, queue: [], onlineMs: 0 });
 const emptySubs = (): SubSlots => ({ v: SLOTS_VERSION, secondary: null, tertiary: null, granted: [], kits: [] });
 const hoursText = (n: number): string => loc(n === 1 ? "mastery.hoursOne" : "mastery.hoursMany", { n });
 const idList = (v: unknown): number[] => (Array.isArray(v) ? v.map((x) => Number(x) >>> 0).filter((x) => x) : []);
@@ -612,6 +616,7 @@ export class MasterySystem implements System {
     const rec = slot.rec;
     rec.points += 1;
     rec.lastPointAt = at;
+    char.primary.clockAt = at;
     this.prune(actorId, char);
     this.settleClock(actorId, char, now);
     char.primary.onlineMs = 0;
@@ -639,20 +644,15 @@ export class MasterySystem implements System {
     this.sendState(ctx, actorId, userId);
   }
 
-  // Epoch ms of the character's last counted hour, the latest of its slots in force; 0 before any
-  private clockAt(char: Character): number {
-    return Math.max(0, ...this.activeSlots(char).map((s) => s.rec.lastPointAt));
-  }
-
   // Ms until work counts an hour again, 0 when it counts now
   private countedMs(char: Character, now: number): number {
-    const since = now - this.clockAt(char);
+    const since = now - char.primary.clockAt;
     return since >= 0 && since < this.intervalMs ? this.intervalMs - since : 0;
   }
 
   // Pay clock since the character's last counted hour: all the time that passed, or without masteryBankOffline its online time
   private waited(actorId: number, char: Character, now: number): number {
-    if (this.bankOffline) return now - this.clockAt(char);
+    if (this.bankOffline) return now - char.primary.clockAt;
     const clock = this.clocks.get(actorId);
     return char.primary.onlineMs + (clock ? Math.max(0, now - clock.since) : 0);
   }
@@ -672,7 +672,7 @@ export class MasterySystem implements System {
 
   // The hour clock and the queue as left at now
   private bankSummary(actorId: number, char: Character, now = Date.now()): BankSummary {
-    const clockAt = this.clockAt(char);
+    const clockAt = char.primary.clockAt;
     const countedMs = this.countedMs(char, now);
     const counted = countedMs ? this.activeSlots(char).find((s) => s.rec.lastPointAt === clockAt)?.rec.profession ?? null : null;
     const queue = char.primary.queue.slice();
@@ -710,7 +710,8 @@ export class MasterySystem implements System {
       const profession = char.primary.queue.shift();
       const slot = this.activeSlots(char).find((s) => s.rec.profession === profession);
       if (!slot) continue;
-      this.countHour(ctx, actorId, char, slot, now, true, this.bankOffline ? this.clockAt(char) + this.intervalMs : now);
+      const clockAt = char.primary.clockAt;
+      this.countHour(ctx, actorId, char, slot, now, true, this.bankOffline && clockAt ? clockAt + this.intervalMs : now);
       paid = true;
     }
     return paid;
@@ -856,7 +857,7 @@ export class MasterySystem implements System {
     const tag = this.tagOf(slot);
     const points = slot.rec.points;
     this.revokeSpells(ctx, actorId, char, slot);
-    // Hours belong to the craft, banked ones too, so a fresh choice starts from nothing.
+    // Hours belong to the craft, banked ones too, so a fresh choice starts from nothing; the character's hour clock keeps running
     if (profession === "mage") char.primary.spellTier = 0;
     char.primary.queue = char.primary.queue.filter((p) => p !== profession);
     const key = subKeyOf(slotIndex);
@@ -1668,6 +1669,7 @@ export class MasterySystem implements System {
         granted: idList(r.granted),
         spellTier: Math.max(0, Math.floor(Number(r.spellTier)) || 0),
         resets: Math.max(0, Math.floor(Number(r.resets)) || 0),
+        clockAt: Math.max(0, Number(r.clockAt) || 0),
         queue: professionList(r.queue),
         onlineMs: Math.max(0, Number(r.onlineMs) || 0),
       };
@@ -1724,6 +1726,8 @@ export class MasterySystem implements System {
     if (!primary && !subs) return null;
     const char: Character = { primary: primary || emptyRecord(), subs };
     this.foldBanks(char);
+    // A record from before the character clock takes the latest hour of its slots in force
+    if (!char.primary.clockAt) char.primary.clockAt = Math.max(0, ...this.activeSlots(char).map((s) => s.rec.lastPointAt));
     return char;
   }
 

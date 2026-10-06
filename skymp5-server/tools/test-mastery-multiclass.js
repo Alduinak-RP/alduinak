@@ -417,6 +417,69 @@ test('a reset empties that craft\'s banked hours and a sub-slot reaching its cap
   assert.deepEqual([u.primary().profession, u.primary().queue], [null, []])
 })
 
+test('a reset or a manager change of a craft leaves the character\'s hour clock alone, so the other crafts\' banked hours are paid in their turn', () => {
+  const t = setup()
+  t.choose('woodworker', 0)
+  t.choose('alchemist', 1)
+  const start = now
+  t.craft(BOW)
+  now += 5 * 60000
+  t.craft(POTION)
+  now += 60000
+  t.sys.resetCharacter(t.ctx, ACTOR, 0)
+  assert.deepEqual([t.primary().profession, t.primary().lastPointAt, t.primary().clockAt, t.primary().queue], [null, 0, start, ['alchemist']])
+  now += 60000
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.subs().secondary.points, t.primary().queue], [0, ['alchemist']], 'not paid at once')
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: 54 * 60000, counted: null, payMs: 54 * 60000, queue: ['alchemist'] }), 'the state sent by the reset: the counted hour runs on, its craft set aside')
+  now += 53 * 60000
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.subs().secondary.points, t.subs().secondary.lastPointAt, t.primary().queue], [1, start + HOUR, []], 'paid an interval after the last counted hour')
+  const u = setup()
+  u.choose('woodworker', 0)
+  u.choose('alchemist', 1)
+  u.craft(POTION)
+  now += 3 * HOUR
+  const bow = now
+  u.craft(BOW)
+  now += 5 * 60000
+  u.craft(POTION)
+  u.craft(POTION)
+  u.reset('alchemist')
+  assert.deepEqual([u.subs().secondary, u.primary().queue], [null, []], 'the reset craft\'s hours go')
+  u.choose('alchemist', 1)
+  u.craft(POTION)
+  assert.deepEqual(u.primary().queue, ['alchemist'], 'the counted hour still runs for the fresh pick')
+  u.sys.disconnect(USER, u.ctx)
+  const rec = u.primary()
+  Object.assign(rec, { profession: 'miner', points: 0, rank: 1, granted: [], lastPointAt: 0, queue: rec.queue.filter((p) => p !== 'woodworker') })
+  u.mp.props.set(`${ACTOR}:private.mastery`, rec)
+  now += 60000
+  u.login()
+  assert.deepEqual([u.primary().queue, u.subs().secondary.points], [['alchemist'], 0], 'a manager change of the primary pays nothing at once')
+  assert.deepEqual(u.last('professionState').bank, bankOf({ countedMs: 54 * 60000, counted: null, payMs: 54 * 60000, queue: ['alchemist'] }))
+  now += 54 * 60000
+  u.sys.payBanks(u.ctx)
+  assert.deepEqual([u.subs().secondary.points, u.subs().secondary.lastPointAt], [1, bow + HOUR])
+})
+
+test('a record without the character clock takes the latest hour of its slots in force when it is loaded', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.choose('tailor', 1)
+  const old = t.primary()
+  delete old.clockAt
+  old.lastPointAt = now - 40 * 60000
+  const subs = t.subs()
+  subs.secondary.lastPointAt = now - 20 * 60000
+  t.mp.props.set(`${ACTOR}:private.mastery`, old)
+  t.mp.props.set(`${ACTOR}:private.masterySlots`, subs)
+  t.sys.sendMenu(t.ctx, USER)
+  assert.deepEqual(t.last('masteryMenu').bank, bankOf({ countedMs: 40 * 60000, counted: 'tailor' }))
+  t.craft(NAILS)
+  assert.deepEqual([t.primary().clockAt, t.primary().queue], [now - 20 * 60000, ['blacksmith']], 'written with the next save')
+})
+
 test('activity events are credited on the next turn, one drain for a burst', () => {
   const t = setup()
   t.choose('blacksmith', 0)
