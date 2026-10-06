@@ -1900,12 +1900,8 @@ export class RemoteServer extends ClientListener {
     }
     rec.applied = true;
     rec.changed.clear();
-    const { props, custom, pose } = rec;
-    // A plugin item the server moved; untouched ones keep the plugin's placement
-    if (custom["ff_moved"] === true && pose) {
-      refr.setPosition(pose.pos[0], pose.pos[1], pose.pos[2]);
-      refr.setAngle(pose.rot[0], pose.rot[1], pose.rot[2]);
-    }
+    const { props, custom } = rec;
+    this.applyPluginRefPose(refr, rec);
     if (props.inventory) {
       ModelApplyUtils.applyModelInventory(refr, props.inventory);
     }
@@ -1959,13 +1955,22 @@ export class RemoteServer extends ClientListener {
     if (!this.pluginRefsWaiting.has(refrId)) this.pluginRefsDue.add(refrId);
   }
 
-  // A loaded game puts back every plugin ref as the plugin placed it: shown, unharvested, with its own lock and name
+  // A loaded game puts back every plugin ref as the plugin placed it: shown, unharvested, at the plugin's spot, with its own lock and name
   private requeuePluginRefs(): void {
     pluginRefs.forEach((rec, refrId) => {
       if (!rec.applied) return;
+      if (rec.custom["ff_moved"] === true && rec.pose) this.queuePluginRefProp(refrId, rec, 'ff_moved');
       if (rec.custom["ff_decor"]) this.queuePluginRefProp(refrId, rec, 'ff_decor');
       if (rec.props.isHarvested || pluginRefHidden(rec)) this.queuePluginRefProp(refrId, rec, 'isHarvested');
     });
+  }
+
+  // A plugin item the server moved; untouched ones keep the plugin's placement
+  private applyPluginRefPose(refr: ObjectReference, rec: PluginRef): void {
+    const pose = rec.pose;
+    if (rec.custom["ff_moved"] !== true || !pose) return;
+    refr.setPosition(pose.pos[0], pose.pos[1], pose.pos[2]);
+    refr.setAngle(pose.rot[0], pose.rot[1], pose.rot[2]);
   }
 
   private applyPluginRefVisibility(refr: ObjectReference, rec: PluginRef): void {
@@ -1980,6 +1985,8 @@ export class RemoteServer extends ClientListener {
       ModelApplyUtils.applyModelIsOpen(refr, !!props.isOpen);
     } else if (prop === 'isHarvested' || prop === 'disabled' || prop === 'ff_carried') {
       this.applyPluginRefVisibility(refr, rec);
+    } else if (prop === 'ff_moved') {
+      this.applyPluginRefPose(refr, rec);
     } else if (prop === 'ff_decor') {
       ModelApplyUtils.applyModelDecor(refr, rec.custom["ff_decor"]);
     }

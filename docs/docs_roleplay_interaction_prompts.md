@@ -185,7 +185,8 @@ harvested, the server's disabled flag and `ff_carried`
 (`ModelApplyUtils.applyModelVisibility`): on the ref's first load, on every
 change of those three, when `itemMoved` ends a carry, and again after a
 loaded game (a spawn or respawn), which brings every plugin ref back as the
-plugin placed it. The server refuses a carry of a harvested or disabled item
+plugin placed it; a moved plugin item (`ff_moved`) goes back to the server's
+pose then as well. The server refuses a carry of a harvested or disabled item
 and does not re-show one when it clears stale carry flags at boot.
 
 ## Nailed books (2026-10-05)
