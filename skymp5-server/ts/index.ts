@@ -84,16 +84,20 @@ import { createScampServer } from "./scampNative";
 import { MetricsSystem } from "./systems/metricsSystem";
 
 const gamemodeCache = new Map<string, string>();
+// Basename of the temp copy the bundle last ran from; a load error's frame is found through it
+let gamemodeTempName = "";
 
 function requireTemp(module: string) {
   // https://blog.mastykarz.nl/create-temp-directory-app-node-js/
   let tmpDir;
   const appPrefix = 'skymp5-server';
+  gamemodeTempName = "";
   try {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), appPrefix));
 
     const contents = fs.readFileSync(module, 'utf8');
     const tempPath = path.join(tmpDir, Math.random() + '-' + Date.now() + '.js');
+    gamemodeTempName = path.basename(tempPath);
     fs.writeFileSync(tempPath, contents);
 
     // A load error reaches the caller, which reports it
@@ -180,8 +184,9 @@ const setupStreams = (scampNative: any) => {
 // A gamemode that does not load leaves chat, introductions, admin tools and every ff_ property off: the server log and the Discord admin alerts both say so
 const reportGamemodeLoadFailure = (gamemodePath: string, e: unknown, hotReload: boolean) => {
   const stack = String((e as Error)?.stack || e);
-  // The bundle runs from a random temp copy, so its first frame is mapped back to gamemode.js
-  const frame = stack.match(/\.js:(\d+)(?::(\d+))?/);
+  // The bundle runs from a random temp copy, so the frame naming that copy is mapped back to gamemode.js
+  const at = gamemodeTempName ? stack.indexOf(`${gamemodeTempName}:`) : -1;
+  const frame = at === -1 ? null : stack.slice(at + gamemodeTempName.length).match(/^:(\d+)(?::(\d+))?/);
   const where = frame ? ` at ${path.basename(gamemodePath)}:${frame[1]}${frame[2] ? `:${frame[2]}` : ""}` : "";
   const error = `${e}${where}`;
   const line = hotReload
