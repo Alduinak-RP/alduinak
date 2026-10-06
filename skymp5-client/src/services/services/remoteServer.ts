@@ -28,7 +28,7 @@ import { Entry, Inventory, applyInventory, getDiff, getInventory, getPlayerInven
 import { applyDurabilityNames } from '../../sync/durabilityNames';
 import { Movement, NiPoint3 } from '../../sync/movement';
 import { aimForShot, applyWeapDrawn } from '../../sync/movementApply';
-import { describeRaceAbilities, dropUnlistedBaseSpells, isConcentration, isSelfDelivered, learnSpells, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
+import { describeLeftover, describeRaceAbilities, dropUnlistedBaseSpells, isConcentration, isSelfDelivered, learnSpells, LeftoverAbility, removeUnlistedSpells, resyncRaceAbilities, SpellListNatives, syncRaceAbilities } from '../../sync/spell';
 import { ModelApplyUtils } from '../../view/modelApplyUtils';
 import { FormView } from '../../view/formView';
 import { forgetHostAttempts, resetHostAttempts } from '../../view/hostAttempts';
@@ -202,6 +202,8 @@ interface RaceCheck {
   // Why a check is waiting to run, undefined when none is
   due?: string;
   menuLoggedAt: number;
+  // Vanilla racial abilities the race syncs of this spawn found and cleared, reported with each check
+  leftovers: LeftoverAbility[];
 }
 
 const SPAWN_EQUIPMENT_SETTLE_MS = 2500;
@@ -1005,7 +1007,7 @@ export class RemoteServer extends ClientListener {
     // A failed load leaves our 'update' callbacks queued; a newer spawn of ours drops them
     const spawnSeq = msg.isMe ? ++this.playerSpawnSeq : this.playerSpawnSeq;
     if (msg.isMe) {
-      this.raceCheck = { spawnSeq, formIdx: i, synced: false, settleFrom: 0, due: "spawn", menuLoggedAt: 0 };
+      this.raceCheck = { spawnSeq, formIdx: i, synced: false, settleFrom: 0, due: "spawn", menuLoggedAt: 0, leftovers: [] };
       spawnTiming = {
         seq: spawnSeq, createdAt: Date.now(), loadAt: 0, loadedAt: 0, dressedAt: 0, inventoryAt: 0, raceMenuMs: 0,
         strips: 0, topUps: 0, topUpEquips: 0, applies: 0, added: 0, removed: 0, equips: 0, unequips: 0, frames: newFrameStats(),
@@ -1072,8 +1074,12 @@ export class RemoteServer extends ClientListener {
           const player = Game.getPlayer();
 
           if (player && spawnSeq === this.playerSpawnSeq && i === this.worldModel.playerCharacterFormIdx) {
-            this.applySpawnSpells(player, learnedSpells);
-            if (this.raceCheck?.spawnSeq === spawnSeq) this.raceCheck.synced = true;
+            const leftovers = this.applySpawnSpells(player, learnedSpells);
+            if (this.raceCheck?.spawnSeq === spawnSeq) {
+              this.raceCheck.synced = true;
+              this.noteLeftovers(this.raceCheck, leftovers);
+            }
+            if (leftovers.length) logToPlatformLog(this, `spawn race sync cleared vanilla leftovers: ${leftovers.map(describeLeftover).join(", ")}`);
             logTrace(this,
               `player learnedSpells:`, JSON.stringify(learnedSpells),
             );
@@ -1421,7 +1427,7 @@ export class RemoteServer extends ClientListener {
         if (player) {
           dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, msgData as number[]);
           learnSpells(player, msgData as number[]);
-          syncRaceAbilities(player, msgData as number[]);
+          this.noteLeftovers(this.currentRaceCheck(), syncRaceAbilities(player, msgData as number[]));
         }
       });
     }
@@ -1602,11 +1608,12 @@ export class RemoteServer extends ClientListener {
     this.showRaceMenu(`not open ${RACE_MENU_RETRY_MS} ms after the spawn settled, retry ${this.raceMenuRetries}/${RACE_MENU_RETRIES}`);
   }
 
-  private applySpawnSpells(player: Actor, learnedSpells: number[]): void {
+  // Returns the vanilla racial leftovers the race sync cleared
+  private applySpawnSpells(player: Actor, learnedSpells: number[]): LeftoverAbility[] {
     dropUnlistedBaseSpells(this.sp as unknown as SpellListNatives, player, learnedSpells);
     removeUnlistedSpells(player, learnedSpells);
     learnSpells(player, learnedSpells);
-    syncRaceAbilities(player, learnedSpells);
+    return syncRaceAbilities(player, learnedSpells);
   }
 
   private currentRaceCheck(): RaceCheck | undefined {
@@ -1632,6 +1639,14 @@ export class RemoteServer extends ClientListener {
     return Array.isArray(learned) ? learned : [];
   }
 
+  // A later sync's result for the same ability replaces the earlier one
+  private noteLeftovers(check: RaceCheck | undefined, found: LeftoverAbility[]): void {
+    if (!check || !found.length) {
+      return;
+    }
+    check.leftovers = [...check.leftovers.filter((l) => !found.some((f) => f.id === l.id)), ...found];
+  }
+
   // After a spawn, load, resurrect or race menu the race abilities are applied again (the whole spawn sync if it never ran) and logged before and after
   private checkRaceAbilities(): void {
     const check = this.currentRaceCheck();
@@ -1655,20 +1670,20 @@ export class RemoteServer extends ClientListener {
     check.due = undefined;
     check.settleFrom = 0;
     const listed = this.listedSpellsOf(check);
-    const before = describeRaceAbilities(player, listed);
+    const before = describeRaceAbilities(player, listed, check.leftovers);
     const runSpawnSync = !check.synced && listed.length > 0;
     if (runSpawnSync) {
-      this.applySpawnSpells(player, listed);
+      this.noteLeftovers(check, this.applySpawnSpells(player, listed));
       check.synced = true;
     } else {
-      syncRaceAbilities(player, listed);
+      this.noteLeftovers(check, syncRaceAbilities(player, listed));
     }
     const spawnSync = check.synced ? (runSpawnSync ? "missing, ran now" : "ran") : "missing, no list";
     // Read after syncRaceAbilities re-reads the movement speed
     Utility.wait(RACE_CHECK_AFTER_S).then(() => {
       const pc = Game.getPlayer();
       if (pc && this.currentRaceCheck() === check) {
-        const after = describeRaceAbilities(pc, listed);
+        const after = describeRaceAbilities(pc, listed, check.leftovers);
         const masteryMagicka = this.controller.lookupListener(MasteryService).writtenMagicka;
         sendCustomPacket(this.controller, { customPacketType: "racialReport", reason, ...after.data, masteryMagicka });
         logToPlatformLog(this, `race abilities after ${reason}, spawn ${check.spawnSeq}, spawn sync ${spawnSync}, server listed ${listed.length}: ` +
@@ -1749,7 +1764,7 @@ export class RemoteServer extends ClientListener {
     }
     check.menuLoggedAt = now;
     const listed = this.listedSpellsOf(check);
-    const report = describeRaceAbilities(player, listed);
+    const report = describeRaceAbilities(player, listed, check.leftovers);
     logToPlatformLog(this, `race abilities in the Magic menu, spawn ${check.spawnSeq}, server listed ${listed.length}: ${report.text}`);
     if (report.problems.length) {
       this.queueRaceCheck("the Magic menu");

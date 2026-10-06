@@ -17,7 +17,8 @@ const { RacialSystem } = compiled.exports
 const DARK = 0x13742
 const NORD = 0x13746
 const BRETON = 0x13741
-const SPELLS = { 0x100: ['RaceDarkElf', 4], 0x101: ['AldRaceSpeed_DarkElf', 4], 0x102: ['PowerDarkElfAncestorsWrath', 2], 0x200: ['RaceNord', 4], 0x300: ['AldRacial_Breton', 4] }
+const SPELLS = { 0x100: ['RaceDarkElf', 4], 0x101: ['AldRaceSpeed_DarkElf', 4], 0x102: ['PowerDarkElfAncestorsWrath', 2], 0x200: ['AldRacial_Nord', 4], 0x300: ['AldRacial_Breton', 4], 0xaa020: ['RaceNord', 4] }
+const RESIST_FROST = 0x24315
 const RACES = { [DARK]: ['DarkElfRace', [50, 50, 50], [0x100, 0x101, 0x102]], [NORD]: ['NordRace', [50, 50, 100], [0x200]], [BRETON]: ['BretonRace', [50, 100, 50], [0x300]] }
 
 const bytes = (size, write) => { const data = new Uint8Array(size); write(new DataView(data.buffer)); return data }
@@ -30,6 +31,7 @@ const lookup = (id) => {
     return record('RACE', edid, [{ type: 'DATA', data: bytes(128, (v) => start.forEach((s, i) => v.setFloat32(36 + i * 4, s, true))) }, ...formIds(splo)])
   }
   if (SPELLS[id]) return record('SPEL', SPELLS[id][0], [{ type: 'SPIT', data: bytes(36, (v) => v.setUint32(8, SPELLS[id][1], true)) }])
+  if (id === RESIST_FROST) return record('MGEF', 'AbResistFrost', [])
   return {}
 }
 
@@ -103,7 +105,38 @@ test('missing, unheld, stopped and other races\' spells are named and resynced',
   const t = setup()
   t.actor(1, 0xff000001, DARK)
   const line = t.send(1, t.report(DARK, { spells: [{ id: 0x100, held: false, state: 'off' }], stray: [0x200] }))
-  assert.match(line, /MISMATCH DarkElfRace after spawn: missing AldRaceSpeed_DarkElf; not held RaceDarkElf; off RaceDarkElf; other races' RaceNord running or held; .*racialResync sent$/)
+  assert.match(line, /MISMATCH DarkElfRace after spawn: missing AldRaceSpeed_DarkElf; not held RaceDarkElf; off RaceDarkElf; other races' AldRacial_Nord running or held; .*racialResync sent$/)
+})
+
+test('a client that reports shared effects holds its strays; an effect running without its spell and a leftover still running are named, never resynced; cleared leftovers end the line', () => {
+  const t = setup()
+  t.actor(1, 0xff000001, DARK)
+  const r = t.report(DARK)
+  assert.match(t.send(1, { ...r, sharedEffects: [], stray: [0x200] }), /MISMATCH DarkElfRace after spawn: other races' AldRacial_Nord held; .*racialResync sent$/)
+  assert.equal(t.packets.length, 1)
+  const t2 = setup()
+  t2.actor(1, 0xff000001, DARK)
+  const line = t2.send(1, { ...r, sharedEffects: [{ spell: 0x200, effect: RESIST_FROST }], leftovers: [{ id: 0xaa020, held: false, dispelled: false, recast: true, active: true }] })
+  assert.equal(line, "[racial] ff000001 MISMATCH DarkElfRace after spawn: running without the spell: AbResistFrost (AldRacial_Nord's), another spell gives the effect; leftover RaceNord still running; base H/M/S 100/100/100; no resync, the race sync cannot fix a plugin difference, a base value or an effect another spell gives")
+  assert.equal(t2.packets.length, 0)
+  const ok = t2.send(1, { ...r, sharedEffects: [], leftovers: [{ id: 0xaa020, held: false, dispelled: true, recast: false, active: false }, { id: 0x300, held: true, dispelled: false, recast: false, active: false }] })
+  assert.equal(ok, '[racial] ff000001 check ok DarkElfRace after spawn: 2 race spells held (RaceDarkElf, AldRaceSpeed_DarkElf), base H/M/S 100/100/100; cleared RaceNord (dispelled), AldRacial_Breton (held)')
+})
+
+test('the same problems are logged once per spawn, their first repeat as unchanged; a check ok or a new spawn starts over', () => {
+  const t = setup()
+  const id = t.actor(1, 0xff000001, DARK)
+  const r = t.report(DARK, { sharedEffects: [{ spell: 0x200, effect: RESIST_FROST }] })
+  assert.match(t.send(1, r), /MISMATCH DarkElfRace after spawn: running without the spell/)
+  assert.equal(t.send(1, { ...r, reason: 'resync' }), '[racial] ff000001 MISMATCH DarkElfRace after resync: unchanged, not logged again this spawn')
+  const n = t.logs.length
+  t.send(1, { ...r, reason: 'the Magic menu' })
+  assert.equal(t.logs.length, n, 'a further identical report is not logged')
+  assert.match(t.send(1, { ...r, stray: [0x200] }), /MISMATCH DarkElfRace after spawn: other races' AldRacial_Nord held; running without the spell/, 'different problems are logged')
+  assert.match(t.send(1, t.report(DARK)), /check ok/)
+  assert.match(t.send(1, r), /MISMATCH DarkElfRace after spawn: running without the spell/)
+  t.racial.forget(id)
+  assert.match(t.send(1, r), /MISMATCH DarkElfRace after spawn: running without the spell/)
 })
 
 test('an extra spell means another plugin on the client: logged, never resynced', () => {
@@ -119,7 +152,7 @@ test('a base value alone is logged without a resync', () => {
   const t = setup()
   t.actor(1, 0xff000001, BRETON)
   const r = t.report(BRETON)
-  assert.match(t.send(1, { ...r, base: { ...r.base, magicka: 125 } }), /base M 125 expected 150 \(race\); .*no resync, the race sync cannot fix a plugin or base value difference$/)
+  assert.match(t.send(1, { ...r, base: { ...r.base, magicka: 125 } }), /base M 125 expected 150 \(race\); .*no resync, the race sync cannot fix a plugin difference, a base value or an effect another spell gives$/)
   assert.equal(t.packets.length, 0)
   assert.match(t.send(1, { ...r, base: { ...r.base, magicka: 150.3 } }), /check ok/)
 })

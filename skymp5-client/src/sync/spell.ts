@@ -155,11 +155,68 @@ const spellEffects = (spell: Spell) => {
   return effects;
 };
 
-// A race set on the base never runs SwitchRace, so other races' abilities are dispelled and the current race's are added; previous is a race just left, such as a polymorph's creature form
-export const syncRaceAbilities = (actor: Actor, keep: Array<number>, previous: Race | null = null) => {
+// The vanilla racial abilities AlduinakAdditions took off the race records (Skyrim.esm ids). SkyrimPlatform's loadGame starts every
+// character from its template save, a level 1 Nord whose player form still carries RaceNord as an active effect, so each character
+// loads with that 50% frost resistance; no race record lists RaceNord, so the race sync's removal loop never reaches it
+const VANILLA_RACE_ABILITIES: Array<[number, string]> = [
+  [0x0aa020, 'RaceNord'], [0x0aa01f, 'RaceBreton'], [0x0aa021, 'RaceDarkElf'], [0x0aa023, 'RaceRedguard'], [0x0aa025, 'RaceWoodElf'],
+  [0x0eb7eb, 'RaceImperial'], [0x105f16, 'AbHighElfMagicka'], [0x104acf, 'RaceArgonianResistDisease'], [0x0aa01e, 'RaceKhajiitClaws'],
+  [0x0aa01b, 'RaceArgonianWaterbreathing'],
+];
+
+// A vanilla racial ability found on the actor and what cleared it
+export interface LeftoverAbility {
+  id: number;
+  name: string;
+  held: boolean;
+  dispelled: boolean;
+  // Added and removed again because the dispel left an effect of it running
+  recast: boolean;
+  // An effect of it the own race does not give still runs afterwards
+  active: boolean;
+}
+
+export const describeLeftover = (l: LeftoverAbility): string =>
+  `${l.name} ${[l.held ? 'held, removed' : '', l.dispelled ? 'dispelled' : '', l.recast ? 'cast and removed again' : ''].filter((s) => s).join(', ') || 'not dispelled'}${l.active ? ', its effect still runs' : ''}`;
+
+// Vanilla racial abilities off the current race's record: dispelled, removed when held, cast and removed again when the dispel left the effect
+export const clearLeftoverRaceAbilities = (actor: Actor, keep: Set<number>, ownEffects: Set<number>): LeftoverAbility[] => {
+  const out = new Array<LeftoverAbility>();
+  for (const [id, name] of VANILLA_RACE_ABILITIES) {
+    if (keep.has(id)) {
+      continue;
+    }
+    const spell = Spell.from(Game.getFormEx(id));
+    if (!spell) {
+      continue;
+    }
+    const foreign = spellEffects(spell).filter((effect) => !ownEffects.has(effect.getFormID()));
+    const running = () => foreign.some((effect) => actor.hasMagicEffect(effect));
+    const held = actor.hasSpell(spell);
+    if (held) {
+      actor.removeSpell(spell);
+    }
+    const dispelled = actor.dispelSpell(spell);
+    let recast = false;
+    if (!dispelled && running()) {
+      recast = true;
+      actor.addSpell(spell, false);
+      actor.removeSpell(spell);
+    }
+    const active = running();
+    if (held || dispelled || recast || active) {
+      out.push({ id, name, held, dispelled, recast, active });
+      printConsole(`leftoverRaceAbility: ${describeLeftover(out[out.length - 1])}`);
+    }
+  }
+  return out;
+};
+
+// A race set on the base never runs SwitchRace, so other races' abilities are dispelled and the current race's are added; previous is a race just left, such as a polymorph's creature form; returns the vanilla leftovers cleared
+export const syncRaceAbilities = (actor: Actor, keep: Array<number>, previous: Race | null = null): LeftoverAbility[] => {
   const current = ActorBase.from(actor.getBaseObject())?.getRace();
   if (!current) {
-    return;
+    return [];
   }
   const currentSpells = raceSpells(current);
   const kept = new Set([...keep, ...currentSpells.map((spell) => spell.getFormID())]);
@@ -186,6 +243,9 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>, previous: R
     }
   }
 
+  const ownEffects = new Set(currentSpells.flatMap((spell) => spellEffects(spell).map((effect) => effect.getFormID())));
+  const leftovers = clearLeftoverRaceAbilities(actor, kept, ownEffects);
+
   learnSpells(
     actor,
     currentSpells.map((spell) => spell.getFormID()).filter((id) => !isBlockedPower(id)),
@@ -199,6 +259,7 @@ export const syncRaceAbilities = (actor: Actor, keep: Array<number>, previous: R
       refreshMovement(ac);
     }
   });
+  return leftovers;
 };
 
 // The server's racialResync: the race sync runs again with its spells kept, and those the client's race record lacks are added to the actor; returns the added ones
@@ -222,7 +283,12 @@ export interface RaceAbilityData {
   baseRace: number;
   engineRace: number;
   spells: Array<{ id: number; held: boolean; state: 'on' | 'off' | 'power' }>;
+  // Other races' spells the actor holds
   stray: number[];
+  // Effects of other races' spells running while the spell is not held: another spell with the same effect gives them
+  sharedEffects: Array<{ spell: number; effect: number }>;
+  // Vanilla racial abilities found this spawn and what cleared them
+  leftovers: Array<Omit<LeftoverAbility, 'name'>>;
   base: { health: number; magicka: number; stamina: number };
 }
 
@@ -233,8 +299,8 @@ export interface RaceAbilityReport {
   data: RaceAbilityData;
 }
 
-// Each spell of the base race (on, off or a power; held per HasSpell, which the Magic menu reads; listed by the server or not), SpeedMult against the race's speed spell, other races' spells running or held and the attribute passives, for the platform log
-export const describeRaceAbilities = (actor: Actor, listed: Array<number>): RaceAbilityReport => {
+// Each spell of the base race (on, off or a power; held per HasSpell, which the Magic menu reads; listed by the server or not), SpeedMult against the race's speed spell, other races' spells held, their effects running from some other spell, the leftovers cleared and the attribute passives, for the platform log
+export const describeRaceAbilities = (actor: Actor, listed: Array<number>, leftovers: LeftoverAbility[] = []): RaceAbilityReport => {
   const base = ActorBase.from(actor.getBaseObject());
   const race = base?.getRace();
   const speedEffectId = Game.getFormFromFile(RACE_SPEED_EFFECT_ID, RACE_SPEED_EFFECT_PLUGIN)?.getFormID() ?? 0;
@@ -271,8 +337,12 @@ export const describeRaceAbilities = (actor: Actor, listed: Array<number>): Race
     reported.push({ id: spell.getFormID(), held, state: on });
     return `${hex(spell)} ${spell.getName()} ${state}, ${held ? 'held' : 'not held'}${listed.indexOf(spell.getFormID()) === -1 ? ', unlisted' : ''}`;
   });
+  // A spell is only a stray when held; an effect running without its spell comes from another spell with the same effect (the template
+  // save's RaceNord gives every character AbResistFrost, which AldRacial_Nord also uses), so it is reported as that effect
   const strayIds = new Array<number>();
   const stray = new Array<string>();
+  const sharedEffects = new Array<RaceAbilityData['sharedEffects'][number]>();
+  const shared = new Array<string>();
   playableRaces().forEach((other) => {
     if (other.getFormID() === race?.getFormID()) {
       return;
@@ -281,15 +351,23 @@ export const describeRaceAbilities = (actor: Actor, listed: Array<number>): Race
       if (ownIds.has(spell.getFormID())) {
         return;
       }
-      const running = spellEffects(spell).some((effect) => !ownEffects.has(effect.getFormID()) && actor.hasMagicEffect(effect));
-      const held = actor.hasSpell(spell);
-      if (running || held) {
+      const running = spellEffects(spell).filter((effect) => !ownEffects.has(effect.getFormID()) && actor.hasMagicEffect(effect));
+      if (actor.hasSpell(spell)) {
         strayIds.push(spell.getFormID());
-        stray.push(`${hex(spell)} ${spell.getName()} ${running && held ? 'running and held' : running ? 'running' : 'held'}`);
+        stray.push(`${hex(spell)} ${spell.getName()}${running.length ? ' running' : ''}`);
+        return;
+      }
+      for (const effect of running) {
+        if (sharedEffects.some((s) => s.effect === effect.getFormID())) continue;
+        sharedEffects.push({ spell: spell.getFormID(), effect: effect.getFormID() });
+        shared.push(`${effect.getFormID().toString(16)} ${effect.getName()} (${spell.getName()}'s)`);
       }
     });
   });
-  if (stray.length) problems.push(`other races' ${stray.join(', ')}`);
+  if (stray.length) problems.push(`other races' ${stray.join(', ')} held`);
+  if (shared.length) problems.push(`running without the spell: ${shared.join(', ')}`);
+  const stillActive = leftovers.filter((l) => l.active);
+  if (stillActive.length) problems.push(`leftover ${stillActive.map((l) => l.name).join(', ')} still running`);
   const speed = speedEffectId ? (ownSpeed ? '' : `, SpeedMult ${speedMult.toFixed(1)} with no speed spell of the race`) : ', AldRaceSpeedEffect not found';
   const av = (name: string) => Math.round(actor.getBaseActorValue(name));
   return {
@@ -299,10 +377,13 @@ export const describeRaceAbilities = (actor: Actor, listed: Array<number>): Race
       engineRace: actor.getRace()?.getFormID() ?? 0,
       spells: reported,
       stray: strayIds,
+      sharedEffects,
+      leftovers: leftovers.map(({ id, held, dispelled, recast, active }) => ({ id, held, dispelled, recast, active })),
       base: { health: actor.getBaseActorValue('Health'), magicka: actor.getBaseActorValue('Magicka'), stamina: actor.getBaseActorValue('Stamina') },
     },
     text: `race ${race ? race.getFormID().toString(16) : 'none'} (actor race ${actor.getRace()?.getFormID().toString(16) ?? 'none'}, sex ${base?.getSex() ?? '?'}): ` +
-      `${spells.join('; ') || 'no spells'}${speed}; other races running or held: ${stray.join(', ') || 'none'}; ` +
+      `${spells.join('; ') || 'no spells'}${speed}; other races' spells held: ${stray.join(', ') || 'none'}; ` +
+      `their effects running without the spell: ${shared.join(', ') || 'none'}; vanilla leftovers: ${leftovers.map(describeLeftover).join(', ') || 'none'}; ` +
       `base health ${av('Health')} magicka ${av('Magicka')} stamina ${av('Stamina')}, unarmed ${Math.round(actor.getActorValue('UnarmedDamage'))}, ` +
       `waterBreathing ${actor.getActorValue('WaterBreathing')}, added ${actor.getSpellCount()}; ${problems.length ? `amiss: ${problems.join(', ')}` : 'all in place'}`,
   };

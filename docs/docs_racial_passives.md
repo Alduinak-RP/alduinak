@@ -208,21 +208,46 @@ them (O23).
 
 The client re-applies the race abilities 6 s after each spawn, game load, resurrect and race menu (see
 `playersInheritBaseSpells` in the configuration reference) and, 3 s later, sends `racialReport { reason, baseRace,
-engineRace, spells: [{ id, held, state }], stray, base: { health, magicka, stamina }, masteryMagicka }`. RacialSystem
-compares it with the character's appearance race, that race's spell list less the greater powers the server withholds,
-and the base values (RACE starting value plus the Player NPC_ offsets, within 0.5):
+engineRace, spells: [{ id, held, state }], stray, sharedEffects: [{ spell, effect }], leftovers: [{ id, held, dispelled,
+recast, active }], base: { health, magicka, stamina }, masteryMagicka }`. RacialSystem compares it with the character's
+appearance race, that race's spell list less the greater powers the server withholds, and the base values (RACE
+starting value plus the Player NPC_ offsets, within 0.5):
 
-- `[racial] <id> check ok <Race> after <reason>: N race spells held (<edids>), base H/M/S h/m/s`;
+- `[racial] <id> check ok <Race> after <reason>: N race spells held (<edids>), base H/M/S h/m/s[; cleared RaceNord
+  (dispelled)]`;
 - `[racial] <id> MISMATCH <Race> after <reason>: <problems>; base H/M/S ...; <resync>`, where the problems are a wrong
-  engine or base race, missing, not held or stopped race spells, other races' spells running or held, extra spells on
-  the client's race record (another plugin on the client) or a base value off.
+  engine or base race, missing, not held or stopped race spells, other races' spells held, effects of other races'
+  spells `running without the spell` (another spell with the same effect gives them, named `AbResistFrost
+  (AldRacial_Nord's)`), a vanilla `leftover <edid> still running`, extra spells on the client's race record (another
+  plugin on the client) or a base value off. The same problems are logged once per spawn; their first repeat logs
+  `MISMATCH <Race> after <reason>: unchanged, not logged again this spawn` and later ones nothing, until a `check ok` or
+  the next spawn.
+
+**The vanilla leftovers.** SkyrimPlatform's `loadGame` builds every character's save from its template
+(`skyrim-platform/src/platform_se/skyrim_platform/assets/template.ess`, a level 1 Nord at Helgen): it rewrites the
+Player NPC_ change form with the character's race but leaves the player actor's form, which still carries the vanilla
+`RaceNord` ability (Skyrim.esm `aa020`, Resist Frost 50) as an active effect. So every character loaded with the Nord's
+50% frost resistance (a Nord with 85, the cap, on top of `AldRacial_Nord`'s 75), and since no race record of the patched
+plugin lists `RaceNord`, the race sync, which removes and dispels the spells on the other races' records, never touched
+it. Until 1.0.1 the client inferred a stray spell from any one running effect, so the shared `AbResistFrost` made it
+report `AldRacial_Nord` as running on every non-Nord ("other races' AldRacial_Nord running or held", about 1,200 lines a
+day on live, no non-Nord ever `check ok`) and the resync could not fix it because it dispelled `AldRacial_Nord`, which
+was not running. From 1.0.2 each race sync (`clearLeftoverRaceAbilities` in `skymp5-client/src/sync/spell.ts`) also
+dispels the ten vanilla racial abilities the patcher took off the race records (`RaceNord`, `RaceBreton`, `RaceDarkElf`,
+`RaceRedguard`, `RaceWoodElf`, `RaceImperial`, `AbHighElfMagicka`, `RaceArgonianResistDisease`, `RaceKhajiitClaws`,
+`RaceArgonianWaterbreathing`) unless the current race lists them, removes one that is held and casts and removes one
+again when the dispel left an effect of it running; the report carries what it found, and a stray is only a spell the
+client holds, a running effect without its spell being reported as that effect. The spawn's own sync runs about a second
+after the spawn, so the frost resistance is gone before the first check.
 
 `racialPassives.selfCheck` switches it: `"off"` (the code default, also without a block or with `enabled: false`)
 compares nothing, `"log"` writes the lines below and never resyncs, `"resync"` (the Test value) also sends one
 `racialResync { raceId, spells, problems }` per spawn for a wrong race or a missing, unheld or stopped spell or another
-race's spell; the client then runs the race sync again with the server's race and reports once more. An extra spell or
-a base value alone is only logged ("the client's plugins differ from the server's"), since that means other plugin
-files on the client. A report within 2 s of the last one is dropped. A character a GM polymorph holds
+race's spell held; the client then runs the race sync again with the server's race and reports once more. An extra
+spell or a base value alone is only logged ("the client's plugins differ from the server's"), since that means other
+plugin files on the client, and so is an effect running without its spell or a leftover still running ("the race sync
+cannot fix a plugin difference, a base value or an effect another spell gives"). A report within 2 s of the last one is
+dropped. A character a GM polymorph holds
 (`private.polymorph`, the admin panel's Polymorph tab) is not checked (`race check after <reason> skipped: a polymorph holds the
 character (private.polymorph)`), and its traits follow the race it wears while the cached race is kept for the revert.
 `baseBonus` is the exception: it reads the character's own race from the record (`private.polymorph.appearance.raceId`),
@@ -270,10 +295,13 @@ Server, `C:\logs\test\gameserver.log`:
   its commandAnimal effect is not built yet`, `[racial] <id> <edid> refused: ready again in 13 h 20 min, last used
   <iso>`, `[racial] <id> <edid> used, ready again at <iso> (20 h, counting offline)`.
 
-Client, `skyrim-platform.log`: `RemoteServer: race abilities after <reason>, ... | racialReport sent, mastery magicka
-N|none`, `RemoteServer: racialResync from the server (...)`, `RemoteServer: racialBase for race <id>: health 100 -> 150,
-stamina 150 -> 100 (percentages kept)`, `MagicSyncService: racialState: Command Animal ... not
-available yet` and `MagicSyncService: power ... refused before the relay: ...`.
+Client, `skyrim-platform.log`: `RemoteServer: spawn race sync cleared vanilla leftovers: RaceNord dispelled`,
+`RemoteServer: race abilities after <reason>, ... other races' spells held: none; their effects running without the
+spell: none; vanilla leftovers: RaceNord dispelled; ... | racialReport sent, mastery magicka N|none`, `RemoteServer:
+racialResync from the server (...)`, `RemoteServer: racialBase for race <id>: health 100 -> 150, stamina 150 -> 100
+(percentages kept)`, `MagicSyncService: racialState: Command Animal ... not available yet` and `MagicSyncService: power
+... refused before the relay: ...`. The console also prints `leftoverRaceAbility: ...` for each vanilla ability a sync
+found.
 
 ## Checks on the Test Server
 
@@ -284,6 +312,11 @@ With plugin r27a, the Test `racialPassives` block and the two magic entries:
 2. The old "only Nords" bug: with `selfCheck: "resync"`, in one game session create a character of each race, then
    relog each, die and respawn each; every spawn logs `check ok`, and Active Effects shows the race's "<Race> Blood"
    ability.
+   The template-save leftover (1.0.2): a non-Nord's first spawn of a game session logs `check ok <Race> after spawn:
+   ...; cleared RaceNord (dispelled)` on the server and `spawn race sync cleared vanilla leftovers: RaceNord dispelled`
+   in `skyrim-platform.log`, and Active Effects shows no Resist Frost; a Nord's line ends the same way and its Resist
+   Frost reads 75, not 85. `cleared RaceNord (recast)` means the dispel did nothing and the cast-and-remove did; a
+   `leftover RaceNord still running` MISMATCH means neither worked and the frost resistance is still on.
 3. Stats: the check lines read base H/M/S Breton 100/150/100, High Elf 100/200/100, Nord 100/100/150, Orc 150/100/100,
    Redguard 100/100/200; an Orc survives 100 points of damage. A new Orc reads 150 health and 100 stamina in its first
    session, before any relog (`[racial] <id> base values sent after race menu: OrcRace H/S 150/100` and its `check ok
@@ -314,4 +347,7 @@ With plugin r27a, the Test `racialPassives` block and the two magic entries:
 - Plugin r27a: into the Test Data folder, `build/dist/testclient/Data` and the MO2 mod, then Update modlist with the
   Test Server stopped; a new Test client version with the Nexus client package. The racial pass applies to existing
   characters at their next login (O31).
-- The client half (the race report, the resync and the power pre-gate) needs that client release.
+- The client half (the race report, the resync and the power pre-gate) needs that client release; the leftover
+  clearing and the held-only strays need client 1.0.2 (a 1.0.1 client keeps reporting `AldRacial_Nord running or
+  held`, once per spawn). The server side (the new report fields, logging once per spawn) is Build server plus a
+  restart, and Migrate server for live. No plugin change: `RaceNord` is Skyrim.esm's, kept off the race records.

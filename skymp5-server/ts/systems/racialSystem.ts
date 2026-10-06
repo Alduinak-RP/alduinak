@@ -25,18 +25,24 @@ type Mp = any;
 // compares the report with the appearance race, that race's spell list without the withheld greater powers and the base values (RACE
 // start plus the Player NPC_ offsets, magicka as MasterySystem last sent it), logs "check ok" or "MISMATCH" and, with "resync", sends
 // one racialResync per spawn when the race sync can fix what differs (a wrong race, a missing, unheld or stopped spell, another race's
-// spell); an extra spell or a base value means another plugin on the client, which only the log can show. A character a GM polymorph
+// spell held); an extra spell or a base value means another plugin on the client, an effect running without its spell another spell
+// with the same effect, which only the log can show. The same problems are logged once per spawn, their first repeat as "unchanged",
+// and the vanilla racial abilities the client cleared (RaceNord from SkyrimPlatform's template save) are named. A character a GM polymorph
 // holds (private.polymorph) is neither checked nor cached, so its traits follow the race it wears; baseBonus stays that of its own
 // race, the record's appearance.raceId, so a professionState sent while it is transformed writes the magicka it has after the revert.
 // Base values: the createActor of a character in creation carries the Player NPC_ race's health, magicka and stamina, so once its race
 // menu is accepted the client gets the new race's base health and stamina (racialBase); magicka stays MasterySystem's.
 //
 // Client -> Server: { customPacketType: "racialReport", reason, baseRace, engineRace, spells: [{ id, held, state }], stray: [id],
+//                     sharedEffects: [{ spell, effect }], leftovers: [{ id, held, dispelled, recast, active }],
 //                     base: { health, magicka, stamina }, masteryMagicka }
 //   reason: what ran the check (spawn, load, resurrect, race menu, resync); baseRace, engineRace: ActorBase.getRace() and
 //   Actor.getRace() form ids; spells: the base race's spell list as the client's plugin has it, state "on", "off" or "power";
-//   stray: other races' spells running or held; base: base Health, Magicka and Stamina; masteryMagicka: the base Magicka the
-//   client's MasteryService last wrote, null when it wrote none
+//   stray: other races' spells the client holds (a 1.0.1 client sends no sharedEffects and also lists a spell whose effect runs);
+//   sharedEffects: effects of other races' spells running while the spell is not held, so another spell with the same effect gives
+//   them; leftovers: the vanilla racial abilities the client's race syncs found this spawn and whether each was held, dispelled, cast
+//   and removed again, or still runs; base: base Health, Magicka and Stamina; masteryMagicka: the base Magicka the client's
+//   MasteryService last wrote, null when it wrote none
 // Server -> Client: { customPacketType: "racialResync", raceId, spells, problems }  spells: the race spells the server expects held
 //                   { customPacketType: "racialBase", raceId, health, stamina }  after an accepted race menu or a finished creation
 // Power gate: a player's cast of a power in racialPassives.powers is refused with a notice while its cooldown runs; the cooldown is
@@ -218,7 +224,12 @@ interface ReportedSpell {
 interface CheckState {
   at: number;
   resynced: boolean;
+  // The problems last logged this spawn; a report with the same ones is logged once more as unchanged, then dropped
+  logged: string;
+  repeated: boolean;
 }
+
+const newCheckState = (): CheckState => ({ at: 0, resynced: false, logged: "", repeated: false });
 
 const reportedList = (raw: unknown): unknown[] => (Array.isArray(raw) ? raw.slice(0, MAX_REPORT_SPELLS) : []);
 
@@ -481,7 +492,7 @@ export class RacialSystem implements System, NeedsModifierSource {
     try { actorId = this.mp.getUserActor(userId) >>> 0; } catch { return; }
     if (!actorId) return;
     const now = Date.now();
-    const state = this.checks.get(actorId) || { at: 0, resynced: false };
+    const state = this.checks.get(actorId) || newCheckState();
     if (now - state.at < REPORT_MIN_GAP_MS) return;
     state.at = now;
     if (this.checks.size >= MAX_CACHED_ACTORS) this.checks.clear();
@@ -538,7 +549,19 @@ export class RacialSystem implements System, NeedsModifierSource {
       if (extra.length) problems.push(`extra ${extra.map(name).join(", ")} on the client's race record, another plugin`);
       otherPlugin = extra.length > 0;
     }
-    fix(reportedList(report.stray).map((v) => toFormId(v)).filter((id) => id), "other races'", " running or held");
+    // A client that reports sharedEffects holds its strays; a 1.0.1 client also listed a spell whose effect ran from another spell
+    const detailed = Array.isArray(report.sharedEffects);
+    fix(reportedList(report.stray).map((v) => toFormId(v)).filter((id) => id), "other races'", detailed ? " held" : " running or held");
+    const shared = reportedList(report.sharedEffects).map(objectOf).map((s) => ({ spell: toFormId(s.spell), effect: toFormId(s.effect) })).filter((s) => s.effect);
+    if (shared.length) problems.push(`running without the spell: ${shared.map((s) => `${name(s.effect)} (${name(s.spell)}'s)`).join(", ")}, another spell gives the effect`);
+    const leftovers = reportedList(report.leftovers).map(objectOf)
+      .map((l) => ({ id: toFormId(l.id), held: l.held === true, dispelled: l.dispelled === true, recast: l.recast === true, active: l.active === true }))
+      .filter((l) => l.id);
+    const stillRunning = leftovers.filter((l) => l.active).map((l) => name(l.id));
+    if (stillRunning.length) problems.push(`leftover ${stillRunning.join(", ")} still running`);
+    const cleared = leftovers.filter((l) => !l.active)
+      .map((l) => `${name(l.id)} (${[l.held ? "held" : "", l.dispelled ? "dispelled" : "", l.recast ? "recast" : ""].filter((s) => s).join(", ") || "gone"})`);
+    const clearedText = cleared.length ? `; cleared ${cleared.join(", ")}` : "";
     const base = objectOf(report.base);
     const got = [base.health, base.magicka, base.stamina].map((v) => (v === null || v === undefined ? NaN : Number(v)));
     const want = this.baseValues(raceId);
@@ -558,12 +581,23 @@ export class RacialSystem implements System, NeedsModifierSource {
         problems.push(`base ${BASE_LABELS[i]} ${round(got[i])} expected ${round(want[i])} (${why[i]})`);
       }
     }
-    const baseText = `base H/M/S ${got.map((v) => (Number.isFinite(v) ? round(v) : "?")).join("/")}${magickaChecked ? "" : ", magicka from the mage rank not checked"}`;
+    const baseText = `base H/M/S ${got.map((v) => (Number.isFinite(v) ? round(v) : "?")).join("/")}${magickaChecked ? "" : ", magicka from the mage rank not checked"}${clearedText}`;
     if (!problems.length) {
+      state.logged = "";
       this.log(`${who} check ok ${name(raceId)} after ${reason}: ${expected.length} race spells held (${expected.map(name).join(", ") || "none"}), ${baseText}`);
       return;
     }
-    let resync = "no resync, the race sync cannot fix a plugin or base value difference";
+    const text = problems.join("; ");
+    if (state.logged === text) {
+      if (!state.repeated) {
+        state.repeated = true;
+        this.log(`${who} MISMATCH ${name(raceId)} after ${reason}: unchanged, not logged again this spawn`);
+      }
+      return;
+    }
+    state.logged = text;
+    state.repeated = false;
+    let resync = "no resync, the race sync cannot fix a plugin difference, a base value or an effect another spell gives";
     if (!fixable || otherPlugin) {
       if (otherPlugin) resync = "no resync, the client's plugins differ from the server's";
     } else if (this.config.selfCheck !== "resync") {
@@ -575,7 +609,7 @@ export class RacialSystem implements System, NeedsModifierSource {
       sendJson(mp, userId, { customPacketType: RESYNC_PACKET, raceId, spells: expected, problems });
       resync = "racialResync sent";
     }
-    this.log(`${who} MISMATCH ${name(raceId)} after ${reason}: ${problems.join("; ")}; ${baseText}; ${resync}`);
+    this.log(`${who} MISMATCH ${name(raceId)} after ${reason}: ${text}; ${baseText}; ${resync}`);
   }
 
   // Epoch ms of the power's last use, 0 for never
