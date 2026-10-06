@@ -100,8 +100,8 @@ export class BrowserService extends ClientListener {
       const on = e.arguments[1] === "1";
       const ended = this.keyCapture && !on;
       this.keyCapture = on;
-      this.keyCaptureHeld = false;
-      // Input reads throw in the message context; the press that ended the capture is still down on the next frame
+      // Input reads throw in the message context, so the key that ended the capture counts as held until the next frame reads it
+      this.keyCaptureHeld = ended;
       if (ended) this.controller.once("update", () => { this.keyCaptureHeld = this.isCaptureKeyDown((key) => this.sp.Input.isKeyPressed(key)); });
     }
 
