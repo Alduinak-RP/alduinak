@@ -6,6 +6,7 @@ const cp   = require('child_process')
 const crypto = require('crypto')
 const config = require('./config')
 const { loc, gamemodeLocPrelude } = require('./loc')
+const { smokeRunGamemode } = require('./gamemode-smoke')
 // Shared with the backend's populate and compile-manifest scripts so the key-file list lives in one place
 const clientPackage = require(path.join(config.paths.backend, 'scripts', 'client-package'))
 
@@ -383,6 +384,11 @@ class Builder {
     // Compile without running: a part with a syntax error must never reach the live file.
     try { new (require('vm').Script)(out, { filename: 'gamemode.js' }) }
     catch (err) { return { ok: false, error: loc('builder.gamemode.syntax', { error: err.message }), extensions } }
+    // Then its module scope over a stub mp, as the server loads it: a bundle that throws there (an undefined name) must not reach the file either
+    const smoke = smokeRunGamemode(out, { filename: 'gamemode.js', cwd: serverDir })
+    for (const line of smoke.logs.filter(l => l.startsWith('error:'))) this.line(`[gamemode] ${line}`)
+    if (!smoke.ok) return { ok: false, error: loc('builder.gamemode.loadFailed', { error: smoke.error }), extensions }
+    this.line(`[gamemode] ${loc('builder.gamemode.loadOk', { n: smoke.mp.length })}`)
     let current = ''
     try { current = fs.readFileSync(target, 'utf8') } catch {}
     if (current === out) {

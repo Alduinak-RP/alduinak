@@ -4608,6 +4608,8 @@
         "readFailed": "gamemode: could not read {name} ({error})",
         "locFailed": "gamemode: could not read localization/en_loc.json ({error})",
         "syntax": "gamemode: syntax error in the concatenated output - {error}",
+        "loadFailed": "gamemode: the bundle fails to load, the server would run without it (no chat, no introductions, no ff_ properties) - {error}",
+        "loadOk": "module-scope run over a stub mp passed ({n} mp members called, nothing started).",
         "upToDate": "gamemode.js already up to date.",
         "done": "✓ gamemode.js built from {n} extension file(s); the server hot-reloads it within a second."
       },
