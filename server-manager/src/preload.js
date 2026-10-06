@@ -2,6 +2,10 @@
 
 const { contextBridge, ipcRenderer } = require('electron')
 
+const locTables = ipcRenderer.sendSync('loc:tables')
+contextBridge.exposeInMainWorld('EN_LOC', locTables.manager)
+contextBridge.exposeInMainWorld('EN_LOC_DASHBOARD', locTables.dashboard)
+
 contextBridge.exposeInMainWorld('mgr', {
   // Console / services
   servicesStatus:  ()             => ipcRenderer.invoke('services:status'),

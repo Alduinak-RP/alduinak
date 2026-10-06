@@ -4,6 +4,7 @@
     "allowJs": true,
     "module": "commonjs",
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "target": "ES2022",
     "moduleResolution": "node",

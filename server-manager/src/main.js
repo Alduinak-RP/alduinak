@@ -23,6 +23,7 @@ const { backendRequest, factionsRequest } = require('./backendApi')
 const playerData = require('./playerData')
 const serviceStats = require('./serviceStats')
 const news = require('./news')
+const { managerSection, dashboardSection } = require('./loc')
 
 let win = null
 
@@ -68,6 +69,7 @@ app.on('second-instance', () => {
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 	
+ipcMain.on('loc:tables', (e) => { e.returnValue = { manager: managerSection, dashboard: dashboardSection } })
 ipcMain.handle('services:status', () => statusAll())
 
 ipcMain.handle('service:action', (_e, key, action) => doServiceAction(key, action))

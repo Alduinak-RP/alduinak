@@ -5,6 +5,7 @@ mod gamecopy;
 mod install;
 mod launch;
 mod ini;
+mod loc;
 mod mo2;
 mod net;
 mod presence;

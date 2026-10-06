@@ -5,6 +5,7 @@ const path = require('path')
 const cp   = require('child_process')
 const crypto = require('crypto')
 const config = require('./config')
+const { gamemodeLocPrelude } = require('./loc')
 // Shared with the backend's populate and compile-manifest scripts so the key-file list lives in one place
 const clientPackage = require(path.join(config.paths.backend, 'scripts', 'client-package'))
 
@@ -375,7 +376,10 @@ class Builder {
     const extensions = extensionsManifest(files)
     this.line(`[gamemode] extensions sha256 ${extensions.sha256}`)
     const banner = '// GENERATED from gamemode_extensions/ by the Server Manager - edit the parts, not this file.\n\n'
-    const out = banner + bodies.join('\n\n') + '\n'
+    let prelude
+    try { prelude = gamemodeLocPrelude() }
+    catch (err) { return { ok: false, error: `gamemode: could not read localization/en_loc.json (${err.message})`, extensions } }
+    const out = banner + prelude + '\n' + bodies.join('\n\n') + '\n'
     // Compile without running: a part with a syntax error must never reach the live file.
     try { new (require('vm').Script)(out, { filename: 'gamemode.js' }) }
     catch (err) { return { ok: false, error: `gamemode: syntax error in the concatenated output - ${err.message}`, extensions } }
