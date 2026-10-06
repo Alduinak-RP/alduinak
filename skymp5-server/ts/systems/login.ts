@@ -136,9 +136,11 @@ export class Login implements System {
     if (this.offlineMode === true && gameData && gameData.session) {
       this.log("The server is in offline mode, the client is NOT");
     } else if (this.offlineMode === false && gameData && gameData.session) {
+      let profileId: number | null = null;
       (async () => {
         const guidBeforeAsyncOp = ctx.svr.getUserGuid(userId);
         const profile = await this.getUserProfile(gameData.session, userId, ctx);
+        profileId = profile.id;
         const guidAfterAsyncOp = ctx.svr.isConnected(userId) ? ctx.svr.getUserGuid(userId) : "<disconnected>";
 
         console.log({ guidBeforeAsyncOp, guidAfterAsyncOp, op: "getUserProfile" });
@@ -278,7 +280,8 @@ export class Login implements System {
       })()
         .catch((err) => {
           loginErrorsCounter.inc({ reason: err?.message || "unknown" });
-          console.error("Error logging in client:", JSON.stringify(gameData), err)
+          // gameData carries the session token and the file report, so only the error is logged
+          console.error(`Error logging in client: slot ${userId}${profileId !== null ? `, profile ${profileId}` : ""}: ${err?.message || err}`);
         });
     } else if (this.offlineMode === true && gameData && typeof gameData.profileId === "number") {
       const profileId = gameData.profileId;
