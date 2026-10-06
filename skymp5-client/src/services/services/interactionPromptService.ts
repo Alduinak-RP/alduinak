@@ -1,7 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { closeWidget, isUiHidden } from "./widgetMenuUtil";
 import { FunctionInfo } from "../../lib/functionInfo";
-import { Actor, CrosshairRefChangedEvent, Form, FormType, Keyword, ObjectReference } from "skyrimPlatform";
+import { CrosshairRefChangedEvent, Form, FormType, Keyword, ObjectReference } from "skyrimPlatform";
 import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logError } from "../../logging";
@@ -153,7 +153,8 @@ export class InteractionPromptService extends ClientListener {
     if (this.controller.lookupListener(MountService).isMounted) {
       return { verb: "Dismount", label: "" };
     }
-    const actor = Actor.from(ref);
+    // The crosshair can rest on a placed hazard or projectile, where Actor.from throws
+    const actor = ObjectReferenceEx.asActor(ref);
     if (actor) return this.actorPromptFor(ref);
     const base = ref.getBaseObject();
     if (!base) return null;
@@ -183,7 +184,7 @@ export class InteractionPromptService extends ClientListener {
   // appearance name server-side, so it holds here too.
   private actorPromptFor(ref: ObjectReference): Prompt | null {
     if (ref.getFormID() === 0x14) return null;
-    const dead = Actor.from(ref)?.isDead() === true;
+    const dead = ObjectReferenceEx.asActor(ref)?.isDead() === true;
     const remoteId = localIdToRemoteId(ref.getFormID());
     const pets = this.controller.lookupListener(PetService);
     // While commanding a pet, a valid target reads "{pet name} Attack", the pet itself "{pet name} Follow", and the interact router issues the order
@@ -229,7 +230,7 @@ export class InteractionPromptService extends ClientListener {
   private isAnimal(ref: ObjectReference): boolean {
     try {
       const keyword = Keyword.getKeyword(ANIMAL_KEYWORD);
-      return !!keyword && Actor.from(ref)?.getRace()?.hasKeyword(keyword) === true;
+      return !!keyword && ObjectReferenceEx.asActor(ref)?.getRace()?.hasKeyword(keyword) === true;
     } catch {
       return false;
     }
