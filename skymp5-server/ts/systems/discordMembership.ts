@@ -56,7 +56,8 @@ export class RequestPacer {
   private stamps: number[] = [];
   private queue: Promise<void> = Promise.resolve();
 
-  constructor(private limit = DISCORD_RATE_LIMIT, private windowMs = DISCORD_RATE_WINDOW_MS, private now: () => number = Date.now,
+  // performance.now is monotonic; a wall clock stepped back would hold every login until the stamps aged out
+  constructor(private limit = DISCORD_RATE_LIMIT, private windowMs = DISCORD_RATE_WINDOW_MS, private now: () => number = () => performance.now(),
     private sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))) { }
 
   acquire(): Promise<void> {
