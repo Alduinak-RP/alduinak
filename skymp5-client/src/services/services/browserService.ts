@@ -98,8 +98,11 @@ export class BrowserService extends ClientListener {
 
     if (e.arguments[0] === "cef::browser:keyCapture") {
       const on = e.arguments[1] === "1";
-      this.keyCaptureHeld = this.keyCapture && !on && this.isCaptureKeyDown((key) => this.sp.Input.isKeyPressed(key));
+      const ended = this.keyCapture && !on;
       this.keyCapture = on;
+      this.keyCaptureHeld = false;
+      // Input reads throw in the message context; the press that ended the capture is still down on the next frame
+      if (ended) this.controller.once("update", () => { this.keyCaptureHeld = this.isCaptureKeyDown((key) => this.sp.Input.isKeyPressed(key)); });
     }
 
     // After hitting enter, unfocuses the chat
