@@ -78,10 +78,12 @@ tab), which also restarts the hour clock.
 
 **The hour bank strip.** The Skills tab shows the bank at its top, under the title: one group per held craft (its
 name and, with craft slots, the slot), each with `1 + masteryHourBank` cells. "Hour 1" is the counted hour: "Counted,
-next in N min" while the hour that was just earned runs (real time, so it also runs out while logged out), "Open, work
-counts now" otherwise. "Hour 2" and "Hour 3" are the bank: "Pending, in N min online" for a banked hour and when it
+next in N min" while the hour that was just earned runs (real time, so it also runs out while logged out), "Open,
+counts now" otherwise. "Hour 2" and "Hour 3" are the bank: "Pending, in N min" for a banked hour and when it
 will be counted (the second an interval after the first), "Empty" otherwise; a sub-slot at its cap shows "At its cap,
-earns no more hours". The strip's caption states the rule in force. The data is `bank` in `masteryMenu` (sent when
+earns no more hours". The cell texts stay this short because three held crafts leave each cell about 76 px in the
+948 px menu; the strip's caption states the rule in force (online or not) and each cell's tooltip carries the full
+sentence. The data is `bank` in `masteryMenu` (sent when
 the Personal Menu opens and when the Skills tab is picked) and in `professionState`:
 `{ max, intervalMs, offline, slots: [{ slot, countedMs, banked, payMs, capped }] }`, one entry per held craft,
 `countedMs` the time until work counts an hour again, `payMs` the time on the pay clock until the next banked hour

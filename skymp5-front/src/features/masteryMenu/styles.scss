@@ -273,7 +273,7 @@ $text-dim: rgba(232, 224, 208, 0.6);
   }
 
   &__bank-rule {
-    flex: 0 0 150px;
+    flex: 0 0 120px;
     padding: 6px 10px 7px 14px;
     border-right: 1px solid $border-dim;
     color: $text-dim;
@@ -580,7 +580,7 @@ $text-dim: rgba(232, 224, 208, 0.6);
     }
 
     &__bank-rule {
-      flex-basis: 120px;
+      flex-basis: 100px;
       padding-left: 10px;
     }
 

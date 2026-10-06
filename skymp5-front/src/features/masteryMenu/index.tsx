@@ -167,14 +167,15 @@ interface BankHour {
   title: string;
 }
 
-// The counted hour first, then one cell per bank place; left gives what remains of a countdown now
+// The counted hour first, then one cell per bank place; left gives what remains of a countdown now. The cell text stays short (three held
+// crafts leave each cell about 65 px); the strip's caption carries the online rule and the tooltip the full sentence
 const bankHours = (b: MasteryBankSlot, bank: MasteryBank, label: string, left: (ms: number) => number): BankHour[] => {
   const counted = left(b.countedMs);
   const online = bank.offline ? '' : ' online';
   const hours: BankHour[] = [
     counted > 0
       ? { filled: true, state: 'Counted', detail: 'next in ' + minutesText(counted), title: `This hour as a ${label} is counted. Work counts an hour again in ${minutesText(counted)}.` }
-      : { filled: false, state: 'Open', detail: 'work counts now', title: `Your next work as a ${label} counts an hour.` },
+      : { filled: false, state: 'Open', detail: 'counts now', title: `Your next work as a ${label} counts an hour.` },
   ];
   for (let i = 0; i < bank.max; i++) {
     if (i >= b.banked) {
@@ -182,8 +183,8 @@ const bankHours = (b: MasteryBankSlot, bank: MasteryBank, label: string, left: (
       continue;
     }
     const wait = left(b.payMs) + i * bank.intervalMs;
-    const when = wait > 0 ? minutesText(wait) + online : '';
-    hours.push({ filled: true, state: 'Pending', detail: when ? 'in ' + when : 'any moment', title: `A banked hour as a ${label}, counted ${when ? 'after ' + when : 'within a minute'}.` });
+    const when = wait > 0 ? minutesText(wait) : '';
+    hours.push({ filled: true, state: 'Pending', detail: when ? 'in ' + when : 'any moment', title: `A banked hour as a ${label}, counted ${when ? 'after ' + when + online : 'within a minute'}.` });
   }
   return hours;
 };
