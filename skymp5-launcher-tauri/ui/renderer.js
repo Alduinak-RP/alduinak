@@ -95,7 +95,7 @@ const RESOLUTIONS = {
 }
 
 function labelForCode(code) {
-  if (!code) return '— none —'
+  if (!code) return loc('prefs.hk.none')
   return DIK_LABELS[code] || `0x${code.toString(16)}`
 }
 function setKey(id, code) {
@@ -135,7 +135,7 @@ function showHotkeyConflict() {
     const warn = document.getElementById(section + '-duplicate')
     if (!warn) continue
     warn.hidden = !list.length
-    warn.textContent = `Each of these keys does more than one thing on the same press: ${list.join('; ')}.`
+    warn.textContent = loc('prefs.hk.duplicate', { list: list.join('; ') })
   }
 }
 
@@ -149,18 +149,18 @@ const SERVER_HOTKEYS = {
 const SERVER_HOTKEY_IDS = ['hk-chat', ...Object.keys(SERVER_HOTKEYS)]
 // Game hotkey button id -> [label, controlmap event, default DIK]; the defaults are the vanilla bindings
 const GAME_HOTKEYS = {
-  'ghk-forward': ['Forward', 'Forward', 17], 'ghk-back': ['Back', 'Back', 31],
-  'ghk-left': ['Left', 'Strafe Left', 30], 'ghk-right': ['Right', 'Strafe Right', 32],
-  'ghk-left-hand': ['Left Hand', 'Left Attack/Block', 257], 'ghk-right-hand': ['Right Hand', 'Right Attack/Block', 256],
-  'ghk-activate': ['Activate', 'Activate', 18], 'ghk-ready': ['Ready', 'Ready Weapon', 19],
-  'ghk-menu': ['Menu', 'Tween Menu', 15], 'ghk-pov': ['Toggle POV', 'Toggle POV', 33],
-  'ghk-jump': ['Jump', 'Jump', 57], 'ghk-sprint': ['Sprint', 'Sprint', 56],
-  'ghk-shout': ['Power', 'Shout', 44], 'ghk-sneak': ['Sneak', 'Sneak', 29],
-  'ghk-run': ['Run', 'Run', 42], 'ghk-always-run': ['Always Run', 'Toggle Always Run', 58],
-  'ghk-automove': ['Automove', 'Auto-Move', 46], 'ghk-favorites': ['Favorites', 'Favorites', 16],
-  'ghk-journal': ['Journal', 'Journal', 36], 'ghk-system': ['System', 'Pause', 1],
-  'ghk-inventory': ['Inventory', 'Quick Inventory', 23], 'ghk-magic': ['Magic', 'Quick Magic', 25],
-  'ghk-stats': ['Stats', 'Quick Stats', 53], 'ghk-map': ['Map', 'Quick Map', 50],
+  'ghk-forward': [loc('prefs.ghk.forward'), 'Forward', 17], 'ghk-back': [loc('prefs.ghk.back'), 'Back', 31],
+  'ghk-left': [loc('prefs.ghk.left'), 'Strafe Left', 30], 'ghk-right': [loc('prefs.ghk.right'), 'Strafe Right', 32],
+  'ghk-left-hand': [loc('prefs.ghk.leftHand'), 'Left Attack/Block', 257], 'ghk-right-hand': [loc('prefs.ghk.rightHand'), 'Right Attack/Block', 256],
+  'ghk-activate': [loc('prefs.ghk.activate'), 'Activate', 18], 'ghk-ready': [loc('prefs.ghk.ready'), 'Ready Weapon', 19],
+  'ghk-menu': [loc('prefs.ghk.menu'), 'Tween Menu', 15], 'ghk-pov': [loc('prefs.ghk.pov'), 'Toggle POV', 33],
+  'ghk-jump': [loc('prefs.ghk.jump'), 'Jump', 57], 'ghk-sprint': [loc('prefs.ghk.sprint'), 'Sprint', 56],
+  'ghk-shout': [loc('prefs.ghk.power'), 'Shout', 44], 'ghk-sneak': [loc('prefs.ghk.sneak'), 'Sneak', 29],
+  'ghk-run': [loc('prefs.ghk.run'), 'Run', 42], 'ghk-always-run': [loc('prefs.ghk.alwaysRun'), 'Toggle Always Run', 58],
+  'ghk-automove': [loc('prefs.ghk.automove'), 'Auto-Move', 46], 'ghk-favorites': [loc('prefs.ghk.favorites'), 'Favorites', 16],
+  'ghk-journal': [loc('prefs.ghk.journal'), 'Journal', 36], 'ghk-system': [loc('prefs.ghk.system'), 'Pause', 1],
+  'ghk-inventory': [loc('prefs.ghk.inventory'), 'Quick Inventory', 23], 'ghk-magic': [loc('prefs.ghk.magic'), 'Quick Magic', 25],
+  'ghk-stats': [loc('prefs.ghk.stats'), 'Quick Stats', 53], 'ghk-map': [loc('prefs.ghk.map'), 'Quick Map', 50],
 }
 const GHK_MAP = Object.fromEntries(Object.entries(GAME_HOTKEYS).map(([id, [, ev]]) => [id, ev]))
 const GAME_HOTKEY_IDS = Object.keys(GAME_HOTKEYS)
@@ -173,9 +173,9 @@ for (const [id, [label]] of Object.entries(GAME_HOTKEYS)) {
 }
 // DIK -> [use, also shared by Game Hotkeys rows]; movement cancelling an emote is intended, so those only count for Server Hotkeys
 const CLIENT_FIXED_KEYS = {
-  28: ['Activate Chat', true],
-  17: ['emote cancel', false], 30: ['emote cancel', false], 31: ['emote cancel', false],
-  32: ['emote cancel', false], 57: ['emote cancel', false], 19: ['emote cancel', false],
+  28: [loc('prefs.hk.chat'), true],
+  17: [loc('prefs.hk.emoteCancel'), false], 30: [loc('prefs.hk.emoteCancel'), false], 31: [loc('prefs.hk.emoteCancel'), false],
+  32: [loc('prefs.hk.emoteCancel'), false], 57: [loc('prefs.hk.emoteCancel'), false], 19: [loc('prefs.hk.emoteCancel'), false],
 }
 
 let activeCapture = null
@@ -194,7 +194,7 @@ function endCapture(restorePrev) {
 
 function startCapture(btn, canUnbind) {
   endCapture(true)
-  const prompt = canUnbind ? 'Press a key or mouse button… (Esc cancels, Backspace unbinds)' : 'Press a key or mouse button… (Esc cancels)'
+  const prompt = canUnbind ? loc('prefs.hk.pressUnbind') : loc('prefs.hk.press')
   const onKey = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -204,7 +204,7 @@ function startCapture(btn, canUnbind) {
     const entry = KEY_TABLE[e.code]
     if (!entry) {
       if (activeCapture.timer) clearTimeout(activeCapture.timer)
-      btn.textContent = 'Unsupported key'
+      btn.textContent = loc('prefs.hk.unsupported')
       activeCapture.timer = setTimeout(() => { if (activeCapture) btn.textContent = prompt }, 1000)
       return
     }
@@ -367,7 +367,7 @@ const fieldSkyrimPath   = document.getElementById('setting-skyrim-path')
 const fieldBaseDir      = document.getElementById('setting-base-dir')
 const skyrimPathWarning = document.getElementById('skyrim-path-warning')
 
-const DETECT_FAIL_MSG = 'Could not auto-detect Skyrim - set the path manually'
+const DETECT_FAIL_MSG = loc('options.detectFailed')
 
 function setPathWarning(msg) {
   skyrimPathWarning.textContent = msg || ''
@@ -407,12 +407,12 @@ function renderServerPicker() {
     if (srv.staffOnly) {
       const tag = document.createElement('span')
       tag.className = 'server-option-tag'
-      tag.textContent = 'STAFF'
+      tag.textContent = loc('picker.staff')
       li.append(tag)
     }
     const players = document.createElement('span')
     players.className = 'server-option-players'
-    players.textContent = srv.up === true ? `${srv.online ?? 0} / ${srv.maxPlayers ?? '?'}` : 'offline'
+    players.textContent = srv.up === true ? loc('picker.players', { online: srv.online ?? 0, max: srv.maxPlayers ?? '?' }) : loc('picker.offline')
     li.append(players)
     serverMenu.append(li)
   }
@@ -462,21 +462,21 @@ function updateLockState() {
   if (serverLocked && discordUser && !serverAllowed) {
     // Logged in but not on the server lock allow-list
     btnConnect.disabled = true
-    btnConnect.title    = 'The server is currently locked.'
-    connectWarning.textContent = 'Server is currently locked - you are not on the allow list.'
+    btnConnect.title    = loc('play.lockedTitle')
+    connectWarning.textContent = loc('play.locked')
     connectWarning.classList.add('visible')
   } else if (!serverLocked && discordUser && !serverAllowed) {
     // Logged in but not on the whitelist
     btnConnect.disabled = true
-    btnConnect.title    = 'You are not on the server whitelist.'
-    connectWarning.textContent = 'You are not on the server whitelist.'
+    btnConnect.title    = loc('play.notWhitelisted')
+    connectWarning.textContent = loc('play.notWhitelisted')
     connectWarning.classList.add('visible')
   } else {
     btnConnect.disabled = false
     btnConnect.title    = ''
     // Fix instantly disappearing
     const lockMessages = [
-      'You are not on the server whitelist.',
+      loc('play.notWhitelisted'),
     ]
     if (lockMessages.includes(connectWarning.textContent)) {
       connectWarning.classList.remove('visible')
@@ -545,12 +545,12 @@ function renderTopbarDiscord() {
 
     const name = document.createElement('span')
     name.className   = 'discord-topbar-name'
-    name.textContent = `Discord: ${discordUser.tag || discordUser.username}`
+    name.textContent = loc('discord.user', { name: discordUser.tag || discordUser.username })
     wrap.appendChild(name)
 
     const logoutBtn = document.createElement('button')
     logoutBtn.className   = 'discord-topbar-logout'
-    logoutBtn.title       = 'Logout'
+    logoutBtn.title       = loc('discord.logout')
     logoutBtn.textContent = '✕'
     logoutBtn.addEventListener('click', async () => {
       await window.electronAPI.discordLogout()
@@ -565,12 +565,12 @@ function renderTopbarDiscord() {
   } else {
     const loginBtn = document.createElement('button')
     loginBtn.className   = 'btn-discord-topbar'
-    loginBtn.textContent = 'Discord Login'
+    loginBtn.textContent = loc('discord.login')
     loginBtn.addEventListener('click', async () => {
       loginBtn.disabled    = true
-      loginBtn.textContent = 'Waiting for Discord…'
-      loginBtn.title       = 'Finish logging in from the browser window that just opened.'
-      if (connectWarning.textContent.startsWith('Discord login failed:')) {
+      loginBtn.textContent = loc('discord.waiting')
+      loginBtn.title       = loc('discord.waitingTitle')
+      if (connectWarning.textContent.startsWith(loc('discord.loginFailed', { error: '' }))) {
         connectWarning.classList.remove('visible')
         connectWarning.textContent = ''
       }
@@ -585,11 +585,11 @@ function renderTopbarDiscord() {
         updateLockState()
       } else {
         loginBtn.disabled    = false
-        loginBtn.textContent = 'Discord Login'
+        loginBtn.textContent = loc('discord.login')
         loginBtn.title       = ''
         // Stays visible until the next attempt - the user is usually still
         // alt-tabbed in the browser when the failure lands.
-        connectWarning.textContent = `Discord login failed: ${result.error}`
+        connectWarning.textContent = loc('discord.loginFailed', { error: result.error })
         connectWarning.classList.add('visible')
       }
     })
@@ -642,15 +642,15 @@ function renderTopbarNexus() {
 
     const name = document.createElement('span')
     name.className   = 'discord-topbar-name'
-    name.textContent = `Nexus: ${nexusUser.name}${nexusUser.isPremium ? ' \u2605' : ''}`
+    name.textContent = loc('nexus.user', { name: nexusUser.name }) + (nexusUser.isPremium ? ' \u2605' : '')
     name.title       = nexusUser.isPremium
-      ? 'Nexus Premium - automatic mod downloads enabled'
-      : 'Nexus free account - downloads open in the browser'
+      ? loc('nexus.premiumTitle')
+      : loc('nexus.freeTitle')
     wrap.appendChild(name)
 
     const logoutBtn = document.createElement('button')
     logoutBtn.className   = 'discord-topbar-logout'
-    logoutBtn.title       = 'Logout from Nexus'
+    logoutBtn.title       = loc('nexus.logout')
     logoutBtn.textContent = '\u2715'
     logoutBtn.addEventListener('click', async () => {
       await window.electronAPI.nexusLogout()
@@ -663,12 +663,12 @@ function renderTopbarNexus() {
   } else {
     const loginBtn = document.createElement('button')
     loginBtn.className   = 'btn-nexus-topbar'
-    loginBtn.textContent = 'Nexus Login'
+    loginBtn.textContent = loc('nexus.login')
     loginBtn.addEventListener('click', async () => {
       loginBtn.disabled    = true
-      loginBtn.textContent = 'Waiting for Nexus…'
-      loginBtn.title       = 'Click Authorise on the Nexus page that just opened.'
-      if (connectWarning.textContent.startsWith('Nexus login failed:')) {
+      loginBtn.textContent = loc('nexus.waiting')
+      loginBtn.title       = loc('nexus.waitingTitle')
+      if (connectWarning.textContent.startsWith(loc('nexus.loginFailed', { error: '' }))) {
         connectWarning.classList.remove('visible')
         connectWarning.textContent = ''
       }
@@ -678,9 +678,9 @@ function renderTopbarNexus() {
         renderTopbarNexus()
       } else {
         loginBtn.disabled    = false
-        loginBtn.textContent = 'Nexus Login'
+        loginBtn.textContent = loc('nexus.login')
         loginBtn.title       = ''
-        connectWarning.textContent = `Nexus login failed: ${result.error}`
+        connectWarning.textContent = loc('nexus.loginFailed', { error: result.error })
         connectWarning.classList.add('visible')
       }
     })
@@ -717,7 +717,7 @@ function refreshDownloadModsState(st) {
   const ready = !fieldIsolated.checked || st.ready
   for (const b of MODLIST_BUTTONS) {
     b.disabled = !ready
-    b.title = ready ? '' : 'Copy the game first, or turn off Portable Installation in Install Options.'
+    b.title = ready ? '' : loc('options.copyFirst')
   }
 }
 
@@ -728,13 +728,13 @@ async function refreshIsolatedStatus() {
   btnCopyGame.hidden = btnRepairGame.hidden = !fieldIsolated.checked
   if (!st.ready) {
     isolatedDot.className    = 'vortex-status-dot'
-    isolatedText.textContent = 'Game copy not installed yet - press PLAY or Copy Game under Troubleshooting'
+    isolatedText.textContent = loc('options.copyMissing')
   } else if (!fieldIsolated.checked) {
     isolatedDot.className    = 'vortex-status-dot dot-warn'
-    isolatedText.textContent = 'Alduinak install exists - playing from the original Skyrim'
+    isolatedText.textContent = loc('options.copyUnused')
   } else {
     isolatedDot.className    = 'vortex-status-dot dot-ok'
-    isolatedText.textContent = `Alduinak installed at ${st.base || st.dir}`
+    isolatedText.textContent = loc('options.installedAt', { dir: st.base || st.dir })
   }
   refreshDownloadModsState(st)
   refreshInstallStatus()
@@ -747,9 +747,9 @@ async function refreshInstallStatus() {
     document.getElementById(`${key}-status-dot`).className = 'vortex-status-dot' + (ok ? ' dot-ok' : '')
     document.getElementById(`${key}-status-text`).textContent = ok ? yes : no
   }
-  paint('skse', st.skse, 'SKSE installed', 'SKSE not installed yet - press PLAY to install it')
-  paint('masters', st.masters, 'Cleaned masters installed', 'Masters not cleaned yet - press PLAY to clean them')
-  paint('modlist', st.modlist, `Modlist installed${st.filesVersion ? ` (client ${st.filesVersion})` : ''}`, 'Modlist not installed yet - press PLAY to install it')
+  paint('skse', st.skse, loc('options.skseOk'), loc('options.skseMissing'))
+  paint('masters', st.masters, loc('options.mastersOk'), loc('options.mastersMissing'))
+  paint('modlist', st.modlist, st.filesVersion ? loc('options.modlistOkVersion', { version: st.filesVersion }) : loc('options.modlistOk'), loc('options.modlistMissing'))
 }
 
 // Copies the vanilla files into the portable game copy; force re-copies every file.
@@ -757,18 +757,18 @@ async function copyGame(force) {
   window.electronAPI.removeIsolatedListeners()
   // Game-copy steps stream into the shared install progress log.
   window.electronAPI.onIsolatedProgress(msg => installLive(msg))
-  installLog(force ? 'Repairing the game files…' : 'Copying the game…')
+  installLog(force ? loc('trouble.log.repairingGame') : loc('trouble.log.copyingGame'))
 
   const result = await window.electronAPI.createIsolated(fieldBaseDir.value.trim(), { force })
   window.electronAPI.removeIsolatedListeners()
 
   if (!result.success) {
-    installLog(`Error: ${result.error}`)
+    installLog(loc('trouble.log.error', { error: result.error }))
     return false
   }
   // The base may have been nested under \Alduinak - reflect what was used.
   if (result.dir) fieldBaseDir.value = result.dir
-  installLog('Game copy ready ✓')
+  installLog(loc('trouble.log.gameCopyReady'))
   refreshIsolatedStatus()
   refreshPlayState()
   return true
@@ -820,7 +820,7 @@ function renderVoip() {
   voipThreshold.style.left = `${dbToPos(voip.thresholdDb) * 100}%`
   document.getElementById('voip-threshold-value').textContent = `${voip.thresholdDb} dB`
   voipGain.style.left = `${(voip.gainDb + VOIP_GAIN_DB) / (2 * VOIP_GAIN_DB) * 100}%`
-  voipGain.title = `Microphone volume ${voip.gainDb > 0 ? '+' : ''}${voip.gainDb} dB`
+  voipGain.title = loc('prefs.voice.gainDb', { db: `${voip.gainDb > 0 ? '+' : ''}${voip.gainDb}` })
   if (voipTest) voipTest.gain.gain.value = Math.pow(10, voip.gainDb / 20)
   document.getElementById('voip-output-volume').value = voip.outputVolume
   document.getElementById('voip-output-volume-value').textContent = `${voip.outputVolume}%`
@@ -832,7 +832,7 @@ function fillVoipDevices(devices) {
     const labels = [...new Set(devices.filter(d => d.kind === kind && d.label && d.deviceId !== 'default' && d.deviceId !== 'communications').map(d => d.label))]
     if (current && !labels.includes(current)) labels.push(current)
     select.innerHTML = ''
-    select.append(new Option('System default', ''))
+    select.append(new Option(loc('prefs.voice.systemDefault'), ''))
     for (const label of labels) select.append(new Option(label, label))
     select.value = current
   }
@@ -876,7 +876,7 @@ async function startVoipTest() {
     fillVoipDevices(await navigator.mediaDevices.enumerateDevices())
     voipTick()
   } catch (e) {
-    voipError.textContent = `Could not open the microphone: ${e && e.message || e}`
+    voipError.textContent = loc('prefs.voice.micError', { error: e && e.message || e })
     voipError.hidden = false
   }
 }
@@ -972,7 +972,7 @@ document.getElementById('btn-browse').addEventListener('click', async () => {
 })
 
 document.getElementById('btn-browse-base').addEventListener('click', async () => {
-  const folder = await window.electronAPI.openFolder('Choose where to install Alduinak (~16 GB: MO2 + game copy)')
+  const folder = await window.electronAPI.openFolder(loc('options.chooseBase'))
   if (folder) { fieldBaseDir.value = folder; saveSetting({ baseDirPath: folder }) }
 })
 
@@ -994,8 +994,8 @@ function applyModManager() {
   if (!mo2) fieldIsolated.checked = false
   btnOpenMo2.disabled = !mo2
   modManagerHint.textContent = mo2
-    ? 'The game starts through MO2, so mods stay out of your Skyrim folder.'
-    : 'Mods install directly into your Skyrim folder and the game starts through SKSE.'
+    ? loc('options.mo2Hint')
+    : loc('options.directHint')
 }
 
 fieldModManager.addEventListener('change', async () => {
@@ -1011,29 +1011,29 @@ async function refreshMo2Status() {
   const status = await window.electronAPI.mo2Status()
   if (!status.installed) {
     mo2StatusDot.className    = 'vortex-status-dot'
-    mo2StatusText.textContent = 'MO2 not installed yet - press PLAY or Install MO2 under Troubleshooting'
+    mo2StatusText.textContent = loc('options.mo2Missing')
   } else if (!mo2Selected()) {
     mo2StatusDot.className    = 'vortex-status-dot dot-warn'
-    mo2StatusText.textContent = `MO2 ${status.version} ready (${status.modCount} mods) - launching without it`
+    mo2StatusText.textContent = loc('options.mo2Unused', { version: status.version, mods: status.modCount })
   } else {
     mo2StatusDot.className    = 'vortex-status-dot dot-ok'
-    mo2StatusText.textContent = `MO2 ${status.version} active (${status.modCount} mods)`
+    mo2StatusText.textContent = loc('options.mo2Active', { version: status.version, mods: status.modCount })
   }
 }
 
 btnOpenMo2.addEventListener('click', async () => {
   btnOpenMo2.disabled    = true
-  btnOpenMo2.textContent = 'MO2 is starting…'
+  btnOpenMo2.textContent = loc('options.mo2Starting')
   const result = await window.electronAPI.mo2Open()
-  if (!result.success) alert(`Could not open MO2: ${result.error}`)
+  if (!result.success) alert(loc('options.mo2OpenFailed', { error: result.error }))
   btnOpenMo2.disabled    = false
-  btnOpenMo2.textContent = 'Open and Configure Mod Manager'
+  btnOpenMo2.textContent = loc('options.openMo2')
 })
 
 document.querySelectorAll('[data-open-folder]').forEach(btn => {
   btn.addEventListener('click', async () => {
     const r = await window.electronAPI.openFolderOf(btn.dataset.openFolder)
-    if (!r.success) installLog(`Could not open the folder: ${r.error}`)
+    if (!r.success) installLog(loc('trouble.log.folderFailed', { error: r.error }))
   })
 })
 
@@ -1060,9 +1060,9 @@ function installLog(msg) {
 
 function formatInstallProgress({ phase, file, index, total, skipped }) {
   if (phase === 'download' || phase === 'check') return file
-  if (phase === 'mods') return total > 0 ? `[mods ${index}/${total}] ${file}` : file
-  if (phase === 'verify') return `Verifying installed mods… ${index}/${total}`
-  return `${skipped ? '[skip]' : `[${index}/${total}]`} ${file}`
+  if (phase === 'mods') return total > 0 ? loc('progress.mods', { index, total, file }) : file
+  if (phase === 'verify') return loc('progress.verify', { index, total })
+  return skipped ? loc('progress.skip', { file }) : loc('progress.step', { index, total, file })
 }
 
 // Single owner of the install channels, attached once: progress feeds the shared pane (plus an optional per-flow mirror).
@@ -1081,7 +1081,7 @@ window.electronAPI.onInstallComplete(d => {
 })
 
 function installBusy() {
-  if (installCompleteHandler) { installLog('An install is already running.'); return true }
+  if (installCompleteHandler) { installLog(loc('trouble.log.installBusy')); return true }
   return false
 }
 
@@ -1095,25 +1095,25 @@ function runInstall(mode, opts) {
 
 // Troubleshooting steps: each runs its part of the install script and resolves true on success.
 async function installMo2() {
-  installLog('Installing Mod Organizer 2…')
+  installLog(loc('mo2.installing'))
   const r = await window.electronAPI.installMo2Only({ force: true })
-  installLog(r.success ? 'MO2 installed ✓' : `Error: ${r.error}`)
+  installLog(r.success ? loc('trouble.log.mo2Installed') : loc('trouble.log.error', { error: r.error }))
   refreshMo2Status()
   return r.success
 }
 
 async function cleanMasters() {
-  installLog('Cleaning the masters…')
+  installLog(loc('trouble.log.cleaningMasters'))
   const r = await window.electronAPI.installMasters({ force: true })
   if (r.success && r.warning) installLog(`⚠ ${r.warning}`)
-  installLog(r.success ? `Cleaned masters ready ✓ (${r.cleaned} cleaned)` : `Error: ${r.error}`)
+  installLog(r.success ? loc('trouble.log.mastersReady', { n: r.cleaned }) : loc('trouble.log.error', { error: r.error }))
   return r.success
 }
 
 async function installSkse() {
-  installLog('Installing SKSE…')
+  installLog(loc('trouble.log.installingSkse'))
   const r = await window.electronAPI.installSkse({ force: true })
-  installLog(r.success ? 'SKSE installed ✓' : `Error: ${r.error}`)
+  installLog(r.success ? loc('trouble.log.skseInstalled') : loc('trouble.log.error', { error: r.error }))
   return r.success
 }
 
@@ -1126,9 +1126,9 @@ async function runModlist(btn, force) {
   if (installBusy()) return false
   const label = btn.textContent
   mo2InstallRunning = true
-  btn.textContent = 'Cancel'
+  btn.textContent = loc('trouble.cancel')
   btn.disabled = false
-  installLog(force ? 'Repairing modlist…' : 'Downloading mods…')
+  installLog(force ? loc('trouble.log.repairingModlist') : loc('trouble.log.downloadingMods'))
   const { success, error, warning, modsTotal } = await runInstall('modlist', { force })
   mo2InstallRunning = false
   btn.textContent = label
@@ -1136,11 +1136,11 @@ async function runModlist(btn, force) {
   // poll - otherwise a stale UPDATE label eats the player's next click.
   refreshPlayState()
   if (!success) {
-    installLog(`Error: ${error}`)
+    installLog(loc('trouble.log.error', { error }))
     return false
   }
   if (warning) installLog(`⚠ ${warning}`)
-  else installLog(`Modlist ready ✓ - ${modsTotal ?? 0} mods`)
+  else installLog(loc('trouble.log.modlistReady', { n: modsTotal ?? 0 }))
   refreshMo2Status()
   return true
 }
@@ -1149,7 +1149,7 @@ async function runModlist(btn, force) {
 let repairRunning = false
 
 async function withRepairLock(fn) {
-  if (repairRunning) { installLog('A repair is already running.'); return }
+  if (repairRunning) { installLog(loc('trouble.log.repairBusy')); return }
   repairRunning = true
   for (const b of REPAIR_BUTTONS) b.disabled = true
   try {
@@ -1169,7 +1169,7 @@ btnInstallSkse.addEventListener('click', () => withRepairLock(installSkse))
 for (const [btn, force] of [[btnDownloadMods, false], [btnRepairModlist, true]]) {
   btn.addEventListener('click', () => {
     if (mo2InstallRunning) {
-      installLog('Cancelling…')
+      installLog(loc('trouble.log.cancelling'))
       window.electronAPI.cancelInstall()
       return
     }
@@ -1193,10 +1193,10 @@ let launchStartedAt = 0  // set after a successful launch until Skyrim shows up 
 let launchPollTimer = null
 let gamePollInFlight = false
 
-const PLAY_LABEL = '\u25BA PLAY'
-const LAUNCHING_LABEL = '\u25BA GAME LAUNCHING\u2026'
+const PLAY_LABEL = '\u25BA ' + loc('play.play')
+const LAUNCHING_LABEL = '\u25BA ' + loc('play.launching')
 const LAUNCH_TIMEOUT_MS = 30_000
-const LAUNCH_TIMEOUT_WARNING = 'Skyrim did not start. Check MO2 for an error, then press Play again.'
+const LAUNCH_TIMEOUT_WARNING = loc('play.timeout')
 const updatePill = document.getElementById('update-pill')
 
 function updatePlayButton() {
@@ -1204,14 +1204,14 @@ function updatePlayButton() {
 
   if (gameRunning) {
     btnConnect.disabled    = true
-    btnConnect.textContent = '\u23F3 GAME RUNNING'
-    btnConnect.title       = 'Skyrim is currently running.'
+    btnConnect.textContent = '\u23F3 ' + loc('play.gameRunning')
+    btnConnect.title       = loc('play.gameRunningTitle')
     return
   }
   if (launchStartedAt) {
     btnConnect.disabled    = true
     btnConnect.textContent = LAUNCHING_LABEL
-    btnConnect.title       = 'Skyrim is starting. MO2 can take a moment to boot it.'
+    btnConnect.title       = loc('play.launchingTitle')
     return
   }
   if (playBusy) return  // label managed by the play/update sequence
@@ -1220,29 +1220,29 @@ function updatePlayButton() {
   // launcher would be replaced by the restart anyway.
   if (launcherUpdateReady) {
     btnConnect.disabled    = false
-    btnConnect.textContent = '\u2913 UPDATE LAUNCHER'
-    btnConnect.title       = 'Installs the launcher update and restarts.'
+    btnConnect.textContent = '\u2913 ' + loc('play.updateLauncher')
+    btnConnect.title       = loc('play.updateLauncherTitle')
     return
   }
 
   if (!isoReady) {
     btnConnect.disabled    = false
-    btnConnect.textContent = '\u2699 INSTALL'
-    btnConnect.title       = 'Installs Alduinak automatically, then launches.'
+    btnConnect.textContent = '\u2699 ' + loc('play.install')
+    btnConnect.title       = loc('play.installTitle')
     return
   }
 
   if (updateAvailable) {
     btnConnect.disabled    = false
-    btnConnect.textContent = '\u2913 UPDATE'
-    btnConnect.title       = 'A client files update is available.'
+    btnConnect.textContent = '\u2913 ' + loc('play.update')
+    btnConnect.title       = loc('play.updateTitle')
     return
   }
 
   if (!serverOnline) {
     btnConnect.disabled    = true
-    btnConnect.textContent = 'OFFLINE'
-    btnConnect.title       = 'The selected server is offline.'
+    btnConnect.textContent = loc('status.offline')
+    btnConnect.title       = loc('play.offlineTitle')
     return
   }
 
@@ -1262,9 +1262,9 @@ async function refreshPlayState() {
   updateAvailable = !!uc.updateAvailable
   // Mirror the launcher notice so players can see which one is updating
   if (updateAvailable) {
-    clientVersionEl.textContent = '⬆ UPDATE AVAILABLE'
+    clientVersionEl.textContent = '⬆ ' + loc('update.available')
     clientVersionEl.classList.add('update-available')
-    clientVersionEl.title = uc.serverVersion ? `v${uc.serverVersion} is available` : ''
+    clientVersionEl.title = uc.serverVersion ? loc('update.versionAvailable', { version: uc.serverVersion }) : ''
   } else {
     if (uc.serverVersion) clientVersionEl.textContent = `v${uc.serverVersion}`
     clientVersionEl.classList.remove('update-available')
@@ -1325,10 +1325,10 @@ function clearWarning() {
 // mirroring progress onto the Play button / warning strip.
 function runInstallForPlay() {
   if (installCompleteHandler) {
-    return Promise.resolve({ success: false, error: 'An install is already running - wait for it to finish.' })
+    return Promise.resolve({ success: false, error: loc('installer.busyWait') })
   }
   installProgressMirror = ({ phase, file }) => {
-    btnConnect.textContent = phase === 'download' ? '\u2913 DOWNLOADING\u2026' : '\u2699 INSTALLING\u2026'
+    btnConnect.textContent = phase === 'download' ? '\u2913 ' + loc('play.downloading') : '\u2699 ' + loc('play.installing')
     showWarning(file)
   }
   return runInstall('auto')
@@ -1336,7 +1336,7 @@ function runInstallForPlay() {
 
 btnConnect.addEventListener('click', async () => {
   if (gameRunning || launchStartedAt || playBusy) return
-  if (repairRunning) { showWarning('A repair is running, wait for it to finish.'); return }
+  if (repairRunning) { showWarning(loc('play.repairRunning')); return }
 
   // Launcher update takes priority over everything: it replaces this process.
   if (launcherUpdateReady) {
@@ -1348,14 +1348,14 @@ btnConnect.addEventListener('click', async () => {
   const needsGameCopy = !isoReady
   playBusy               = true
   btnConnect.disabled    = true
-  btnConnect.textContent = needsGameCopy ? '⚙ INSTALLING…'
-    : (updateAvailable ? '⤓ UPDATING…' : '⚙ CHECKING FILES…')
+  btnConnect.textContent = needsGameCopy ? '⚙ ' + loc('play.installing')
+    : (updateAvailable ? '⤓ ' + loc('play.updating') : '⚙ ' + loc('play.checkingFiles'))
 
   try {
     // settings:load re-runs the registry auto-detect, so an empty path here means Skyrim really could not be found.
     const s = await window.electronAPI.loadSettings()
     if (!s.skyrimPath) {
-      showWarning('Could not auto-detect Skyrim - set the path manually in Settings.')
+      showWarning(loc('play.detectFailed'))
       openModal()
       return
     }
@@ -1365,10 +1365,10 @@ btnConnect.addEventListener('click', async () => {
     const blockers = []
     if (discordUser && !serverAllowed) {
       blockers.push(serverLocked
-        ? 'Server is currently locked - you are not on the allow list.'
-        : 'You are not on the server whitelist.')
+        ? loc('play.locked')
+        : loc('play.notWhitelisted'))
     }
-    if (!discordUser) blockers.push('Login with Discord first - use the button in the toolbar.')
+    if (!discordUser) blockers.push(loc('play.loginFirst'))
 
     if (blockers.length > 0 && !updateAvailable && !needsGameCopy) {
       showWarning(blockers[0])
@@ -1379,13 +1379,13 @@ btnConnect.addEventListener('click', async () => {
 
     // 0. First run: create the game copy + MO2 at the default install location instead of bouncing the player into Settings.
     if (needsGameCopy) {
-      btnConnect.textContent = '\u2699 INSTALLING\u2026'
+      btnConnect.textContent = '\u2699 ' + loc('play.installing')
       window.electronAPI.removeIsolatedListeners()
       window.electronAPI.onIsolatedProgress(msg => showWarning(msg))
       const created = await window.electronAPI.createIsolated()
       window.electronAPI.removeIsolatedListeners()
       if (!created.success) {
-        showWarning(created.error || 'Install failed.')
+        showWarning(created.error || loc('play.installFailed'))
         return
       }
       fieldIsolated.checked = true
@@ -1399,12 +1399,12 @@ btnConnect.addEventListener('click', async () => {
     // to date; a pending update or fresh install runs the full pipeline here).
     const install = await runInstallForPlay()
     if (!install.success) {
-      showWarning(install.error || 'Update failed.')
+      showWarning(install.error || loc('play.updateFailed'))
       return
     }
     if (install.warning) showWarning(`\u26A0 ${install.warning}`)
 
-    if (!serverOnline) blockers.push('The server is offline.')
+    if (!serverOnline) blockers.push(loc('play.serverOffline'))
     // Updated but not launchable yet (e.g. no Discord login): say why and stop.
     if (blockers.length > 0) {
       showWarning(blockers[0])
@@ -1450,15 +1450,16 @@ async function checkServerStatus() {
   if (online !== serverOnline) { serverOnline = online; updatePlayButton() }
   if (!online) {
     badgeStatus.classList.remove('online')
-    badgeLabel.textContent = 'OFFLINE'
+    badgeLabel.textContent = loc('status.offline')
     badgePlayers.hidden = true
     // footerPlayers.textContent = '—'
   } else {
     badgeStatus.classList.add('online')
-    badgeLabel.textContent = 'ONLINE'
+    badgeLabel.textContent = loc('status.online')
     if (data.players != null) {
-      const queued = data.queued > 0 ? ` · ${data.queued} QUEUED` : ''
-      badgePlayers.textContent = `${data.players} PLAYERS${queued}`
+      badgePlayers.textContent = data.queued > 0
+        ? loc('status.playersQueued', { players: data.players, queued: data.queued })
+        : loc('status.players', { players: data.players })
       badgePlayers.hidden = false
       // footerPlayers.textContent = `${data.players}`
     } else {
@@ -1519,11 +1520,11 @@ const clientVersionEl   = document.getElementById('client-version')
 window.electronAPI.onUpdateProgress(d => {
   if (!launcherVersionEl.dataset.updating) return
   if (d.phase === 'download' && d.total > 0) {
-    launcherVersionEl.textContent = `Downloading update… ${Math.round(d.received / d.total * 100)}%`
+    launcherVersionEl.textContent = loc('update.downloadingPct', { pct: Math.round(d.received / d.total * 100) })
   } else if (d.phase === 'extract') {
-    launcherVersionEl.textContent = 'Unpacking update…'
+    launcherVersionEl.textContent = loc('update.unpacking')
   } else if (d.phase === 'install') {
-    launcherVersionEl.textContent = 'Installing - the launcher will restart…'
+    launcherVersionEl.textContent = loc('update.installing')
   }
 })
 
@@ -1533,16 +1534,16 @@ async function runLauncherUpdate() {
   playBusy            = true
   btnConnect.disabled = true
   launcherVersionEl.dataset.updating = '1'
-  launcherVersionEl.textContent = 'Downloading update…'
-  btnConnect.textContent = '⤓ UPDATING LAUNCHER…'
+  launcherVersionEl.textContent = loc('update.downloading')
+  btnConnect.textContent = '⤓ ' + loc('play.updatingLauncher')
   clearWarning()
 
   const r = await window.electronAPI.installUpdate()
   if (!r.ok) {
-    launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
+    launcherVersionEl.textContent = '⬆ ' + loc('update.available')
     delete launcherVersionEl.dataset.updating
     playBusy = false
-    showWarning(`Update failed: ${r.error}`)
+    showWarning(loc('update.failed', { error: r.error }))
     updatePlayButton()
   }
   // On success the installer restarts the launcher, so leave the UI as is.
@@ -1556,9 +1557,9 @@ async function checkLauncherUpdate() {
   const was = launcherUpdateReady
   if (result.hasUpdate) {
     launcherUpdateReady = true
-    launcherVersionEl.textContent = '⬆ UPDATE AVAILABLE'
+    launcherVersionEl.textContent = '⬆ ' + loc('update.available')
     launcherVersionEl.classList.add('update-available')
-    launcherVersionEl.title = `v${result.latest} is available - use the Play button to update`
+    launcherVersionEl.title = loc('update.launcherAvailable', { version: result.latest })
   } else {
     launcherUpdateReady = false
     launcherVersionEl.textContent = `v${result.current}`
@@ -1584,10 +1585,10 @@ function buildErrorState(message, onRetry) {
 
   const retry = document.createElement('button')
   retry.className   = 'panel-error-retry'
-  retry.textContent = 'Retry'
+  retry.textContent = loc('panel.retry')
   retry.addEventListener('click', () => {
     retry.disabled    = true
-    retry.textContent = 'Retrying…'
+    retry.textContent = loc('panel.retrying')
     onRetry()
   })
   box.appendChild(retry)
@@ -1613,7 +1614,7 @@ function buildNewsCard(item) {
 
   const tag = document.createElement('div')
   tag.className = 'news-card-tag'
-  tag.textContent = item.tag || 'UPDATE'
+  tag.textContent = item.tag || loc('news.defaultTag')
 
   const title = document.createElement('div')
   title.className = 'news-card-title'
@@ -1645,14 +1646,14 @@ async function loadNews() {
   newsGrid.innerHTML = ''
 
   if (!result || !result.ok) {
-    newsGrid.appendChild(buildErrorState('Couldn’t reach the server - news unavailable.', loadNews))
+    newsGrid.appendChild(buildErrorState(loc('news.unreachable'), loadNews))
     return
   }
 
   if (result.items.length === 0) {
     const empty = document.createElement('div')
     empty.className   = 'panel-empty'
-    empty.textContent = 'No news posted yet.'
+    empty.textContent = loc('news.empty')
     newsGrid.appendChild(empty)
     return
   }
@@ -1681,7 +1682,7 @@ function buildModItem(mod) {
 
   const reqBadge = document.createElement('span')
   reqBadge.className   = mod.required ? 'mod-badge mod-badge--required' : 'mod-badge mod-badge--optional'
-  reqBadge.textContent = mod.required ? 'REQ' : 'OPT'
+  reqBadge.textContent = mod.required ? loc('modlist.required') : loc('modlist.optional')
   item.appendChild(reqBadge)
 
   // Backend mods are installed automatically by the launcher.
@@ -1689,14 +1690,14 @@ function buildModItem(mod) {
   if (mod.source === 'backend') {
     const badge = document.createElement('span')
     badge.className   = 'mod-badge mod-badge--auto'
-    badge.textContent = 'AUTO'
-    badge.title       = 'Installed automatically by the launcher'
+    badge.textContent = loc('modlist.auto')
+    badge.title       = loc('modlist.autoTitle')
     item.appendChild(badge)
   } else if (mod.source === 'nexus' && mod.nexusId) {
     const link = document.createElement('a')
     link.className   = 'mod-nexus-link'
-    link.textContent = 'Nexus'
-    link.title       = 'Open on Nexus Mods'
+    link.textContent = loc('modlist.nexus')
+    link.title       = loc('modlist.nexusTitle')
     link.href        = '#'
     link.addEventListener('click', e => {
       e.preventDefault()
@@ -1728,17 +1729,17 @@ async function loadModlist() {
   if (!result || !result.ok) {
     currentModlist    = []
     count.textContent = '—'
-    panel.appendChild(buildErrorState('Couldn’t reach the server - modlist unavailable.', loadModlist))
+    panel.appendChild(buildErrorState(loc('modlist.unreachable'), loadModlist))
     return
   }
 
   currentModlist = result.items
 
   if (currentModlist.length === 0) {
-    count.textContent = '0 mods'
+    count.textContent = loc('modlist.none')
     const empty = document.createElement('div')
     empty.className   = 'panel-empty'
-    empty.textContent = 'No mods published yet.'
+    empty.textContent = loc('modlist.empty')
     panel.appendChild(empty)
     return
   }
@@ -1746,7 +1747,7 @@ async function loadModlist() {
   currentModlist.forEach(mod => panel.appendChild(buildModItem(mod)))
 
   const enabled = currentModlist.filter(m => m.enabled).length
-  count.textContent = `${enabled} / ${currentModlist.length} enabled`
+  count.textContent = loc('modlist.enabled', { enabled, total: currentModlist.length })
 }
 
 // Init

@@ -112,7 +112,7 @@ pub fn run() {
             let _ = APP.set(app.handle().clone());
             ensure_skyrim_path();
             let mut window = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
-                .title("Alduinak Launcher")
+                .title(loc::loc("window.title", &[]))
                 .inner_size(1280.0, 720.0)
                 .min_inner_size(1024.0, 600.0)
                 .decorations(false)

@@ -1,4 +1,5 @@
 // HTTP helpers: JSON calls to the backend and streamed downloads
+use crate::loc::loc;
 use futures_util::StreamExt;
 use serde_json::Value;
 use std::path::Path;
@@ -63,22 +64,34 @@ pub async fn fetch_json_within(url: &str, headers: &[(&str, &str)], secs: u64) -
     for (k, v) in headers {
         req = req.header(*k, *v);
     }
-    let res = req.send().await.map_err(|e| err(format!("Request failed: {url}: {e}")))?;
+    let res = req.send().await.map_err(|e| err(request_failed(url, e)))?;
     let res = success_or_error(res, url).await?;
-    res.json::<Value>().await.map_err(|e| err(format!("Invalid JSON from {url}: {e}")))
+    res.json::<Value>().await.map_err(|e| err(invalid_json(url, e)))
+}
+
+fn request_failed(url: &str, e: reqwest::Error) -> String {
+    loc("net.requestFailed", &[("url", url), ("error", &e.to_string())])
+}
+
+fn invalid_json(url: &str, e: impl std::fmt::Display) -> String {
+    loc("net.invalidJson", &[("url", url), ("error", &e.to_string())])
+}
+
+fn http_status(status: reqwest::StatusCode, url: &str) -> String {
+    loc("net.http", &[("status", &status.as_u16().to_string()), ("url", url)])
 }
 
 async fn success_or_error(res: reqwest::Response, url: &str) -> Result<reqwest::Response, HttpError> {
     let status = res.status();
     if status.is_redirection() {
-        return Err(HttpError { status: Some(status.as_u16()), server_error: None, message: format!("HTTP {} from {url} (redirect refused)", status.as_u16()) });
+        return Err(HttpError { status: Some(status.as_u16()), server_error: None, message: loc("net.redirect", &[("status", &status.as_u16().to_string()), ("url", url)]) });
     }
     if !status.is_success() {
         // Backend errors carry an explanatory { error }
         let detail = res.json::<Value>().await.ok().and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from));
         let message = match &detail {
-            Some(d) => format!("HTTP {} from {url}: {d}", status.as_u16()),
-            None => format!("HTTP {} from {url}", status.as_u16()),
+            Some(d) => loc("net.httpDetail", &[("status", &status.as_u16().to_string()), ("url", url), ("detail", d)]),
+            None => http_status(status, url),
         };
         return Err(HttpError { status: Some(status.as_u16()), server_error: detail, message });
     }
@@ -94,14 +107,14 @@ pub async fn fetch_json_cached(url: &str, cache: &std::path::Path, secs: u64) ->
     if let Some(bytes) = &cached {
         req = req.header("If-None-Match", format!("\"{}\"", hex::encode(Sha256::digest(bytes))));
     }
-    let res = req.send().await.map_err(|e| err(format!("Request failed: {url}: {e}")))?;
+    let res = req.send().await.map_err(|e| err(request_failed(url, e)))?;
     if res.status() == reqwest::StatusCode::NOT_MODIFIED {
         if let Some(v) = cached.and_then(|b| serde_json::from_slice::<Value>(&b).ok()) { return Ok(v); }
         return fetch_json_within(url, &[], secs).await;
     }
     let res = success_or_error(res, url).await?;
-    let bytes = res.bytes().await.map_err(|e| err(format!("Download failed: {url}: {e}")))?;
-    let v = serde_json::from_slice::<Value>(&bytes).map_err(|e| err(format!("Invalid JSON from {url}: {e}")))?;
+    let bytes = res.bytes().await.map_err(|e| err(loc("net.downloadFailedUrl", &[("url", url), ("error", &e.to_string())])))?;
+    let v = serde_json::from_slice::<Value>(&bytes).map_err(|e| err(invalid_json(url, e)))?;
     let _ = std::fs::write(cache, &bytes);
     Ok(v)
 }
@@ -111,19 +124,19 @@ pub async fn post_json(url: &str, body: &Value, headers: &[(&str, &str)]) -> Res
     for (k, v) in headers {
         req = req.header(*k, *v);
     }
-    let res = req.send().await.map_err(|e| err(format!("Request failed: {url}: {e}")))?;
+    let res = req.send().await.map_err(|e| err(request_failed(url, e)))?;
     let status = res.status();
     if !status.is_success() {
-        return Err(HttpError { status: Some(status.as_u16()), server_error: None, message: format!("HTTP {} from {url}", status.as_u16()) });
+        return Err(HttpError { status: Some(status.as_u16()), server_error: None, message: http_status(status, url) });
     }
-    res.json::<Value>().await.map_err(|e| err(format!("Invalid JSON from {url}: {e}")))
+    res.json::<Value>().await.map_err(|e| err(invalid_json(url, e)))
 }
 
 // Refuses remote plain-HTTP payloads; loopback stays allowed for a local dev backend
 fn assert_secure(url: &str) -> Result<(), String> {
     let u = url::Url::parse(url).map_err(|e| e.to_string())?;
     let local = matches!(u.host_str(), Some("localhost") | Some("127.0.0.1") | Some("::1"));
-    if u.scheme() == "https" || local { Ok(()) } else { Err(format!("Refusing to download over an insecure (non-HTTPS) URL: {url}")) }
+    if u.scheme() == "https" || local { Ok(()) } else { Err(loc("net.insecure", &[("url", url)])) }
 }
 
 // Streams url to dest; a failed or partial download leaves no file behind
@@ -138,9 +151,9 @@ pub async fn download_file(
     for (k, v) in headers {
         req = req.header(*k, *v);
     }
-    let res = req.send().await.map_err(|e| format!("Download failed: {e}"))?;
+    let res = req.send().await.map_err(|e| loc("net.downloadFailed", &[("error", &e.to_string())]))?;
     if !res.status().is_success() {
-        return Err(format!("HTTP {} downloading {url}", res.status().as_u16()));
+        return Err(loc("net.httpDownloading", &[("status", &res.status().as_u16().to_string()), ("url", url)]));
     }
     let total = res.content_length().unwrap_or(0);
     if let Some(dir) = dest.parent() {
@@ -151,7 +164,7 @@ pub async fn download_file(
         let mut stream = res.bytes_stream();
         let mut received = 0u64;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| format!("Download interrupted: {e}"))?;
+            let chunk = chunk.map_err(|e| loc("net.interrupted", &[("error", &e.to_string())]))?;
             file.write_all(&chunk).await.map_err(|e| e.to_string())?;
             received += chunk.len() as u64;
             on_progress(received, total);

@@ -1,5 +1,6 @@
 // The game side of an install: the portable copy, vanilla integrity, cleaned masters, Creation Club files and defaults
 use crate::basic::find_original_prefs_ini;
+use crate::loc::loc;
 use crate::settings::{ensure_profile_ini, profile_dir, skyrim_prefs_path};
 use crate::{game, ini, isolated_game_dir, isolated_game_ready, log, mo2, net, resource_dir, send, store};
 use serde_json::{json, Value};
@@ -7,7 +8,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const NEVER_LAUNCHED_ERROR: &str = "You must run vanilla skyrim at least once.";
 pub const CREATIONS_STAMP: &str = "creations-complete.json";
 pub const PRELOADER_DLLS: [&str; 2] = ["d3dx9_42.dll", "winhttp.dll"];
 pub const VANILLA_MASTERS: [&str; 6] = ["skyrim.esm", "update.esm", "dawnguard.esm", "hearthfires.esm", "dragonborn.esm", "_resourcepack.esl"];
@@ -80,13 +80,13 @@ pub fn game_copy_complete(dir: &Path) -> bool {
 
 async fn copy_game_dir(src: &Path, dst: &Path) -> Result<usize, String> {
     let jobs = vanilla_jobs(src);
-    if !jobs.iter().any(|j| j.eq_ignore_ascii_case("Data/Skyrim.esm")) { return Err("Skyrim.esm not found in Data - is the Skyrim path correct?".into()); }
+    if !jobs.iter().any(|j| j.eq_ignore_ascii_case("Data/Skyrim.esm")) { return Err(loc("gamecopy.noSkyrimEsm", &[])); }
     let _ = fs::remove_file(dst.join("vanilla-copy-complete.json"));
     for (i, rel) in jobs.iter().enumerate() {
         let to = mo2::join_rel(dst, rel);
         if let Some(p) = to.parent() { let _ = fs::create_dir_all(p); }
-        tokio::fs::copy(mo2::join_rel(src, rel), &to).await.map_err(|e| format!("Failed copying {rel}: {e}"))?;
-        isolated_progress(format!("Copying vanilla game files… {}% ({}/{} files, {rel})", (i + 1) * 100 / jobs.len(), i + 1, jobs.len()));
+        tokio::fs::copy(mo2::join_rel(src, rel), &to).await.map_err(|e| loc("gamecopy.copyFailed", &[("file", rel), ("error", &e.to_string())]))?;
+        isolated_progress(loc("gamecopy.copying", &[("pct", &((i + 1) * 100 / jobs.len()).to_string()), ("n", &(i + 1).to_string()), ("total", &jobs.len().to_string()), ("file", rel)]));
     }
     let _ = fs::write(dst.join("Skyrim.ccc"), "");
     let _ = fs::write(dst.join("vanilla-copy-complete.json"), format!("{}\n", json!({ "files": jobs.len() })));
@@ -136,14 +136,14 @@ pub async fn ensure_vanilla_integrity(game_path: &Path) -> Integrity {
             let to = mo2::join_rel(game_path, rel);
             if let Some(p) = to.parent() { let _ = fs::create_dir_all(p); }
             if let Err(e) = tokio::fs::copy(mo2::join_rel(&original, rel), &to).await {
-                return Integrity { error: Some(format!("Vanilla file repair failed on {rel}: {e}")), warning: None, repaired: i };
+                return Integrity { error: Some(loc("gamecopy.repairFailed", &[("file", rel), ("error", &e.to_string())])), warning: None, repaired: i };
             }
-            progress("download", format!("Repairing vanilla game files… {}/{} ({rel})", i + 1, bad.len()), i + 1, bad.len());
+            progress("download", loc("gamecopy.repairing", &[("n", &(i + 1).to_string()), ("total", &bad.len().to_string()), ("file", rel)]), i + 1, bad.len());
         }
         return Integrity { error: None, warning: None, repaired: bad.len() };
     }
     let missing: Vec<&str> = VANILLA_MASTERS.iter().copied().filter(|m| *m != "_resourcepack.esl" && !game_path.join("Data").join(m).exists()).collect();
-    let warning = (!missing.is_empty()).then(|| format!("Vanilla file check failed: {} missing from the game folder. Verify the game files in Steam/GOG Galaxy.", missing.join(", ")));
+    let warning = (!missing.is_empty()).then(|| loc("gamecopy.mastersMissing", &[("files", &missing.join(", "))]));
     Integrity { error: None, warning, repaired: 0 }
 }
 
@@ -257,7 +257,7 @@ async fn cleaned_master_patch(v: &MasterVariant) -> Result<PathBuf, String> {
     net::download_file(&format!("{}/files/cleaned-masters/{}", net::api_url(), v.patch), &file, &[], |_, _| {}).await?;
     if mo2::sha256_file(&file).await? != v.patch_sha256 {
         let _ = fs::remove_file(&file);
-        return Err(format!("{} failed its checksum after download", v.patch));
+        return Err(loc("gamecopy.patchChecksum", &[("patch", v.patch)]));
     }
     Ok(file)
 }
@@ -292,9 +292,9 @@ pub async fn ensure_cleaned_masters(game_path: &Path, force: bool, strict: bool)
         let Ok(size) = fs::metadata(&file).map(|md| md.len()) else { continue };
         if m.variants.iter().any(|v| v.dst_size == size) { continue; }
         let Some(v) = m.variants.iter().find(|v| v.src_size == size) else { unknown.push(format!("{} (size {size})", m.name)); continue };
-        progress("download", format!("Cleaning masters… {}% ({}/{}, {} {})", i * 100 / MASTERS.len(), i + 1, MASTERS.len(), m.name, v.edition), i + 1, MASTERS.len());
+        progress("download", loc("gamecopy.cleaning", &[("pct", &(i * 100 / MASTERS.len()).to_string()), ("n", &(i + 1).to_string()), ("total", &MASTERS.len().to_string()), ("name", m.name), ("edition", v.edition)]), i + 1, MASTERS.len());
         if !xdelta.exists() {
-            let error = "xdelta3.exe is missing from the launcher install. Reinstall the launcher.".to_string();
+            let error = loc("gamecopy.noXdelta", &[]);
             if strict { return MastersResult { error: Some(error), cleaned, warning: None }; }
             log(format!("[masters] {error}"));
             failed.push(m.name.to_string());
@@ -307,12 +307,12 @@ pub async fn ensure_cleaned_masters(game_path: &Path, force: bool, strict: bool)
             if !out.status.success() { return Err(String::from_utf8_lossy(&out.stderr).trim().to_string()); }
             let ok = fs::metadata(&tmp).map(|md| md.len() == v.dst_size).unwrap_or(false)
                 && match v.dst_sha256 { Some(s) => mo2::sha256_file(&tmp).await? == s, None => true };
-            if !ok { return Err("the patched file does not match the cleaned master".into()); }
+            if !ok { return Err(loc("gamecopy.patchMismatch", &[])); }
             fs::rename(&tmp, &file).map_err(|e| e.to_string())
         }.await;
         if let Err(e) = result {
             let _ = fs::remove_file(&tmp);
-            let error = format!("Could not clean {}: {e}", m.name);
+            let error = loc("gamecopy.cleanFailed", &[("name", m.name), ("error", &e)]);
             if strict { return MastersResult { error: Some(error), cleaned, warning: None }; }
             log(format!("[masters] {error}"));
             failed.push(m.name.to_string());
@@ -323,8 +323,8 @@ pub async fn ensure_cleaned_masters(game_path: &Path, force: bool, strict: bool)
     }
     mo2::rmrf(&data.join(BACKUP_DIR));
     let mut w = vec![];
-    if !unknown.is_empty() { w.push(format!("No cleaned-master patch for {}; they stay as shipped.", unknown.join(", "))); }
-    if !failed.is_empty() { w.push(format!("Could not clean {}; they stay as shipped (see install.log, or use Clean Masters under Troubleshooting).", failed.join(", "))); }
+    if !unknown.is_empty() { w.push(loc("gamecopy.noPatch", &[("files", &unknown.join(", "))])); }
+    if !failed.is_empty() { w.push(loc("gamecopy.notCleaned", &[("files", &failed.join(", "))])); }
     MastersResult { error: None, cleaned, warning: (!w.is_empty()).then(|| w.join(" ")) }
 }
 
@@ -354,40 +354,40 @@ pub async fn ensure_creations(manifest: &Value, game_path: &Path) -> Result<Opti
             if prior["size"].as_u64() == Some(s) && prior["mtime"].as_str() == Some(mtime(&to).as_str()) { done.push(prior.clone()); continue; }
         }
         if let Some(s) = size {
-            progress("download", format!("Checking {title} ({name})…"), i, files.len());
+            progress("download", loc("creations.checking", &[("title", title), ("name", name)]), i, files.len());
             let sha = mo2::hash_cached(&to).await.unwrap_or_default();
             if accepted(f, s, &sha) { done.push(json!({ "name": name, "size": s, "mtime": mtime(&to), "sha256": sha })); continue; }
             log(format!("[creations] {name}: {} does not match the server copy (size {s}, sha256 {sha})", to.display()));
         }
-        progress("download", format!("Looking for {title} ({name}) in your Skyrim install…"), i, files.len());
+        progress("download", loc("creations.looking", &[("title", title), ("name", name)]), i, files.len());
         let candidates: Vec<PathBuf> = dirs.iter().filter(|d| d.join(name) != to).cloned().collect();
         let (found, rejected) = mo2::locate_creation(f, &candidates).await;
         for r in rejected { log(format!("[creations] {name}: {} does not match the server copy (size {}, sha256 {})", r["path"].as_str().unwrap_or(""), r["size"], r["sha256"].as_str().unwrap_or(""))); }
         let Some((from, verified)) = found else {
             if let (Some(s), true) = (size, f["kind"] == "archive") {
                 let sha = mo2::hash_cached(&to).await.unwrap_or_default();
-                warnings.push(format!("{name} differs from the server copy (sha256 {sha}) and was kept"));
+                warnings.push(loc("creations.keptDifferent", &[("name", name), ("sha", &sha)]));
                 done.push(json!({ "name": name, "size": s, "mtime": mtime(&to), "sha256": sha }));
                 continue;
             }
-            missing.push((title.to_string(), if size.is_some() { format!("{name}, whose copy in Data is a different version") } else { name.to_string() }));
+            missing.push((title.to_string(), if size.is_some() { loc("creations.otherVersion", &[("name", name)]) } else { name.to_string() }));
             continue;
         };
         let sha = mo2::hash_cached(&from).await.unwrap_or_default();
-        if !verified { warnings.push(format!("{name} at {} differs from the server copy (sha256 {sha}) and was used anyway", from.display())); }
+        if !verified { warnings.push(loc("creations.usedDifferent", &[("name", name), ("path", &from.display().to_string()), ("sha", &sha)])); }
         if let Some(p) = to.parent() { let _ = fs::create_dir_all(p); }
         // Our own quarantine of this install is moved back rather than copied
         if from.parent().is_some_and(|p| p == game_path.join(mo2::CC_QUARANTINE_DIR)) {
-            fs::rename(&from, &to).map_err(|e| format!("Could not move {name} back from {}: {e}", from.display()))?;
+            fs::rename(&from, &to).map_err(|e| loc("creations.moveFailed", &[("name", name), ("path", &from.display().to_string()), ("error", &e.to_string())]))?;
         } else {
             let tmp = PathBuf::from(format!("{}.alduinak-tmp", to.display()));
-            progress("download", format!("Copying {title} ({name}) from {}…", from.display()), i, files.len());
+            progress("download", loc("creations.copying", &[("title", title), ("name", name), ("path", &from.display().to_string())]), i, files.len());
             let r = async {
                 tokio::fs::copy(&from, &tmp).await.map_err(|e| e.to_string())?;
-                if mo2::sha256_file(&tmp).await? != sha { return Err("the copy does not match its source".to_string()); }
+                if mo2::sha256_file(&tmp).await? != sha { return Err(loc("creations.copyMismatch", &[])); }
                 fs::rename(&tmp, &to).map_err(|e| e.to_string())
             }.await;
-            if let Err(e) = r { let _ = fs::remove_file(&tmp); return Err(format!("Could not copy {name} from {}: {e}", from.display())); }
+            if let Err(e) = r { let _ = fs::remove_file(&tmp); return Err(loc("creations.copyFailed", &[("name", name), ("path", &from.display().to_string()), ("error", &e)])); }
         }
         done.push(json!({ "name": name, "size": fs::metadata(&to).map(|m| m.len()).unwrap_or(0), "mtime": mtime(&to), "sha256": sha }));
     }
@@ -397,13 +397,13 @@ pub async fn ensure_creations(manifest: &Value, game_path: &Path) -> Result<Opti
             match by_title.iter_mut().find(|(x, _)| *x == t) { Some((_, v)) => v.push(n), None => by_title.push((t, vec![n])) }
         }
         let list = by_title.iter().map(|(t, n)| format!("{t} ({})", n.join(", "))).collect::<Vec<_>>().join(", ");
-        let where_ = if dirs.is_empty() { format!("{} (no Data folder found)", source_root.display()) } else { dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ") };
-        return Err(format!("Alduinak needs the free Creations included with Skyrim Special Edition 1.6 (no Anniversary Edition purchase needed): {list}. Not found in {where_}. Verify the game files in Steam (Properties > Installed Files > Verify integrity of game files) or GOG Galaxy, or move them back from the folder another launcher put them in, then press Update again."));
+        let where_ = if dirs.is_empty() { loc("creations.noDataFolder", &[("path", &source_root.display().to_string())]) } else { dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", ") };
+        return Err(loc("creations.missing", &[("list", &list), ("where", &where_)]));
     }
     let _ = fs::write(&stamp_path, serde_json::to_string_pretty(&json!({ "hash": c["hash"], "files": done })).unwrap());
     store().set("creationFiles", json!(files.iter().filter_map(|f| f["name"].as_str()).collect::<Vec<_>>()));
     for w in &warnings { log(format!("[creations] {w}")); }
-    Ok((!warnings.is_empty()).then(|| format!("Creation Club: {}", warnings.join("; "))))
+    Ok((!warnings.is_empty()).then(|| loc("creations.warning", &[("warnings", &warnings.join("; "))])))
 }
 
 // Never strays: what the launcher, Skyrim Platform and SKSE write under Data/Platform and Data/SKSE/Plugins, logs, and the game's .png screenshots
@@ -455,7 +455,7 @@ pub fn remove_game_copy_strays(game_path: &Path, manifest: &Value) -> usize {
 pub async fn create_isolated(base_override: Option<String>, force: bool) -> Result<PathBuf, String> {
     let src = store().str("skyrimPath");
     if let Some(p) = game::source_problem(&src) { return Err(p); }
-    if find_original_prefs_ini().is_none() { return Err(NEVER_LAUNCHED_ERROR.into()); }
+    if find_original_prefs_ini().is_none() { return Err(loc("gamecopy.neverLaunched", &[])); }
     let mut base = base_override.filter(|b| !b.trim().is_empty()).map(|b| PathBuf::from(b.trim().replace('/', "\\"))).unwrap_or_else(crate::base_dir);
     // A generic folder gets an Alduinak folder nested inside it
     if !base.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("alduinak")) && !base.join("alduinak-instance.txt").exists() {
@@ -464,21 +464,21 @@ pub async fn create_isolated(base_override: Option<String>, force: bool) -> Resu
     let src = PathBuf::from(src);
     let dst = base.join("skyrim");
     if paths_overlap(&src, &dst) || paths_overlap(&src, &base) {
-        return Err("Choose an install location OUTSIDE your Skyrim folder. Portable install is for compatibility. If you lack the diskspace, turn off portable install.".into());
+        return Err(loc("gamecopy.insideSkyrim", &[]));
     }
     store().set("baseDirPath", json!(base.to_string_lossy()));
     let _ = fs::create_dir_all(&base);
     let _ = fs::write(base.join("alduinak-instance.txt"), "");
-    isolated_progress("Installing Mod Organizer 2…");
+    isolated_progress(loc("mo2.installing", &[]));
     mo2::ensure_installed(&|m| isolated_progress(m)).await?;
     let mut manifest = Value::Null;
     if force {
-        isolated_progress("Removing the old vanilla game files…");
+        isolated_progress(loc("gamecopy.removingVanilla", &[]));
         let _ = fs::remove_file(dst.join("vanilla-copy-complete.json"));
         for rel in vanilla_jobs(&src) { let _ = fs::remove_file(mo2::join_rel(&dst, &rel)); }
         manifest = crate::install::fetch_manifest().await.unwrap_or(Value::Null);
         if manifest.is_object() {
-            isolated_progress("Removing the Creation Club files…");
+            isolated_progress(loc("gamecopy.removingCreations", &[]));
             let _ = fs::remove_file(dst.join(CREATIONS_STAMP));
             for f in manifest["creations"]["files"].as_array().into_iter().flatten() {
                 if let Some(to) = f["to"].as_str() { let _ = fs::remove_file(mo2::join_rel(&dst, to)); }
@@ -488,9 +488,9 @@ pub async fn create_isolated(base_override: Option<String>, force: bool) -> Resu
     if force || !game_copy_complete(&dst) { copy_game_dir(&src, &dst).await?; } else { log(format!("[isolated] reusing existing game copy at {}", dst.display())); }
     if manifest.is_object() {
         let n = remove_game_copy_strays(&dst, &manifest);
-        if n > 0 { isolated_progress(format!("Removed {n} stray file(s) from the game copy")); }
+        if n > 0 { isolated_progress(loc("gamecopy.removedStrays", &[("n", &n.to_string())])); }
     }
-    isolated_progress("Cleaning the Skyrim masters…");
+    isolated_progress(loc("gamecopy.cleaningMasters", &[]));
     if let Some(w) = ensure_cleaned_masters(&dst, false, false).await.warning { log(format!("[isolated] {w}")); }
     let info = crate::net::fetch_json(&crate::basic::server_info_url(), &[]).await.ok();
     let order = crate::install::load_order(info.as_ref());

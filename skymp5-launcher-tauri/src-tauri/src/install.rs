@@ -1,5 +1,6 @@
 // The modlist install: MO2 (unless Mod Manager is None), the manifest replay, SKSE and cleanup, plus the separate install steps
-use crate::gamecopy::{self, progress, CREATIONS_STAMP, NEVER_LAUNCHED_ERROR};
+use crate::gamecopy::{self, progress, CREATIONS_STAMP};
+use crate::loc::loc;
 use crate::settings::client_settings_path;
 use crate::{active_server, auth, basic, effective_game_path, isolated_game_dir, isolated_game_ready, log, mo2, net, proc, send, server_query, store};
 use regex::Regex;
@@ -50,7 +51,11 @@ async fn skse_file_problem(game: &Path) -> Option<String> {
 fn download_progress(label: String) -> impl FnMut(u64, u64) {
     move |r, t| {
         let mb = |n: u64| n as f64 / 1048576.0;
-        let file = if t > 0 { format!("{label}… {}% ({:.1} / {:.1} MB)", r * 100 / t, mb(r), mb(t)) } else { format!("{label}… {:.1} MB", mb(r)) };
+        let file = if t > 0 {
+            loc("installer.downloadPct", &[("label", &label), ("pct", &(r * 100 / t).to_string()), ("mb", &format!("{:.1}", mb(r))), ("totalMb", &format!("{:.1}", mb(t)))])
+        } else {
+            loc("installer.downloadMb", &[("label", &label), ("mb", &format!("{:.1}", mb(r)))])
+        };
         progress("mods", file, 0, 0);
     }
 }
@@ -61,8 +66,8 @@ pub async fn install_skse_into_root(game: &Path) -> Result<(), String> {
         if is_skse_root_file(&e.file_name().to_string_lossy()) { let _ = fs::remove_file(e.path()); }
     }
     let skse = mo2::skse_source_for(&game.to_string_lossy());
-    let name = mo2::download_to_downloads(&skse.url, &skse.file_name, &[], download_progress(format!("Downloading SKSE ({})", skse.edition))).await?;
-    progress("mods", "Installing SKSE…", 0, 0);
+    let name = mo2::download_to_downloads(&skse.url, &skse.file_name, &[], download_progress(loc("installer.downloadingSkse", &[("edition", &skse.edition)]))).await?;
+    progress("mods", loc("trouble.log.installingSkse", &[]), 0, 0);
     let archive = mo2::downloads_dir().join(name);
     mo2::install_skse(&archive, game, !store().bool("mo2Enabled")).await?;
     let _ = fs::remove_file(archive);
@@ -189,7 +194,7 @@ pub fn write_client_settings(dest: &Path, srv: &Value, info: Option<&Value>) -> 
     s.insert("server-master-key".into(), srv.get("masterKey").filter(|v| !v.is_null()).or(info.map(|i| &i["masterKey"])).cloned().unwrap_or(Value::Null));
     let profile_id = store().get("gameProfileId");
     if offline {
-        if profile_id.is_null() { return Err("No profileId in store - login with Discord before playing".into()); }
+        if profile_id.is_null() { return Err(loc("installer.noProfile", &[])); }
         s.insert("gameData".into(), json!({ "profileId": profile_id }));
     } else {
         write_game_login(dest, "");
@@ -265,7 +270,7 @@ impl Replay {
     async fn ensure_extracted(&mut self, ids: &[String], label: Option<&(dyn Fn(u32) + Sync)>) -> Result<(), String> {
         for id in ids {
             if self.extracted.contains_key(id) { continue; }
-            let path = self.archive_paths.get(id).ok_or(format!("archive {id} was never downloaded"))?.clone();
+            let path = self.archive_paths.get(id).ok_or_else(|| loc("installer.notDownloaded", &[("id", id)]))?.clone();
             let dir = mo2::extract_to_cache(&path, id, |p| if let Some(l) = label { l(p) }).await?;
             self.extracted.insert(id.clone(), dir);
         }
@@ -289,7 +294,7 @@ impl Replay {
             self.installed += 1;
             let name = m["name"].as_str().unwrap_or("").to_string();
             let (index, total) = (self.installed, self.total);
-            let show = move |pct: u32| progress("mods", format!("Installing {name}… {pct}%"), index, total);
+            let show = move |pct: u32| progress("mods", loc("installer.installingMod", &[("name", &name), ("pct", &pct.to_string())]), index, total);
             show(0);
             let files = m["files"].as_array().cloned().unwrap_or_default();
             let ids = archive_ids(&files);
@@ -308,10 +313,10 @@ impl Replay {
 async fn run_modlist_install(force: bool) -> Result<Value, String> {
     let direct = !store().bool("mo2Enabled");
     let game_str = effective_game_path();
-    if game_str.is_empty() { return Err("Skyrim path not configured.".into()); }
+    if game_str.is_empty() { return Err(loc("installer.noSkyrimPath", &[])); }
     let game = PathBuf::from(&game_str);
-    let srv = active_server().ok_or("No server selected - open Settings and choose a server.")?;
-    if basic::find_original_prefs_ini().is_none() { return Err(NEVER_LAUNCHED_ERROR.into()); }
+    let srv = active_server().ok_or_else(|| loc("installer.noServer", &[]))?;
+    if basic::find_original_prefs_ini().is_none() { return Err(loc("gamecopy.neverLaunched", &[])); }
 
     // 0. Vanilla integrity: portable copies are repaired file by file, a real install only warns
     let integrity = gamecopy::ensure_vanilla_integrity(&game).await;
@@ -332,11 +337,11 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
     // 2. Mods from the compiled install manifest
     let manifest = match fetch_manifest().await {
         Ok(m) => m,
-        Err(e) if e.status == Some(404) => return Err(e.server_error.unwrap_or_else(|| "The server has not published a mod manifest yet - ask the server admin to run `npm run compile-manifest` on the backend.".into())),
-        Err(e) => return Err(format!("Could not fetch the install manifest: {e}")),
+        Err(e) if e.status == Some(404) => return Err(e.server_error.unwrap_or_else(|| loc("installer.noManifest", &[]))),
+        Err(e) => return Err(loc("installer.manifestFailed", &[("error", &e.to_string())])),
     };
     let (Some(mut mods), Some(archives)) = (manifest["mods"].as_array().cloned(), manifest["archives"].as_array().cloned()) else {
-        return Err("Install manifest is missing or malformed - run \"npm run compile-manifest\" on the backend.".into());
+        return Err(loc("installer.badManifest", &[]));
     };
     if direct {
         let shadowed = mo2::drop_shadowed_files(&mut mods);
@@ -354,7 +359,7 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
     let setup_warning: Vec<String> = [integrity.warning, creations_warning, masters.warning].into_iter().flatten().collect();
 
     // 3. SkyMP client files come from a manifest mod
-    if client_mods(&manifest) == 0 { return Err("The install manifest has no SkyMP client mod - contact staff.".into()); }
+    if client_mods(&manifest) == 0 { return Err(loc("installer.noClientMod", &[])); }
     let files_version = client_version().await;
     let core_up_to_date = files_version.as_deref().is_some_and(|v| v == store().str("filesVersion"));
     gamecopy::ensure_client_dirs(&game);
@@ -393,14 +398,14 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
 
     if mods.is_empty() {
         // No mods yet, but the game root still needs SKSE or nothing can launch
-        if !game.join("skse64_loader.exe").exists() { install_skse_into_root(&game).await.map_err(|e| format!("SKSE install failed: {e}"))?; }
+        if !game.join("skse64_loader.exe").exists() { install_skse_into_root(&game).await.map_err(|e| loc("installer.skseFailed", &[("error", &e)]))?; }
         finish_order();
-        return Ok(json!({ "success": true, "upToDate": core_up_to_date, "modsTotal": 0, "warning": warning(Some("The install manifest has no mods yet - compile it from the reference MO2 install on the backend.")) }));
+        return Ok(json!({ "success": true, "upToDate": core_up_to_date, "modsTotal": 0, "warning": warning(Some(loc("installer.noMods", &[]).as_str())) }));
     }
 
     // 3a. Which mods need installing: a changed version, a size mismatch, or any changed code, plugin or script
     if force {
-        progress("mods", "Clearing the build and extraction caches…", 0, 0);
+        progress("mods", loc("installer.clearingCaches", &[]), 0, 0);
         mo2::clear_build_cache();
         mo2::clear_cache(None);
     }
@@ -432,7 +437,7 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
         let total = to_install.len();
         for (i, m) in to_install.iter_mut().enumerate() {
             let name = m["name"].as_str().unwrap_or("").to_string();
-            let (kept, bytes) = keep_unchanged_files(m, &game, direct, |pct| progress("mods", format!("Checking {name} for unchanged files… {pct}%"), i + 1, total)).await;
+            let (kept, bytes) = keep_unchanged_files(m, &game, direct, |pct| progress("mods", loc("installer.checkingMod", &[("name", &name), ("pct", &pct.to_string())]), i + 1, total)).await;
             if kept == 0 { continue; }
             let files = m["files"].as_array().map(Vec::as_slice).unwrap_or(&[]);
             let from: Vec<&str> = archive_ids(files).iter().filter_map(|id| archives.iter().find(|a| mo2::archive_id(&a["id"]).as_ref() == Some(id))).filter_map(|a| a["name"].as_str()).collect();
@@ -470,9 +475,9 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
 
         if source["type"] == "url" {
             let url = source["url"].as_str().unwrap_or("");
-            let got = mo2::download_to_downloads(url, &name, &[], download_progress(format!("Downloading {name}"))).await?;
+            let got = mo2::download_to_downloads(url, &name, &[], download_progress(loc("installer.downloading", &[("name", &name)]))).await?;
             let p = mo2::downloads_dir().join(got);
-            if !mo2::verify_archive(&p, &hash).await { return Err(format!("{name}: downloaded file failed verification (hash mismatch).")); }
+            if !mo2::verify_archive(&p, &hash).await { return Err(loc("installer.hashMismatch", &[("name", &name)])); }
             replay.archive_paths.insert(id, p);
         } else if source["type"] == "nexus" && premium {
             let (mod_id, file_id) = (source["modId"].as_i64().unwrap_or(0), source["fileId"].as_i64().unwrap_or(0));
@@ -482,25 +487,25 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
                 let stem = Path::new(&name).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                 let headers = auth::nexus_headers();
                 let hdr: Vec<(&str, &str)> = headers.iter().map(|(k, v)| (*k, v.as_str())).collect();
-                mo2::download_to_downloads(&link, &format!("{stem}-{mod_id}-{file_id}{ext}"), &hdr, download_progress(format!("Downloading {name}"))).await
+                mo2::download_to_downloads(&link, &format!("{stem}-{mod_id}-{file_id}{ext}"), &hdr, download_progress(loc("installer.downloading", &[("name", &name)]))).await
             }.await;
             match got {
                 Ok(n) => {
                     let p = mo2::downloads_dir().join(n);
-                    if !mo2::verify_archive(&p, &hash).await { return Err(format!("{name}: downloaded file failed verification (hash mismatch - the version pin may have changed).")); }
+                    if !mo2::verify_archive(&p, &hash).await { return Err(loc("installer.pinMismatch", &[("name", &name)])); }
                     replay.archive_paths.insert(id, p);
                 }
                 // A dead pin must not abort the whole install: fall back to the manual download page
                 Err(e) => {
                     log(format!("[install] auto-download failed for {name} (mod {mod_id}, file {file_id}): {e} - falling back to manual download"));
-                    progress("mods", format!("{name}: auto-download failed ({e}) - queued for manual download"), 0, 0);
+                    progress("mods", loc("installer.autoFailed", &[("name", &name), ("error", &e)]), 0, 0);
                     need_browser.push(a.clone());
                 }
             }
         } else if source["type"] == "nexus" {
             need_browser.push(a.clone());
         } else {
-            return Err(format!("{name}: no download source. Add a URL in data/manifest-sources.json on the backend."));
+            return Err(loc("installer.noSource", &[("name", &name)]));
         }
     }
 
@@ -513,7 +518,7 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
     // Free accounts: the downloads page plus the folder, installing each archive as it lands
     if !need_browser.is_empty() {
         open_download_list(&need_browser);
-        progress("mods", "Opened the downloads list: open each link, click \"Slow Download\", and move every archive into the Alduinak downloads folder. Each mod installs as soon as its archive arrives.", 0, need_browser.len());
+        progress("mods", loc("installer.manualDownloads", &[]), 0, need_browser.len());
         let wanted: Vec<mo2::Wanted> = need_browser.iter().map(|a| mo2::Wanted {
             name: a["name"].as_str().unwrap_or("").into(),
             hash: a["hash"].as_str().map(String::from),
@@ -546,14 +551,14 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
     if needs_root && !root_files.is_empty() {
         let ids = archive_ids(&root_files);
         let r = async { replay.ensure_extracted(&ids, None).await?; mo2::apply_root_files(&root_files, &replay.extracted, &game).await }.await;
-        if let Err(e) = r { replay.failed.push(format!("root files ({e})")); }
+        if let Err(e) = r { replay.failed.push(loc("installer.rootFailed", &[("error", &e)])); }
         replay.release(&ids);
     }
     mo2::clear_cache(None);
-    if !replay.failed.is_empty() { return Err(format!("{} item(s) failed to install: {}", replay.failed.len(), replay.failed.join("; "))); }
+    if !replay.failed.is_empty() { return Err(loc("installer.itemsFailed", &[("n", &replay.failed.len().to_string()), ("items", &replay.failed.join("; "))])); }
 
     // 4. Game-root components (only on a version change or a fresh game copy)
-    if needs_root { install_skse_into_root(&game).await.map_err(|e| format!("SKSE install failed: {e}"))?; }
+    if needs_root { install_skse_into_root(&game).await.map_err(|e| loc("installer.skseFailed", &[("error", &e)]))?; }
 
     // 5. Match MO2 priority and plugin order, record the installed version
     finish_order();
@@ -563,7 +568,7 @@ async fn run_modlist_install(force: bool) -> Result<Value, String> {
     done.sort();
     done.dedup();
     for (i, p) in done.iter().enumerate() {
-        progress("mods", format!("Cleaning up downloads… {}% ({}/{})", (i + 1) * 100 / done.len(), i + 1, done.len()), i + 1, done.len());
+        progress("mods", loc("installer.cleaningDownloads", &[("pct", &((i + 1) * 100 / done.len()).to_string()), ("n", &(i + 1).to_string()), ("total", &done.len().to_string())]), i + 1, done.len());
         for f in [p.clone(), PathBuf::from(format!("{}.meta", p.display()))] { let _ = fs::remove_file(f); }
     }
     Ok(json!({ "success": true, "upToDate": core_up_to_date, "modsTotal": mods.len(), "warning": warning(None) }))
@@ -604,8 +609,8 @@ async fn mod_changed(m: &Value, game: &Path, direct: bool) -> bool {
 #[tauri::command]
 pub fn install_start(mode: String, opts: Value) {
     if INSTALLING.swap(true, Ordering::SeqCst) {
-        progress("mods", "An install is already running - press Cancel Install to stop it first.", 0, 0);
-        complete(json!({ "success": false, "error": "An install is already running - wait for it to finish." }));
+        progress("mods", loc("installer.busyCancel", &[]), 0, 0);
+        complete(json!({ "success": false, "error": loc("installer.busyWait", &[]) }));
         return;
     }
     CANCEL.store(false, Ordering::SeqCst);
@@ -616,7 +621,7 @@ pub fn install_start(mode: String, opts: Value) {
         match result {
             Ok(v) => { store().set("modpackState", json!("ready")); complete(v); }
             Err(e) => {
-                let msg = if e == "Cancelled" { "Install cancelled.".to_string() } else { e };
+                let msg = if e == "Cancelled" { loc("installer.cancelled", &[]) } else { e };
                 log(format!("[install] ABORT: {msg}"));
                 // The launch gate blocks Play and the update check shows UPDATE until a run succeeds
                 store().set("modpackState", json!("failed"));
@@ -633,7 +638,7 @@ pub fn install_cancel() {
 
 // Runs one separate install step, refusing while another install runs
 async fn exclusive<F: std::future::Future<Output = Result<Value, String>>>(f: F) -> Value {
-    if INSTALLING.swap(true, Ordering::SeqCst) { return json!({ "success": false, "error": "An install is already running - cancel it first." }); }
+    if INSTALLING.swap(true, Ordering::SeqCst) { return json!({ "success": false, "error": loc("installer.busyFirst", &[]) }); }
     let r = f.await;
     INSTALLING.store(false, Ordering::SeqCst);
     r.unwrap_or_else(|e| json!({ "success": false, "error": e }))
@@ -642,12 +647,12 @@ async fn exclusive<F: std::future::Future<Output = Result<Value, String>>>(f: F)
 // The game folder a step works on; with portable install on it is the copy, never the original
 fn repair_game_path(what: &str) -> Result<PathBuf, String> {
     let game = if store().bool("isolatedGame") {
-        if !isolated_game_ready() { return Err(format!("Install the game copy first - {what} belongs in the portable copy, not your original Skyrim.")); }
+        if !isolated_game_ready() { return Err(loc("installer.copyFirst", &[("what", what)])); }
         isolated_game_dir()
     } else {
         PathBuf::from(effective_game_path())
     };
-    if !game.join("SkyrimSE.exe").exists() { return Err("No game folder found - install the game copy or set a valid Skyrim path first.".into()); }
+    if !game.join("SkyrimSE.exe").exists() { return Err(loc("installer.noGameFolder", &[])); }
     Ok(game)
 }
 
@@ -656,9 +661,9 @@ pub async fn install_mo2_only(opts: Value) -> Value {
     exclusive(async {
         let sky = store().str("skyrimPath");
         if !sky.is_empty() && gamecopy::paths_overlap(Path::new(&sky), &mo2::root()) {
-            return Err("The install location is inside your Skyrim folder - pick one outside it in Settings before repairing MO2.".into());
+            return Err(loc("installer.mo2InsideSkyrim", &[]));
         }
-        if proc::is_process_running("ModOrganizer.exe").await { return Err("Mod Organizer 2 is running - close it before repairing.".into()); }
+        if proc::is_process_running("ModOrganizer.exe").await { return Err(loc("installer.mo2Running", &[])); }
         let report = |m: String| progress("download", m, 0, 0);
         if opts["force"].as_bool().unwrap_or(false) { mo2::reinstall(&report).await?; } else { mo2::ensure_installed(&report).await?; }
         if !(store().bool("isolatedGame") && !isolated_game_ready()) {
@@ -677,7 +682,7 @@ pub async fn install_mo2_only(opts: Value) -> Value {
 #[tauri::command]
 pub async fn install_masters(opts: Value) -> Value {
     exclusive(async {
-        let game = repair_game_path("the cleaned masters")?;
+        let game = repair_game_path(&loc("installer.whatMasters", &[]))?;
         let r = gamecopy::ensure_cleaned_masters(&game, opts["force"].as_bool().unwrap_or(false), true).await;
         match r.error { Some(e) => Err(e), None => Ok(json!({ "success": true, "cleaned": r.cleaned, "warning": r.warning })) }
     }).await
@@ -686,7 +691,7 @@ pub async fn install_masters(opts: Value) -> Value {
 #[tauri::command]
 pub async fn install_skse(opts: Value) -> Value {
     exclusive(async {
-        let game = repair_game_path("SKSE")?;
+        let game = repair_game_path(&loc("installer.whatSkse", &[]))?;
         if opts["force"].as_bool().unwrap_or(false) {
             let _ = fs::remove_file(mo2::downloads_dir().join(mo2::skse_source_for(&game.to_string_lossy()).file_name));
             store().set("installedRootHash", json!(""));

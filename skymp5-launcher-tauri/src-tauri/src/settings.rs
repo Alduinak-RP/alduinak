@@ -410,7 +410,7 @@ pub fn game_hotkeys_load() -> Value {
 
 #[tauri::command]
 pub fn game_hotkeys_save(keys: Map<String, Value>) -> Value {
-    let Some(p) = controlmap_path() else { return json!({ "ok": false, "error": "Skyrim path is not configured yet" }) };
+    let Some(p) = controlmap_path() else { return json!({ "ok": false, "error": crate::loc::loc("settings.noSkyrimPath", &[]) }) };
     let (mut text, _) = read_controlmap_text();
     let custom_path = controlmap_custom_path();
     let mut custom = custom_path.as_ref().and_then(|p| std::fs::read(p).ok()).unwrap_or_default();

@@ -1,4 +1,5 @@
 // Settings, paths and the read-only backend calls behind the main window
+use crate::loc::loc;
 use crate::{active_server, base_dir, ensure_skyrim_path, game, isolated_game_dir, isolated_game_ready, log, net, server_query, store};
 use serde_json::{json, Value};
 use sha1::{Digest, Sha1};
@@ -60,7 +61,7 @@ pub fn settings_save(data: Value) {
 
 #[tauri::command]
 pub async fn dialog_open_folder(app: tauri::AppHandle, title: Option<String>) -> Option<String> {
-    let title = title.unwrap_or_else(|| "Select Skyrim Installation Folder".into());
+    let title = title.unwrap_or_else(|| loc("folder.selectSkyrim", &[]));
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog().file().set_title(title).pick_folder(move |p| { let _ = tx.send(p); });
     rx.await.ok().flatten().map(|p| p.to_string())
@@ -188,8 +189,8 @@ pub fn folder_open(app: tauri::AppHandle, kind: String) -> Value {
             Ok(_) => json!({ "success": true }),
             Err(e) => json!({ "success": false, "error": e.to_string() }),
         },
-        Some(d) => json!({ "success": false, "error": format!("{} does not exist yet.", d.display()) }),
-        None => json!({ "success": false, "error": "That folder does not exist yet." }),
+        Some(d) => json!({ "success": false, "error": loc("folder.missing", &[("dir", &d.display().to_string())]) }),
+        None => json!({ "success": false, "error": loc("folder.unknown", &[]) }),
     }
 }
 

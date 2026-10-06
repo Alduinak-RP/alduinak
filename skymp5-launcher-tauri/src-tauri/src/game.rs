@@ -1,4 +1,5 @@
 // Finding and vetting the player's Skyrim install: registry probes, store edition, exe version and hash
+use crate::loc::loc;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
@@ -168,19 +169,19 @@ fn exe_hash(exe: &Path) -> String {
 // Why a Skyrim folder cannot be installed or played, None when it is fine
 pub fn source_problem(dir: &str) -> Option<String> {
     if !is_valid_skyrim_path(dir) {
-        return Some("This folder is not a valid Skyrim install: SkyrimSE.exe was not found.".into());
+        return Some(loc("game.notSkyrim", &[]));
     }
     let edition = detect_edition(dir);
     if edition != "Steam" && edition != "GOG" {
-        return Some(format!("{edition} versions of the game are not supported."));
+        return Some(loc("game.editionUnsupported", &[("edition", &edition)]));
     }
     if !version_ok(dir, &edition) {
-        return Some("Skyrim Version is not Correct. Please update/downgrade.".into());
+        return Some(loc("game.wrongVersion", &[]));
     }
     let hash = exe_hash(&PathBuf::from(dir).join("SkyrimSE.exe"));
     let known = KNOWN_GAME_EXES.lock().unwrap().clone().unwrap_or_else(|| BUILT_IN_GAME_EXES.iter().map(|s| s.to_string()).collect());
     if !known.contains(&hash) {
-        return Some("Unknown versions of the game are not supported.".into());
+        return Some(loc("game.unknownVersion", &[]));
     }
     None
 }

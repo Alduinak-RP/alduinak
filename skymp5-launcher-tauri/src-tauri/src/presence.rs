@@ -1,4 +1,5 @@
 // Discord Rich Presence while the game runs and the setting is on
+use crate::loc::loc;
 use crate::{active_server, log, net, server_query, store};
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,13 +33,14 @@ async fn update(start: i64) {
     let status = net::fetch_json(&format!("{}/api/status{}", net::api_url(), server_query()), &[]).await.ok();
     let players = status.as_ref().filter(|s| s["status"] == "online").and_then(|s| s["players"].as_i64());
     let max = active_server().and_then(|s| s["maxPlayers"].as_i64()).unwrap_or(PARTY_MAX);
-    let state = match players { Some(p) => format!("{p}/{max} players online"), None => "server offline".into() };
+    let state = match players { Some(p) => loc("presence.online", &[("players", &p.to_string()), ("max", &max.to_string())]), None => loc("presence.offline", &[]) };
+    let (details, large, small, website) = (loc("presence.details", &[]), loc("presence.largeText", &[]), loc("presence.smallText", &[]), loc("presence.website", &[]));
     let mut act = activity::Activity::new()
-        .details("Playing Alduinak")
+        .details(&details)
         .state(&state)
         .timestamps(activity::Timestamps::new().start(start))
-        .assets(activity::Assets::new().large_image("alduinak").large_text("Alduinak RP").small_image("alduinaklogoofficial").small_text("SkyMP"))
-        .buttons(vec![activity::Button::new("Website", WEBSITE)]);
+        .assets(activity::Assets::new().large_image("alduinak").large_text(&large).small_image("alduinaklogoofficial").small_text(&small))
+        .buttons(vec![activity::Button::new(&website, WEBSITE)]);
     // Discord refuses a party of fewer than one; the state line already says 0
     let party;
     if let Some(p) = players.filter(|p| *p > 0) {

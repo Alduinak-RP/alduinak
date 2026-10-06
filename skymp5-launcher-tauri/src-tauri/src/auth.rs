@@ -1,4 +1,5 @@
 // Discord and Nexus logins, and the hardware id the backend's ban system matches
+use crate::loc::loc;
 use crate::{effective_game_path, game, log, net, store};
 use base64::Engine;
 use rand::RngCore;
@@ -60,16 +61,16 @@ pub async fn discord_login(app: tauri::AppHandle) -> Value {
             Err(e) if e.status == Some(401) => { registered = true; unexpected = 0; }
             // The state exists only once the browser has loaded the login URL, so an early 403 means it is still opening
             Err(e) if e.status == Some(403) => {
-                if registered { return json!({ "success": false, "error": "Login attempt expired - please try again." }); }
+                if registered { return json!({ "success": false, "error": loc("auth.discordExpired", &[]) }); }
             }
             Err(e) => {
                 unexpected += 1;
                 log(format!("[discord] status poll failed ({e}), {unexpected} in a row"));
-                if unexpected >= 10 { return json!({ "success": false, "error": format!("Cannot read the login status from the backend ({e}).") }); }
+                if unexpected >= 10 { return json!({ "success": false, "error": loc("auth.discordStatusFailed", &[("error", &e.to_string())]) }); }
             }
             Ok(data) => {
                 let id = data["masterApiId"].clone();
-                let name = data["discordUsername"].as_str().map(String::from).unwrap_or_else(|| format!("Player {id}"));
+                let name = data["discordUsername"].as_str().map(String::from).unwrap_or_else(|| loc("auth.playerFallback", &[("id", &id.to_string())]));
                 let user = json!({ "username": name, "tag": name, "avatar": data["discordAvatar"] });
                 let token = data["token"].as_str().unwrap_or("").to_string();
                 store().set_many(vec![("discordUser".into(), user.clone()), ("gameProfileId".into(), id.clone()), ("gameSession".into(), json!(token))]);
@@ -79,7 +80,7 @@ pub async fn discord_login(app: tauri::AppHandle) -> Value {
             }
         }
     }
-    json!({ "success": false, "error": "Login timed out - please try again." })
+    json!({ "success": false, "error": loc("auth.discordTimeout", &[]) })
 }
 
 #[tauri::command]
@@ -111,7 +112,7 @@ async fn post_form(url: &str, params: &[(&str, &str)]) -> Result<Value, String> 
     let status = res.status();
     let body: Value = res.json().await.unwrap_or(Value::Null);
     if !status.is_success() {
-        return Err(body["error_description"].as_str().or(body["error"].as_str()).map(String::from).unwrap_or_else(|| format!("HTTP {status} from Nexus")));
+        return Err(body["error_description"].as_str().or(body["error"].as_str()).map(String::from).unwrap_or_else(|| loc("auth.nexusHttp", &[("status", &status.to_string())])));
     }
     Ok(body)
 }
@@ -120,10 +121,11 @@ async fn oauth_user_info(token: &str) -> Result<Value, String> {
     let mut req = net::download_client().get(format!("{NEXUS_OAUTH_BASE}/oauth/userinfo")).bearer_auth(token).timeout(Duration::from_secs(15));
     for (k, v) in nexus_headers() { req = req.header(k, v); }
     let res = req.send().await.map_err(|e| e.to_string())?;
-    if !res.status().is_success() { return Err(format!("Nexus userinfo HTTP {}", res.status())); }
+    if !res.status().is_success() { return Err(loc("auth.nexusUserInfoHttp", &[("status", &res.status().to_string())])); }
     let info: Value = res.json().await.map_err(|e| e.to_string())?;
     let premium = info["membership_roles"].as_array().is_some_and(|r| r.iter().any(|x| x == "premium"));
-    Ok(json!({ "name": info["name"].as_str().unwrap_or("Nexus user"), "isPremium": premium, "profileUrl": info["avatar"] }))
+    let name = info["name"].as_str().map(String::from).unwrap_or_else(|| loc("auth.nexusUserFallback", &[]));
+    Ok(json!({ "name": name, "isPremium": premium, "profileUrl": info["avatar"] }))
 }
 
 fn store_tokens(t: &Value, previous_refresh: Option<&str>) -> String {
@@ -139,10 +141,12 @@ fn store_tokens(t: &Value, previous_refresh: Option<&str>) -> String {
 
 fn callback_page(ok: bool, message: &str) -> String {
     let accent = if ok { "#c8a25f" } else { "#c0564f" };
-    let title = if ok { "Logged in to Nexus" } else { "Nexus login failed" };
-    let note = if ok { "This tab will close itself…".to_string() } else { message.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;") };
-    let script = if ok { r#"<script>window.close();setTimeout(function(){var n=document.getElementById("note");if(n)n.textContent="You can close this tab and return to the launcher."},600)</script>"# } else { "" };
-    format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alduinak - Nexus login</title><style>html,body{{height:100%;margin:0}}body{{display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#16120d 0%,#0b0906 70%);color:#d8cdb8;font-family:Georgia,serif;text-align:center}}h1{{color:{accent};font-weight:normal;letter-spacing:.12em;text-transform:uppercase;font-size:1.4rem}}p{{color:#857a66}}</style></head><body><div><h1>{title}</h1><p id="note">{note}</p></div>{script}</body></html>"#)
+    let title = if ok { loc("auth.page.ok", &[]) } else { loc("auth.page.failed", &[]) };
+    let note = if ok { loc("auth.page.closing", &[]) } else { message.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;") };
+    let closed = serde_json::to_string(&loc("auth.page.closed", &[])).unwrap_or_default().replace('<', "\\u003c");
+    let script = if ok { format!(r#"<script>window.close();setTimeout(function(){{var n=document.getElementById("note");if(n)n.textContent={closed}}},600)</script>"#) } else { String::new() };
+    let page_title = loc("auth.page.title", &[]);
+    format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{page_title}</title><style>html,body{{height:100%;margin:0}}body{{display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#16120d 0%,#0b0906 70%);color:#d8cdb8;font-family:Georgia,serif;text-align:center}}h1{{color:{accent};font-weight:normal;letter-spacing:.12em;text-transform:uppercase;font-size:1.4rem}}p{{color:#857a66}}</style></head><body><div><h1>{title}</h1><p id="note">{note}</p></div>{script}</body></html>"#)
 }
 
 // Waits on the loopback callback for the authorization code, answering the browser with a result page
@@ -150,7 +154,7 @@ fn wait_for_code(listener: TcpListener, state: &str) -> Result<(String, std::net
     listener.set_nonblocking(false).map_err(|e| e.to_string())?;
     let deadline = Instant::now() + Duration::from_secs(300);
     loop {
-        if Instant::now() > deadline { return Err("Nexus login timed out - try again.".into()); }
+        if Instant::now() > deadline { return Err(loc("auth.nexusTimeout", &[])); }
         let (mut stream, _) = listener.accept().map_err(|e| e.to_string())?;
         let mut buf = [0u8; 8192];
         let n = stream.read(&mut buf).unwrap_or(0);
@@ -167,9 +171,9 @@ fn wait_for_code(listener: TcpListener, state: &str) -> Result<(String, std::net
             let _ = write!(s, "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{page}", page.len());
             Err(msg)
         };
-        if let Some(err) = q.get("error") { return fail(stream, format!("Nexus reported: {}", q.get("error_description").unwrap_or(err))); }
-        if q.get("state").map(String::as_str) != Some(state) { return fail(stream, "OAuth state mismatch - start the login again from the launcher.".into()); }
-        let Some(code) = q.get("code") else { return fail(stream, "The Nexus reply carried no authorization code.".into()) };
+        if let Some(err) = q.get("error") { return fail(stream, loc("auth.nexusReported", &[("error", q.get("error_description").unwrap_or(err).as_str())])); }
+        if q.get("state").map(String::as_str) != Some(state) { return fail(stream, loc("auth.stateMismatch", &[])); }
+        let Some(code) = q.get("code") else { return fail(stream, loc("auth.noCode", &[])) };
         return Ok((code.clone(), stream));
     }
 }
@@ -186,7 +190,7 @@ pub async fn nexus_login(app: tauri::AppHandle) -> Value {
     let redirect = format!("http://127.0.0.1:{NEXUS_OAUTH_PORT}/nexus/callback");
     let listener = match TcpListener::bind(("127.0.0.1", NEXUS_OAUTH_PORT)) {
         Ok(l) => l,
-        Err(_) => return json!({ "success": false, "error": format!("Port {NEXUS_OAUTH_PORT} is already in use - close whatever is using it and try again.") }),
+        Err(_) => return json!({ "success": false, "error": loc("auth.portInUse", &[("port", &NEXUS_OAUTH_PORT.to_string())]) }),
     };
     let params = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("response_type", "code").append_pair("client_id", NEXUS_CLIENT_ID).append_pair("redirect_uri", &redirect)
@@ -204,7 +208,7 @@ pub async fn nexus_login(app: tauri::AppHandle) -> Value {
         let tokens = post_form(&format!("{NEXUS_OAUTH_BASE}/oauth/token"), &[
             ("grant_type", "authorization_code"), ("client_id", NEXUS_CLIENT_ID), ("code", &code), ("redirect_uri", &redirect), ("code_verifier", &verifier),
         ]).await?;
-        if tokens["access_token"].as_str().unwrap_or("").is_empty() { return Err("No access token in the token reply.".to_string()); }
+        if tokens["access_token"].as_str().unwrap_or("").is_empty() { return Err(loc("auth.noToken", &[])); }
         let access = store_tokens(&tokens, None);
         let user = oauth_user_info(&access).await?;
         store().set("nexusUser", user.clone());
@@ -240,11 +244,11 @@ pub async fn nexus_download_link(token: &str, mod_id: i64, file_id: i64) -> Resu
     for (k, v) in nexus_headers() { req = req.header(k, v); }
     let res = req.send().await.map_err(|e| e.to_string())?;
     match res.status().as_u16() {
-        401 => return Err("Nexus login expired - log in again.".into()),
-        403 => return Err("Nexus refused the request (premium required?).".into()),
-        s if !(200..300).contains(&s) => return Err(format!("Nexus API HTTP {s}")),
+        401 => return Err(loc("auth.nexusExpired", &[])),
+        403 => return Err(loc("auth.nexusRefused", &[])),
+        s if !(200..300).contains(&s) => return Err(loc("auth.nexusApiHttp", &[("status", &s.to_string())])),
         _ => {}
     }
     let links: Value = res.json().await.map_err(|e| e.to_string())?;
-    links[0]["URI"].as_str().map(String::from).ok_or_else(|| "Nexus returned no download link (premium account required).".into())
+    links[0]["URI"].as_str().map(String::from).ok_or_else(|| loc("auth.noLink", &[]))
 }

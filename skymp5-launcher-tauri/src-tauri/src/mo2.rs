@@ -1,4 +1,5 @@
 // Mod Organizer 2, fully managed: install, portable instance, archives, mod folders and launch
+use crate::loc::loc;
 use crate::{game, log, net, resource_dir, settings::PROFILE};
 use regex::Regex;
 use serde_json::{json, Value};
@@ -83,7 +84,7 @@ pub async fn extract_archive(archive: &Path, dest: &Path, mut on_percent: impl F
         .stderr(std::process::Stdio::null())
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
-        .map_err(|e| format!("Could not start 7-Zip: {e}"))?;
+        .map_err(|e| loc("mo2.sevenZipStart", &[("error", &e.to_string())]))?;
     let mut out = child.stdout.take().unwrap();
     let re = Regex::new(r"(\d+)%").unwrap();
     let mut buf = [0u8; 4096];
@@ -101,11 +102,11 @@ pub async fn extract_archive(archive: &Path, dest: &Path, mut on_percent: impl F
             }
             Err(_) => {}
         }
-        if Instant::now() > deadline { let _ = child.kill().await; return Err("7-Zip timed out".into()); }
+        if Instant::now() > deadline { let _ = child.kill().await; return Err(loc("mo2.sevenZipTimeout", &[])); }
     }
     let status = child.wait().await.map_err(|e| e.to_string())?;
     if status.success() { Ok(()) } else {
-        Err(format!("7-Zip could not extract {} (exit {})", archive.file_name().unwrap_or_default().to_string_lossy(), status.code().unwrap_or(-1)))
+        Err(loc("mo2.sevenZipFailed", &[("archive", &archive.file_name().unwrap_or_default().to_string_lossy()), ("code", &status.code().unwrap_or(-1).to_string())]))
     }
 }
 
@@ -135,18 +136,18 @@ fn read_mo2_stamp() -> Option<Value> {
 
 async fn download_mo2_archive(on_progress: &(dyn Fn(String) + Sync)) -> Result<PathBuf, String> {
     let archive = std::env::temp_dir().join(format!("mo2-{MO2_VERSION}.7z"));
-    on_progress("Downloading Mod Organizer 2…".into());
+    on_progress(loc("mo2.downloading", &[]));
     net::download_file(MO2_URL, &archive, &[], |r, t| {
-        if t > 0 { on_progress(format!("Downloading MO2… {}% ({:.1} / {:.1} MB)", r * 100 / t, r as f64 / 1048576.0, t as f64 / 1048576.0)); }
+        if t > 0 { on_progress(loc("mo2.downloadingPct", &[("pct", &(r * 100 / t).to_string()), ("mb", &format!("{:.1}", r as f64 / 1048576.0)), ("totalMb", &format!("{:.1}", t as f64 / 1048576.0))])); }
     }).await?;
     Ok(archive)
 }
 
 async fn extract_mo2_archive(archive: &Path, on_progress: &(dyn Fn(String) + Sync)) -> Result<(), String> {
-    on_progress("Installing MO2… 0%".into());
-    extract_archive(archive, &root(), |pct| on_progress(format!("Installing MO2… {pct}%"))).await?;
+    on_progress(loc("mo2.extracting", &[("pct", "0")]));
+    extract_archive(archive, &root(), |pct| on_progress(loc("mo2.extracting", &[("pct", &pct.to_string())]))).await?;
     let _ = fs::remove_file(archive);
-    if !is_installed() { return Err("MO2 extraction finished but ModOrganizer.exe was not found.".into()); }
+    if !is_installed() { return Err(loc("mo2.extractNoExe", &[])); }
     write_mo2_stamp();
     log("[mo2] MO2 installed");
     Ok(())
@@ -160,7 +161,7 @@ pub async fn ensure_installed(on_progress: &(dyn Fn(String) + Sync)) -> Result<(
                 let (size, count) = mo2_binary_stats();
                 if s["size"] == json!(size) && s["count"] == json!(count) { return Ok(()); }
                 log("[mo2] MO2 binaries do not match the stamp - repairing");
-                on_progress("Repairing Mod Organizer 2…".into());
+                on_progress(loc("mo2.repairing", &[]));
             }
             None => { write_mo2_stamp(); return Ok(()); }
             _ => log(format!("[mo2] MO2 version changed - reinstalling {MO2_VERSION}")),
@@ -174,7 +175,7 @@ pub async fn ensure_installed(on_progress: &(dyn Fn(String) + Sync)) -> Result<(
 pub async fn reinstall(on_progress: &(dyn Fn(String) + Sync)) -> Result<(), String> {
     let archive = download_mo2_archive(on_progress).await?;
     if is_installed() && root().join("portable.txt").exists() {
-        let names: HashSet<String> = list_archive_entries(&archive).await.ok_or("Could not read the downloaded MO2 archive.")?
+        let names: HashSet<String> = list_archive_entries(&archive).await.ok_or_else(|| loc("mo2.archiveUnreadable", &[]))?
             .iter().map(|e| e.0.split('/').next().unwrap_or("").to_lowercase()).collect();
         for e in fs::read_dir(root()).into_iter().flatten().flatten() {
             let lower = e.file_name().to_string_lossy().to_lowercase();
@@ -391,7 +392,7 @@ async fn write_directive(f: &Value, dest_root: &Path, extracted: &HashMap<String
     // A kept file was sha256-verified when planned: hard-linked into a new mod folder, left alone when already in place
     if let Some(keep) = f.get("keep").and_then(|v| v.as_str()).map(PathBuf::from) {
         if keep != dest && fs::hard_link(&keep, &dest).is_err() {
-            tokio::fs::copy(&keep, &dest).await.map_err(|e| format!("could not keep {}: {e}", keep.display()))?;
+            tokio::fs::copy(&keep, &dest).await.map_err(|e| loc("mo2.keepFailed", &[("path", &keep.display().to_string()), ("error", &e.to_string())]))?;
         }
         return Ok(());
     }
@@ -401,14 +402,14 @@ async fn write_directive(f: &Value, dest_root: &Path, extracted: &HashMap<String
         tokio::fs::write(&dest, bytes).await.map_err(|e| e.to_string())?;
     } else {
         let archive = f["archive"].as_str().map(String::from).or_else(|| f["archive"].as_i64().map(|n| n.to_string())).unwrap_or_default();
-        let dir = extracted.get(&archive).ok_or(format!("archive {archive} was not extracted"))?;
+        let dir = extracted.get(&archive).ok_or_else(|| loc("mo2.notExtracted", &[("archive", &archive)]))?;
         let from = f["from"].as_str().unwrap_or("");
         let src = join_rel(dir, from);
-        if !src.exists() { return Err(format!("\"{from}\" not found in archive {archive}")); }
+        if !src.exists() { return Err(loc("mo2.notInArchive", &[("file", from), ("archive", &archive)])); }
         tokio::fs::copy(&src, &dest).await.map_err(|e| e.to_string())?;
     }
     if let Some(want) = f.get("sha256").and_then(|v| v.as_str()) {
-        if !sha256_file(&dest).await?.eq_ignore_ascii_case(want) { return Err(format!("hash mismatch for {to}")); }
+        if !sha256_file(&dest).await?.eq_ignore_ascii_case(want) { return Err(loc("mo2.hashMismatch", &[("file", to)])); }
     }
     Ok(())
 }
@@ -579,7 +580,7 @@ pub async fn install_skse(archive: &Path, game_dir: &Path, direct: bool) -> Resu
                 copied += 1;
             }
         }
-        if copied == 0 { return Err("no skse64 exe/dll found in the SKSE archive".into()); }
+        if copied == 0 { return Err(loc("mo2.noSkseFiles", &[])); }
         if let Some(data) = fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten().find(|e| e.path().is_dir() && e.file_name().to_string_lossy().eq_ignore_ascii_case("data")) {
             if direct {
                 copy_tree(&data.path(), &game_dir.join("Data")).map_err(|e| e.to_string())?;
@@ -918,16 +919,16 @@ pub async fn wait_for_downloads(
         let claimed: HashSet<String> = found.iter().flatten().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).collect();
         let mismatched: Vec<String> = suspect.into_iter().filter(|f| !claimed.contains(f)).collect();
         let note = if mismatched.is_empty() { String::new() } else {
-            format!(" ({})", mismatched.iter().map(|f| format!("{f} is not the exact file the server expects - download it through its link on the downloads page, which pins the right version; if that version is gone from Nexus the server admin must update the modlist")).collect::<Vec<_>>().join("; "))
+            format!(" ({})", mismatched.iter().map(|f| loc("mo2.wrongFile", &[("file", f)])).collect::<Vec<_>>().join("; "))
         };
         let done = wanted.len() - remaining.len();
         if remaining.is_empty() {
-            on_progress(done, wanted.len(), "All downloads received".into());
+            on_progress(done, wanted.len(), loc("mo2.allReceived", &[]));
             return Ok(found.into_iter().flatten().collect());
         }
-        on_progress(done, wanted.len(), format!("Waiting for downloads: {}{note}", remaining.join(", ")));
+        on_progress(done, wanted.len(), loc("mo2.waiting", &[("files", &remaining.join(", ")), ("note", &note)]));
         if Instant::now() > deadline || Instant::now() > hard_deadline {
-            return Err(format!("Timed out waiting to download: {}{note}", remaining.join(", ")));
+            return Err(loc("mo2.waitTimeout", &[("files", &remaining.join(", ")), ("note", &note)]));
         }
     }
 }
@@ -1005,18 +1006,18 @@ pub fn disable_cc_content(game: &Path, server_load_order: &[String], keep_names:
 
 // Launches the game through MO2's VFS using the SKSE executable entry, healing a lost shortcut first
 pub fn launch_game(skyrim: &str) -> Result<(), String> {
-    if !is_installed() { return Err("MO2 is not installed - run Install MO2 under Troubleshooting.".into()); }
+    if !is_installed() { return Err(loc("mo2.notInstalledRun", &[])); }
     let ini = root().join("ModOrganizer.ini");
     let has = || fs::read_to_string(&ini).map(|t| Regex::new(r"(?m)^\d+\\title=SKSE\s*$").unwrap().is_match(&t)).unwrap_or(false);
     if !has() && !skyrim.is_empty() { ensure_instance(skyrim, None); }
-    if !has() { return Err("The MO2 SKSE shortcut is missing from ModOrganizer.ini - run Repair Modlist to repair it.".into()); }
+    if !has() { return Err(loc("mo2.noShortcut", &[])); }
     std::process::Command::new(exe()).args(["-p", PROFILE, "moshortcut://:SKSE"]).current_dir(root()).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn mo2_open() -> Value {
-    if !is_installed() { return json!({ "success": false, "error": "MO2 is not installed." }); }
+    if !is_installed() { return json!({ "success": false, "error": loc("mo2.notInstalled", &[]) }); }
     match std::process::Command::new(exe()).args(["-p", PROFILE]).current_dir(root()).spawn() {
         Ok(_) => json!({ "success": true }),
         Err(e) => json!({ "success": false, "error": e.to_string() }),

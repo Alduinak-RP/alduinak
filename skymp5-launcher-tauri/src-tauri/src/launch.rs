@@ -1,5 +1,6 @@
 // Play: the pre-launch gate, load order sync, the backend launch check, and starting the game
 use crate::gamecopy::{self, PRELOADER_DLLS, VANILLA_MASTERS, VANILLA_ROOT_FILES};
+use crate::loc::loc;
 use crate::install::{self, data_file_exists, preloader_present, write_client_settings, write_game_login, REQUIRED_FILES};
 use crate::{active_server, basic, effective_game_path, game, log, mo2, net, proc, store};
 use serde_json::{json, Value};
@@ -23,23 +24,23 @@ fn missing_server_plugins(game: &Path, order: &[String], via_mo2: bool) -> Vec<S
 fn launch_readiness(game: &Path, via_mo2: bool, info: Option<&Value>) -> Vec<String> {
     let mut problems = vec![];
     let missing: Vec<String> = REQUIRED_FILES.iter().filter(|f| !data_file_exists(game, via_mo2, f)).map(|f| file_name(f)).collect();
-    if !missing.is_empty() { problems.push(format!("Client files missing ({}); run Repair Modlist under Troubleshooting first.", missing.join(", "))); }
-    if !game.join("skse64_loader.exe").exists() { problems.push("SKSE is not installed (skse64_loader.exe missing); install the modpack first.".into()); }
+    if !missing.is_empty() { problems.push(loc("launch.clientMissing", &[("files", &missing.join(", "))])); }
+    if !game.join("skse64_loader.exe").exists() { problems.push(loc("launch.noSkse", &[])); }
     if !game.join("Data").join("Skyrim.esm").exists() || !game.join("Data").join("Update.esm").exists() {
-        problems.push("Vanilla game files missing (Skyrim.esm/Update.esm); click UPDATE to repair the game copy.".into());
+        problems.push(loc("launch.vanillaMissing", &[]));
     }
     if let Some(order) = install::load_order(info).filter(|o| !o.is_empty()) {
         let m = missing_server_plugins(game, &order, via_mo2);
-        if !m.is_empty() { problems.push(format!("Required plugins missing ({}); install the server modlist first.", m.join(", "))); }
+        if !m.is_empty() { problems.push(loc("launch.pluginsMissing", &[("files", &m.join(", "))])); }
     }
     if via_mo2 && store().str("modpackState") == "failed" {
-        problems.push("The last modpack install did not finish. Press PLAY (it will show UPDATE) or run Repair Modlist to complete it first.".into());
+        problems.push(loc("launch.installUnfinished", &[]));
     }
-    if !preloader_present(game) { problems.push("The Engine Fixes preloader dll is missing from the game folder; press PLAY (it will show UPDATE) to restore it.".into()); }
+    if !preloader_present(game) { problems.push(loc("launch.noPreloader", &[])); }
     // Online servers need the launcher's Discord login, or the game shows its own auth menu and never connects
     if info.and_then(|i| i["offlineMode"].as_bool()) == Some(false) {
         if store().str("gameSession").is_empty() || !store().get("discordUser").is_object() || store().get("gameProfileId").is_null() {
-            problems.push("Discord login required; log in from the launcher topbar before playing, otherwise the in-game auth menu appears and you stay on the main menu.".into());
+            problems.push(loc("launch.discordRequired", &[]));
         }
     }
     problems
@@ -108,7 +109,7 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
     if let Some(p) = tokio::task::spawn_blocking({ let g = game_s.clone(); move || game::source_problem(&g) }).await.ok().flatten() { return Err(p); }
     if !via_mo2 {
         let unknown = unknown_direct_dlls(game);
-        if !unknown.is_empty() { return Err(format!("Remove these files from your Skyrim folder, or choose Mod Organizer 2 under Install Options: {}", unknown.join(", "))); }
+        if !unknown.is_empty() { return Err(loc("launch.unknownDlls", &[("files", &unknown.join(", "))])); }
     }
     quarantine_content_catalogs();
     let srv = active_server();
@@ -120,7 +121,7 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
         mo2::disable_cc_content(game, &order, &keep);
     }
     let not_ready = launch_readiness(game, via_mo2, info.as_ref());
-    if !not_ready.is_empty() { return Err(format!("Not ready to launch:\n{}", not_ready.iter().map(|p| format!("• {p}")).collect::<Vec<_>>().join("\n"))); }
+    if !not_ready.is_empty() { return Err(loc("launch.notReady", &[("problems", &not_ready.iter().map(|p| format!("• {p}")).collect::<Vec<_>>().join("\n"))])); }
     let settings_path = game.join("Data").join("Platform").join("Plugins").join("skymp5-client-settings.txt");
     if let Some(s) = &srv {
         write_client_settings(&settings_path, s, info.as_ref())?;
@@ -132,9 +133,9 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
     if !order.is_empty() {
         if via_mo2 {
             let missing = missing_server_plugins(game, &order, true);
-            if !missing.is_empty() { return Err(format!("Missing required plugins: {}. Run Repair Modlist in Settings first.", missing.join(", "))); }
+            if !missing.is_empty() { return Err(loc("launch.pluginsMissingMo2", &[("files", &missing.join(", "))])); }
         } else if let Err(missing) = fix_load_order(game, &order) {
-            return Err(format!("Missing required plugins: {}. Install the server's modlist first (see the Modlist panel).", missing.join(", ")));
+            return Err(loc("launch.pluginsMissingDirect", &[("files", &missing.join(", "))]));
         }
     } else {
         log("[launch] server load order unavailable - leaving plugins.txt untouched");
@@ -151,13 +152,13 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
         });
         match net::post_json(&format!("{}/api/launch-check", net::api_url()), &body, &[("x-session", &session)]).await {
             Ok(check) if check["ok"].as_bool() == Some(false) => {
-                return Err(if check["filesOk"].as_bool() == Some(false) { "Your client files are out of date. Press the button again to update, then launch." } else { "Your plugin load order does not match the server. Run Repair Modlist in Settings." }.into());
+                return Err(if check["filesOk"].as_bool() == Some(false) { loc("launch.filesOutdated", &[]) } else { loc("launch.loadOrderMismatch", &[]) });
             }
             Ok(check) => match check["playToken"].as_str() {
                 Some(token) => { write_game_login(&settings_path, token); log("[launch] launch-check passed"); }
-                None => return Err("The login service did not approve this launch. Try again in a minute.".into()),
+                None => return Err(loc("launch.notApproved", &[])),
             },
-            Err(e) => { log(format!("[launch] launch-check unavailable ({e})")); return Err("The login service is unreachable. Try again in a minute.".into()); }
+            Err(e) => { log(format!("[launch] launch-check unavailable ({e})")); return Err(loc("launch.loginUnreachable", &[])); }
         }
     }
     Ok(())
@@ -165,24 +166,24 @@ async fn prepare_for_launch(game: &Path, via_mo2: bool) -> Result<(), String> {
 
 async fn launch() -> Result<(), String> {
     let game_s = effective_game_path();
-    if game_s.is_empty() { return Err("Skyrim path not configured.".into()); }
+    if game_s.is_empty() { return Err(loc("installer.noSkyrimPath", &[])); }
     let game = PathBuf::from(&game_s);
     let via_mo2 = store().bool("mo2Enabled");
-    if via_mo2 && !mo2::is_installed() { return Err("MO2 is not set up - run Install MO2 under Troubleshooting.".into()); }
+    if via_mo2 && !mo2::is_installed() { return Err(loc("launch.mo2NotSetUp", &[])); }
     prepare_for_launch(&game, via_mo2).await?;
     if via_mo2 { return mo2::launch_game(&game_s); }
     let exe = game.join("skse64_loader.exe");
-    if !exe.exists() { return Err(format!("skse64_loader.exe not found in {game_s}. Install SKSE there, or choose Mod Organizer 2.")); }
+    if !exe.exists() { return Err(loc("launch.noLoader", &[("dir", &game_s)])); }
     std::process::Command::new(exe).current_dir(&game).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 // Refuses a launch while another is being prepared or starting, or the game already runs
 #[tauri::command]
 pub async fn launch_skse() -> Value {
-    if LAUNCH_IN_FLIGHT.swap(true, Ordering::SeqCst) { return json!({ "success": false, "error": "The game is already launching." }); }
+    if LAUNCH_IN_FLIGHT.swap(true, Ordering::SeqCst) { return json!({ "success": false, "error": loc("launch.alreadyLaunching", &[]) }); }
     let result = async {
-        if proc::game_running().await { return Err("Skyrim is already running.".to_string()); }
-        if proc::launch_in_grace() { return Err("Skyrim is still starting - give MO2 a moment.".to_string()); }
+        if proc::game_running().await { return Err(loc("launch.alreadyRunning", &[])); }
+        if proc::launch_in_grace() { return Err(loc("launch.stillStarting", &[])); }
         launch().await?;
         proc::LAUNCH_STARTED_AT.store(proc::now_ms(), Ordering::SeqCst);
         Ok(())
