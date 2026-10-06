@@ -50,6 +50,11 @@ export class DeathService extends ClientListener {
     return this.playerDead || this.busyForOtherReasonsCounter > 0;
   }
 
+  // The player's death state as the server set it, without the settle time after a kill or a resurrect
+  public isPlayerDead(): boolean {
+    return this.playerDead;
+  }
+
   private onceUpdate() {
     const player = this.sp.Game.getPlayer();
     player?.startDeferredKill();

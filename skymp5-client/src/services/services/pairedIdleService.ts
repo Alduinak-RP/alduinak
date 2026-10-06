@@ -127,11 +127,11 @@ export class PairedIdleService extends ClientListener {
     pair.holdsPlayer = true;
   }
 
-  // Let go once no pair holds the player and nothing else has taken them over
+  // Let go once no pair holds the player and nothing else has taken them over; a dead player's flag is DeathService's until its resurrect
   private releasePlayer(): void {
     if (this.pairs.some((pair) => pair.holdsPlayer)) return;
     const player = this.sp.Game.getPlayer();
-    if (!player || this.controller.lookupListener(RestraintService).isPoseLocked || this.controller.lookupListener(DeathService).isBusy()) return;
+    if (!player || this.controller.lookupListener(RestraintService).isPoseLocked || this.controller.lookupListener(DeathService).isPlayerDead()) return;
     player.setDontMove(false);
   }
 
