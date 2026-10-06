@@ -31,6 +31,8 @@ interface Check { problems: string[]; skipped: Skipped[] }
 
 const MODULES_TTL_MS = 10 * 60000;
 const FETCH_TIMEOUT_MS = 5000;
+// After a failed fetch no login asks the backend again for this long
+const RETRY_MS = 30000;
 const MAX_ENTRIES = 4096;
 const MAX_TEXT = 512;
 const MAX_KICK_PROBLEMS = 5;
@@ -41,6 +43,11 @@ const CREATION_CLUB_RE = /^cc[a-z]{3}sse\d{3}-.*\.es[mlp]$/i;
 
 const text = (v: unknown): string | null => typeof v === "string" && v.length > 0 && v.length <= MAX_TEXT ? v : null;
 const num = (v: unknown): number => typeof v === "number" && Number.isFinite(v) ? v : NaN;
+// fetch wraps a connection error as "fetch failed" and keeps the real one in cause
+const errorText = (e: unknown): string => {
+  const cause = (e as { cause?: unknown } | null)?.cause;
+  return cause instanceof Error ? cause.message : e instanceof Error ? e.message : String(e);
+};
 
 // Untrusted input: anything malformed becomes null, which counts as a missing report
 export function parseReport(raw: unknown): Report | null {
@@ -124,6 +131,7 @@ export class ClientIntegritySystem implements System {
   private dataDir = "";
   private moduleList: { value: ModuleList; at: number } | null = null;
   private moduleListPending: Promise<ModuleList | null> | null = null;
+  private retryAt = 0;
   // Why the last fetch gave no list, for the skip lines and the boot line
   private listDetail = "";
   // Checks whose server-side source is down right now, each alerted once
@@ -267,46 +275,43 @@ export class ClientIntegritySystem implements System {
     }
   }
 
-  // Cached MODULES_TTL_MS; a failed refresh keeps the last list
+  // Cached MODULES_TTL_MS; a failed refresh keeps the last list and is not retried before retryAt
   private async getModuleList(): Promise<ModuleList | null> {
-    if (this.moduleList && Date.now() - this.moduleList.at < MODULES_TTL_MS) return this.moduleList.value;
+    const last = this.moduleList ? this.moduleList.value : null;
+    if (this.moduleList && Date.now() - this.moduleList.at < MODULES_TTL_MS) return last;
+    if (Date.now() < this.retryAt) return last;
     if (!this.moduleListPending) {
       this.moduleListPending = this.fetchModuleList().finally(() => { this.moduleListPending = null; });
     }
-    const value = await this.moduleListPending;
-    return value || (this.moduleList ? this.moduleList.value : null);
+    return (await this.moduleListPending) || last;
+  }
+
+  private noList(detail: string, quiet = false): null {
+    this.listDetail = detail;
+    this.retryAt = Date.now() + RETRY_MS;
+    if (!quiet) console.error(`ClientIntegrity: client-modules ${detail}`);
+    return null;
   }
 
   // Null with listDetail set when the backend gives no usable list; bounded by FETCH_TIMEOUT_MS so logins never hang on it
   private async fetchModuleList(): Promise<ModuleList | null> {
-    if (!this.masterUrl) {
-      this.listDetail = loc("integrity.detail.noMaster");
-      return null;
-    }
+    if (!this.masterUrl) return this.noList(loc("integrity.detail.noMaster"), true);
     try {
       const response = await fetch(`${this.masterUrl}/api/servers/${this.masterKey}/client-modules`, {
         headers: { "X-Auth-Token": this.authToken },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
-      if (!response.ok) {
-        this.listDetail = loc("integrity.detail.http", { status: response.status });
-        console.error(`ClientIntegrity: client-modules ${this.listDetail}`);
-        return null;
-      }
+      if (!response.ok) return this.noList(loc("integrity.detail.http", { status: response.status }));
       const value = await response.json() as ModuleList;
       if (!value || typeof value.modules !== "object" || !Array.isArray(value.anyHashRoot)) {
-        this.listDetail = loc("integrity.detail.malformed");
-        console.error(`ClientIntegrity: client-modules ${this.listDetail}`);
-        return null;
+        return this.noList(loc("integrity.detail.malformed"));
       }
       this.moduleList = { value, at: Date.now() };
       return value;
     } catch (e) {
-      this.listDetail = e instanceof Error && e.name === "TimeoutError"
+      return this.noList(e instanceof Error && e.name === "TimeoutError"
         ? loc("integrity.detail.timeout", { ms: FETCH_TIMEOUT_MS })
-        : loc("integrity.detail.failed", { error: e instanceof Error ? e.message : String(e) });
-      console.error(`ClientIntegrity: client-modules ${this.listDetail}`);
-      return null;
+        : loc("integrity.detail.failed", { error: errorText(e) }));
     }
   }
 }

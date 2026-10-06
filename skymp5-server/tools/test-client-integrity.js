@@ -2,7 +2,8 @@
 
 // ClientIntegritySystem against the test server's real data/manifest.json and the backend's client-modules list for the
 // test manifest: plugin and dll rules, malformed reports, the login/recheck kick paths, the skipped checks while the
-// backend or the manifest is unavailable, and the boot prefetch: node tools/test-client-integrity.js
+// backend or the manifest is unavailable or the slot is still in the menus, the retry window after a failed fetch and
+// the boot prefetch: node tools/test-client-integrity.js
 
 const assert  = require('node:assert/strict')
 const fs      = require('fs')
@@ -236,11 +237,16 @@ const main = async () => {
   assert.equal(lastLog(), 'ClientIntegrity: dll check skipped at login for profile 7 (slot 3): the server cannot get the allowed dll list (HTTP 404)')
   assert.equal(alerts(), alertsBefore + 1, 'the outage raises one alert')
   assert.equal(lastAlert(), 'dll check skipped for every login: the server cannot get the allowed dll list (HTTP 404)')
-  // Without the list a cheat dll cannot be seen, and the outage is not alerted again
+  // Without the list a cheat dll cannot be seen, the outage is not alerted again and the backend is not asked again for 30 s
+  let fetchesBefore = fetches
   assert.equal(await quietErr(() => cold.checkLogin(4, 8, null, cheat(), ctx))(), true)
   assert.equal(kicked.length, before)
   assert.equal(alerts(), alertsBefore + 1, 'no alert per login during the outage')
+  assert.equal(fetches, fetchesBefore, 'no request per login while the retry window runs')
   assert.equal(lastLog(), 'ClientIntegrity: dll check skipped at login for profile 8 (slot 4): the server cannot get the allowed dll list (HTTP 404)')
+  cold.retryAt = 0
+  assert.equal(await quietErr(() => cold.checkLogin(4, 8, null, cheat(), ctx))(), true)
+  assert.equal(fetches, fetchesBefore + 1, 'the request is made again once the window has passed')
   // A plugin problem still kicks while the backend is down, and the kick names only the client problem
   assert.equal(await quiet(quietErr(() => cold.checkLogin(3, 7, null, cheatPlugin(), ctx)))(), false)
   assert.equal(kicked.length, before + 1)
@@ -252,6 +258,7 @@ const main = async () => {
   assert.equal(lastLog(), 'ClientIntegrity: dll check skipped at recheck for actor ff000d22 (slot 3): the server cannot get the allowed dll list (HTTP 404)')
   // The backend answers again: one line, the cheat dll is seen
   global.fetch = backendUp
+  cold.retryAt = 0
   assert.equal(await quiet(() => cold.checkLogin(3, 7, null, cheat(), ctx))(), false)
   assert.equal(kicked.length, before + 2)
   assert.equal(lastLog(), 'ClientIntegrity: dll check runs again')
@@ -260,6 +267,11 @@ const main = async () => {
   const hang = make('kick')
   assert.equal(await quiet(quietErr(() => hang.checkLogin(3, 7, null, report(), ctx)))(), true)
   assert.equal(lastLog(), 'ClientIntegrity: dll check skipped at login for profile 7 (slot 3): the server cannot get the allowed dll list (no answer in 5000 ms)')
+  // A refused connection names the cause fetch hides behind "fetch failed"
+  global.fetch = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:3000'), { code: 'ECONNREFUSED' }) }) }
+  const refused = make('kick')
+  assert.equal(await quiet(quietErr(() => refused.checkLogin(3, 7, null, report(), ctx)))(), true)
+  assert.equal(lastLog(), 'ClientIntegrity: dll check skipped at login for profile 7 (slot 3): the server cannot get the allowed dll list (request failed: connect ECONNREFUSED 127.0.0.1:3000)')
   global.fetch = backendUp
 
   // The server cannot read its manifest: the plugin check is skipped, the dll check still runs
@@ -286,8 +298,10 @@ const main = async () => {
   await quiet(quietErr(() => bootCold.prefetchModuleList()))()
   assert.equal(lastLog(), 'ClientIntegrity: the backend gave no dll list (HTTP 404): dll checks are skipped until it answers, is AlduinakBackend running the current code?')
   assert.equal(alerts(), alertsBefore + 1)
+  fetchesBefore = fetches
   assert.equal(await quietErr(() => bootCold.checkLogin(3, 7, null, report(), ctx))(), true)
   assert.equal(alerts(), alertsBefore + 1, 'the login after a failed prefetch alerts nothing new')
+  assert.equal(fetches, fetchesBefore, 'and sends no request of its own inside the retry window')
   global.fetch = backendUp
 
   console.log('test-client-integrity: all checks passed')
