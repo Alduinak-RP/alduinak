@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <spdlog/spdlog.h>
 #include <vector>
 
@@ -73,16 +74,6 @@ bool EngineHoldsHeldKey()
     }
   }
   return false;
-}
-
-const char* DeviceName(IDirectInputDevice8A* device)
-{
-  DIDEVICEINSTANCEA instanceInfo;
-  instanceInfo.dwSize = sizeof(instanceInfo);
-  const bool keyboard =
-    IDirectInputDevice8_GetDeviceInfo(device, &instanceInfo) == DI_OK &&
-    instanceInfo.guidInstance == GUID_SysKeyboard;
-  return keyboard ? "keyboard" : "mouse";
 }
 
 std::string DescribeWindow(HWND window)
@@ -242,65 +233,98 @@ void ProcessMouseData(DIMOUSESTATE2* apMouseState)
 }
 
 namespace CEFUtils {
+// The engine recreates the mouse device on every WM_ACTIVATE (ReinitializeMouse: Unacquire, Release, CreateDevice) while a loading screen polls
+// input on its serving thread, so every call into the real device runs under the stub's lock, the stub itself is never freed (Release drops
+// the device and nulls the pointer) and a call on a stub whose device is gone answers DIERR_INPUTLOST, which the engine takes as a lost
+// device: it zeroes the state and acquires again. The browser update, the hook's tasks and the log lines stay outside the lock.
 struct FakeIDirectInputDevice8A
 {
-  FakeIDirectInputDevice8A(IDirectInputDevice8A* apDevice)
+  FakeIDirectInputDevice8A(IDirectInputDevice8A* apDevice, bool aKeyboard)
     : m_pDevice(apDevice)
+    , m_keyboard(aKeyboard)
   {
   }
+
+  const char* Name() const { return m_keyboard ? "keyboard" : "mouse"; }
 
   virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid,
                                                    LPVOID* ppvObj) PURE
   {
-    return IDirectInputDevice8_QueryInterface(m_pDevice, riid, ppvObj);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_QueryInterface(d, riid, ppvObj);
+    });
   }
   virtual ULONG STDMETHODCALLTYPE AddRef() PURE
   {
-    return IDirectInputDevice8_AddRef(m_pDevice);
+    std::lock_guard<std::recursive_mutex> lock(m_lock);
+    return m_pDevice ? IDirectInputDevice8_AddRef(m_pDevice) : 0;
   }
   virtual ULONG STDMETHODCALLTYPE Release() PURE;
 
   /*** IDirectInputDevice8A methods ***/
   virtual HRESULT STDMETHODCALLTYPE GetCapabilities(LPDIDEVCAPS a) PURE
   {
-    return IDirectInputDevice8_GetCapabilities(m_pDevice, a);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_GetCapabilities(d, a);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE
   EnumObjects(LPDIENUMDEVICEOBJECTSCALLBACKA a, LPVOID b, DWORD c) PURE
   {
-    return IDirectInputDevice8_EnumObjects(m_pDevice, a, b, c);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_EnumObjects(d, a, b, c);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE GetProperty(REFGUID a,
                                                 LPDIPROPHEADER b) PURE
   {
-    return IDirectInputDevice8_GetProperty(m_pDevice, a, b);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_GetProperty(d, a, b);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE SetProperty(REFGUID a,
                                                 LPCDIPROPHEADER b) PURE
   {
-    return IDirectInputDevice8_SetProperty(m_pDevice, a, b);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_SetProperty(d, a, b);
+    });
   }
   // The engine acquires before every read, so a failure streak is exactly when this device was dead
   virtual HRESULT STDMETHODCALLTYPE Acquire() PURE
   {
-    const HRESULT hr = IDirectInputDevice8_Acquire(m_pDevice);
+    HRESULT hr = DIERR_INPUTLOST;
+    uint32_t failedBefore = 0;
+    bool recovered = false;
+    {
+      std::lock_guard<std::recursive_mutex> lock(m_lock);
+      if (!m_pDevice) {
+        return hr;
+      }
+      hr = IDirectInputDevice8_Acquire(m_pDevice);
+      if (FAILED(hr)) {
+        failedBefore = m_failedAcquires++;
+      } else if (m_failedAcquires) {
+        recovered = true;
+        failedBefore = m_failedAcquires;
+        m_failedAcquires = 0;
+      }
+    }
     if (FAILED(hr)) {
-      if (m_failedAcquires++ == 0) {
-        spdlog::info("DInputHook: {} acquire failed {:#x}, {}",
-                     DeviceName(m_pDevice), static_cast<uint32_t>(hr),
+      if (failedBefore == 0) {
+        spdlog::info("DInputHook: {} acquire failed {:#x}, {}", Name(),
+                     static_cast<uint32_t>(hr),
                      DInputHook::DescribeInputState());
       }
-    } else if (m_failedAcquires) {
+    } else if (recovered) {
       spdlog::info("DInputHook: {} acquired again after {} failed acquires, {}",
-                   DeviceName(m_pDevice), m_failedAcquires,
-                   DInputHook::DescribeInputState());
-      m_failedAcquires = 0;
+                   Name(), failedBefore, DInputHook::DescribeInputState());
     }
     return hr;
   }
   virtual HRESULT STDMETHODCALLTYPE Unacquire() PURE
   {
-    return IDirectInputDevice8_Unacquire(m_pDevice);
+    return Forward(
+      [&](IDirectInputDevice8A* d) { return IDirectInputDevice8_Unacquire(d); });
   }
   virtual HRESULT STDMETHODCALLTYPE GetDeviceState(DWORD a, LPVOID b) PURE;
   virtual HRESULT STDMETHODCALLTYPE GetDeviceData(DWORD a,
@@ -308,113 +332,162 @@ struct FakeIDirectInputDevice8A
                                                   LPDWORD c, DWORD d) PURE;
   virtual HRESULT STDMETHODCALLTYPE SetDataFormat(LPCDIDATAFORMAT a) PURE
   {
-    return IDirectInputDevice8_SetDataFormat(m_pDevice, a);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_SetDataFormat(d, a);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE SetEventNotification(HANDLE a) PURE
   {
-    return IDirectInputDevice8_SetEventNotification(m_pDevice, a);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_SetEventNotification(d, a);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE SetCooperativeLevel(HWND a, DWORD b) PURE
   {
-    const HRESULT hr = IDirectInputDevice8_SetCooperativeLevel(m_pDevice, a, b);
+    const HRESULT hr = Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_SetCooperativeLevel(d, a, b);
+    });
     spdlog::info("DInputHook: {} cooperative level {:#x} on {} returned {:#x}",
-                 DeviceName(m_pDevice), b, DescribeWindow(a),
-                 static_cast<uint32_t>(hr));
+                 Name(), b, DescribeWindow(a), static_cast<uint32_t>(hr));
     return hr;
   }
   virtual HRESULT STDMETHODCALLTYPE GetObjectInfo(LPDIDEVICEOBJECTINSTANCEA a,
                                                   DWORD b, DWORD c) PURE
   {
-    return IDirectInputDevice8_GetObjectInfo(m_pDevice, a, b, c);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_GetObjectInfo(d, a, b, c);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE GetDeviceInfo(LPDIDEVICEINSTANCEA a) PURE
   {
-    return IDirectInputDevice8_GetDeviceInfo(m_pDevice, a);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_GetDeviceInfo(d, a);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE RunControlPanel(HWND a, DWORD b) PURE
   {
-    return IDirectInputDevice8_RunControlPanel(m_pDevice, a, b);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_RunControlPanel(d, a, b);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE Initialize(HINSTANCE a, DWORD b,
                                                REFGUID c) PURE
   {
-    return IDirectInputDevice8_Initialize(m_pDevice, a, b, c);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_Initialize(d, a, b, c);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE CreateEffect(REFGUID a, LPCDIEFFECT b,
                                                  LPDIRECTINPUTEFFECT* c,
                                                  LPUNKNOWN d) PURE
   {
-    return IDirectInputDevice8_CreateEffect(m_pDevice, a, b, c, d);
+    return Forward([&](IDirectInputDevice8A* dev) {
+      return IDirectInputDevice8_CreateEffect(dev, a, b, c, d);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE EnumEffects(LPDIENUMEFFECTSCALLBACKA a,
                                                 LPVOID b, DWORD c) PURE
   {
-    return IDirectInputDevice8_EnumEffects(m_pDevice, a, b, c);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_EnumEffects(d, a, b, c);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE GetEffectInfo(LPDIEFFECTINFOA a,
                                                   REFGUID b) PURE
   {
-    return IDirectInputDevice8_GetEffectInfo(m_pDevice, a, b);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_GetEffectInfo(d, a, b);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE GetForceFeedbackState(LPDWORD a) PURE
   {
-    return IDirectInputDevice8_GetForceFeedbackState(m_pDevice, a);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_GetForceFeedbackState(d, a);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE SendForceFeedbackCommand(DWORD a) PURE
   {
-    return IDirectInputDevice8_SendForceFeedbackCommand(m_pDevice, a);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_SendForceFeedbackCommand(d, a);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE EnumCreatedEffectObjects(
     LPDIENUMCREATEDEFFECTOBJECTSCALLBACK a, LPVOID b, DWORD c) PURE
   {
-    return IDirectInputDevice8_EnumCreatedEffectObjects(m_pDevice, a, b, c);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_EnumCreatedEffectObjects(d, a, b, c);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE Escape(LPDIEFFESCAPE a) PURE
   {
-    return IDirectInputDevice8_Escape(m_pDevice, a);
+    return Forward(
+      [&](IDirectInputDevice8A* d) { return IDirectInputDevice8_Escape(d, a); });
   }
   virtual HRESULT STDMETHODCALLTYPE Poll() PURE
   {
-    return IDirectInputDevice8_Poll(m_pDevice);
+    return Forward(
+      [&](IDirectInputDevice8A* d) { return IDirectInputDevice8_Poll(d); });
   }
   virtual HRESULT STDMETHODCALLTYPE SendDeviceData(DWORD a,
                                                    LPCDIDEVICEOBJECTDATA b,
                                                    LPDWORD c, DWORD d) PURE
   {
-    return IDirectInputDevice8_SendDeviceData(m_pDevice, a, b, c, d);
+    return Forward([&](IDirectInputDevice8A* dev) {
+      return IDirectInputDevice8_SendDeviceData(dev, a, b, c, d);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE EnumEffectsInFile(
     LPCSTR a, LPDIENUMEFFECTSINFILECALLBACK b, LPVOID c, DWORD d) PURE
   {
-    return IDirectInputDevice8_EnumEffectsInFile(m_pDevice, a, b, c, d);
+    return Forward([&](IDirectInputDevice8A* dev) {
+      return IDirectInputDevice8_EnumEffectsInFile(dev, a, b, c, d);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE WriteEffectToFile(LPCSTR a, DWORD b,
                                                       LPDIFILEEFFECT c,
                                                       DWORD d) PURE
   {
-    return IDirectInputDevice8_WriteEffectToFile(m_pDevice, a, b, c, d);
+    return Forward([&](IDirectInputDevice8A* dev) {
+      return IDirectInputDevice8_WriteEffectToFile(dev, a, b, c, d);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE BuildActionMap(LPDIACTIONFORMATA a,
                                                    LPCSTR b, DWORD c) PURE
   {
-    return IDirectInputDevice8_BuildActionMap(m_pDevice, a, b, c);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_BuildActionMap(d, a, b, c);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE SetActionMap(LPDIACTIONFORMATA a, LPCSTR b,
                                                  DWORD c) PURE
   {
-    return IDirectInputDevice8_SetActionMap(m_pDevice, a, b, c);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_SetActionMap(d, a, b, c);
+    });
   }
   virtual HRESULT STDMETHODCALLTYPE
   GetImageInfo(LPDIDEVICEIMAGEINFOHEADERA a) PURE
   {
-    return IDirectInputDevice8_GetImageInfo(m_pDevice, a);
+    return Forward([&](IDirectInputDevice8A* d) {
+      return IDirectInputDevice8_GetImageInfo(d, a);
+    });
   }
 
 private:
+  // One call into the real device under the lock, DIERR_INPUTLOST once it is gone
+  template <class F>
+  HRESULT Forward(F&& call)
+  {
+    std::lock_guard<std::recursive_mutex> lock(m_lock);
+    return m_pDevice ? call(m_pDevice) : DIERR_INPUTLOST;
+  }
+
   void WatchKeyboard(const uint8_t* state);
   void Kick();
 
+  std::recursive_mutex m_lock;
   IDirectInputDevice8A* m_pDevice;
+  const bool m_keyboard;
   uint32_t m_failedAcquires = 0;
   bool m_kicked = false;
 };
@@ -431,7 +504,16 @@ static TDirectInput8Create RealDirectInput8Create = nullptr;
 using TRegisterRawInputDevices = BOOL(WINAPI*)(PCRAWINPUTDEVICE, UINT, UINT);
 static TRegisterRawInputDevices RealRegisterRawInputDevices = nullptr;
 
+// The stubs the engine holds, live or with their device gone; a stub is never freed, so a copy of this set stays valid without the lock
 static Set<FakeIDirectInputDevice8A*> s_devices;
+static std::mutex s_devicesLock;
+
+static std::vector<FakeIDirectInputDevice8A*> DevicesSnapshot()
+{
+  std::lock_guard<std::mutex> lock(s_devicesLock);
+  return std::vector<FakeIDirectInputDevice8A*>(s_devices.begin(),
+                                                s_devices.end());
+}
 
 HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceState(DWORD outDataLen,
                                                           LPVOID outData)
@@ -440,29 +522,17 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceState(DWORD outDataLen,
     return DI_OK;
   g_listener->OnUpdate();
 
-  // return IDirectInputDevice8_GetDeviceState(m_pDevice, outDataLen, outData);
-
-  DIDEVICEINSTANCEA instanceInfo;
-  instanceInfo.dwSize = sizeof(instanceInfo);
-  if (IDirectInputDevice8_GetDeviceInfo(m_pDevice, &instanceInfo) != DI_OK) {
-    // TODO: destroy everything
-    return DI_OK;
-  }
-
-  HRESULT ret =
-    IDirectInputDevice8_GetDeviceState(m_pDevice, outDataLen, outData);
-
-  bool isMouseButtonsEnabled = true;
-  if (isMouseButtonsEnabled == false) {
-    DIMOUSESTATE2 fakeMouseState;
-    memcpy(&fakeMouseState, outData, outDataLen);
-    for (int i = 0; i < std::size(fakeMouseState.rgbButtons); ++i) {
-      fakeMouseState.rgbButtons[i] = 0;
+  HRESULT ret = DIERR_INPUTLOST;
+  {
+    std::lock_guard<std::recursive_mutex> lock(m_lock);
+    if (!m_pDevice) {
+      return ret;
     }
-    memcpy(outData, &fakeMouseState, outDataLen);
+    ret = IDirectInputDevice8_GetDeviceState(m_pDevice, outDataLen, outData);
   }
 
-  if (ret != DI_OK)
+  // The engine reads the keyboard through GetDeviceData; the state below is a mouse state
+  if (m_keyboard || ret != DI_OK)
     return ret;
 
   DIMOUSESTATE2* mouseState = (DIMOUSESTATE2*)outData;
@@ -488,24 +558,27 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
 {
   DInputHook::Get().RunTasks();
 
-  auto& input = DInputHook::Get();
-
-  // The re-acquire after a kick does not depend on the engine acquiring before this read
-  if (m_kicked) {
-    m_kicked = false;
-    Acquire();
+  HRESULT result = DIERR_INPUTLOST;
+  HRESULT hr = DIERR_INPUTLOST;
+  uint8_t rawData[256] = {};
+  {
+    std::lock_guard<std::recursive_mutex> lock(m_lock);
+    if (!m_pDevice) {
+      return result;
+    }
+    // The re-acquire after a kick does not depend on the engine acquiring before this read
+    if (m_kicked) {
+      m_kicked = false;
+      Acquire();
+    }
+    result = IDirectInputDevice8_GetDeviceData(m_pDevice, dataSize, outData,
+                                               outDataLen, flags);
+    if (m_keyboard) {
+      hr = IDirectInputDevice8_GetDeviceState(m_pDevice, 256, rawData);
+    }
   }
 
-  const auto result = IDirectInputDevice8_GetDeviceData(
-    m_pDevice, dataSize, outData, outDataLen, flags);
-
-  DIDEVICEINSTANCEA instanceInfo;
-  instanceInfo.dwSize = sizeof(instanceInfo);
-  if (IDirectInputDevice8_GetDeviceInfo(m_pDevice, &instanceInfo) != DI_OK) {
-    return result;
-  }
-
-  if (instanceInfo.guidInstance == GUID_SysKeyboard) {
+  if (m_keyboard) {
     const bool browserFocus = DInputHook::ChromeFocus();
     if (browserFocus != g_browserFocusWas) {
       g_browserFocusWas = browserFocus;
@@ -523,8 +596,6 @@ HRESULT _stdcall FakeIDirectInputDevice8A::GetDeviceData(
       KeepHeldKeyReleases(result, dataSize, outData, outDataLen);
     }
     CountKeyboardRead(result, dataSize, outData, outDataLen, true);
-    uint8_t rawData[256];
-    HRESULT hr = IDirectInputDevice8_GetDeviceState(m_pDevice, 256, rawData);
     WatchKeyboard(hr == DI_OK ? rawData : nullptr);
     const ULONGLONG enteredAt = g_enteredGameAt;
     if (enteredAt && GetTickCount64() - enteredAt >= 2000 && !browserFocus &&
@@ -616,7 +687,7 @@ void FakeIDirectInputDevice8A::WatchKeyboard(const uint8_t* state)
 // Keyboard only; the next Acquire re-registers DirectInput's raw input
 void FakeIDirectInputDevice8A::Kick()
 {
-  IDirectInputDevice8_Unacquire(m_pDevice);
+  Unacquire();
   m_kicked = true;
   ++g_kickTotal;
   ++g_keyboard.kicks;
@@ -624,15 +695,27 @@ void FakeIDirectInputDevice8A::Kick()
   g_starvedChecks.fill(0);
 }
 
+// The engine's serving thread may still be inside this stub or about to call it, so the stub stays and only its device goes
 ULONG _stdcall FakeIDirectInputDevice8A::Release()
 {
-  const auto result = IDirectInputDevice8_Release(m_pDevice);
-  if (result == 0) {
-    s_devices.erase(this);
-
-    delete this;
+  ULONG result = 0;
+  {
+    std::lock_guard<std::recursive_mutex> lock(m_lock);
+    if (!m_pDevice) {
+      return 0;
+    }
+    result = IDirectInputDevice8_Release(m_pDevice);
+    if (result == 0) {
+      m_pDevice = nullptr;
+    }
   }
-
+  if (result == 0) {
+    {
+      std::lock_guard<std::mutex> lock(s_devicesLock);
+      s_devices.erase(this);
+    }
+    spdlog::info("DInputHook: {} device released, its stub stays", Name());
+  }
   return result;
 }
 
@@ -644,9 +727,13 @@ HRESULT _stdcall HookIDirectInputA_CreateDevice(
     RealIDirectInputA_CreateDevice(pDirectInput, typeGuid, apDevice, unused);
 
   if (result == DI_OK) {
-    auto pStub = new FakeIDirectInputDevice8A(*apDevice);
+    auto pStub =
+      new FakeIDirectInputDevice8A(*apDevice, typeGuid == GUID_SysKeyboard);
 
-    s_devices.insert(pStub);
+    {
+      std::lock_guard<std::mutex> lock(s_devicesLock);
+      s_devices.insert(pStub);
+    }
 
     *apDevice = reinterpret_cast<LPDIRECTINPUTDEVICE8A>(pStub);
   }
@@ -734,14 +821,14 @@ bool DInputHook::IsToggleKey(unsigned int aKey) const noexcept
 
 void DInputHook::Acquire() const noexcept
 {
-  for (auto& device : s_devices) {
+  for (auto* device : DevicesSnapshot()) {
     device->Acquire();
   }
 }
 
 void DInputHook::Unacquire() const noexcept
 {
-  for (auto& device : s_devices) {
+  for (auto* device : DevicesSnapshot()) {
     device->Unacquire();
   }
 }
