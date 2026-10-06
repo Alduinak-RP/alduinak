@@ -1,6 +1,7 @@
 import React from 'react';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 interface TradeInviteEvents {
   accept: string;
@@ -32,14 +33,14 @@ const TradeInvite = ({ data }: { data: TradeInviteData }) => {
   return (
     <div className="trade-invite">
       <div className="trade-invite__panel">
-        <h2 className="trade-invite__title">Trade Request</h2>
-        <p className="trade-invite__body">{data.from || 'Someone'} wants to trade with you.</p>
+        <h2 className="trade-invite__title">{loc('tradeInvite.title')}</h2>
+        <p className="trade-invite__body">{loc('tradeInvite.body', { name: data.from || loc('tradeInvite.someone') })}</p>
         <div className="trade-invite__actions">
           <button className="trade-invite__button trade-invite__button--primary" onClick={() => send(ev.accept)}>
-            Accept
+            {loc('common.accept')}
           </button>
           <button className="trade-invite__button trade-invite__button--quiet" onClick={() => send(ev.decline)}>
-            Decline
+            {loc('common.decline')}
           </button>
         </div>
       </div>

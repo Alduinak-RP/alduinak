@@ -1,34 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import './styles.scss';
+import { loc } from '../../loc';
 
 // Death screen widget contract: { type: 'death', seconds: <countdown>, onChoice: (key) => void }
-// where a confirmed choice calls onChoice with 'permadeath' | 'resurrect' | 'temple'. Body copy lives here (static UI).
+// where a confirmed choice calls onChoice with 'permadeath' | 'resurrect' | 'temple'.
 
 const CHOICES = [
   {
     key: 'permadeath',
-    label: 'Permanent Death',
-    confirm:
-      'Warning: this will kill your character and make them unplayable. ' +
-      'Everything will be lootable and your body will remain.',
+    label: loc('death.choice.permadeath'),
+    confirm: loc('death.choice.permadeathConfirm'),
   },
   {
     key: 'resurrect',
-    label: 'Resurrect Here',
-    confirm:
-      'This will release you at full health where you are standing. This is to ' +
-      'be used in the event of a glitch — abuse will result in a ban. All uses ' +
-      'are logged, and if you die again to the same player you will be force ' +
-      'permanently killed.',
+    label: loc('death.choice.resurrect'),
+    confirm: loc('death.choice.resurrectConfirm'),
   },
   {
     key: 'temple',
-    label: 'Temple w/ Full Health',
-    confirm:
-      'This will send you to the nearest temple normally, except with full ' +
-      'health, skipping the recovery system. This is an optional choice ' +
-      'available to all players, with the catch that you cannot return to ' +
-      'where you died for one hour.',
+    label: loc('death.choice.temple'),
+    confirm: loc('death.choice.templeConfirm'),
   },
 ];
 
@@ -52,27 +43,22 @@ const DeathScreen = (props) => {
   return (
     <div className="death-screen">
       <div className="death-screen__panel">
-        <h1 className="death-screen__title">You have died!</h1>
+        <h1 className="death-screen__title">{loc('death.title')}</h1>
 
         {!pending && (
           <>
             <p className="death-screen__lead">
-              You will automatically respawn at the nearest temple in{' '}
-              <span className="death-screen__count">{remaining}</span> seconds.
+              {loc('death.respawnBefore')}{' '}
+              <span className="death-screen__count">{remaining}</span> {loc('death.respawnAfter')}
             </p>
             <p className="death-screen__body">
-              If you do nothing, normal respawn rules apply. You were found near
-              death and brought to a temple by a traveler. You only remember
-              vague details about your death, not enough to identify your killer
-              if there was one.
+              {loc('death.body1')}
             </p>
             <p className="death-screen__body">
-              You will have 1 HP and naturally heal 1 point every 8 hours (even
-              while logged off). A healer can accelerate this to 5 HP every 8
-              hours.
+              {loc('death.body2')}
             </p>
             <p className="death-screen__hint">
-              Optionally, you can choose one of the following:
+              {loc('death.hint')}
             </p>
             <div className="death-screen__choices">
               {CHOICES.map((c) => (
@@ -97,13 +83,13 @@ const DeathScreen = (props) => {
                 className="death-screen__btn death-screen__btn--danger"
                 onClick={() => choose(pending.key)}
               >
-                Confirm
+                {loc('common.confirm')}
               </button>
               <button
                 className="death-screen__btn death-screen__btn--cancel"
                 onClick={() => setPending(null)}
               >
-                Cancel
+                {loc('common.cancel')}
               </button>
             </div>
           </div>

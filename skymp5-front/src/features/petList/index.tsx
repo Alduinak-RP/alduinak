@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 interface PetListEvents {
   summon: string;
@@ -24,8 +25,16 @@ export interface PetListData {
   events: PetListEvents;
 }
 
-const PLACE_LABEL: Record<string, string> = { stable: 'stable', farm: 'farm', house: 'home' };
-const KIND_LABEL: Record<string, string> = { horse: 'Horse', livestock: 'Livestock', dog: 'Dog' };
+const PLACE_LABEL: Record<string, string> = {
+  stable: loc('petList.place.stable'),
+  farm: loc('petList.place.farm'),
+  house: loc('petList.place.house'),
+};
+const KIND_LABEL: Record<string, string> = {
+  horse: loc('petList.kind.horse'),
+  livestock: loc('petList.kind.livestock'),
+  dog: loc('petList.kind.dog'),
+};
 
 const send = (key: string, ...args: unknown[]): void => {
   try {
@@ -41,7 +50,7 @@ const send = (key: string, ...args: unknown[]): void => {
 const PetList = ({ data }: { data: PetListData }) => {
   const ev = data.events || ({} as PetListEvents);
   const pets = data.pets || [];
-  const place = PLACE_LABEL[data.category] || 'place';
+  const place = PLACE_LABEL[data.category] || loc('petList.place.other');
 
   useEffect(() => {
     const onUnfocused = () => send(ev.close);
@@ -54,12 +63,12 @@ const PetList = ({ data }: { data: PetListData }) => {
       <div className="pet-list__fade" />
       <div className="pet-list__panel">
         <div className="pet-list__header">
-          <h2 className="pet-list__title">Pets kept at this {place}</h2>
-          <span className="pet-list__status">{pets.length} {pets.length === 1 ? 'pet' : 'pets'}</span>
+          <h2 className="pet-list__title">{loc('petList.title', { place })}</h2>
+          <span className="pet-list__status">{pets.length === 1 ? loc('petList.countOne', { n: pets.length }) : loc('petList.countMany', { n: pets.length })}</span>
         </div>
 
         {pets.length === 0 ? (
-          <p className="pet-list__empty">You keep no pets here.</p>
+          <p className="pet-list__empty">{loc('petList.empty')}</p>
         ) : (
           <div className="pet-list__rows">
             {pets.map((p) => (
@@ -76,7 +85,7 @@ const PetList = ({ data }: { data: PetListData }) => {
                   disabled={p.out}
                   onClick={() => send(ev.summon, p.uid)}
                 >
-                  {p.out ? 'Out' : 'Summon'}
+                  {p.out ? loc('petList.out') : loc('petList.summon')}
                 </button>
               </div>
             ))}
@@ -85,7 +94,7 @@ const PetList = ({ data }: { data: PetListData }) => {
 
         <div className="pet-list__footer">
           <button className="pet-list__button pet-list__button--quiet" onClick={() => send(ev.close)}>
-            Close
+            {loc('common.close')}
           </button>
         </div>
       </div>

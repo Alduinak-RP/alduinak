@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 // One stack as resolved by the client (name already looked up from the baseId).
 interface UiItem {
@@ -40,14 +41,14 @@ export interface TradeData {
 
 // The inventory pane's tabs in vanilla order; gold is a misc item
 const TABS: Array<{ id: string; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'weapons', label: 'Weapons' },
-  { id: 'apparel', label: 'Apparel' },
-  { id: 'potions', label: 'Potions' },
-  { id: 'food', label: 'Food' },
-  { id: 'ingredients', label: 'Ingredients' },
-  { id: 'books', label: 'Books' },
-  { id: 'misc', label: 'Misc' },
+  { id: 'all', label: loc('trade.tab.all') },
+  { id: 'weapons', label: loc('trade.tab.weapons') },
+  { id: 'apparel', label: loc('trade.tab.apparel') },
+  { id: 'potions', label: loc('trade.tab.potions') },
+  { id: 'food', label: loc('trade.tab.food') },
+  { id: 'ingredients', label: loc('trade.tab.ingredients') },
+  { id: 'books', label: loc('trade.tab.books') },
+  { id: 'misc', label: loc('trade.tab.misc') },
 ];
 
 const inTab = (item: UiItem, tab: string): boolean => tab === 'all' || (item.category || 'misc') === tab;
@@ -87,7 +88,7 @@ const ItemList = ({ items, emptyText, onItemClick }: ItemListProps) => {
             {(item.tags || []).map((tag) => (
               <span key={tag} className="trade__item-tag">{tag}</span>
             ))}
-            {item.equipped ? <span className="trade__item-tag">equipped</span> : null}
+            {item.equipped ? <span className="trade__item-tag">{loc('common.equipped')}</span> : null}
           </span>
           {item.count > 1 ? <span className="trade__item-count">{item.count}</span> : null}
         </div>
@@ -153,13 +154,13 @@ const Trade = ({ data }: { data: TradeData }) => {
     <div className="trade">
       <div className="trade__fade" />
       <div className="trade__window">
-        <h2 className="trade__header">Trade with {data.partnerName}</h2>
+        <h2 className="trade__header">{loc('trade.header', { name: data.partnerName })}</h2>
 
         <div className="trade__body">
           {/* Left: my offerable inventory */}
           <div className="trade__pane trade__pane--inventory">
             <div className="trade__pane-title">
-              Your Inventory <span className="trade__lock">({shownInventory.length})</span>
+              {loc('trade.yourInventory')} <span className="trade__lock">({shownInventory.length})</span>
             </div>
             <div className="trade__tabs">
               {TABS.map((t) => (
@@ -178,7 +179,7 @@ const Trade = ({ data }: { data: TradeData }) => {
             </div>
             <ItemList
               items={shownInventory}
-              emptyText={tab === 'all' ? 'Nothing to trade' : 'Nothing here to trade'}
+              emptyText={tab === 'all' ? loc('trade.nothingToTrade') : loc('trade.nothingHere')}
               onItemClick={(item) => clickItem('add', item)}
             />
           </div>
@@ -186,17 +187,17 @@ const Trade = ({ data }: { data: TradeData }) => {
           {/* Center: cancel / lock / trade */}
           <div className="trade__actions">
             <button className="trade__button trade__button--quiet" onClick={() => send(ev.cancel)}>
-              Cancel
+              {loc('common.cancel')}
             </button>
             <button className="trade__button" onClick={() => send(data.myLocked ? ev.unlock : ev.lock)}>
-              {data.myLocked ? 'Unlock' : 'Lock'}
+              {data.myLocked ? loc('trade.unlock') : loc('trade.lock')}
             </button>
             <button
               className="trade__button trade__button--primary"
               disabled={!tradeAvailable}
               onClick={() => send(ev.accept)}
             >
-              {data.iAccepted ? 'Waiting…' : 'Trade'}
+              {data.iAccepted ? loc('trade.waiting') : loc('trade.trade')}
             </button>
           </div>
 
@@ -204,22 +205,22 @@ const Trade = ({ data }: { data: TradeData }) => {
           <div className="trade__right">
             <div className={'trade__pane trade__pane--offer' + (data.myLocked ? ' trade__pane--locked' : '')}>
               <div className="trade__pane-title">
-                Your Offer {data.myLocked ? <span className="trade__lock">[locked]</span> : null}
+                {loc('trade.yourOffer')} {data.myLocked ? <span className="trade__lock">{loc('trade.locked')}</span> : null}
               </div>
               <ItemList
                 items={data.myOffer}
-                emptyText="(empty)"
+                emptyText={loc('trade.empty')}
                 onItemClick={data.myLocked ? undefined : (item) => clickItem('remove', item)}
               />
             </div>
 
             <div className={'trade__pane trade__pane--their-offer' + (data.theirLocked ? ' trade__pane--locked' : '')}>
               <div className="trade__pane-title">
-                {data.partnerName}&apos;s Offer{' '}
-                {data.theirLocked ? <span className="trade__lock">[locked]</span> : null}
-                {data.theyAccepted ? <span className="trade__lock">[trading]</span> : null}
+                {loc('trade.theirOffer', { name: data.partnerName })}{' '}
+                {data.theirLocked ? <span className="trade__lock">{loc('trade.locked')}</span> : null}
+                {data.theyAccepted ? <span className="trade__lock">{loc('trade.trading')}</span> : null}
               </div>
-              <ItemList items={data.theirOffer} emptyText="(empty)" />
+              <ItemList items={data.theirOffer} emptyText={loc('trade.empty')} />
             </div>
           </div>
         </div>
@@ -228,7 +229,7 @@ const Trade = ({ data }: { data: TradeData }) => {
           <div className="trade__prompt-overlay">
             <div className="trade__prompt">
               <h3 className="trade__prompt-title">
-                {prompt.dir === 'add' ? 'Add how many' : 'Remove how many'} {prompt.item.name}?
+                {prompt.dir === 'add' ? loc('trade.addHowMany', { name: prompt.item.name }) : loc('trade.removeHowMany', { name: prompt.item.name })}
               </h3>
               <div className="trade__prompt-row">
                 <button className="trade__button trade__button--narrow" onClick={() => clampPromptCount(promptCount - 1)}>
@@ -246,15 +247,15 @@ const Trade = ({ data }: { data: TradeData }) => {
                   +
                 </button>
                 <button className="trade__button trade__button--narrow" onClick={() => setPromptCount(prompt.item.count)}>
-                  All
+                  {loc('trade.all')}
                 </button>
               </div>
               <div className="trade__prompt-row">
                 <button className="trade__button trade__button--primary" onClick={confirmPrompt}>
-                  Confirm
+                  {loc('common.confirm')}
                 </button>
                 <button className="trade__button trade__button--quiet" onClick={() => setPrompt(null)}>
-                  Back
+                  {loc('common.back')}
                 </button>
               </div>
             </div>

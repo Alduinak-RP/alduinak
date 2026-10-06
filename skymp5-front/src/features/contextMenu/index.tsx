@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 interface MenuAction {
   id: string;
@@ -81,14 +82,14 @@ const ContextMenu = ({ data }: { data: ContextMenuData }) => {
         <div className="context-menu__columns">
           <div className="context-menu__column">
             {!data.hideTrade ? (
-              <button className="context-menu__row" onClick={() => send(ev.trade)}>{data.tradeLabel || 'Trade'}</button>
+              <button className="context-menu__row" onClick={() => send(ev.trade)}>{data.tradeLabel || loc('contextMenu.trade')}</button>
             ) : null}
             {actions.filter((a) => !a.danger).map(row)}
           </div>
           {dangers.length ? <div className="context-menu__column context-menu__column--danger">{dangers.map(row)}</div> : null}
         </div>
         <button className="context-menu__row context-menu__row--close" onClick={() => send(ev.close)}>
-          Close
+          {loc('common.close')}
         </button>
       </div>
     </div>

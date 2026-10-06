@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 // Paper widgets shared by the missive board and the writings: the client bridge, focus and Escape handling, the reader, the confirm bar and the composer
 
@@ -83,8 +84,8 @@ interface ConfirmBarProps {
 export const ConfirmBar = ({ text, onYes, onNo }: ConfirmBarProps) => (
   <div className="parchment__confirm">
     <span className="parchment__confirm-text">{text}</span>
-    <button className="parchment__button parchment__button--primary" onClick={onYes}>Yes</button>
-    <button className="parchment__button" onClick={onNo}>No</button>
+    <button className="parchment__button parchment__button--primary" onClick={onYes}>{loc('common.yes')}</button>
+    <button className="parchment__button" onClick={onNo}>{loc('common.no')}</button>
   </div>
 );
 

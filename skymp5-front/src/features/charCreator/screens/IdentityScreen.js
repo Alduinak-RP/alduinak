@@ -3,6 +3,7 @@ import React, { useRef, useEffect } from 'react';
 
 import { AGES } from '../data/races';
 import { ATTRIBUTES, STAT_MIN, STAT_MAX, pointsSpent } from '../data/stats';
+import { loc } from '../../../loc';
 
 // A -/+ button that repeats while held down; kept enabled so mouseup always fires.
 const Stepper = ({ label, disabled, onStep }) => {
@@ -48,8 +49,8 @@ const IdentityScreen = ({ sex, age, stats, statPool, allowChildren, onSex, onAge
 
   return (
     <div className='charCreator__screen'>
-      <div className='charCreator__title'>Who are you?</div>
-      <div className='charCreator__section-label'>Sex</div>
+      <div className='charCreator__title'>{loc('charCreator.identity.title')}</div>
+      <div className='charCreator__section-label'>{loc('charCreator.identity.sex')}</div>
       <div className='charCreator__sex-row'>
         {['male', 'female'].map(s => (
           <div
@@ -60,11 +61,11 @@ const IdentityScreen = ({ sex, age, stats, statPool, allowChildren, onSex, onAge
             }
             onClick={() => onSex(s)}
           >
-            {s === 'male' ? 'Male' : 'Female'}
+            {s === 'male' ? loc('charCreator.identity.male') : loc('charCreator.identity.female')}
           </div>
         ))}
       </div>
-      <div className='charCreator__section-label'>Age</div>
+      <div className='charCreator__section-label'>{loc('charCreator.identity.age')}</div>
       <div className='charCreator__age-row'>
         {ages.map(a => (
           <div
@@ -77,9 +78,9 @@ const IdentityScreen = ({ sex, age, stats, statPool, allowChildren, onSex, onAge
         ))}
       </div>
       <div className='charCreator__section-label'>
-        Attributes
+        {loc('charCreator.identity.attributes')}
         <span className={'charCreator__points' + (remaining === 0 ? ' charCreator__points--spent' : '')}>
-          {remaining} points left
+          {loc('charCreator.identity.pointsLeft', { n: remaining })}
         </span>
       </div>
       <div className='charCreator__stats'>
@@ -106,7 +107,7 @@ const IdentityScreen = ({ sex, age, stats, statPool, allowChildren, onSex, onAge
           );
         })}
       </div>
-      <div className='charCreator__note'>Strength and Endurance set the limits of your body build.</div>
+      <div className='charCreator__note'>{loc('charCreator.identity.bodyNote')}</div>
     </div>
   );
 };

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 
 import { SPECIES } from '../data/races';
+import { loc } from '../../../loc';
 
 const SpeciesScreen = ({ selected, disabledRaces, onSelect }) => {
   const [hovered, setHovered] = useState(null);
@@ -11,7 +12,7 @@ const SpeciesScreen = ({ selected, disabledRaces, onSelect }) => {
 
   return (
     <div className='charCreator__screen'>
-      <div className='charCreator__title'>Choose your species</div>
+      <div className='charCreator__title'>{loc('charCreator.species.title')}</div>
       <div className='charCreator__species-grid'>
         {visible.map(species => (
           <div
@@ -29,7 +30,7 @@ const SpeciesScreen = ({ selected, disabledRaces, onSelect }) => {
         ))}
       </div>
       <div className='charCreator__blurb'>
-        {shown ? shown.blurb : 'Hover a species to learn more.'}
+        {shown ? shown.blurb : loc('charCreator.species.hover')}
       </div>
     </div>
   );

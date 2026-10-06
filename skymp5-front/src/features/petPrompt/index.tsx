@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 interface PetPromptEvents {
   ok: string;
@@ -92,10 +93,10 @@ const PetPrompt = ({ data }: { data: PetPromptData }) => {
         ) : null}
         <div className="pet-prompt__actions">
           <button className="pet-prompt__button pet-prompt__button--primary" disabled={!valid} onClick={ok}>
-            OK
+            {loc('common.ok')}
           </button>
           <button className="pet-prompt__button pet-prompt__button--quiet" onClick={() => send(ev.cancel)}>
-            Cancel
+            {loc('common.cancel')}
           </button>
         </div>
       </div>

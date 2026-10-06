@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import './ConfirmDialog.scss';
+import { loc } from '../../loc';
 
 interface ConfirmDialogProps {
   title: string;
@@ -30,7 +31,7 @@ const ConfirmDialog = ({ title, body, confirmLabel, cancelLabel, onConfirm, onCa
         <div className="confirm-dialog__actions">
           <button className="confirm-dialog__button" onClick={onConfirm}>{confirmLabel}</button>
           <button className="confirm-dialog__button confirm-dialog__button--cancel" onClick={onCancel}>
-            {cancelLabel || 'Cancel'}
+            {cancelLabel || loc('common.cancel')}
           </button>
         </div>
       </div>

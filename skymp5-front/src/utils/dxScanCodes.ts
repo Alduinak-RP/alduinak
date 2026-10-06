@@ -1,4 +1,6 @@
 // KeyboardEvent.code -> [DirectInput scan code, label], the launcher's KEY_TABLE (skymp5-launcher-tauri/ui/renderer.js) copied because the front cannot import it; DIK codes match DxScanCode in the client
+import { loc } from '../loc';
+
 export const DOM_TO_DIK: Record<string, [number, string]> = {
   Enter: [28, 'Enter'], Space: [57, 'Space'], Tab: [15, 'Tab'],
   ShiftLeft: [42, 'Left Shift'], ControlLeft: [29, 'Left Ctrl'], AltLeft: [56, 'Left Alt'],
@@ -39,7 +41,7 @@ export const MOUSE_TO_DIK: Record<number, [number, string]> = { 1: [258, 'Middle
 const DIK_LABELS: Record<number, string> = { 256: 'Left Mouse', 257: 'Right Mouse', 261: 'Mouse 6', 262: 'Mouse 7', 263: 'Mouse 8' };
 for (const [dik, label] of [...Object.values(DOM_TO_DIK), ...Object.values(MOUSE_TO_DIK)]) DIK_LABELS[dik] = label;
 
-export const dikLabel = (code: number): string => (code ? DIK_LABELS[code] || `0x${code.toString(16)}` : 'none');
+export const dikLabel = (code: number): string => (code ? DIK_LABELS[code] || `0x${code.toString(16)}` : loc('keys.none'));
 
 // The client polls a held menu key in game, so any bound key or mouse button can be held
 export const canHold = (code: number): boolean => code > 0;

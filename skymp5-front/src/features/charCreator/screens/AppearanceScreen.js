@@ -7,27 +7,28 @@ import { findRace } from '../data/races';
 import { FACE_MORPHS, FACE_PRESETS, TINT_TYPES } from '../data/face';
 import { bodyRangesFor, toVanillaWeight } from '../data/stats';
 import { partsFor, tintsFor, raceDefaultsFor } from '../appearanceBuilder';
+import { loc } from '../../../loc';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const rgbToHex = (rgb) => '#' + rgb.map(c => clamp(c, 0, 255).toString(16).padStart(2, '0')).join('');
 const hexToRgb = (hex) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) || 0);
 
 const MORPH_GROUPS = [
-  { name: 'Nose', indices: [0, 1] },
-  { name: 'Jaw', indices: [2, 3, 4] },
-  { name: 'Cheeks', indices: [5, 6] },
-  { name: 'Eyes', indices: [7, 8, 17] },
-  { name: 'Brows', indices: [9, 10, 11] },
-  { name: 'Lips', indices: [12, 13] },
-  { name: 'Chin', indices: [14, 15, 16] }
+  { name: loc('charCreator.appearance.group.nose'), indices: [0, 1] },
+  { name: loc('charCreator.appearance.group.jaw'), indices: [2, 3, 4] },
+  { name: loc('charCreator.appearance.group.cheeks'), indices: [5, 6] },
+  { name: loc('charCreator.appearance.group.eyes'), indices: [7, 8, 17] },
+  { name: loc('charCreator.appearance.group.brows'), indices: [9, 10, 11] },
+  { name: loc('charCreator.appearance.group.lips'), indices: [12, 13] },
+  { name: loc('charCreator.appearance.group.chin'), indices: [14, 15, 16] }
 ];
 
 const PART_KINDS = [
-  { kind: 'hair', label: 'Hair', slot: 'hair', noneAllowed: true },
-  { kind: 'eyes', label: 'Eyes', slot: 'eyes' },
-  { kind: 'brows', label: 'Brows', slot: 'brows', noneAllowed: true },
-  { kind: 'facialHair', label: 'Facial Hair' },
-  { kind: 'scars', label: 'Scars' }
+  { kind: 'hair', label: loc('charCreator.appearance.part.hair'), slot: 'hair', noneAllowed: true },
+  { kind: 'eyes', label: loc('charCreator.appearance.part.eyes'), slot: 'eyes' },
+  { kind: 'brows', label: loc('charCreator.appearance.part.brows'), slot: 'brows', noneAllowed: true },
+  { kind: 'facialHair', label: loc('charCreator.appearance.part.facialHair') },
+  { kind: 'scars', label: loc('charCreator.appearance.part.scars') }
 ];
 
 const Carousel = ({ label, options, value, onChange }) => {
@@ -56,7 +57,7 @@ const Swatches = ({ label, colors, current, onPick, onFree, noneAllowed }) => (
           <div
             className={'charCreator__swatch charCreator__swatch--none' + (current === null ? ' charCreator__swatch--selected' : '')}
             onClick={() => onPick(null)}
-            title='None'
+            title={loc('common.none')}
           />
           )
         : null}
@@ -118,18 +119,18 @@ const AppearanceScreen = ({ race, sex, age, stats, look, onLook }) => {
 
   const bodyBlock = (
     <div className='charCreator__section'>
-      <div className='charCreator__section-label'>Body</div>
-      <BodySlider label='Muscle' value={look.muscle} range={ranges.muscle} onChange={(v) => onLook({ muscle: v })} />
-      <BodySlider label='Fat' value={look.fat} range={ranges.fat} onChange={(v) => onLook({ fat: v })} />
-      <div className='charCreator__note'>In-game weight: {toVanillaWeight(muscle, fat)}</div>
+      <div className='charCreator__section-label'>{loc('charCreator.appearance.body')}</div>
+      <BodySlider label={loc('charCreator.appearance.muscle')} value={look.muscle} range={ranges.muscle} onChange={(v) => onLook({ muscle: v })} />
+      <BodySlider label={loc('charCreator.appearance.fat')} value={look.fat} range={ranges.fat} onChange={(v) => onLook({ fat: v })} />
+      <div className='charCreator__note'>{loc('charCreator.appearance.weight', { n: toVanillaWeight(muscle, fat) })}</div>
     </div>
   );
 
   if (!race.faceGen) {
     return (
       <div className='charCreator__screen'>
-        <div className='charCreator__title'>Appearance</div>
-        <div className='charCreator__note'>This race keeps its natural look; only the body can be shaped.</div>
+        <div className='charCreator__title'>{loc('charCreator.appearance.title')}</div>
+        <div className='charCreator__note'>{loc('charCreator.appearance.naturalLook')}</div>
         {bodyBlock}
       </div>
     );
@@ -143,9 +144,9 @@ const AppearanceScreen = ({ race, sex, age, stats, look, onLook }) => {
     const parts = partsFor(def.kind, race, age, sex);
     const defaultId = def.slot ? defaults[def.slot] : undefined;
     const options = [];
-    if (def.noneAllowed || defaultId === undefined) options.push({ value: null, label: 'None' });
+    if (def.noneAllowed || defaultId === undefined) options.push({ value: null, label: loc('common.none') });
     if (defaultId !== undefined && !parts.some(p => p.id === defaultId)) {
-      options.push({ value: defaultId, label: 'Default' });
+      options.push({ value: defaultId, label: loc('charCreator.appearance.default') });
     }
     for (const p of parts) options.push({ value: p.id, label: p.label });
     const onlyNone = options.length === 1 && options[0].value === null;
@@ -165,7 +166,7 @@ const AppearanceScreen = ({ race, sex, age, stats, look, onLook }) => {
   const lipPresets = (tintsFor(race, age, sex, TINT_TYPES.LIPS)[0] || { presets: [] }).presets;
   const warpaints = tintsFor(race, age, sex, TINT_TYPES.WARPAINT);
   const warpaintName = (file) => file.split('\\').pop().replace(/\.dds$/i, '');
-  const warpaintOptions = [{ value: null, label: 'None' }]
+  const warpaintOptions = [{ value: null, label: loc('common.none') }]
     .concat(warpaints.map(w => ({ value: w.file, label: warpaintName(w.file) })));
 
   const setMorph = (index, v) => {
@@ -190,20 +191,20 @@ const AppearanceScreen = ({ race, sex, age, stats, look, onLook }) => {
 
   return (
     <div className='charCreator__screen'>
-      <div className='charCreator__title'>Appearance</div>
+      <div className='charCreator__title'>{loc('charCreator.appearance.title')}</div>
 
       <div className='charCreator__section'>
-        <div className='charCreator__section-label'>Head Parts</div>
+        <div className='charCreator__section-label'>{loc('charCreator.appearance.headParts')}</div>
         {partCarousels}
       </div>
 
       <div className='charCreator__section'>
-        <div className='charCreator__section-label'>Face Shape</div>
+        <div className='charCreator__section-label'>{loc('charCreator.appearance.faceShape')}</div>
         {FACE_PRESETS.map(p => (
           <Carousel
             key={p.index}
             label={p.name}
-            options={Array.from({ length: p.max + 1 }, (_, i) => ({ value: i, label: `${i + 1} / ${p.max + 1}` }))}
+            options={Array.from({ length: p.max + 1 }, (_, i) => ({ value: i, label: loc('charCreator.appearance.presetOf', { n: i + 1, total: p.max + 1 }) }))}
             value={look.presets[p.index]}
             onChange={(v) => setPreset(p.index, v)}
           />
@@ -225,23 +226,23 @@ const AppearanceScreen = ({ race, sex, age, stats, look, onLook }) => {
       ))}
 
       <div className='charCreator__section'>
-        <div className='charCreator__section-label'>Colors</div>
+        <div className='charCreator__section-label'>{loc('charCreator.appearance.colors')}</div>
         <Swatches
-          label='Skin Tone'
+          label={loc('charCreator.appearance.skinTone')}
           colors={skinPresets.map(rgb => ({ rgb }))}
           current={look.skinRgb}
           onPick={(rgb) => onLook({ skinRgb: rgb })}
           onFree={(rgb) => onLook({ skinRgb: rgb })}
         />
         <Swatches
-          label='Hair Color'
+          label={loc('charCreator.appearance.hairColor')}
           colors={headparts.hairColors}
           current={look.hairRgb}
           onPick={(rgb) => onLook({ hairRgb: rgb })}
           onFree={(rgb) => onLook({ hairRgb: rgb })}
         />
         <Swatches
-          label='Lip Color'
+          label={loc('charCreator.appearance.lipColor')}
           colors={lipPresets.map(rgb => ({ rgb }))}
           current={look.lipRgb}
           onPick={(rgb) => onLook({ lipRgb: rgb })}
@@ -253,9 +254,9 @@ const AppearanceScreen = ({ race, sex, age, stats, look, onLook }) => {
       {warpaints.length
         ? (
           <div className='charCreator__section'>
-            <div className='charCreator__section-label'>Warpaint</div>
+            <div className='charCreator__section-label'>{loc('charCreator.appearance.warpaint')}</div>
             <Carousel
-              label='Pattern'
+              label={loc('charCreator.appearance.pattern')}
               options={warpaintOptions}
               value={look.warpaint ? look.warpaint.file : null}
               onChange={setWarpaint}
@@ -264,7 +265,7 @@ const AppearanceScreen = ({ race, sex, age, stats, look, onLook }) => {
               ? (
                 <>
                   <div className='charCreator__color-row'>
-                    <span className='charCreator__carousel-label'>Paint Color</span>
+                    <span className='charCreator__carousel-label'>{loc('charCreator.appearance.paintColor')}</span>
                     <div className='charCreator__swatches'>
                       <input
                         type='color'
@@ -276,7 +277,7 @@ const AppearanceScreen = ({ race, sex, age, stats, look, onLook }) => {
                   </div>
                   <div className='charCreator__slider'>
                     <SkyrimSlider
-                      text={`Opacity: ${look.warpaint.opacity}`}
+                      text={loc('charCreator.appearance.opacity', { n: look.warpaint.opacity })}
                       min={0}
                       max={100}
                       sliderValue={look.warpaint.opacity}

@@ -1,6 +1,7 @@
 import React from 'react';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 // The widget object the client pushes through window.skyrimPlatform.widgets
 export interface SurvivalReadoutData {
@@ -28,9 +29,9 @@ const SurvivalReadout = ({ data }: { data: SurvivalReadoutData }) => {
   return (
     <div className="survivalReadout">
       <div className="survivalReadout__line">
-        <span className="survivalReadout__label">Cold</span>
+        <span className="survivalReadout__label">{loc('survival.cold')}</span>
         <span className={'survivalReadout__cold' + (coldStage >= FREEZING_STAGE ? ' survivalReadout__cold--severe' : '')}>{cold}</span>
-        {warmth !== null && <span className="survivalReadout__warmth">warmth {warmth}</span>}
+        {warmth !== null && <span className="survivalReadout__warmth">{loc('survival.warmth', { n: warmth })}</span>}
       </div>
     </div>
   );

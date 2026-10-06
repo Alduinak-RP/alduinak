@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { assetUrl } from '../../utils/assetUrl';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 interface EmoteDef {
   anim: string;
@@ -281,15 +282,15 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
             </svg>
             <div className="emote-wheel__center">
               <p className={'emote-wheel__center-category' + (refused ? ' emote-wheel__center-category--needs' : '')}>
-                {(refused ? 'Needs ' + refused.needs : previewedGroup ? previewedGroup.label : '').toUpperCase()}
+                {(refused ? loc('emoteWheel.needs', { item: refused.needs }) : previewedGroup ? previewedGroup.label : '').toUpperCase()}
               </p>
               <h2 className="emote-wheel__center-emote">{previewedEmote ? previewedEmote.label : ''}</h2>
               <button className="emote-wheel__center-cancel" onClick={() => send(ev.stop)}>
-                Cancel Emote
+                {loc('emoteWheel.cancelEmote')}
               </button>
             </div>
           </div>
-          <p className="emote-wheel__hint">Hover to preview&nbsp;&nbsp;&bull;&nbsp;&nbsp;Click to play&nbsp;&nbsp;&bull;&nbsp;&nbsp;Esc or right-click to close</p>
+          <p className="emote-wheel__hint">{loc('emoteWheel.hint')}</p>
         </section>
         <aside className="emote-wheel__preview">
           <h2 className="emote-wheel__preview-name">{previewedEmote ? previewedEmote.label : ''}</h2>
@@ -301,7 +302,7 @@ const EmoteWheel = ({ data }: { data: EmoteWheelData }) => {
             }
           >
             <div className="emote-wheel__preview-glow" />
-            {previewLocked && previewedEmote && <p className="emote-wheel__preview-needs">Requires {previewedEmote.needs}</p>}
+            {previewLocked && previewedEmote && <p className="emote-wheel__preview-needs">{loc('emoteWheel.requires', { item: previewedEmote.needs })}</p>}
             {hovering ? <img src={previewSrc} alt="Selected emote preview" /> : <StillFrame src={previewSrc} />}
           </div>
         </aside>

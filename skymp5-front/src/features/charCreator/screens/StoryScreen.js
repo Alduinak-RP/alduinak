@@ -2,6 +2,7 @@
 import React from 'react';
 
 import Button from '../../../constructorComponents/button';
+import { loc } from '../../../loc';
 
 const NAME_MAX = 30;
 const BACKSTORY_MAX = 4000;
@@ -11,10 +12,10 @@ const NAME_CHARS = /^[A-Za-z' -]+$/;
 // Mirrors the server: it trims first and requires at least one letter.
 const nameError = (rawName) => {
   const name = rawName.trim();
-  if (name.length < 2) return 'Name must be at least 2 characters.';
-  if (name.length > NAME_MAX) return 'Name must be at most 30 characters.';
-  if (!NAME_CHARS.test(name)) return "Only letters, spaces, ' and - are allowed.";
-  if (!/[A-Za-z]/.test(name)) return 'Name must contain letters.';
+  if (name.length < 2) return loc('charCreator.story.nameShort');
+  if (name.length > NAME_MAX) return loc('charCreator.story.nameLong');
+  if (!NAME_CHARS.test(name)) return loc('charCreator.story.nameChars');
+  if (!/[A-Za-z]/.test(name)) return loc('charCreator.story.nameLetters');
   return null;
 };
 
@@ -29,17 +30,17 @@ const StoryScreen = ({ name, backstory, description, waiting, error, onChange, o
 
   return (
     <div className='charCreator__screen'>
-      <div className='charCreator__title'>Your story</div>
+      <div className='charCreator__title'>{loc('charCreator.story.title')}</div>
 
       <div className='charCreator__section'>
-        <div className='charCreator__section-label'>Name</div>
+        <div className='charCreator__section-label'>{loc('charCreator.story.name')}</div>
         <input
           className='charCreator__text-input'
           type='text'
           value={name}
           maxLength={NAME_MAX}
           spellCheck='false'
-          placeholder='Character name'
+          placeholder={loc('charCreator.story.namePlaceholder')}
           onChange={(e) => onChange({ name: e.target.value })}
         />
         {name && nameMsg ? <div className='charCreator__error'>{nameMsg}</div> : null}
@@ -47,7 +48,7 @@ const StoryScreen = ({ name, backstory, description, waiting, error, onChange, o
 
       <div className='charCreator__section'>
         <div className='charCreator__section-label'>
-          Backstory
+          {loc('charCreator.story.backstory')}
           <span className='charCreator__counter'>{backstory.length} / {BACKSTORY_MAX}</span>
         </div>
         <textarea
@@ -55,14 +56,14 @@ const StoryScreen = ({ name, backstory, description, waiting, error, onChange, o
           value={backstory}
           maxLength={BACKSTORY_MAX}
           spellCheck='false'
-          placeholder='Where do you come from? Kept private for staff and your own records.'
+          placeholder={loc('charCreator.story.backstoryPlaceholder')}
           onChange={(e) => onChange({ backstory: e.target.value })}
         />
       </div>
 
       <div className='charCreator__section'>
         <div className='charCreator__section-label'>
-          Description
+          {loc('charCreator.story.description')}
           <span className='charCreator__counter'>{description.length} / {DESCRIPTION_MAX}</span>
         </div>
         <textarea
@@ -70,17 +71,17 @@ const StoryScreen = ({ name, backstory, description, waiting, error, onChange, o
           value={description}
           maxLength={DESCRIPTION_MAX}
           spellCheck='false'
-          placeholder='What a stranger sees at a glance.'
+          placeholder={loc('charCreator.story.descriptionPlaceholder')}
           onChange={(e) => onChange({ description: e.target.value })}
         />
-        <div className='charCreator__note'>Strangers see this when they are introduced to you.</div>
+        <div className='charCreator__note'>{loc('charCreator.story.descriptionNote')}</div>
       </div>
 
       {error ? <div className='charCreator__error'>{error}</div> : null}
       <div className='charCreator__finish'>
         {waiting
-          ? <div className='charCreator__waiting'>Forging your character&hellip;</div>
-          : <Button text='Finish' width={192} height={44} disabled={!valid} onClick={finish} />}
+          ? <div className='charCreator__waiting'>{loc('charCreator.story.forging')}</div>
+          : <Button text={loc('charCreator.story.finish')} width={192} height={44} disabled={!valid} onClick={finish} />}
       </div>
     </div>
   );

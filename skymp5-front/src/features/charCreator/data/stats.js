@@ -1,3 +1,5 @@
+import { loc } from '../../../loc';
+
 // RPG attributes assigned on screen 3. Point-buy: every attribute starts at
 // START and the pool on top is distributed freely within [MIN, MAX].
 // Some attributes constrain the body sliders on screen 4 (see bodyRangesFor).
@@ -8,14 +10,14 @@ export const STAT_START = 40;
 export const DEFAULT_STAT_POOL = 120;
 
 export const ATTRIBUTES = [
-  { id: 'strength', name: 'Strength', desc: 'Raw muscle. A mighty build demands a muscular body; a weak one forbids it.' },
-  { id: 'endurance', name: 'Endurance', desc: 'Toughness and bulk. Shapes how heavy a frame you can carry.' },
-  { id: 'agility', name: 'Agility', desc: 'Balance, finesse, and sleight of hand.' },
-  { id: 'speed', name: 'Speed', desc: 'Footwork and reflexes.' },
-  { id: 'intelligence', name: 'Intelligence', desc: 'Reason, memory, and magical theory.' },
-  { id: 'willpower', name: 'Willpower', desc: 'Focus and resistance of mind.' },
-  { id: 'personality', name: 'Personality', desc: 'Presence, charm, and force of character.' },
-  { id: 'luck', name: 'Luck', desc: 'The favor of fate. Touches everything, governs nothing.' }
+  { id: 'strength', name: loc('charCreator.attr.strength'), desc: loc('charCreator.attr.strengthDesc') },
+  { id: 'endurance', name: loc('charCreator.attr.endurance'), desc: loc('charCreator.attr.enduranceDesc') },
+  { id: 'agility', name: loc('charCreator.attr.agility'), desc: loc('charCreator.attr.agilityDesc') },
+  { id: 'speed', name: loc('charCreator.attr.speed'), desc: loc('charCreator.attr.speedDesc') },
+  { id: 'intelligence', name: loc('charCreator.attr.intelligence'), desc: loc('charCreator.attr.intelligenceDesc') },
+  { id: 'willpower', name: loc('charCreator.attr.willpower'), desc: loc('charCreator.attr.willpowerDesc') },
+  { id: 'personality', name: loc('charCreator.attr.personality'), desc: loc('charCreator.attr.personalityDesc') },
+  { id: 'luck', name: loc('charCreator.attr.luck'), desc: loc('charCreator.attr.luckDesc') }
 ];
 
 export function defaultStats() {

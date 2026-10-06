@@ -2,6 +2,7 @@
 import React from 'react';
 
 import { findSpecies } from '../data/races';
+import { loc } from '../../../loc';
 
 const RaceScreen = ({ species, selected, disabledRaces, lockedRaces, onSelect }) => {
   const spec = findSpecies(species);
@@ -11,7 +12,7 @@ const RaceScreen = ({ species, selected, disabledRaces, lockedRaces, onSelect })
 
   return (
     <div className='charCreator__screen'>
-      <div className='charCreator__title'>Choose your race</div>
+      <div className='charCreator__title'>{loc('charCreator.race.title')}</div>
       <div className='charCreator__race-grid'>
         {races.map(race => {
           const isLocked = lockedRaces.includes(race.id);
@@ -37,11 +38,11 @@ const RaceScreen = ({ species, selected, disabledRaces, lockedRaces, onSelect })
             <div className='charCreator__lore-title'>{current.name}</div>
             <div className='charCreator__lore-text'>{current.lore}</div>
             {current.placeholder
-              ? <div className='charCreator__note'>This race uses a temporary look until its own model is ready.</div>
+              ? <div className='charCreator__note'>{loc('charCreator.race.placeholderLook')}</div>
               : null}
           </div>
           )
-        : <div className='charCreator__blurb'>Select a race to read about it.</div>}
+        : <div className='charCreator__blurb'>{loc('charCreator.race.select')}</div>}
     </div>
   );
 };

@@ -4,6 +4,7 @@ import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 import { PaperReader, useEscapeLayer } from '../parchment';
 import { Markup, plainText, sealMark } from '../writing';
 import './styles.scss';
+import { loc } from '../../loc';
 
 interface HousingEvents {
   claim: string;
@@ -104,7 +105,7 @@ const send = (key: string, ...args: unknown[]): void => {
 const Housing = ({ data }: { data: HousingData }) => {
   const ev = data.events || ({} as HousingEvents);
   const view = data.view || 'denied';
-  const displayName = data.name || data.targetLabel || 'Property';
+  const displayName = data.name || data.targetLabel || loc('housing.property');
   const isOwner = view === 'owner';
   const isManager = view === 'manager';
   const manages = isOwner || isManager;
@@ -125,20 +126,25 @@ const Housing = ({ data }: { data: HousingData }) => {
 
   const confirms: Record<Pending, { title: string; body: React.ReactNode; label: string; event: string; args?: unknown[] }> = {
     voidKeys: {
-      title: 'Void all keys?',
-      body: 'Every key cut for this property stops working, including the ones you hold.',
-      label: 'Void keys',
+      title: loc('housing.confirm.voidKeysTitle'),
+      body: loc('housing.confirm.voidKeysBody'),
+      label: loc('housing.confirm.voidKeysLabel'),
       event: ev.revokeKeys,
     },
-    giveUp: { title: `Give up ${displayName}?`, body: 'Anyone may claim it afterwards.', label: 'Give up', event: ev.abandon },
+    giveUp: {
+      title: loc('housing.confirm.giveUpTitle', { name: displayName }),
+      body: loc('housing.confirm.giveUpBody'),
+      label: loc('housing.confirm.giveUpLabel'),
+      event: ev.abandon,
+    },
     breakLock: {
-      title: `Break the lock on ${displayName}?`,
-      body: 'The owner and every key holder lose it, every key stops working and anyone may claim it.',
-      label: 'Break lock',
+      title: loc('housing.confirm.breakLockTitle', { name: displayName }),
+      body: loc('housing.confirm.breakLockBody'),
+      label: loc('housing.confirm.breakLockLabel'),
       event: ev.breakLock,
     },
     pinNote: {
-      title: 'Pin which note?',
+      title: loc('housing.confirm.pinNoteTitle'),
       body: (
         <>
           <span className="housing__pick">
@@ -150,17 +156,17 @@ const Housing = ({ data }: { data: HousingData }) => {
               </label>
             ))}
           </span>
-          It leaves your pack. Whoever takes it down gets it.
+          {loc('housing.confirm.pinNoteBody')}
         </>
       ),
-      label: 'Pin it',
+      label: loc('housing.confirm.pinNoteLabel'),
       event: ev.pinNote,
       args: [pick],
     },
     giveFaction: {
-      title: `Give ${displayName} to ${giveTo ? giveTo.name : 'the faction'}?`,
-      body: 'It stops being yours and stays with the faction whoever leads it. Its ranks that open faction doors use it, its property managers run it, and every key cut so far stops working.',
-      label: 'Give',
+      title: loc('housing.confirm.giveFactionTitle', { name: displayName, faction: giveTo ? giveTo.name : loc('housing.confirm.theFaction') }),
+      body: loc('housing.confirm.giveFactionBody'),
+      label: loc('housing.confirm.giveFactionLabel'),
       event: ev.claimFaction || '',
       args: [giveTo ? giveTo.id : ''],
     },
@@ -192,10 +198,11 @@ const Housing = ({ data }: { data: HousingData }) => {
   }, []);
 
   const lockState = data.sides
-    ? ` · entrance ${data.lockedEntrance ? 'locked' : 'open'}${EXIT_LOCKS ? ` · exit ${data.lockedExit ? 'locked' : 'open'}` : ''}`
-    : (data.locked ? ' · locked' : ' · unlocked');
-  const holder = faction && faction.role ? "Your faction's" : isOwner ? 'Yours' : isManager ? 'Managed' : 'Key holder';
-  const status = hasAccess ? holder + lockState : (data.owned ? 'Owned by another' : 'Unclaimed');
+    ? loc('housing.status.entrance', { state: data.lockedEntrance ? loc('housing.status.locked') : loc('housing.status.open') }) +
+      (EXIT_LOCKS ? loc('housing.status.exit', { state: data.lockedExit ? loc('housing.status.locked') : loc('housing.status.open') }) : '')
+    : (data.locked ? loc('housing.status.lockedSuffix') : loc('housing.status.unlockedSuffix'));
+  const holder = faction && faction.role ? loc('housing.status.factions') : isOwner ? loc('housing.status.yours') : isManager ? loc('housing.status.managed') : loc('housing.status.keyHolder');
+  const status = hasAccess ? holder + lockState : (data.owned ? loc('housing.status.ownedByAnother') : loc('housing.status.unclaimed'));
 
   return (
     <div className="housing">
@@ -207,14 +214,14 @@ const Housing = ({ data }: { data: HousingData }) => {
         </div>
 
         {data.ownerName && (!isOwner || faction) ? (
-          <p className="housing__owner">Owner: {data.ownerName}</p>
+          <p className="housing__owner">{loc('housing.owner', { name: data.ownerName })}</p>
         ) : null}
 
-        {data.hold ? <p className="housing__owner">Territory: {data.hold}</p> : null}
+        {data.hold ? <p className="housing__owner">{loc('housing.territory', { hold: data.hold })}</p> : null}
 
         {note ? (
           <button className="housing__note" onClick={() => setReading(true)}>
-            <span className="housing__note-label">{note.mine ? 'Your note is pinned here' : 'A note is pinned here'}</span>
+            <span className="housing__note-label">{note.mine ? loc('housing.noteMine') : loc('housing.noteOther')}</span>
             <span className="housing__note-title">{note.title}</span>
             <span className="housing__note-text">{plainText(note.text)}</span>
           </button>
@@ -222,18 +229,18 @@ const Housing = ({ data }: { data: HousingData }) => {
 
         {!hasAccess ? (
           <p className="housing__empty">
-            {view === 'claimable' ? 'Nobody has claimed this yet. Claiming uses up one lock.' : "This isn't yours."}
+            {view === 'claimable' ? loc('housing.claimable') : loc('housing.notYours')}
           </p>
         ) : null}
 
         {canClaim && claimFactions.length > 0 ? (
-          <p className="housing__hint">A faction claim belongs to the faction, not to you, and stays with it whoever leads it.</p>
+          <p className="housing__hint">{loc('housing.factionClaimHint')}</p>
         ) : null}
 
         <div className="housing__actions">
           {canClaim ? (
             <button className="housing__button housing__button--primary" onClick={() => send(ev.claim)}>
-              Claim
+              {loc('housing.claim')}
             </button>
           ) : null}
 
@@ -244,7 +251,7 @@ const Housing = ({ data }: { data: HousingData }) => {
                   className="housing__button housing__button--primary"
                   onClick={() => send(ev.claimFaction || '', f.id)}
                 >
-                  Claim for {f.name}
+                  {loc('housing.claimFor', { name: f.name })}
                 </button>
               ))
             : null}
@@ -255,14 +262,14 @@ const Housing = ({ data }: { data: HousingData }) => {
                 className="housing__button housing__button--primary"
                 onClick={() => send(data.lockedEntrance ? ev.unlockEntrance : ev.lockEntrance)}
               >
-                {data.lockedEntrance ? 'Unlock Entrance' : 'Lock Entrance'}
+                {data.lockedEntrance ? loc('housing.unlockEntrance') : loc('housing.lockEntrance')}
               </button>
               {EXIT_LOCKS ? (
                 <button
                   className="housing__button housing__button--primary"
                   onClick={() => send(data.lockedExit ? ev.unlockExit : ev.lockExit)}
                 >
-                  {data.lockedExit ? 'Unlock Exit' : 'Lock Exit'}
+                  {data.lockedExit ? loc('housing.unlockExit') : loc('housing.lockExit')}
                 </button>
               ) : null}
             </>
@@ -273,21 +280,21 @@ const Housing = ({ data }: { data: HousingData }) => {
               className="housing__button housing__button--primary"
               onClick={() => send(data.locked ? ev.unlock : ev.lock)}
             >
-              {data.locked ? 'Unlock' : 'Lock'}
+              {data.locked ? loc('housing.unlock') : loc('housing.lock')}
             </button>
           ) : null}
 
           {isOwner ? (
-            <button className="housing__button" onClick={() => send(ev.createKey)}>Cut a key</button>
+            <button className="housing__button" onClick={() => send(ev.createKey)}>{loc('housing.cutKey')}</button>
           ) : null}
 
           {manages && data.hasKeys ? (
-            <button className="housing__button" onClick={() => setPending('voidKeys')}>Void all keys</button>
+            <button className="housing__button" onClick={() => setPending('voidKeys')}>{loc('housing.voidAllKeys')}</button>
           ) : null}
 
           {manages ? (
             <button className="housing__button" onClick={() => send(ev.transfer)}>
-              {isOwner ? 'Transfer' : 'Grant ownership'}
+              {isOwner ? loc('housing.transfer') : loc('housing.grantOwnership')}
             </button>
           ) : null}
 
@@ -301,61 +308,61 @@ const Housing = ({ data }: { data: HousingData }) => {
                     setPending('giveFaction');
                   }}
                 >
-                  Give to {f.name}
+                  {loc('housing.giveTo', { name: f.name })}
                 </button>
               ))
             : null}
 
           {isOwner ? (
             <button className="housing__button housing__button--danger" onClick={() => setPending('giveUp')}>
-              Give up
+              {loc('housing.giveUp')}
             </button>
           ) : null}
 
           {isManager && data.owned ? (
             <button className="housing__button housing__button--danger" onClick={() => setPending('breakLock')}>
-              Break lock
+              {loc('housing.breakLock')}
             </button>
           ) : null}
 
           {manages && data.canGrantContainers ? (
             <button className="housing__button" onClick={() => send(ev.grantContainer)}>
-              Grant this container
+              {loc('housing.grantContainer')}
             </button>
           ) : null}
 
           {data.pets ? (
-            <button className="housing__button" onClick={() => send(ev.pets)}>Pets</button>
+            <button className="housing__button" onClick={() => send(ev.pets)}>{loc('housing.pets')}</button>
           ) : null}
 
           {letters.length > 0 && ev.pinNote ? (
-            <button className="housing__button" onClick={openPicker}>Pin a note</button>
+            <button className="housing__button" onClick={openPicker}>{loc('housing.pinNote')}</button>
           ) : null}
 
           {note && note.canTakeDown ? (
-            <button className="housing__button" onClick={() => send(ev.takeNote)}>Take down the note</button>
+            <button className="housing__button" onClick={() => send(ev.takeNote)}>{loc('housing.takeDownNote')}</button>
           ) : null}
 
           {data.canKnock && ev.knock ? (
-            <button className="housing__button" onClick={() => send(ev.knock)}>Knock</button>
+            <button className="housing__button" onClick={() => send(ev.knock)}>{loc('housing.knock')}</button>
           ) : null}
         </div>
 
         {isOwner && data.sides ? (
           <p className="housing__hint">{EXIT_LOCKS
-            ? 'A locked entrance stops everyone coming in, a locked exit everyone going out, you included, until it is unlocked here. Leave the exit open and nobody is shut inside. A key lets its holder lock and unlock both too: trade it or leave it in a chest. Void all keys cancels every copy.'
-            : 'A locked entrance stops everyone coming in, you included, until it is unlocked here. Nobody is ever shut inside: the way out always opens. A key lets its holder lock and unlock it too: trade it or leave it in a chest. Void all keys cancels every copy.'}</p>
+            ? loc('housing.hintSidesExit')
+            : loc('housing.hintSides')}</p>
         ) : null}
 
         {isOwner && !data.sides ? (
-          <p className="housing__hint">A locked door stops everyone, you included, until it is unlocked here. A key lets its holder lock and unlock it too: trade it or leave it in a chest. Void all keys cancels every copy.</p>
+          <p className="housing__hint">{loc('housing.hintDoor')}</p>
         ) : null}
 
         {faction && faction.role ? (
           <p className="housing__hint">
             {faction.role === 'manager'
-              ? `Every rank of ${faction.name} that opens faction doors locks and unlocks this too. Its property managers rename it, cut and void keys, transfer it or give it up.`
-              : `Your rank in ${faction.name} lets you lock and unlock this from here.`}
+              ? loc('housing.factionManagerHint', { faction: faction.name })
+              : loc('housing.factionMemberHint', { faction: faction.name })}
           </p>
         ) : null}
 
@@ -363,7 +370,7 @@ const Housing = ({ data }: { data: HousingData }) => {
           <div className="housing__rename">
             <input
               className="housing__input"
-              placeholder="name this property"
+              placeholder={loc('housing.namePlaceholder')}
               maxLength={32}
               spellCheck={false}
               value={rename}
@@ -375,18 +382,18 @@ const Housing = ({ data }: { data: HousingData }) => {
               disabled={!rename.trim() || !NAME_CHARS.test(rename.trim())}
               onClick={() => send(ev.rename, rename.trim())}
             >
-              Save
+              {loc('common.save')}
             </button>
           </div>
         ) : null}
 
         {manages && rename.trim() && !NAME_CHARS.test(rename.trim()) ? (
-          <p className="housing__hint">Letters, numbers, spaces, apostrophes and dashes only.</p>
+          <p className="housing__hint">{loc('housing.nameChars')}</p>
         ) : null}
 
         <div className="housing__footer">
           <button className="housing__button housing__button--quiet" onClick={() => send(ev.cancel)}>
-            Close
+            {loc('common.close')}
           </button>
         </div>
       </div>
@@ -402,9 +409,9 @@ const Housing = ({ data }: { data: HousingData }) => {
           onBack={() => setReading(false)}
         >
           {note.canTakeDown ? (
-            <button className="parchment__button" onClick={() => send(ev.takeNote)}>Take it down</button>
+            <button className="parchment__button" onClick={() => send(ev.takeNote)}>{loc('housing.takeItDown')}</button>
           ) : null}
-          <button className="parchment__button parchment__button--primary" onClick={() => setReading(false)}>Back</button>
+          <button className="parchment__button parchment__button--primary" onClick={() => setReading(false)}>{loc('common.back')}</button>
         </PaperReader>
       ) : null}
       {dialog ? (

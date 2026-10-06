@@ -1,3 +1,5 @@
+import { loc } from '../../../loc';
+
 // Species and race catalog for the character creator.
 // Slugs and form ids MUST stay in sync with skymp5-server/ts/systems/charCreatorData.ts; change them together.
 // Form ids were extracted from the live server load order (Skyrim.esm + DLC).
@@ -21,11 +23,11 @@ const GIANT = 0x131f9;
 const RIEKLING = 0x04017f44; // DLC2RieklingRace (Dragonborn.esm at load index 4)
 
 export const AGES = [
-  { id: 'child', name: 'Child' },
-  { id: 'adolescent', name: 'Adolescent' },
-  { id: 'adult', name: 'Adult' },
-  { id: 'midlife', name: 'Midlife' },
-  { id: 'elder', name: 'Elder' }
+  { id: 'child', name: loc('charCreator.ages.child') },
+  { id: 'adolescent', name: loc('charCreator.ages.adolescent') },
+  { id: 'adult', name: loc('charCreator.ages.adult') },
+  { id: 'midlife', name: loc('charCreator.ages.midlife') },
+  { id: 'elder', name: loc('charCreator.ages.elder') }
 ];
 
 export const SPECIES = [

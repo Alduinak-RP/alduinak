@@ -4,33 +4,36 @@ import { SkyrimSlider } from '../../../components/SkyrimSlider/SkyrimSlider';
 import CheckBox from '../../checkbox/index';
 import { DOM_TO_DIK, MOUSE_TO_DIK, dikLabel, canHold } from '../../../utils/dxScanCodes';
 import './styles.scss';
+import { loc } from '../../../loc';
 
 const SETTINGS_TABS = [
-  { id: 'chat', label: 'Chat' },
-  { id: 'ui', label: 'Graphics / UI' },
-  { id: 'controls', label: 'Controls' },
+  { id: 'chat', label: loc('chat.settings.tab.chat') },
+  { id: 'ui', label: loc('chat.settings.tab.ui') },
+  { id: 'controls', label: loc('chat.settings.tab.controls') },
 ];
 
 // Rebindable keys: chat settings `keys` name (the launcher's skymp5-client setting) -> row label
 const KEY_ROWS: [string, string][] = [
-  ['emoteWheelKeyCode', 'Emote wheel'],
-  ['altInteractKeyCode', 'Interact / Menus'],
-  ['hideUiKeyCode', 'Hide interface'],
-  ['freeCursorKeyCode', 'Free cursor'],
-  ['voicePushToTalkKeyCode', 'Voice push-to-talk'],
-  ['chatFocusKeyCode', 'Chat'],
+  ['emoteWheelKeyCode', loc('chat.settings.key.emoteWheel')],
+  ['altInteractKeyCode', loc('chat.settings.key.altInteract')],
+  ['hideUiKeyCode', loc('chat.settings.key.hideUi')],
+  ['freeCursorKeyCode', loc('chat.settings.key.freeCursor')],
+  ['voicePushToTalkKeyCode', loc('chat.settings.key.voicePushToTalk')],
+  ['chatFocusKeyCode', loc('chat.settings.key.chatFocus')],
 ];
 
 // The launcher's CLIENT_FIXED_KEYS (skymp5-launcher-tauri/ui/renderer.js) plus Esc and Tab
 const CLIENT_FIXED_KEYS: Record<number, string> = {
-  1: 'menu close', 15: 'game menu', 28: 'Chat',
-  17: 'emote cancel', 30: 'emote cancel', 31: 'emote cancel', 32: 'emote cancel', 57: 'emote cancel', 19: 'emote cancel',
+  1: loc('chat.settings.fixed.menuClose'), 15: loc('chat.settings.fixed.gameMenu'), 28: loc('chat.settings.fixed.chat'),
+  17: loc('chat.settings.fixed.emoteCancel'), 30: loc('chat.settings.fixed.emoteCancel'), 31: loc('chat.settings.fixed.emoteCancel'),
+  32: loc('chat.settings.fixed.emoteCancel'), 57: loc('chat.settings.fixed.emoteCancel'), 19: loc('chat.settings.fixed.emoteCancel'),
 };
 
 // The controlmap's keys the client adds to keysLauncher, labelled like the launcher's Game Hotkeys
 const GAME_KEYS: [string, string][] = [
-  ['gameActivateKeyCode', 'Activate'], ['gameJumpKeyCode', 'Jump'], ['gameSprintKeyCode', 'Sprint'],
-  ['gameSneakKeyCode', 'Sneak'], ['gameShoutKeyCode', 'Shout / Power'], ['gameTogglePovKeyCode', 'Toggle POV'],
+  ['gameActivateKeyCode', loc('chat.settings.game.activate')], ['gameJumpKeyCode', loc('chat.settings.game.jump')],
+  ['gameSprintKeyCode', loc('chat.settings.game.sprint')], ['gameSneakKeyCode', loc('chat.settings.game.sneak')],
+  ['gameShoutKeyCode', loc('chat.settings.game.shout')], ['gameTogglePovKeyCode', loc('chat.settings.game.togglePov')],
 ];
 
 export type KeyOverrides = Record<string, number>;
@@ -143,18 +146,18 @@ const Settings = (props: {
   // The Activate warning already explains Interact / Menus on that key
   const shared = [...uses].filter(([code, names]) => names.size > 1 && !(interactClash && code === interact && names.size === 2))
     .map(([code, names]) => `${dikLabel(code)} (${[...names].join(', ')})`);
-  const sharedWarning = shared.length ? `Each of these keys does more than one thing on the same press: ${shared.join('; ')}.` : '';
+  const sharedWarning = shared.length ? loc('chat.settings.sharedWarning', { list: shared.join('; ') }) : '';
 
   return (
     <div className='chat-settings' style={{ height: `${frameHeight}px` }}>
       <button
         type='button'
         className='chat-settings-btn chat-settings-back'
-        title='Back'
+        title={loc('common.back')}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => props.onBack()}
       >
-        {'Back'}
+        {loc('common.back')}
       </button>
       <div className='content' ref={contentRef}>
         <div className='chat-channels chat-settings-tabs'>
@@ -171,25 +174,25 @@ const Settings = (props: {
           ))}
         </div>
         {tab === 'chat' && <>
-          <SkyrimSlider text={'font size'} name={'fontSize'} min={14} max={22} setValue={(value) => props.setFontSize(value)} sliderValue={props.fontSize} marks={[14, 15, 16, 17, 18, 19, 20, 21, 22]}/>
-          <SkyrimSlider text={'transparency'} name={'transparency'} min={0} max={80} setValue={(value) => props.setChatTransparency(value)} sliderValue={props.chatTransparency} marks={[0, 20, 40, 60, 80]}/>
-          <SkyrimSlider text={'fade (seconds, 0 = never)'} name={'fadeSeconds'} min={0} max={60} setValue={(value) => props.setFadeSeconds(value)} sliderValue={props.fadeSeconds} marks={[0, 10, 20, 30, 45, 60]}/>
-          <CheckBox text={'fade the text too'} initialValue={props.fadeText} setChecked={props.setFadeText} disabled={false} />
-          <CheckBox text={'lock chat'} initialValue={props.lockChat} setChecked={props.setLockChat} disabled={false} />
+          <SkyrimSlider text={loc('chat.settings.fontSize')} name={'fontSize'} min={14} max={22} setValue={(value) => props.setFontSize(value)} sliderValue={props.fontSize} marks={[14, 15, 16, 17, 18, 19, 20, 21, 22]}/>
+          <SkyrimSlider text={loc('chat.settings.transparency')} name={'transparency'} min={0} max={80} setValue={(value) => props.setChatTransparency(value)} sliderValue={props.chatTransparency} marks={[0, 20, 40, 60, 80]}/>
+          <SkyrimSlider text={loc('chat.settings.fade')} name={'fadeSeconds'} min={0} max={60} setValue={(value) => props.setFadeSeconds(value)} sliderValue={props.fadeSeconds} marks={[0, 10, 20, 30, 45, 60]}/>
+          <CheckBox text={loc('chat.settings.fadeText')} initialValue={props.fadeText} setChecked={props.setFadeText} disabled={false} />
+          <CheckBox text={loc('chat.settings.lockChat')} initialValue={props.lockChat} setChecked={props.setLockChat} disabled={false} />
           <div className='chat-highlights'>
-            <span className='chat-highlights-label'>highlight words</span>
+            <span className='chat-highlights-label'>{loc('chat.settings.highlightWords')}</span>
             <textarea
               className='chat-highlights-input'
               value={props.customHighlights}
-              placeholder={'gold, "Aria", trad*'}
+              placeholder={loc('chat.settings.highlightPlaceholder')}
               onChange={(e) => props.setCustomHighlights(e.target.value)}
             />
           </div>
         </>}
         {tab === 'ui' && <>
-          <SkyrimSlider text={'field of view'} name={'fov'} min={70} max={170} setValue={(value) => props.setFov(value)} sliderValue={props.fov ?? 80} marks={[70, 90, 110, 130, 150, 170]}/>
-          <CheckBox text={'show player names'} initialValue={props.showPlayerNames} setChecked={props.setShowPlayerNames} disabled={false} />
-          <CheckBox text={'show form ids (staff)'} initialValue={props.showFormIds} setChecked={props.setShowFormIds} disabled={false} />
+          <SkyrimSlider text={loc('chat.settings.fov')} name={'fov'} min={70} max={170} setValue={(value) => props.setFov(value)} sliderValue={props.fov ?? 80} marks={[70, 90, 110, 130, 150, 170]}/>
+          <CheckBox text={loc('chat.settings.showPlayerNames')} initialValue={props.showPlayerNames} setChecked={props.setShowPlayerNames} disabled={false} />
+          <CheckBox text={loc('chat.settings.showFormIds')} initialValue={props.showFormIds} setChecked={props.setShowFormIds} disabled={false} />
         </>}
         {tab === 'controls' && <>
           {KEY_ROWS.map(([name, label]) => (
@@ -201,24 +204,24 @@ const Settings = (props: {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setCapturing(name)}
               >
-                {capturing === name ? 'Press a key...' : dikLabel(keyOf(name))}
+                {capturing === name ? loc('chat.settings.pressKey') : dikLabel(keyOf(name))}
               </button>
             </div>
           ))}
-          <CheckBox key={`wheelHold-${keyOf('emoteWheelKeyCode')}`} text={'hold the emote wheel key' + (noHold('emoteWheelKeyCode') ? ' (not for this key)' : '')} initialValue={props.emoteWheelHold} setChecked={props.setEmoteWheelHold} disabled={noHold('emoteWheelKeyCode')} />
-          <CheckBox key={`interactHold-${keyOf('altInteractKeyCode')}`} text={'hold the interact key for its menus' + (noHold('altInteractKeyCode') ? ' (not for this key)' : '')} initialValue={props.interactMenuHold} setChecked={props.setInteractMenuHold} disabled={noHold('altInteractKeyCode')} />
+          <CheckBox key={`wheelHold-${keyOf('emoteWheelKeyCode')}`} text={loc('chat.settings.holdEmoteWheel') + (noHold('emoteWheelKeyCode') ? loc('chat.settings.notForThisKey') : '')} initialValue={props.emoteWheelHold} setChecked={props.setEmoteWheelHold} disabled={noHold('emoteWheelKeyCode')} />
+          <CheckBox key={`interactHold-${keyOf('altInteractKeyCode')}`} text={loc('chat.settings.holdInteract') + (noHold('altInteractKeyCode') ? loc('chat.settings.notForThisKey') : '')} initialValue={props.interactMenuHold} setChecked={props.setInteractMenuHold} disabled={noHold('altInteractKeyCode')} />
           <div className='chat-key-row'>
-            <span className='chat-key-label'>Esc cancels, Backspace resets a row</span>
+            <span className='chat-key-label'>{loc('chat.settings.keyHelp')}</span>
             <button
               type='button'
               className='chat-settings-btn'
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => applyKeys({})}
             >
-              {'Use launcher defaults'}
+              {loc('chat.settings.launcherDefaults')}
             </button>
           </div>
-          {interactClash && <div className='chat-key-warning'>{'Interact / Menus shares a key with Activate. Activate wins, so the housing menu and Personal Menu will not open until the keys differ.'}</div>}
+          {interactClash && <div className='chat-key-warning'>{loc('chat.settings.interactClash')}</div>}
           {sharedWarning && <div className='chat-key-warning'>{sharedWarning}</div>}
         </>}
       </div>

@@ -4,6 +4,7 @@ import { ConfirmBar, PaperReader, sendToClient as send, useCloseOnUnfocus, useEs
 import { assetUrl } from '../../utils/assetUrl';
 import { FONTS, INKS, MARKUP_ROOM, Markup, addCapital, plainText, unformatRange } from './markup';
 import './styles.scss';
+import { loc } from '../../loc';
 
 export { Markup, plainText } from './markup';
 
@@ -69,7 +70,11 @@ export interface WritingData {
 
 type Confirm = '' | 'burn' | 'break' | 'finish';
 
-const KIND_LABEL: Record<Kind, string> = { letter: 'Letter', journal: 'Journal', book: 'Book' };
+const KIND_LABEL: Record<Kind, string> = {
+  letter: loc('writing.kind.letter'),
+  journal: loc('writing.kind.journal'),
+  book: loc('writing.kind.book'),
+};
 
 // Vanilla notes and journals are handwritten, books printed
 const KIND_FONT: Record<Kind, string> = { letter: 'hand', journal: 'hand', book: 'book' };
@@ -77,9 +82,9 @@ const KIND_FONT: Record<Kind, string> = { letter: 'hand', journal: 'hand', book:
 const DEFAULT_LIMITS: Limits = { title: 40, letter: 2000, page: 1500, journalPages: 50, bookPages: 100 };
 
 const CONFIRM_TEXT: Record<Exclude<Confirm, ''>, string> = {
-  burn: 'Burn this writing? It is gone for good.',
-  break: 'Break the seal? Everyone who reads it later will see it was opened.',
-  finish: 'Finish the book? The pages written so far can never be changed again. You can still write on new pages, and the book can be copied.',
+  burn: loc('writing.confirm.burn'),
+  break: loc('writing.confirm.break'),
+  finish: loc('writing.confirm.finish'),
 };
 
 // Factions with artwork in ../../img/seals, by the faction id the server records (writingSystem.ts SEAL_FACTIONS); sign is the art under a signature when it differs
@@ -201,7 +206,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, lock
     const out = change(t, el ? el.selectionStart : t.length, el ? el.selectionEnd : t.length);
     if (!out) return;
     if (out.text.length > rawCap) {
-      setWarn('No room for more formatting on this page.');
+      setWarn(loc('writing.noRoom'));
       return;
     }
     setWarn('');
@@ -221,19 +226,19 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, lock
   const unformat = (): void => edit(unformatRange);
 
   const tools: Array<[string, string, () => void]> = [
-    ['B', 'Bold', wrap('[b]', '[/b]')],
-    ['I', 'Italic', wrap('[i]', '[/i]')],
-    ['U', 'Underline', wrap('[u]', '[/u]')],
-    ['S', 'Strike through', wrap('[s]', '[/s]')],
-    ['H1', 'Large heading', wrap('[head=1]', '[/head]')],
-    ['H2', 'Heading', wrap('[head=2]', '[/head]')],
-    ['H3', 'Small heading', wrap('[head=3]', '[/head]')],
-    ['Centre', 'Centre the selected lines', wrap('[center]', '[/center]')],
-    ['Right', 'Align the selected lines right', wrap('[right]', '[/right]')],
-    ['•', 'Bullet the selected lines', bullets],
-    ['Line', 'A dividing line', insert('[hr]')],
-    ['Capital', 'An illuminated capital for the next letter', capital],
-    ['Plain', 'Remove the formatting from the selection', unformat],
+    [loc('writing.tool.bold'), loc('writing.tool.boldHint'), wrap('[b]', '[/b]')],
+    [loc('writing.tool.italic'), loc('writing.tool.italicHint'), wrap('[i]', '[/i]')],
+    [loc('writing.tool.underline'), loc('writing.tool.underlineHint'), wrap('[u]', '[/u]')],
+    [loc('writing.tool.strike'), loc('writing.tool.strikeHint'), wrap('[s]', '[/s]')],
+    [loc('writing.tool.h1'), loc('writing.tool.h1Hint'), wrap('[head=1]', '[/head]')],
+    [loc('writing.tool.h2'), loc('writing.tool.h2Hint'), wrap('[head=2]', '[/head]')],
+    [loc('writing.tool.h3'), loc('writing.tool.h3Hint'), wrap('[head=3]', '[/head]')],
+    [loc('writing.tool.centre'), loc('writing.tool.centreHint'), wrap('[center]', '[/center]')],
+    [loc('writing.tool.right'), loc('writing.tool.rightHint'), wrap('[right]', '[/right]')],
+    ['•', loc('writing.tool.bulletHint'), bullets],
+    [loc('writing.tool.line'), loc('writing.tool.lineHint'), insert('[hr]')],
+    [loc('writing.tool.capital'), loc('writing.tool.capitalHint'), capital],
+    [loc('writing.tool.plain'), loc('writing.tool.plainHint'), unformat],
   ];
 
   const over = (i: number): boolean => plainText(textAt(i)).length > pageLen;
@@ -267,7 +272,7 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, lock
               value={title}
               maxLength={limits.title}
               disabled={locked > 0}
-              placeholder={kind === 'letter' ? 'Title, for example Letter to Ysolda' : 'Title'}
+              placeholder={kind === 'letter' ? loc('writing.titleLetterPlaceholder') : loc('writing.titlePlaceholder')}
               onChange={(e) => setTitle(e.target.value)}
             />
           </div>
@@ -275,17 +280,17 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, lock
             {tools.map(([label, hint, run]) => (
               <button key={label} className="writing__tool" title={hint} disabled={preview} onMouseDown={keepFocus} onClick={run}>{label}</button>
             ))}
-            <button className={'writing__tool' + (popup === 'ink' ? ' writing__tool--on' : '')} title="Ink colour" disabled={preview} onMouseDown={keepFocus} onClick={() => setPopup(popup === 'ink' ? '' : 'ink')}>Ink</button>
-            <button className={'writing__tool' + (popup === 'font' ? ' writing__tool--on' : '')} title="Font of the selection" disabled={preview} onMouseDown={keepFocus} onClick={() => setPopup(popup === 'font' ? '' : 'font')}>Font</button>
-            <button className={'writing__tool writing__tool--wide' + (preview ? ' writing__tool--on' : '')} title="See the page as readers will" onMouseDown={keepFocus} onClick={() => { setPopup(''); setPreview(!preview); }}>
-              {preview ? 'Back to writing' : 'Preview'}
+            <button className={'writing__tool' + (popup === 'ink' ? ' writing__tool--on' : '')} title={loc('writing.tool.inkHint')} disabled={preview} onMouseDown={keepFocus} onClick={() => setPopup(popup === 'ink' ? '' : 'ink')}>{loc('writing.tool.ink')}</button>
+            <button className={'writing__tool' + (popup === 'font' ? ' writing__tool--on' : '')} title={loc('writing.tool.fontHint')} disabled={preview} onMouseDown={keepFocus} onClick={() => setPopup(popup === 'font' ? '' : 'font')}>{loc('writing.tool.font')}</button>
+            <button className={'writing__tool writing__tool--wide' + (preview ? ' writing__tool--on' : '')} title={loc('writing.tool.previewHint')} onMouseDown={keepFocus} onClick={() => { setPopup(''); setPreview(!preview); }}>
+              {preview ? loc('writing.tool.backToWriting') : loc('writing.tool.preview')}
             </button>
             {popup === 'font' ? (
               <div className="writing__popup">
                 {FONTS.map((f) => (
                   <button key={f.key} className="writing__popup-row" onMouseDown={keepFocus} onClick={wrap('[font=' + f.key + ']', '[/font]')}>
                     <span>{f.label}</span>
-                    <span className="writing__popup-sample" style={{ fontFamily: f.family, textTransform: f.upper ? 'uppercase' : undefined }}>{f.sample || 'Aa Bb Cc'}</span>
+                    <span className="writing__popup-sample" style={{ fontFamily: f.family, textTransform: f.upper ? 'uppercase' : undefined }}>{f.sample || loc('writing.fontSample')}</span>
                   </button>
                 ))}
               </div>
@@ -317,13 +322,13 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, lock
                     maxLength={rawCap}
                     autoFocus={i === Math.max(first, locked)}
                     spellCheck={false}
-                    placeholder={i === 0 ? 'Dip the quill and write.' : ''}
+                    placeholder={i === 0 ? loc('writing.bodyPlaceholder') : ''}
                     onFocus={() => setActive(side)}
                     onChange={(e) => setText(i, e.target.value)}
                   />
                 )}
                 <span className={'writing__count' + (over(i) ? ' writing__count--over' : '')}>
-                  {(spread ? 'Page ' + (i + 1) + '   ' : '') + (i < locked ? 'Finished' : shown + ' / ' + pageLen)}
+                  {(spread ? loc('writing.pagePrefix', { n: i + 1 }) : '') + (i < locked ? loc('writing.finished') : loc('writing.count', { shown, max: pageLen }))}
                 </span>
               </div>
             );
@@ -332,24 +337,24 @@ const Composer = ({ kind, limits, heading, startTitle, startPages, editing, lock
         <div className="writing__foot">
           {spread ? (
             <div className="writing__pager">
-              <button className="parchment__button" disabled={first === 0} onClick={() => turn(first - 2)}>Previous</button>
-              <span className="parchment__hint">{'Pages ' + (first + 1) + '-' + Math.min(first + 2, maxPages) + ' of ' + maxPages}</span>
-              <button className="parchment__button" disabled={first + 2 >= maxPages} onClick={() => turn(first + 2)}>Next</button>
-              <button className="parchment__button" disabled={pages.length <= first || first < locked} onClick={removeSpread}>Remove these pages</button>
+              <button className="parchment__button" disabled={first === 0} onClick={() => turn(first - 2)}>{loc('writing.previous')}</button>
+              <span className="parchment__hint">{loc('writing.pages', { from: first + 1, to: Math.min(first + 2, maxPages), total: maxPages })}</span>
+              <button className="parchment__button" disabled={first + 2 >= maxPages} onClick={() => turn(first + 2)}>{loc('writing.next')}</button>
+              <button className="parchment__button" disabled={pages.length <= first || first < locked} onClick={removeSpread}>{loc('writing.removePages')}</button>
             </div>
-          ) : <span className="parchment__hint">Select words, then a button above. Preview shows the result.</span>}
+          ) : <span className="parchment__hint">{loc('writing.selectHint')}</span>}
           {warn ? <span className="writing__warn">{warn}</span> : null}
           <div className="parchment__actions">
             {!editing ? (
               <label className="writing__sign">
                 <input type="checkbox" checked={signed} onChange={(e) => setSigned(e.target.checked)} />
-                Sign it
+                {loc('writing.signIt')}
               </label>
             ) : null}
             <button className="parchment__button parchment__button--primary" disabled={!written || !fits} onClick={submit}>
-              {editing ? 'Save' : 'Write it'}
+              {editing ? loc('common.save') : loc('writing.writeIt')}
             </button>
-            <button className="parchment__button" onClick={onCancel}>Cancel</button>
+            <button className="parchment__button" onClick={onCancel}>{loc('common.cancel')}</button>
           </div>
         </div>
       </div>
@@ -437,7 +442,9 @@ const Writing = ({ data }: { data: WritingData }) => {
   if (menu.view === 'compose' || (editing && doc)) {
     const kind: Kind = (menu.view === 'compose' ? menu.compose && menu.compose.kind : doc && doc.kind) || 'letter';
     const locked = editing && doc ? doc.fixedPages || 0 : 0;
-    const heading = editing && doc ? (locked ? 'Continue ' : 'Edit ') + doc.title : 'Write on ' + ((menu.compose && menu.compose.blankName) || KIND_LABEL[kind]);
+    const heading = editing && doc
+      ? (locked ? loc('writing.continueHeading', { title: doc.title }) : loc('writing.editHeading', { title: doc.title }))
+      : loc('writing.writeOn', { name: (menu.compose && menu.compose.blankName) || KIND_LABEL[kind] });
     return frame(
       <Composer
         key={editing && doc ? doc.id : 'new-' + kind}
@@ -474,17 +481,17 @@ const Writing = ({ data }: { data: WritingData }) => {
     return frame(
       <div className="parchment__shade">
         <div className="parchment__compose">
-          <h3 className="parchment__compose-title">Which one?</h3>
+          <h3 className="parchment__compose-title">{loc('writing.whichOne')}</h3>
           <div className="writing__list">
             {rows.map((r) => (
               <button key={r.id} className="writing__row" onClick={() => send(ev.open, r.id)}>
                 <span>{r.title}</span>
-                <span className="parchment__hint">{r.sealed ? 'Sealed' : KIND_LABEL[r.kind]}</span>
+                <span className="parchment__hint">{r.sealed ? loc('writing.sealed') : KIND_LABEL[r.kind]}</span>
               </button>
             ))}
           </div>
           <div className="parchment__actions parchment__actions--end">
-            <button className="parchment__button" onClick={() => send(ev.close)}>Close</button>
+            <button className="parchment__button" onClick={() => send(ev.close)}>{loc('common.close')}</button>
           </div>
         </div>
       </div>,
@@ -493,7 +500,7 @@ const Writing = ({ data }: { data: WritingData }) => {
 
   if (!doc) return null;
 
-  const closeButton = <button className="parchment__button" onClick={() => send(ev.close)}>Close</button>;
+  const closeButton = <button className="parchment__button" onClick={() => send(ev.close)}>{loc('common.close')}</button>;
 
   if (menu.view === 'sealed') {
     const seal = sealArt(doc.sealFaction);
@@ -513,8 +520,8 @@ const Writing = ({ data }: { data: WritingData }) => {
             <div className="parchment__actions parchment__actions--end">
               {confirmBar(doc.id) || (
                 <>
-                  {doc.canBreak ? <button className="parchment__button parchment__button--primary" onClick={() => setConfirm('break')}>Break the seal</button> : null}
-                  {doc.canBurn ? <button className="parchment__button" onClick={() => setConfirm('burn')}>Burn</button> : null}
+                  {doc.canBreak ? <button className="parchment__button parchment__button--primary" onClick={() => setConfirm('break')}>{loc('writing.breakSeal')}</button> : null}
+                  {doc.canBurn ? <button className="parchment__button" onClick={() => setConfirm('burn')}>{loc('writing.burn')}</button> : null}
                   {closeButton}
                 </>
               )}
@@ -529,29 +536,29 @@ const Writing = ({ data }: { data: WritingData }) => {
   const spread = doc.kind !== 'letter';
   const step = spread ? 2 : 1;
   const at = Math.min(page, Math.max(0, count - 1));
-  const meta = (count > step ? [spread ? 'Pages ' + (at + 1) + '-' + Math.min(at + 2, count) + ' of ' + count : 'Page ' + (at + 1) + ' of ' + count] : [])
-    .concat(doc.copy ? ['A copy'] : [])
-    .concat(doc.canEdit && doc.fixedPages ? ['Finished up to page ' + doc.fixedPages] : [])
+  const meta = (count > step ? [spread ? loc('writing.pages', { from: at + 1, to: Math.min(at + 2, count), total: count }) : loc('writing.page', { n: at + 1, total: count })] : [])
+    .concat(doc.copy ? [loc('writing.aCopy')] : [])
+    .concat(doc.canEdit && doc.fixedPages ? [loc('writing.finishedUpTo', { n: doc.fixedPages })] : [])
     .concat(doc.brokenSeals)
     .concat(doc.staff ? [doc.id].concat(doc.staffLines) : []);
 
   const actions = confirmBar(doc.id) || (
     <>
-      {count > step ? <button className="parchment__button" disabled={at === 0} onClick={() => setPage(Math.max(0, at - step))}>Previous</button> : null}
-      {count > step ? <button className="parchment__button" disabled={at + step >= count} onClick={() => setPage(at + step)}>Next</button> : null}
-      {doc.canEdit ? <button className="parchment__button" onClick={() => setEditing(true)}>{doc.fixedPages ? 'Continue writing' : 'Edit'}</button> : null}
-      {doc.canFinish ? <button className="parchment__button" onClick={() => setConfirm('finish')}>{doc.fixedPages ? 'Finish the new pages' : 'Finish'}</button> : null}
+      {count > step ? <button className="parchment__button" disabled={at === 0} onClick={() => setPage(Math.max(0, at - step))}>{loc('writing.previous')}</button> : null}
+      {count > step ? <button className="parchment__button" disabled={at + step >= count} onClick={() => setPage(at + step)}>{loc('writing.next')}</button> : null}
+      {doc.canEdit ? <button className="parchment__button" onClick={() => setEditing(true)}>{doc.fixedPages ? loc('writing.continueWriting') : loc('writing.edit')}</button> : null}
+      {doc.canFinish ? <button className="parchment__button" onClick={() => setConfirm('finish')}>{doc.fixedPages ? loc('writing.finishNew') : loc('writing.finish')}</button> : null}
       {doc.canSeal ? (
-        <button className="parchment__button" disabled={!doc.hasWax} title={doc.hasWax ? '' : 'Needs Sealing Wax'} onClick={() => send(ev.seal, doc.id)}>
-          {doc.hasWax ? 'Seal' : 'Seal (needs wax)'}
+        <button className="parchment__button" disabled={!doc.hasWax} title={doc.hasWax ? '' : loc('writing.needsWax')} onClick={() => send(ev.seal, doc.id)}>
+          {doc.hasWax ? loc('writing.seal') : loc('writing.sealNeedsWax')}
         </button>
       ) : null}
       {doc.canCopy ? (
         <button className="parchment__button" disabled={doc.blankBooks < 1} onClick={() => send(ev.copy, doc.id)}>
-          {doc.blankBooks < 1 ? 'Copy (needs a Blank Book)' : 'Copy'}
+          {doc.blankBooks < 1 ? loc('writing.copyNeedsBook') : loc('writing.copy')}
         </button>
       ) : null}
-      {doc.canBurn ? <button className="parchment__button" onClick={() => setConfirm('burn')}>Burn</button> : null}
+      {doc.canBurn ? <button className="parchment__button" onClick={() => setConfirm('burn')}>{loc('writing.burn')}</button> : null}
       {closeButton}
     </>
   );

@@ -5,6 +5,7 @@ import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 
 import { DEFAULT_RANK_HOURS, FREE_WORK, PROFESSION_TYPES, RANK_NAMES, SHORT_DESC, SLOT_NAMES, SLOT_TAGS } from './ranks';
 import './styles.scss';
+import { loc } from '../../loc';
 
 interface Profession {
   id: string;
@@ -118,9 +119,9 @@ const send = (key: string, ...args: unknown[]): void => {
   }
 };
 
-const hoursText = (n: number): string => n + (n === 1 ? ' hour' : ' hours');
+const hoursText = (n: number): string => (n === 1 ? loc('mastery.hourOne', { n }) : loc('mastery.hourMany', { n }));
 
-export const slotName = (s: MasterySlot): string => s.name || SLOT_NAMES[s.slot] || 'Slot ' + (s.slot + 1);
+export const slotName = (s: MasterySlot): string => s.name || SLOT_NAMES[s.slot] || loc('mastery.slot.numbered', { n: s.slot + 1 });
 
 const slotWord = (s: MasterySlot): string => slotName(s).toLowerCase();
 
@@ -130,35 +131,37 @@ const nextStep = (s: MasterySlot): { name: string; at: number } | null =>
 
 // For example "Tailor, Free, 7 of 20 h to Novice" or "empty, up to Novice"
 const chipText = (s: MasterySlot): string => {
-  if (!s.profession) return 'empty, up to ' + RANK_NAMES[s.cap];
+  if (!s.profession) return loc('mastery.chip.empty', { rank: RANK_NAMES[s.cap] });
   const next = s.slot > 0 ? nextStep(s) : null;
-  const hours = next ? s.hours + ' of ' + next.at + ' h to ' + next.name : s.hours + ' h';
-  return (s.label || s.profession) + ', ' + RANK_NAMES[s.rank] + ', ' + hours;
+  const hours = next ? loc('mastery.chip.toNext', { hours: s.hours, at: next.at, rank: next.name }) : loc('mastery.chip.hours', { hours: s.hours });
+  return loc('mastery.chip.line', { label: s.label || s.profession, rank: RANK_NAMES[s.rank], progress: hours });
 };
 
 // The line under a held craft's hours: the primary's clock rule, a sub-slot's progress on its ladder
 const progressText = (s: MasterySlot): string => {
-  if (s.slot === 0) return 'Working your craft earns an hour; the next counts an hour later.';
+  if (s.slot === 0) return loc('mastery.progress.primary');
   const next = nextStep(s);
-  if (!next) return 'As your ' + slotWord(s) + ' craft it rises no higher than ' + RANK_NAMES[s.cap] + '.';
-  return s.hours + ' of ' + next.at + ' hours toward ' + next.name + (s.rank === 0 ? ', earned by its free work.' : '.');
+  if (!next) return loc('mastery.progress.capped', { slot: slotWord(s), rank: RANK_NAMES[s.cap] });
+  const vars = { hours: s.hours, at: next.at, rank: next.name };
+  return s.rank === 0 ? loc('mastery.progress.towardFree', vars) : loc('mastery.progress.toward', vars);
 };
 
 // "Primary craft only" or "Primary or secondary" for a rank above the viewed slot's cap
 const reachText = (slots: MasterySlot[], rank: number): string => {
   const names = slots.filter((s) => s.cap >= rank).map(slotWord);
-  const text = names.join(' or ') + (names.length === 1 ? ' craft only' : '');
+  const joined = names.join(loc('mastery.reach.join'));
+  const text = names.length === 1 ? loc('mastery.reach.only', { names: joined }) : joined;
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
 
 const pickText = (s: MasterySlot, label: string, resetsLeft: number): string => {
-  const resets = 'Resets are shared by all your crafts (' + resetsLeft + ' left).';
-  if (s.slot === 0) return 'As your primary craft the ' + label + ' makes you a Novice at once. ' + resets;
-  const gate = s.rankHours[1] ? ' It starts at Free: ' + hoursText(s.rankHours[1]) + ' of its free work make you a Novice.' : '';
-  return 'As your ' + slotWord(s) + ' craft the ' + label + ' rises no higher than ' + RANK_NAMES[s.cap] + '.' + gate + ' ' + resets;
+  const resets = loc('mastery.pick.resets', { n: resetsLeft });
+  if (s.slot === 0) return loc('mastery.pick.primary', { label, resets });
+  const gate = s.rankHours[1] ? loc('mastery.pick.gate', { hours: hoursText(s.rankHours[1]) }) : '';
+  return loc('mastery.pick.sub', { slot: slotWord(s), label, rank: RANK_NAMES[s.cap], gate, resets });
 };
 
-const minutesText = (ms: number): string => Math.max(1, Math.ceil(ms / 60000)) + ' min';
+const minutesText = (ms: number): string => loc('mastery.minutes', { n: Math.max(1, Math.ceil(ms / 60000)) });
 
 interface BankHour {
   filled: boolean;
@@ -171,20 +174,30 @@ interface BankHour {
 // crafts leave each cell about 65 px); the strip's caption carries the online rule and the tooltip the full sentence
 const bankHours = (b: MasteryBankSlot, bank: MasteryBank, label: string, left: (ms: number) => number): BankHour[] => {
   const counted = left(b.countedMs);
-  const online = bank.offline ? '' : ' online';
+  const online = bank.offline ? '' : loc('mastery.bank.online');
   const hours: BankHour[] = [
     counted > 0
-      ? { filled: true, state: 'Counted', detail: 'next in ' + minutesText(counted), title: `This hour as a ${label} is counted. Work counts an hour again in ${minutesText(counted)}.` }
-      : { filled: false, state: 'Open', detail: 'counts now', title: `Your next work as a ${label} counts an hour.` },
+      ? {
+          filled: true,
+          state: loc('mastery.bank.counted'),
+          detail: loc('mastery.bank.nextIn', { time: minutesText(counted) }),
+          title: loc('mastery.bank.countedTitle', { label, time: minutesText(counted) }),
+        }
+      : { filled: false, state: loc('mastery.bank.open'), detail: loc('mastery.bank.countsNow'), title: loc('mastery.bank.openTitle', { label }) },
   ];
   for (let i = 0; i < bank.max; i++) {
     if (i >= b.banked) {
-      hours.push({ filled: false, state: 'Empty', detail: '', title: 'An extra craft inside a counted hour is banked here.' });
+      hours.push({ filled: false, state: loc('mastery.bank.empty'), detail: '', title: loc('mastery.bank.emptyTitle') });
       continue;
     }
     const wait = left(b.payMs) + i * bank.intervalMs;
     const when = wait > 0 ? minutesText(wait) : '';
-    hours.push({ filled: true, state: 'Pending', detail: when ? 'in ' + when : 'any moment', title: `A banked hour as a ${label}, counted ${when ? 'after ' + when + online : 'within a minute'}.` });
+    hours.push({
+      filled: true,
+      state: loc('mastery.bank.pending'),
+      detail: when ? loc('mastery.bank.inTime', { time: when }) : loc('mastery.bank.anyMoment'),
+      title: when ? loc('mastery.bank.pendingTitle', { label, time: when, online }) : loc('mastery.bank.pendingTitleSoon', { label }),
+    });
   }
   return hours;
 };
@@ -203,8 +216,8 @@ const HourBank = ({ bank, slots }: { bank: MasteryBank; slots: MasterySlot[] }) 
   return (
     <div className="mastery__bank">
       <div className="mastery__bank-rule">
-        <span className="mastery__bank-title">Hour bank</span>
-        Extra crafts wait here. One is counted per hour{bank.offline ? ', online or not' : ' you are online'}.
+        <span className="mastery__bank-title">{loc('mastery.bank.title')}</span>
+        {bank.offline ? loc('mastery.bank.ruleOffline') : loc('mastery.bank.ruleOnline')}
       </div>
       {bank.slots.map((b) => {
         const held = slots.filter((s) => s.slot === b.slot)[0];
@@ -215,13 +228,13 @@ const HourBank = ({ bank, slots }: { bank: MasteryBank; slots: MasterySlot[] }) 
             <div className="mastery__bank-hours">
               {b.capped ? (
                 <div className="mastery__bank-hour">
-                  At its cap
-                  <span className="mastery__bank-detail">earns no more hours</span>
+                  {loc('mastery.bank.atCap')}
+                  <span className="mastery__bank-detail">{loc('mastery.bank.noMoreHours')}</span>
                 </div>
               ) : (
                 bankHours(b, bank, label, left).map((h, i) => (
                   <div key={i} className={'mastery__bank-hour' + (h.filled ? ' mastery__bank-hour--filled' : '')} title={h.title}>
-                    {'Hour ' + (i + 1) + ' \u00b7 ' + h.state}
+                    {loc('mastery.bank.hour', { n: i + 1, state: h.state })}
                     <span className="mastery__bank-detail">{h.detail || '\u00a0'}</span>
                   </div>
                 ))
@@ -284,10 +297,10 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
 
   const costText = (i: number): string => {
     if (i > cap) return reachText(slots, i);
-    if (i === 0) return 'everyone';
+    if (i === 0) return loc('mastery.everyone');
     if (ladder[i] === undefined) return '';
-    if (sub && i === 1) return hoursText(ladder[i]) + ' of free work';
-    return ladder[i] === 0 ? 'from the start' : ladder[i] + ' hours';
+    if (sub && i === 1) return loc('mastery.freeWorkHours', { hours: hoursText(ladder[i]) });
+    return ladder[i] === 0 ? loc('mastery.fromStart') : loc('mastery.hourMany', { n: ladder[i] });
   };
 
   const resetSlot = resetting ? heldBy(resetting) : undefined;
@@ -297,8 +310,8 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
     <div className={embedded ? 'mastery mastery--embedded' : 'mastery'}>
       {embedded ? null : <div className="mastery__fade" />}
       <div className={'mastery__frame' + (multi ? ' mastery__frame--slots' : '') + (bank ? ' mastery__frame--bank' : '')}>
-        {embedded ? null : <div className="mastery__corner">Skills</div>}
-        <h1 className="mastery__title">{current ? current.label + ' – Mastery' : 'Mastery'}</h1>
+        {embedded ? null : <div className="mastery__corner">{loc('mastery.corner')}</div>}
+        <h1 className="mastery__title">{current ? loc('mastery.titleFor', { label: current.label }) : loc('mastery.title')}</h1>
 
         {bank ? <HourBank bank={bank} slots={data.slots || []} /> : null}
 
@@ -353,34 +366,34 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
             <div className="mastery__stage-foot">
               {isChosen ? (
                 <p className="mastery__played">
-                  {hoursText(hours)} at the craft
+                  {loc('mastery.atTheCraft', { hours: hoursText(hours) })}
                   <br />
                   <span className="mastery__played--muted mastery__played--hint">
-                    {own ? progressText(own) : 'Working your craft earns an hour; the next counts an hour later.'}
+                    {own ? progressText(own) : loc('mastery.progress.primary')}
                   </span>
                   {ev.reset && resetsLeft > 0 ? (
                     <button className="mastery__cancel mastery__reset" onClick={() => setResetting(current.id)}>
-                      {own ? 'Reset ' + slotWord(own) + ' craft' : 'Reset profession'} ({resetsLeft} left)
+                      {own ? loc('mastery.resetSlot', { slot: slotWord(own), n: resetsLeft }) : loc('mastery.resetProfession', { n: resetsLeft })}
                     </button>
                   ) : null}
                 </p>
               ) : multi ? (
                 openSlot ? (
                   <button className="mastery__choose" disabled={committing} onClick={() => setConfirming(current.id)}>
-                    {committing ? 'Taking it up...' : 'Take up as your ' + slotWord(openSlot) + ' craft'}
+                    {committing ? loc('mastery.takingUp') : loc('mastery.takeUpSlot', { slot: slotWord(openSlot) })}
                   </button>
                 ) : (
-                  <p className="mastery__played mastery__played--muted">Every craft slot is taken.</p>
+                  <p className="mastery__played mastery__played--muted">{loc('mastery.slotsTaken')}</p>
                 )
               ) : chosen ? (
-                <p className="mastery__played mastery__played--muted">You follow another craft.</p>
+                <p className="mastery__played mastery__played--muted">{loc('mastery.otherCraft')}</p>
               ) : (
                 <button
                   className="mastery__choose"
                   disabled={committing}
                   onClick={() => setConfirming(current.id)}
                 >
-                  {committing ? 'Taking it up...' : 'Take up this craft'}
+                  {committing ? loc('mastery.takingUp') : loc('mastery.takeUp')}
                 </button>
               )}
             </div>
@@ -402,7 +415,7 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
                 >
                   <h3 className="mastery__rank-name">{rankName}</h3>
                   <p className="mastery__rank-perk">{rankDesc(current, i)}</p>
-                  {work ? <p className="mastery__rank-work">Toward Novice: {work}</p> : null}
+                  {work ? <p className="mastery__rank-work">{loc('mastery.towardNovice', { work })}</p> : null}
                   <span className="mastery__rank-cost">{costText(i)}</span>
                 </div>
               );
@@ -410,16 +423,16 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
           </section>
         ) : null}
 
-        {embedded ? null : <button className="mastery__close" onClick={() => send(ev.close)}>Close</button>}
+        {embedded ? null : <button className="mastery__close" onClick={() => send(ev.close)}>{loc('common.close')}</button>}
 
         {resetting && ev.reset ? (
           <ConfirmDialog
-            title={resetSlot ? 'Set your ' + slotWord(resetSlot) + ' craft aside?' : 'Set your profession aside?'}
+            title={resetSlot ? loc('mastery.reset.slotTitle', { slot: slotWord(resetSlot) }) : loc('mastery.reset.title')}
             body={resetSlot
-              ? `The ${resetLabel} loses its hours and rank and you may choose a ${slotWord(resetSlot)} craft again; your other crafts stay. You have ${resetsLeft} ${resetsLeft === 1 ? 'reset' : 'resets'} left, shared by all your crafts.`
-              : `Your hours and rank are lost and you may choose a craft again. You have ${resetsLeft} ${resetsLeft === 1 ? 'reset' : 'resets'} left on this character.`}
-            confirmLabel="Reset"
-            cancelLabel="Keep it"
+              ? (resetsLeft === 1 ? loc('mastery.reset.slotBodyOne', { label: resetLabel, slot: slotWord(resetSlot), n: resetsLeft }) : loc('mastery.reset.slotBodyMany', { label: resetLabel, slot: slotWord(resetSlot), n: resetsLeft }))
+              : (resetsLeft === 1 ? loc('mastery.reset.bodyOne', { n: resetsLeft }) : loc('mastery.reset.bodyMany', { n: resetsLeft }))}
+            confirmLabel={loc('mastery.reset.confirm')}
+            cancelLabel={loc('mastery.reset.cancel')}
             onConfirm={() => {
               send(ev.reset as string, resetting);
               setResetting(null);
@@ -430,12 +443,12 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
 
         {confirming && current ? (
           <ConfirmDialog
-            title={`Take up the ${current.label}?`}
+            title={loc('mastery.choose.title', { label: current.label })}
             body={multi && openSlot
               ? pickText(openSlot, current.label, resetsLeft)
-              : `A character keeps one craft. It can be reset only ${resetsLeft === 1 ? 'once' : `${resetsLeft} times`}, and the hours go with it.`}
-            confirmLabel="Commit"
-            cancelLabel="Not yet"
+              : loc('mastery.choose.body', { times: resetsLeft === 1 ? loc('mastery.choose.once') : loc('mastery.choose.times', { n: resetsLeft }) })}
+            confirmLabel={loc('mastery.choose.confirm')}
+            cancelLabel={loc('mastery.choose.cancel')}
             onConfirm={() => {
               if (multi && openSlot) send(ev.choose, confirming, openSlot.slot);
               else send(ev.choose, confirming);

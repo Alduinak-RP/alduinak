@@ -8,6 +8,8 @@
 // copies skymp5-front/ui-static there); missing files degrade gracefully.
 // The title lockup is misc/logo/assets/menu-title-logo.png, made by make_logo.py.
 
+import { loc } from '../loc';
+
 const VIDEO_SRC = 'menu-background.webm';
 const MUSIC_SRC = 'menu-music.mp3';
 const TITLE_SRC = 'menu-title-logo.png';
@@ -152,7 +154,7 @@ class MainMenuMedia {
   }
 
   applyMute() {
-    if (this.button) this.button.textContent = this.musicMuted ? '♪ Music: Off' : '♪ Music: On';
+    if (this.button) this.button.textContent = this.musicMuted ? loc('mainMenu.musicOff') : loc('mainMenu.musicOn');
     if (!this.music) return;
     if (this.musicMuted) {
       this.music.pause();

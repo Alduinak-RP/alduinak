@@ -8,6 +8,7 @@ import Channels, { DEFAULT_CHANNEL, SYSTEM_CHANNEL, applyChannel, channelForMess
 import { replaceIfMoreThan20 } from '../../utils/replaceIfMoreThan20';
 
 import './styles.scss';
+import { loc } from '../../loc';
 const MAX_LENGTH = 2000;
 const TIME_LIMIT = 1; // Seconds
 const SHOUT_LIMIT = 180; // Seconds
@@ -379,7 +380,7 @@ const Chat = (props) => {
         <div id='chat' className={`${idle ? 'chat-idle' : ''} ${idle && fadeText ? 'chat-idle-text' : ''}`} onMouseEnter={() => bumpIdle()} onMouseMove={() => { if (idle) bumpIdle(); }} style={{ '--chat-bg-alpha': (100 - chatTransparency) / 100 }}>
           <div className="chat-main">
             <div className='chat-header'>
-              {!lockChat && <div className='chat-drag-bar' title='Drag to move chat' />}
+              {!lockChat && <div className='chat-drag-bar' title={loc('chat.dragToMove')} />}
             </div>
             <ResizableBox
               width={saved.width != null ? saved.width : 640}
@@ -419,14 +420,14 @@ const Chat = (props) => {
                           <button
                             type='button'
                             className='chat-settings-button'
-                            title='Settings'
+                            title={loc('chat.settingsTitle')}
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
                               if (inputRef.current && !isSystemTab) inputRef.current.focus();
                               setSettingsOpened((open) => !open);
                             }}
                           >
-                            {'⚙ Settings'}
+                            {loc('chat.settingsButton')}
                           </button>
                         </div>
                         <div className='chat-divider' />
@@ -436,7 +437,7 @@ const Chat = (props) => {
                             className={'show'}
                             type="text"
                             readOnly={isSystemTab}
-                            placeholder={isSystemTab ? 'System messages appear here' : (placeholder !== undefined ? placeholder : '')}
+                            placeholder={isSystemTab ? loc('chat.systemPlaceholder') : (placeholder !== undefined ? placeholder : '')}
                             onChange={(value) => {
                               handleInput(value);
                               if (lastSendInputText + 1000 < Date.now()) {

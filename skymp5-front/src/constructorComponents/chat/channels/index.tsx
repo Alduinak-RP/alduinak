@@ -1,5 +1,6 @@
 import React from 'react';
 import './styles.scss';
+import { loc } from '../../../loc';
 
 export interface ChatChannel {
   // Identifier used internally and persisted as the active channel.
@@ -13,12 +14,12 @@ export interface ChatChannel {
 }
 
 export const CHAT_CHANNELS: ChatChannel[] = [
-  { id: 'local',    label: 'Local',    cmd: '',          className: 'channel-local' },
+  { id: 'local',    label: loc('chat.channel.local'),    cmd: '',          className: 'channel-local' },
   // System: read-only feed of vanilla notifications, admin /system broadcasts and flavour text. Not typeable. (#eda841)
-  { id: 'system',   label: 'System',   cmd: '',          className: 'channel-system' },
+  { id: 'system',   label: loc('chat.channel.system'),   cmd: '',          className: 'channel-system' },
   // Admin-to-admin chat, hidden from normal players.
-  { id: 'admin',    label: 'Admin',    cmd: '/admin ',   className: 'channel-admin' },
-  { id: 'personal', label: 'Personal', cmd: '/pm ',      className: 'channel-pm' },
+  { id: 'admin',    label: loc('chat.channel.admin'),    cmd: '/admin ',   className: 'channel-admin' },
+  { id: 'personal', label: loc('chat.channel.personal'), cmd: '/pm ',      className: 'channel-pm' },
 ];
 
 // Tabs only admins may see/use.

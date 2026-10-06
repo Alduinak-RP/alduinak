@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 import './styles.scss';
+import { loc } from '../../loc';
 
 interface RepairEvents {
   repair: string;
@@ -65,7 +66,7 @@ export const canAfford = (row: RepairRow): boolean => (row.cost || []).every((c)
 
 // "43% (150/350)", the percent alone without hit points
 export const conditionText = (row: RepairRow): string =>
-  (row.percent > 0 ? row.percent + '%' : 'Broken') + (row.maxHp > 0 ? ` (${row.hp}/${row.maxHp})` : '');
+  (row.percent > 0 ? row.percent + '%' : loc('repair.broken')) + (row.maxHp > 0 ? ` (${row.hp}/${row.maxHp})` : '');
 
 const barWidth = (percent: number): string => Math.max(0, Math.min(100, percent || 0)) + '%';
 
@@ -103,14 +104,16 @@ const RepairMenu = ({ data }: { data: RepairMenuData }) => {
       <div className="repair-menu__fade" />
       <div className="repair-menu__panel">
         <div className="repair-menu__header">
-          <h2 className="repair-menu__title">{data.title || 'Repair'}</h2>
+          <h2 className="repair-menu__title">{data.title || loc('repair.title')}</h2>
           <span className="repair-menu__status">
-            {rows.length === 0 ? 'All repaired' : rows.length + (rows.length === 1 ? ' damaged item' : ' damaged items')}
+            {rows.length === 0
+              ? loc('repair.allRepaired')
+              : rows.length === 1 ? loc('repair.damagedOne', { n: rows.length }) : loc('repair.damagedMany', { n: rows.length })}
           </span>
         </div>
 
         {rows.length === 0 ? (
-          <p className="repair-menu__empty">Nothing left to repair</p>
+          <p className="repair-menu__empty">{loc('repair.empty')}</p>
         ) : (
           <div className="repair-menu__rows">
             {rows.map((row, n) => {
@@ -120,7 +123,7 @@ const RepairMenu = ({ data }: { data: RepairMenuData }) => {
                   <div className="repair-menu__info">
                     <span className="repair-menu__name">
                       {row.name}
-                      {row.worn ? <span className="repair-menu__tag">equipped</span> : null}
+                      {row.worn ? <span className="repair-menu__tag">{loc('common.equipped')}</span> : null}
                     </span>
                     <div className="repair-menu__condition">
                       <div className="repair-menu__bar">
@@ -135,13 +138,13 @@ const RepairMenu = ({ data }: { data: RepairMenuData }) => {
                     </div>
                     <span className="repair-menu__cost">
                       {cost.length === 0
-                        ? 'No materials needed'
+                        ? loc('repair.noMaterials')
                         : cost.map((c, i) => (
                             <span
                               key={i + ':' + c.baseId}
                               className={'repair-menu__material' + (c.have >= c.need ? '' : ' repair-menu__material--short')}
                             >
-                              {c.need} {c.name} <span className="repair-menu__have">(have {c.have})</span>
+                              {loc('repair.material', { need: c.need, name: c.name })} <span className="repair-menu__have">{loc('repair.have', { n: c.have })}</span>
                             </span>
                           ))}
                     </span>
@@ -151,7 +154,7 @@ const RepairMenu = ({ data }: { data: RepairMenuData }) => {
                     disabled={busy || !canAfford(row)}
                     onClick={() => repair(ev.repair, row.key)}
                   >
-                    Repair
+                    {loc('repair.repair')}
                   </button>
                 </div>
               );
@@ -165,13 +168,13 @@ const RepairMenu = ({ data }: { data: RepairMenuData }) => {
             disabled={busy || !rows.some(canAfford)}
             onClick={() => repair(ev.repairAll)}
           >
-            Repair all
+            {loc('repair.repairAll')}
           </button>
           <button className="repair-menu__button" onClick={() => send(ev.improve)}>
-            Improve items
+            {loc('repair.improve')}
           </button>
           <button className="repair-menu__button repair-menu__button--quiet" onClick={() => send(ev.close)}>
-            Close
+            {loc('common.close')}
           </button>
         </div>
       </div>

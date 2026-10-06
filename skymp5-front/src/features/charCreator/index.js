@@ -11,8 +11,15 @@ import IdentityScreen from './screens/IdentityScreen';
 import AppearanceScreen from './screens/AppearanceScreen';
 import StoryScreen from './screens/StoryScreen';
 import './styles.scss';
+import { loc } from '../../loc';
 
-const STEPS = ['Species', 'Race', 'Identity', 'Appearance', 'Story'];
+const STEPS = [
+  loc('charCreator.step.species'),
+  loc('charCreator.step.race'),
+  loc('charCreator.step.identity'),
+  loc('charCreator.step.appearance'),
+  loc('charCreator.step.story')
+];
 
 export const send = (key, ...args) => {
   try {
@@ -82,7 +89,7 @@ const CharCreator = ({ data }) => {
   useEffect(() => {
     const onError = (e) => {
       setWaiting(false);
-      setSaveError((e.detail && (e.detail.message || e.detail)) || 'The server rejected this character.');
+      setSaveError((e.detail && (e.detail.message || e.detail)) || loc('charCreator.rejected'));
     };
     window.addEventListener('charCreator:error', onError);
     return () => window.removeEventListener('charCreator:error', onError);
@@ -208,9 +215,9 @@ const CharCreator = ({ data }) => {
         </div>
         <div className='charCreator__content'>{renderScreen()}</div>
         <div className='charCreator__footer'>
-          <Button text='Back' width={128} height={40} disabled={state.step === 1 || waiting} onClick={back} />
+          <Button text={loc('common.back')} width={128} height={40} disabled={state.step === 1 || waiting} onClick={back} />
           {state.step < 5
-            ? <Button text='Next' width={128} height={40} disabled={!canNext()} onClick={next} />
+            ? <Button text={loc('common.next')} width={128} height={40} disabled={!canNext()} onClick={next} />
             : null}
         </div>
       </div>
@@ -238,9 +245,9 @@ class CharCreatorBoundary extends Component {
     return (
       <div className='charCreator'>
         <div className='charCreator__panel'>
-          <div className='charCreator__title'>Character creator failed to load</div>
+          <div className='charCreator__title'>{loc('charCreator.loadFailed')}</div>
           <div className='charCreator__error'>{String(this.state.error.message || this.state.error)}</div>
-          <div className='charCreator__error'>Send staff skyrim-platform.log from Documents &gt; My Games &gt; your Skyrim folder &gt; SKSE.</div>
+          <div className='charCreator__error'>{loc('charCreator.loadFailedHint')}</div>
         </div>
       </div>
     );
