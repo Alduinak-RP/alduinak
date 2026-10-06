@@ -596,7 +596,11 @@ CallNative::AnySafe CallNative::DynamicCast(const std::string& outputTypeName,
 
     RE::BSTSmartPointer<RE::BSScript::ObjectTypeInfo> objInfoFormType;
     RE::VMTypeID formTypeId = (RE::VMTypeID)form->formType.get();
-    GetScriptObjectType(*vm, formTypeId, objInfoFormType);
+    // A form type with no Papyrus script (a placed hazard, a projectile) is an instance of nothing, so the cast fails like any other
+    if (!vm->GetScriptObjectType(formTypeId, objInfoFormType) ||
+        !objInfoFormType) {
+      return ObjectPtr();
+    }
 
     const bool IsParentOf =
       IsInstanceOf(outTypeInfoPtr, fromTypeInfoPtr->GetName());
