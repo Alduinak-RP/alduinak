@@ -10,7 +10,7 @@ import { FormModel } from "./model";
 import { aimForShot, applyMovement, forgetGroundSample, isCarrierCloneId, makeAppliedMovement, noteMovementArrival, recheckTurn } from "../sync/movementApply";
 import { applyMount, isCloneMovementSuspended, isMountSuspended, makeMountState, releaseCloneOnEvent, releaseRiderClone, dismountRiderOf } from "../sync/mountApply";
 import { applyCarried, makeCarriedViewState, releaseHold } from "../sync/carryHold";
-import { Movement } from "../sync/movement";
+import { Movement, NiPoint3 } from "../sync/movement";
 import { SpawnProcess } from "./spawnProcess";
 import { ObjectReferenceEx } from "../extensions/objectReferenceEx";
 import { FormTypeEx } from "../extensions/formTypeEx";
@@ -50,6 +50,10 @@ const HEAD_NODE = "NPC Head [Head]";
 // Name tags sit this many units above the head node
 const TAG_HEAD_OFFSET = 32;
 const MAX_TAG_DISTANCE = 1000;
+// A fresh NPC copy further than this from its spawn point once its spawn finished is logged
+const SPAWN_OFF_UNITS = 32;
+
+const fmtPos = (pos: readonly number[]): string => pos.map(Math.round).join(",");
 
 // The platform moves the text over the ref's head every frame until it is destroyed
 export const createHeadText = (refrId: number, text: string, color: number[], size: number, heightOffset: number, screenOffsetY = 0): number => {
@@ -92,7 +96,7 @@ export class FormView {
         this.lastWorldOrCell = model.movement.worldOrCell;
       if (this.lastWorldOrCell !== model.movement.worldOrCell) {
         this.lastWorldOrCell = model.movement.worldOrCell;
-        this.respawn();
+        this.respawn("its world or cell changed");
         return;
       }
     }
@@ -121,6 +125,7 @@ export class FormView {
         worldOrCell !== 0 &&
         model.movement.worldOrCell !== worldOrCell
       ) {
+        if (this.refrId !== 0) this.spawnReason = "the player left its world or cell";
         this.destroy();
         this.refrId = 0;
         return;
@@ -224,6 +229,7 @@ export class FormView {
 
     let refr = existing;
     if (!refr || refr.getBaseObject()?.getFormID() !== base.getFormID()) {
+      if (refr) this.spawnReason = "its base changed";
       this.destroy();
 
       if (model.movement) {
@@ -255,6 +261,12 @@ export class FormView {
       this.ready = false;
 
       const spawnPos = model.movement ? model.movement.pos : ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
+      // NPC copies are placed at the player and moved by the spawn; each placement and a spawn that left one off its spot are logged
+      const npcCopy = !!model.movement && !model.appearance;
+      const localId = refr?.getFormID() ?? 0;
+      if (npcCopy && refr) {
+        this.logCopyPlacement(localId, spawnPos);
+      }
 
       if (refr) {
         new SpawnProcess(model.appearance || null, spawnPos, refr.getFormID(), () => {
@@ -262,6 +274,7 @@ export class FormView {
           this.spawnMoment = Date.now();
           // The spawn's resurrect resets the actor, so the deferred kill is set again at the next update
           this.localImmortal = false;
+          if (npcCopy && this.refrId === localId) this.logSpawnOff(localId, spawnPos);
         }, !!model.isDead);
       }
 
@@ -282,11 +295,31 @@ export class FormView {
     return refr as ObjectReference;
   }
 
-  // Spawned again at the next update, its appearance base included
-  private respawn(): void {
+  // Spawned again at the next update, its appearance base included; the reason goes into the placement line
+  private respawn(reason: string): void {
+    this.spawnReason = reason;
     this.destroy();
     this.refrId = 0;
     this.appearanceBasedBaseId = 0;
+  }
+
+  private logCopyPlacement(localId: number, spawnPos: readonly number[]): void {
+    const placedAt = ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
+    const away = Math.round(ObjectReferenceEx.getDistance(placedAt, spawnPos as NiPoint3));
+    this.spawnPoint = [spawnPos[0], spawnPos[1], spawnPos[2]];
+    logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy ${localId.toString(16)} placed at the player ${fmtPos(placedAt)} for ${fmtPos(spawnPos)} (${away} units away), hosted here ${isRemoteHostedByMe(this.remoteRefrId ?? 0)}, ${this.spawnReason}`);
+    this.spawnReason = "fresh";
+  }
+
+  // The spawn moved, enabled and resurrected the copy; one that still stands away from its spawn point is the evidence for a copy left at the player
+  private logSpawnOff(localId: number, spawnPos: readonly number[]): void {
+    const refr = ObjectReference.from(Game.getFormEx(localId));
+    if (!refr) return;
+    const pos = ObjectReferenceEx.getPos(refr);
+    const off = Math.round(ObjectReferenceEx.getDistanceNoZ(pos, spawnPos as NiPoint3));
+    if (off <= SPAWN_OFF_UNITS) return;
+    const player = ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
+    logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy ${localId.toString(16)} stands ${off} units from its spawn point after the spawn, at ${fmtPos(pos)}, ${Math.round(ObjectReferenceEx.getDistance(pos, player))} units from the player, disabled ${refr.isDisabled()}, 3D ${refr.is3DLoaded()}`);
   }
 
   destroy(): void {
@@ -484,7 +517,7 @@ export class FormView {
           } catch (e) {
             if (e instanceof RespawnNeededError) {
               this.lastWorldOrCell = model.movement.worldOrCell;
-              this.respawn();
+              this.respawn("its packet named another cell");
               return;
             } else {
               throw e;
@@ -625,7 +658,7 @@ export class FormView {
     if (revived) {
       // A copy only ragdolled by the relayed Ragdoll event has no engine death for DeathService to undo, so it is spawned again here
       if (actor.getActorValue("Variable10") < -999) {
-        this.respawn();
+        this.respawn("the server revived it while it lay ragdolled");
         return true;
       }
       try {
@@ -634,7 +667,7 @@ export class FormView {
         if (!(e instanceof RespawnNeededError)) {
           throw e;
         }
-        this.respawn();
+        this.respawn("the server revived it");
         return true;
       }
       return false;
@@ -646,12 +679,22 @@ export class FormView {
     }
     // The server's own verdict on the hit arrives within the grace; past it the engine's kill was its own and the copy follows the server
     if (this.engineDeadSince && Date.now() - this.engineDeadSince >= FormView.engineDeathGraceMs) {
-      const killer = this.engineKillerId ? ` by ${this.engineKillerId.toString(16)}` : "";
-      logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy ${this.refrId.toString(16)} died in the engine${killer} while the server has it alive, spawned again`);
-      this.respawn();
+      const killer = this.engineKillerId ? ` by ${this.engineKillerId.toString(16)}` : " with no killer";
+      logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy ${this.refrId.toString(16)} died in the engine${killer} while the server has it alive, ${this.describeCorpse(actor, model)}, spawned again`);
+      this.respawn("it died in the engine");
       return true;
     }
     return false;
+  }
+
+  // Where and when the engine's own kill happened: the cause is read from the height against the spawn point, the time since the spawn and the health the server last relayed
+  private describeCorpse(actor: Actor, model: FormModel): string {
+    const pos = ObjectReferenceEx.getPos(actor);
+    const player = ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
+    const sinceSpawn = this.spawnMoment ? `${Date.now() - this.spawnMoment} ms after its spawn` : "before its spawn finished";
+    const fromSpawn = this.spawnPoint ? `, ${Math.round(ObjectReferenceEx.getDistanceNoZ(pos, this.spawnPoint))} units from its spawn point and ${Math.round(pos[2] - this.spawnPoint[2])} in height` : "";
+    const health = model.movement ? `, server health ${Math.round((model.movement.healthPercentage ?? 0) * 100)}%` : "";
+    return `${sinceSpawn} at ${fmtPos(pos)}${fromSpawn}, ${Math.round(ObjectReferenceEx.getDistance(pos, player))} units from the player, 3D ${actor.is3DLoaded()}, hosted here ${isRemoteHostedByMe(this.remoteRefrId ?? 0)}${health}`;
   }
 
   // From the engine's death events on this copy's local id
@@ -1091,6 +1134,10 @@ export class FormView {
   private static readonly niNodeUpdateMinIntervalMs = 5000;
   private lastWorldOrCell = 0;
   private spawnMoment = 0;
+  // Why the next placement happens, for its log line
+  private spawnReason = "fresh";
+  // The server position the last spawn moved an NPC copy to
+  private spawnPoint: NiPoint3 | undefined;
   private loaded3DMoment = 0;
   private was3DLoaded = false;
   private objectState = this.getDefaultObjectState();

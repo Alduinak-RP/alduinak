@@ -33,6 +33,7 @@ import { logTrace, logToPlatformLog } from "../../logging";
 
 const playerFormId = 0x14;
 const MOVEMENT_PROBE_MS = 130;
+const DISABLED_COPIES_LOGGED_LIMIT = 256;
 // An unchanged actor is still reported this often (D10)
 const MOVEMENT_KEEPALIVE_MS = 1000;
 const ACTOR_VALUES_READ_MS = 250;
@@ -187,6 +188,11 @@ export class SendInputsService extends ClientListener {
         if (!owner) {
             return;
         }
+        // A hosted copy just placed stands disabled at the player until its spawn moves it, so a report now would put the NPC at the player for everyone
+        if (remoteId && owner.isDisabled()) {
+            this.logDisabledCopy(remoteId, owner.getFormID());
+            return;
+        }
         if (!state) {
             state = { probedAt: 0, sentAt: 0, sentEvents: 0, followUp: false };
             this.movementSends.set(remoteId, state);
@@ -221,6 +227,18 @@ export class SendInputsService extends ClientListener {
         });
         // The own model holds each report itself, so the relay need not echo it to the sender
         setFormMovement(form, message.data);
+    }
+
+    // Once per copy, the evidence that a hosted NPC's report was skipped while its spawn had not moved it yet
+    private logDisabledCopy(remoteId: number, localId: number) {
+        if (this.disabledCopiesLogged.has(localId)) {
+            return;
+        }
+        if (this.disabledCopiesLogged.size >= DISABLED_COPIES_LOGGED_LIMIT) {
+            this.disabledCopiesLogged.clear();
+        }
+        this.disabledCopiesLogged.add(localId);
+        logToPlatformLog(this, `hosted ${remoteId.toString(16)} copy ${localId.toString(16)} is still disabled at the player, its report waits for the spawn`);
     }
 
     // A held pose or a saddle owns the player's locomotion, observers must not replay it on the clone
@@ -426,6 +444,7 @@ export class SendInputsService extends ClientListener {
     }
 
     private movementSends = new Map<number, MovementSendState>();
+    private disabledCopiesLogged = new Set<number>();
     private actorValuesNeedUpdate = false;
     private actorValuesReadAt = 0;
     private equipmentChanged = false;

@@ -61,6 +61,10 @@ const DEFAULT_CORPSE_SECONDS = 300;
 const CORPSE_JUMP_UNITS = 64;
 const CORPSE_SINK_UNITS = 32;
 const CORPSE_LOG_MS = 10000;
+// A living zone NPC that moved this far between polls or stands this close to a player is logged with its host, once per LIVE_LOG_MS
+const LIVE_JUMP_UNITS = 1500;
+const AT_PLAYER_UNITS = 32;
+const LIVE_LOG_MS = 30000;
 // Emitted on SystemContext.gm (bodyId) by HuntingSystem once a skinning completes; a zone corpse then goes at once
 const CORPSE_CONSUMED_EVENT = "corpseConsumed";
 // Skyrim.esm ActorTypeAnimal, the race keyword that makes a zone Wildlife
@@ -211,6 +215,8 @@ export const parsePos = (raw: unknown): number[] | null => {
 
 const hex = (id: number): string => id.toString(16);
 
+const fmtPos = (pos: readonly number[]): string => pos.map(Math.round).join(",");
+
 const view = (data: Uint8Array): DataView => new DataView(data.buffer, data.byteOffset, data.byteLength);
 
 const distance = (a: readonly number[], b: readonly number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -270,6 +276,8 @@ export class NpcSpawnSystem implements System {
   private corpseMs = DEFAULT_CORPSE_SECONDS * 1000;
   // Dead zone NPC id -> last polled position and when it was last logged
   private corpsePos = new Map<number, { pos: number[]; loggedAt: number; sunkLogged: boolean }>();
+  // Living zone NPC id -> last polled position and when it was last logged
+  private livePos = new Map<number, { pos: number[]; loggedAt: number }>();
   // npcCorpseWatch, read at boot
   private corpseWatch = false;
   // Navmesh spots by area for the whole run, since plugins only change with a restart
@@ -568,12 +576,14 @@ export class NpcSpawnSystem implements System {
 
     const online = onlineSnapshot(mp);
     for (const zone of this.zones) {
-      this.updateInside(mp, zone, online.byCell.get(zone.cellOrWorldId));
+      const players = online.byCell.get(zone.cellOrWorldId) ?? [];
+      this.updateInside(mp, zone, players);
       const occupied = zone.inside.size > 0;
       if (this.corpseWatch && zone.spawned.length) this.watchCorpses(mp, zone, now);
       if (occupied) {
         zone.emptySince = 0;
         zone.holdSince = 0;
+        if (zone.spawned.length) this.watchLiving(mp, zone, now, players);
         if (!this.awaitingSpots(zone)) this.fillSlots(mp, zone, now);
       } else if (zone.spawned.length && zone.despawnSeconds > 0) {
         if (this.heldByFight(mp, zone, now)) {
@@ -651,7 +661,7 @@ export class NpcSpawnSystem implements System {
       }
       if (entry) {
         this.removeNpc(mp, entry.id);
-        this.log(`NpcSpawnSystem: '${zone.name}' respawned ${npc.baseDesc} (${hex(entry.id)} -> ${hex(fresh.id)})`);
+        this.log(`NpcSpawnSystem: '${zone.name}' respawned ${npc.baseDesc} (${hex(entry.id)} -> ${hex(fresh.id)}) at ${fmtPos(fresh.pos)}`);
         entry.id = fresh.id;
         entry.pos = fresh.pos;
         entry.diedAt = 0;
@@ -665,7 +675,8 @@ export class NpcSpawnSystem implements System {
     if (!before) {
       const summary = zone.npcs.map((n) => `${n.baseDesc} x${n.count}`).join(", ");
       const layout = zone.spread !== 0 && zone.spots ? "navmesh" : "rings";
-      this.log(`NpcSpawnSystem: '${zone.name}' spawned ${zone.spawned.length}/${zone.total} npc(s) (${layout}): ${summary}`);
+      const where = zone.spawned.map((e) => `${hex(e.id)} at ${fmtPos(e.pos)}`).join(", ");
+      this.log(`NpcSpawnSystem: '${zone.name}' spawned ${zone.spawned.length}/${zone.total} npc(s) (${layout}): ${summary}; ${where}`);
     }
     this.saveSpawns();
     return placed;
@@ -855,8 +866,35 @@ export class NpcSpawnSystem implements System {
   // A death starts the slot's Respawn cooldown and the corpse's own removal timer
   private markDead(zone: Zone, entry: Spawned, now: number, gone = false): void {
     entry.diedAt = now;
+    this.livePos.delete(entry.id);
     zone.slotReadyAt[entry.slot] = zone.respawnSeconds > 0 ? now + zone.respawnSeconds * 1000 : NEVER_READY;
     if (!gone) this.corpses.set(entry.id, now + this.corpseMs);
+  }
+
+  // A living zone NPC that jumped between polls or stands on a player is logged with its host and spawn spot, the server-side evidence for a copy placed at the player
+  private watchLiving(mp: Mp, zone: Zone, now: number, players: readonly OnlinePlayer[]): void {
+    for (const entry of zone.spawned) {
+      if (entry.diedAt || !entry.id) continue;
+      let pos: number[];
+      try { pos = mp.getActorPos(entry.id); } catch { continue; }
+      const last = this.livePos.get(entry.id);
+      const seen = { pos, loggedAt: last?.loggedAt ?? 0 };
+      this.livePos.set(entry.id, seen);
+      const jump = last ? distance(last.pos, pos) : 0;
+      let nearest: OnlinePlayer | undefined;
+      let nearestD = Infinity;
+      for (const p of players) {
+        const d = distance(p.pos, pos);
+        if (d < nearestD) [nearest, nearestD] = [p, d];
+      }
+      const atPlayer = nearest && nearestD <= AT_PLAYER_UNITS;
+      if ((jump < LIVE_JUMP_UNITS && !atPlayer) || now - seen.loggedAt < LIVE_LOG_MS) continue;
+      seen.loggedAt = now;
+      let host = 0;
+      try { host = Number(mp.getHoster(entry.id)) >>> 0; } catch { }
+      const what = [jump >= LIVE_JUMP_UNITS ? `jumped ${Math.round(jump)} units since the last poll` : "", atPlayer ? `stands ${Math.round(nearestD)} units from ${this.actorLabel(mp, nearest!.actorId)}` : ""].filter(Boolean).join(", ");
+      this.log(`NpcSpawnSystem: npc ${hex(entry.id)} of '${zone.name}' ${what}, now at ${fmtPos(pos)}, ${Math.round(distance(entry.pos, pos))} units from its spawn spot ${fmtPos(entry.pos)}, host ${host ? hex(host) : "nobody"}`);
+    }
   }
 
   // Dead zone NPCs that jump between polls or sink under the navmesh are logged, the evidence for the corpse sync reports
@@ -891,6 +929,7 @@ export class NpcSpawnSystem implements System {
     if (!force && this.corpses.has(id)) return;
     this.corpses.delete(id);
     this.corpsePos.delete(id);
+    this.livePos.delete(id);
     try { mp.destroyActor(id); } catch { }
   }
 
@@ -910,6 +949,7 @@ export class NpcSpawnSystem implements System {
   private destroyCorpse(mp: Mp, id: number): void {
     this.corpses.delete(id);
     this.corpsePos.delete(id);
+    this.livePos.delete(id);
     try { mp.destroyActor(id); } catch { }
     for (const zone of this.zones) {
       for (const entry of zone.spawned) {

@@ -200,7 +200,21 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   the 2 s movement recheck) while the server still has it alive is spawned
   again 1.5 s later, after the server's own verdict on the hit had time to
   arrive, and logs `FormView: <id> copy <local id> died in the engine by <killer>
-  while the server has it alive, spawned again`.
+  while the server has it alive, <ms> ms after its spawn at x,y,z, <n> units
+  from its spawn point and <dz> in height, <n> units from the player, 3D, hosted
+  here, server health <n>%, spawned again`.
+- Every client creates an NPC copy at its own player (a disabled `PlaceAtMe`)
+  and the spawn then moves, enables and resurrects it at the server's position.
+  Each placement logs `FormView: <id> copy <local id> placed at the player x,y,z
+  for x,y,z (<n> units away), hosted here <bool>, <reason>` (`fresh`, `it died
+  in the engine`, `its packet named another cell`, `the server revived it`, ...)
+  and a copy still more than 32 units from its spawn point once the spawn
+  finished logs `stands <n> units from its spawn point after the spawn, ...`.
+  While the copy is still disabled at the player, the client hosting the NPC
+  does not report its movement (it would put the NPC at the player for every
+  other viewer until the next report); the first such skip per copy logs
+  `SendInputsService: hosted <id> copy <local id> is still disabled at the
+  player, its report waits for the spawn`.
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
@@ -531,8 +545,9 @@ Everything goes through the server log and the manager console, prefixed
   the zone; there is no line for leaving
 - `navmesh spots for N/M zone(s) in X ms; rings kept for: ...` after each scan, naming the zones without navmesh near `POS`;
   `navmesh scan failed, ...` or `navmesh scan missed unreadable plugins, ...` when the result is not cached
-- `'<Name>' spawned 4/4 npc(s) (navmesh): 23a99:Skyrim.esm x4`, `(rings)` for `Spread: 0` or a zone without navmesh
-- `'<Name>' respawned 23a99:Skyrim.esm (ff000123 -> ff000456)`
+- `'<Name>' spawned 4/4 npc(s) (navmesh): 23a99:Skyrim.esm x4; ff000123 at x,y,z, ...`, `(rings)` for `Spread: 0` or a zone without navmesh; the ids and spawn spots match the clients' `FormView` placement lines
+- `'<Name>' respawned 23a99:Skyrim.esm (ff000123 -> ff000456) at x,y,z`
+- `npc ff000123 of '<Name>' jumped 1800 units since the last poll, now at x,y,z, 900 units from its spawn spot x,y,z, host ff000456` / `stands 12 units from <player> (ff000456)` for a living NPC of an occupied zone that moved 1500 units within one 2 s poll or stands within 32 units of a player, at most once per 30 s per NPC: the server-side trace of a copy a client placed at its player
 - `'<Name>' despawned 4 npc(s)`
 - `removed a/b leftover npc(s) from previous runs (c found by their tag)` on boot, once the world DB has loaded (the ids come from `zone-spawns.json` and from a scan of every persisted `ff` form for the spawner tag)
 - `corpse ff000123 of '<Name>' consumed, removed at once` after a skinning
