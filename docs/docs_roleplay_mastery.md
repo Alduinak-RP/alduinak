@@ -62,7 +62,8 @@ craft instead, up to `masteryHourBank` (default 2; 0 turns the bank off) banked 
 craft it holds. Only crafts bank; gathering, kills, casts and skinning come many an hour and never do, and inside the
 counted hour they earn nothing. The bank is a queue in craft order: a banked hour is counted one interval after the
 character's last counted hour, whether that came from work or from the bank, the head of the queue first, and a
-counted hour of work restarts that wait, so no hour is ever counted twice in one interval. A bow, then a potion, then
+counted hour of work restarts that wait, so no hour is ever counted twice in one interval (a banked hour that fell due
+since the last bank check is paid before any new work is weighed, so the work cannot take its turn). A bow, then a potion, then
 another bow within a few minutes therefore count one woodworking hour at once, an alchemy hour an hour later and a
 second woodworking hour an hour after that, with no further crafting (the owner's example of 2026-10-05). The pay
 clock runs in real time (`masteryBankOffline`, default true since 2026-10-05): the hours that fell due while the

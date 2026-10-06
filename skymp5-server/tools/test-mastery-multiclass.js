@@ -251,6 +251,26 @@ test('one hour clock per character: a craft inside the counted hour banks an hou
   assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: HOUR, counted: 'woodworker' }))
 })
 
+test('work landing between a banked hour falling due and the bank check pays that hour first, so the queue keeps its turn', () => {
+  const t = setup()
+  t.choose('woodworker', 0)
+  t.choose('alchemist', 1)
+  const start = now
+  t.craft(BOW)
+  now += 5 * 60000
+  t.craft(POTION)
+  t.craft(BOW)
+  now += 55 * 60000 + 10000
+  t.craft(BOW)
+  assert.deepEqual([t.subs().secondary.points, t.subs().secondary.lastPointAt, t.primary().points, t.primary().queue], [1, start + HOUR, 1, ['woodworker', 'woodworker']], 'the alchemy hour is paid, dated when it fell due, and the bow banks')
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: HOUR - 10000, counted: 'alchemist', payMs: HOUR - 10000, queue: ['woodworker', 'woodworker'] }))
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().queue.length], [1, 2], 'the check finds nothing else due')
+  now += HOUR
+  t.work('woodworker')
+  assert.deepEqual([t.primary().points, t.primary().lastPointAt, t.primary().queue], [2, start + 2 * HOUR, ['woodworker']], 'a due hour is paid before any kind of work, which then earns nothing inside it')
+})
+
 test('one piece of work credits one slot, the first in slot order that qualifies', () => {
   const t = setup()
   t.choose('blacksmith', 0)
@@ -459,9 +479,9 @@ test('multiclass turned off keeps the queued hours of a sub-craft with its slot 
   const subs = u.subs()
   subs.tertiary = { profession: 'miner', points: 3, lastPointAt: 0, rank: 0 }
   u.mp.props.set(`${ACTOR}:private.masterySlots`, subs)
-  u.mp.set(ACTOR, 'private.mastery', { ...u.primary(), queue: ['miner', 'tailor'] })
+  u.mp.set(ACTOR, 'private.mastery', { ...u.primary(), clockAt: now, lastPointAt: now, queue: ['miner', 'tailor'] })
   u.craft(NAILS)
-  assert.deepEqual([u.primary().queue, u.subs().tertiary.bank], [['tailor'], 1], 'a stored slot beyond masterySlots keeps its hour too')
+  assert.deepEqual([u.primary().queue, u.subs().tertiary.bank], [['tailor', 'blacksmith'], 1], 'a stored slot beyond masterySlots keeps its hour too')
 })
 
 test('a reset empties that craft\'s banked hours and a sub-slot reaching its cap loses its own; the others stay', () => {

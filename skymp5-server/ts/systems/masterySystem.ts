@@ -596,6 +596,8 @@ export class MasterySystem implements System {
     if (!char || !slots.length) return;
     if (ev.kind === "cast" && !this.noteCast(ctx, ev.actorId, char, slots, ev.detail["spellId"])) return;
     const now = Date.now();
+    // A banked hour that fell due since the last bank check is paid first, so the work cannot take its place in the clock
+    if (char.primary.queue.length) this.payDue(ctx, ev.actorId, char, now);
     const counted = this.countedMs(char, now) > 0;
     if (counted && (ev.kind !== "craft" || char.primary.queue.length >= this.bankMax)) return;
     const gates = ev.kind === "craft" ? this.recipeGates(ctx, ev.detail["recipeId"]) : [];
