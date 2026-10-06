@@ -3,6 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { toFormId, espmRefrFieldId } from "./formIdUtil";
 import { nameShownTo, isPlayerActor, isAlive, isBleedingOut, isNear, chainMpHook, guardMpHook, isDoorRef } from "./actorUtil";
 import { every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -114,7 +115,7 @@ const DEFAULT_INTERACT_MAX_DISTANCE = 256;
 const REFUSAL_LOG_MS = 5000;
 
 // Read by a carrier holding a player at a door that teleports, at most this often; the client words its own refusal the same
-const CARRY_DOOR_NOTICE = "Set them down before going through this door.";
+const CARRY_DOOR_NOTICE = loc("capture.carry.doorNotice");
 const CARRY_DOOR_NOTICE_MS = 2000;
 
 interface RestraintInfo {
@@ -286,42 +287,42 @@ export class CaptureSystem implements System {
         // A dead or downed carrier drops the body; a dead or downed body slips free
         if (this.isDowned(mp, carrierActorId)) {
           this.stopCarry(ctx, carriedActorId);
-          this.notice(ctx, this.userOf(ctx, carriedActorId), "Your carrier collapsed.");
+          this.notice(ctx, this.userOf(ctx, carriedActorId), loc("capture.carry.carrierCollapsed"));
           continue;
         }
         if (this.isDowned(mp, carriedActorId)) {
           this.stopCarry(ctx, carriedActorId);
           continue;
         }
-        const loc = mp.get(carrierActorId, "locationalData");
-        if (!loc || !Array.isArray(loc.pos)) {
+        const carrierLoc = mp.get(carrierActorId, "locationalData");
+        if (!carrierLoc || !Array.isArray(carrierLoc.pos)) {
           continue;
         }
         const lastLoc = this.carrierLastLoc.get(carrierActorId);
-        this.carrierLastLoc.set(carrierActorId, { cellOrWorldDesc: loc.cellOrWorldDesc, pos: [...loc.pos] });
-        const teleported = !!lastLoc && lastLoc.cellOrWorldDesc === loc.cellOrWorldDesc &&
-          (loc.pos[0] - lastLoc.pos[0]) ** 2 + (loc.pos[1] - lastLoc.pos[1]) ** 2 + (loc.pos[2] - lastLoc.pos[2]) ** 2 > CARRY_TELEPORT_SQ;
+        this.carrierLastLoc.set(carrierActorId, { cellOrWorldDesc: carrierLoc.cellOrWorldDesc, pos: [...carrierLoc.pos] });
+        const teleported = !!lastLoc && lastLoc.cellOrWorldDesc === carrierLoc.cellOrWorldDesc &&
+          (carrierLoc.pos[0] - lastLoc.pos[0]) ** 2 + (carrierLoc.pos[1] - lastLoc.pos[1]) ** 2 + (carrierLoc.pos[2] - lastLoc.pos[2]) ** 2 > CARRY_TELEPORT_SQ;
         const carriedLoc = mp.get(carriedActorId, "locationalData");
-        const cellChanged = !!carriedLoc && carriedLoc.cellOrWorldDesc !== loc.cellOrWorldDesc;
+        const cellChanged = !!carriedLoc && carriedLoc.cellOrWorldDesc !== carrierLoc.cellOrWorldDesc;
         // A carried pet is moved by its carrier's client within a cell; a load door still snaps it
         if (this.userOf(ctx, carriedActorId) < 0 && !isPlayerActor(mp, carriedActorId) && carriedLoc && !cellChanged) continue;
         // Only a door carries the body into another cell or far across it; a carrier who got there any other way lost it where it was
         if ((cellChanged || teleported) && now - (this.doorUsedAt.get(carrierActorId) ?? 0) > DOOR_FOLLOW_MS) {
           this.stopCarry(ctx, carriedActorId, false);
-          this.notice(ctx, this.userOf(ctx, carrierActorId), "You lost your grip.");
-          this.notice(ctx, this.userOf(ctx, carriedActorId), "Your carrier left without you.");
+          this.notice(ctx, this.userOf(ctx, carrierActorId), loc("capture.carry.lostGrip"));
+          this.notice(ctx, this.userOf(ctx, carriedActorId), loc("capture.carry.carrierLeft"));
           this.log(`[carry] ${carrierActorId.toString(16)} ${cellChanged ? "changed cell" : "teleported"} without a door, dropped ${carriedActorId.toString(16)}`);
           continue;
         }
         // Within a cell every client holds the body on its own copy of the carrier, so the server only watches for one left behind
         if (!cellChanged && !teleported) {
-          if (carriedLoc && Array.isArray(carriedLoc.pos)) this.checkLostBody(ctx, carrierActorId, carriedActorId, loc.pos, carriedLoc.pos);
+          if (carriedLoc && Array.isArray(carriedLoc.pos)) this.checkLostBody(ctx, carrierActorId, carriedActorId, carrierLoc.pos, carriedLoc.pos);
           continue;
         }
-        const carrierYaw = Array.isArray(loc.rot) ? Number(loc.rot[2]) || 0 : 0;
-        const [x, y, z] = this.carryTarget(loc.pos as number[], carrierYaw);
+        const carrierYaw = Array.isArray(carrierLoc.rot) ? Number(carrierLoc.rot[2]) || 0 : 0;
+        const [x, y, z] = this.carryTarget(carrierLoc.pos as number[], carrierYaw);
         mp.set(carriedActorId, "locationalData", {
-          cellOrWorldDesc: loc.cellOrWorldDesc,
+          cellOrWorldDesc: carrierLoc.cellOrWorldDesc,
           pos: [x, y, z],
           rot: [0, 0, carrierYaw + this.carryYaw],
         });
@@ -421,13 +422,13 @@ export class CaptureSystem implements System {
 
   // Picks up a server NPC without a prompt; empty result on success, else the refusal. The carrier must host it, its client moves it
   carryNpc(ctx: SystemContext, carrierActorId: number, npcId: number, npcName: string): string {
-    if (this.userOf(ctx, npcId) >= 0) return "That is a player.";
+    if (this.userOf(ctx, npcId) >= 0) return loc("capture.npc.isPlayer");
     const load = this.jobLoadOf?.(carrierActorId) ?? "";
-    const refusal = load ? `Put the ${load} down first.`
-      : this.carrying.has(carrierActorId) ? "You are already carrying something."
-      : this.carriedBy.has(carrierActorId) ? "You cannot carry anything while being carried."
-      : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anything while bound."
-      : this.carriedBy.has(npcId) ? `${npcName} is already being carried.`
+    const refusal = load ? loc("capture.putLoadDown", { load })
+      : this.carrying.has(carrierActorId) ? loc("capture.npc.alreadyCarrying")
+      : this.carriedBy.has(carrierActorId) ? loc("capture.npc.whileCarried")
+      : this.restraints.get(carrierActorId)?.boundHands ? loc("capture.npc.whileBound")
+      : this.carriedBy.has(npcId) ? loc("capture.npc.beingCarried", { name: npcName })
       : "";
     if (refusal) return refusal;
     this.applyCarry(ctx, npcId, carrierActorId);
@@ -454,15 +455,15 @@ export class CaptureSystem implements System {
     }
     const targetActorId = toFormId(content.target, 0);
     if (!this.validTarget(ctx, captorActorId, targetActorId)) {
-      this.notice(ctx, userId, "Look at another player to restrain them.");
+      this.notice(ctx, userId, loc("capture.restrain.lookAt"));
       return;
     }
     if (this.restraints.get(targetActorId)?.boundHands) {
-      this.notice(ctx, userId, `${nameShownTo(mp, captorActorId, targetActorId)} is already restrained.`);
+      this.notice(ctx, userId, loc("capture.restrain.already", { name: nameShownTo(mp, captorActorId, targetActorId) }));
       return;
     }
     if (!this.hasManacles(mp, captorActorId)) {
-      this.notice(ctx, userId, "You need manacles to restrain someone.");
+      this.notice(ctx, userId, loc("capture.restrain.needManacles"));
       return;
     }
     const refusal = this.rescueRefusal?.(targetActorId);
@@ -473,7 +474,7 @@ export class CaptureSystem implements System {
     // A downed target can't answer a prompt: captured at once, which ends their bleedout
     if (isBleedingOut(mp, targetActorId)) {
       this.applyCapture(ctx, targetActorId, captorActorId);
-      this.notice(ctx, userId, `You restrained ${nameShownTo(mp, captorActorId, targetActorId)}.`);
+      this.notice(ctx, userId, loc("capture.restrain.done", { name: nameShownTo(mp, captorActorId, targetActorId) }));
       return;
     }
     this.requestConsent(ctx, "capture", captorActorId, targetActorId);
@@ -487,7 +488,7 @@ export class CaptureSystem implements System {
     }
     const targetActorId = toFormId(content.target, 0);
     if (!this.validTarget(ctx, carrierActorId, targetActorId)) {
-      this.notice(ctx, userId, "Look at another player to carry them.");
+      this.notice(ctx, userId, loc("capture.carry.lookAt"));
       return;
     }
     const refusal = this.carryRefusal(ctx, carrierActorId, targetActorId);
@@ -498,8 +499,8 @@ export class CaptureSystem implements System {
     // Downed and restrained targets are picked up without a prompt
     if (isBleedingOut(mp, targetActorId) || this.restraints.has(targetActorId)) {
       this.applyCarry(ctx, targetActorId, carrierActorId);
-      this.notice(ctx, userId, `You picked up ${nameShownTo(mp, carrierActorId, targetActorId)}.`);
-      this.notice(ctx, this.userOf(ctx, targetActorId), `${nameShownTo(mp, targetActorId, carrierActorId)} is carrying you.`);
+      this.notice(ctx, userId, loc("capture.carry.pickedUp", { name: nameShownTo(mp, carrierActorId, targetActorId) }));
+      this.notice(ctx, this.userOf(ctx, targetActorId), loc("capture.carry.carryingYou", { name: nameShownTo(mp, targetActorId, carrierActorId) }));
       return;
     }
     this.requestConsent(ctx, "carry", carrierActorId, targetActorId);
@@ -513,11 +514,11 @@ export class CaptureSystem implements System {
     const targetActorId = toFormId(content.target, 0);
     // One refusal for every case, so the reply says nothing about a target who may be far away
     if (this.carriedBy.get(targetActorId) !== requesterActorId) {
-      this.notice(ctx, userId, "You are not carrying them.");
+      this.notice(ctx, userId, loc("capture.carry.notCarrying"));
       return;
     }
     this.stopCarry(ctx, targetActorId);
-    this.notice(ctx, userId, `You set ${nameShownTo(ctx.svr, requesterActorId, targetActorId)} down.`);
+    this.notice(ctx, userId, loc("capture.carry.setDown", { name: nameShownTo(ctx.svr, requesterActorId, targetActorId) }));
   }
 
   private onReleaseRequest(ctx: SystemContext, userId: number, content: Content): void {
@@ -529,27 +530,27 @@ export class CaptureSystem implements System {
     const step = this.releaseStep(requesterActorId, targetActorId);
     // One refusal for every case, so the reply says nothing about a target who may be far away; an execution under way is public anyway
     if (!step) {
-      this.notice(ctx, userId, this.blockRefusal?.(targetActorId) || "Only their captor or carrier can release them.");
+      this.notice(ctx, userId, this.blockRefusal?.(targetActorId) || loc("capture.release.notAllowed"));
       return;
     }
     const name = nameShownTo(ctx.svr, requesterActorId, targetActorId);
     if (step === "block") {
       if (!this.nearEnough(ctx, requesterActorId, targetActorId)) {
-        this.notice(ctx, userId, `${name} is out of reach.`);
+        this.notice(ctx, userId, loc("capture.outOfReach", { name }));
         return;
       }
       this.releaseFromBlock?.(targetActorId);
-      this.notice(ctx, userId, `You pulled ${name} away from the block.`);
-      this.notice(ctx, this.userOf(ctx, targetActorId), `${nameShownTo(ctx.svr, targetActorId, requesterActorId)} pulled you away from the block.`);
+      this.notice(ctx, userId, loc("capture.release.fromBlock", { name }));
+      this.notice(ctx, this.userOf(ctx, targetActorId), loc("capture.release.fromBlockYou", { name: nameShownTo(ctx.svr, targetActorId, requesterActorId) }));
       return;
     }
     if (step === "putdown") {
       this.stopCarry(ctx, targetActorId);
-      this.notice(ctx, userId, `You set ${name} down.`);
+      this.notice(ctx, userId, loc("capture.carry.setDown", { name }));
       return;
     }
     this.releaseTarget(ctx, targetActorId);
-    this.notice(ctx, userId, `You released ${name}.`);
+    this.notice(ctx, userId, loc("capture.release.done", { name }));
   }
 
   // Only the requester's own release permission is revealed, never the target's restraint details
@@ -616,7 +617,7 @@ export class CaptureSystem implements System {
     const captorUser = this.userOf(ctx, pend.captorActorId);
     const targetName = nameShownTo(ctx.svr, pend.captorActorId, pend.targetActorId);
     if (content.accepted !== true) {
-      this.notice(ctx, captorUser, `${targetName} refused.`);
+      this.notice(ctx, captorUser, loc("capture.consent.refused", { name: targetName }));
       return;
     }
     if (captorUser < 0 || this.isDowned(ctx.svr as Mp, pend.captorActorId)) {
@@ -624,13 +625,13 @@ export class CaptureSystem implements System {
     }
     // They may have moved apart (or perma-died) while the prompt was open.
     if (!this.validTarget(ctx, pend.captorActorId, pend.targetActorId)) {
-      this.notice(ctx, captorUser, `${targetName} is out of reach.`);
+      this.notice(ctx, captorUser, loc("capture.outOfReach", { name: targetName }));
       return;
     }
 
     if (pend.kind === "capture") {
       if (!this.hasManacles(ctx.svr as Mp, pend.captorActorId)) {
-        this.notice(ctx, captorUser, "You no longer have manacles.");
+        this.notice(ctx, captorUser, loc("capture.consent.noManacles"));
         return;
       }
       const refusal = this.rescueRefusal?.(pend.targetActorId);
@@ -639,16 +640,16 @@ export class CaptureSystem implements System {
         return;
       }
       this.applyCapture(ctx, pend.targetActorId, pend.captorActorId);
-      this.notice(ctx, captorUser, `${targetName} accepted — restrained.`);
+      this.notice(ctx, captorUser, loc("capture.consent.restrained", { name: targetName }));
     } else {
       const refusal = this.carryRefusal(ctx, pend.captorActorId, pend.targetActorId);
       if (refusal) {
         this.notice(ctx, captorUser, refusal);
-        this.notice(ctx, userId, `${nameShownTo(ctx.svr, pend.targetActorId, pend.captorActorId)} can no longer carry you.`);
+        this.notice(ctx, userId, loc("capture.consent.cannotCarry", { name: nameShownTo(ctx.svr, pend.targetActorId, pend.captorActorId) }));
         return;
       }
       this.applyCarry(ctx, pend.targetActorId, pend.captorActorId);
-      this.notice(ctx, captorUser, `${targetName} accepted — carrying.`);
+      this.notice(ctx, captorUser, loc("capture.consent.carrying", { name: targetName }));
     }
   }
 
@@ -663,7 +664,7 @@ export class CaptureSystem implements System {
     for (const pend of this.pending.values()) {
       if (pend.targetActorId === targetActorId || pend.captorActorId === captorActorId) {
         this.notice(ctx, this.userOf(ctx, captorActorId),
-          "A consent request is already pending.");
+          loc("capture.consent.pending"));
         return;
       }
     }
@@ -673,7 +674,7 @@ export class CaptureSystem implements System {
     const lastPrompt = this.consentCooldown.get(cooldownKey);
     if (lastPrompt !== undefined && now - lastPrompt < this.consentCooldownMs) {
       this.notice(ctx, this.userOf(ctx, captorActorId),
-        `Wait before asking ${targetName} again.`);
+        loc("capture.consent.cooldown", { name: targetName }));
       return;
     }
     if (this.consentCooldown.size > 512) {
@@ -689,20 +690,19 @@ export class CaptureSystem implements System {
     const timer = setTimeout(() => {
       if (this.pending.delete(requestId)) {
         this.notice(ctx, this.userOf(ctx, captorActorId),
-          `${targetName} did not respond.`);
+          loc("capture.consent.noResponse", { name: targetName }));
       }
     }, this.consentTimeoutMs);
     this.pending.set(requestId, { kind, captorActorId, targetActorId, timer });
 
     const captorName = nameShownTo(ctx.svr, targetActorId, captorActorId);
-    const verb = kind === "capture" ? "restrain" : "carry";
     ctx.svr.sendCustomPacket(targetUser, JSON.stringify({
       customPacketType: CONSENT_REQUEST,
       requestId,
-      text: `${captorName} wants to ${verb} you. Allow?`,
+      text: kind === "capture" ? loc("capture.consent.askRestrain", { name: captorName }) : loc("capture.consent.askCarry", { name: captorName }),
     }));
     this.notice(ctx, this.userOf(ctx, captorActorId),
-      `Waiting for ${targetName} to accept…`);
+      loc("capture.consent.waiting", { name: targetName }));
   }
 
   // Reflect the captive's current restraint record into RESTRAINED_PROP
@@ -757,7 +757,7 @@ export class CaptureSystem implements System {
     const carried = this.carrying.get(targetActorId);
     if (carried !== undefined) {
       this.stopCarry(ctx, carried);
-      this.notice(ctx, this.userOf(ctx, carried), "Your carrier was restrained.");
+      this.notice(ctx, this.userOf(ctx, carried), loc("capture.carry.carrierRestrained"));
     }
     const info = this.restraints.get(targetActorId)
       ?? { boundHands: false, carried: false, captorActorId };
@@ -930,13 +930,13 @@ export class CaptureSystem implements System {
   // No carry chains and no bound carriers: a carrier cannot be carried, a carried or bound player cannot carry; empty when allowed
   private carryRefusal(ctx: SystemContext, carrierActorId: number, targetActorId: number): string {
     const load = this.jobLoadOf?.(carrierActorId) ?? "";
-    const refusal = load ? `Put the ${load} down first.`
-      : this.jobLoadOf?.(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} has their hands full.`
-      : this.carrying.has(carrierActorId) ? "You are already carrying someone."
-      : this.carriedBy.has(carrierActorId) ? "You cannot carry anyone while being carried."
-      : this.restraints.get(carrierActorId)?.boundHands ? "You cannot carry anyone while bound."
-      : this.carrying.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is carrying someone.`
-      : this.carriedBy.has(targetActorId) ? `${nameShownTo(ctx.svr, carrierActorId, targetActorId)} is already being carried.`
+    const refusal = load ? loc("capture.putLoadDown", { load })
+      : this.jobLoadOf?.(targetActorId) ? loc("capture.carry.handsFull", { name: nameShownTo(ctx.svr, carrierActorId, targetActorId) })
+      : this.carrying.has(carrierActorId) ? loc("capture.carry.alreadyCarrying")
+      : this.carriedBy.has(carrierActorId) ? loc("capture.carry.whileCarried")
+      : this.restraints.get(carrierActorId)?.boundHands ? loc("capture.carry.whileBound")
+      : this.carrying.has(targetActorId) ? loc("capture.carry.targetCarrying", { name: nameShownTo(ctx.svr, carrierActorId, targetActorId) })
+      : this.carriedBy.has(targetActorId) ? loc("capture.carry.targetCarried", { name: nameShownTo(ctx.svr, carrierActorId, targetActorId) })
       : this.blockRefusal?.(targetActorId) || this.rescueRefusal?.(targetActorId) || "";
     if (refusal) this.logRefusal(carrierActorId, `carry of ${targetActorId.toString(16)}`);
     return refusal;
@@ -1079,7 +1079,7 @@ export class CaptureSystem implements System {
   private resolveAbleActor(ctx: SystemContext, userId: number): number | null {
     const actorId = this.resolveActor(ctx, userId);
     if (actorId !== null && this.isDowned(ctx.svr as Mp, actorId)) {
-      this.notice(ctx, userId, "You cannot do that now.");
+      this.notice(ctx, userId, loc("capture.cannotNow"));
       return null;
     }
     return actorId;

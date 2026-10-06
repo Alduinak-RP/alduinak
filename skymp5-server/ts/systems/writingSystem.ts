@@ -10,6 +10,7 @@ import { FactionSystem } from "./factionSystem";
 import { InventoryEntry, Item, addEntries, isNamedItemBase, namedItemBaseIds, readInventory, registerNamedItemBases, sameExtras } from "./inventoryExtras";
 import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, realNameOf, sanitize, sendJson, titledName } from "./playerText";
 import { JsonWritingStore, WRITING_ID, WritingDoc, WritingKind, WritingPerson, WritingSeal, WritingStore } from "./writingStore";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -62,7 +63,7 @@ const OPEN_COOLDOWN_MS = 1000;
 const SAVE_COOLDOWN_MS = 2000;
 const DAY_MS = 24 * 3600000;
 const MAX_PINNABLE_LISTED = 100;
-const CHANGE_FAILED = "That cannot be changed right now.";
+const CHANGE_FAILED = loc("writing.changeFailed");
 
 // Factions with a mark in skymp5-front/src/img/seals
 const SEAL_FACTIONS = [
@@ -230,7 +231,7 @@ export class WritingSystem implements System {
       return;
     }
     if (!this.enabled || !this.ready) {
-      if (type === "writingUse") this.notice(mp, userId, "Writing is not available yet.");
+      if (type === "writingUse") this.notice(mp, userId, loc("writing.unavailable"));
       return;
     }
     const id = String(content["id"] ?? "");
@@ -294,7 +295,7 @@ export class WritingSystem implements System {
       const sealed = c.key === "sealed";
       return { id: c.id, kind: rowKind, title: sealed ? "Sealed Letter" : this.store.load(c.id)?.title || KIND_LABEL[rowKind], sealed };
     });
-    if (blank) rows.unshift({ id: NEW_ROW_ID, kind, title: `Write a new ${KIND_LABEL[kind].toLowerCase()}`, sealed: false });
+    if (blank) rows.unshift({ id: NEW_ROW_ID, kind, title: loc("writing.list.writeNew", { kind: KIND_LABEL[kind].toLowerCase() }), sealed: false });
     this.sendMenu(mp, userId, { view: "list", list: rows });
   }
 
@@ -302,7 +303,7 @@ export class WritingSystem implements System {
     if (id !== NEW_ROW_ID) return this.openDoc(mp, userId, actorId, id);
     const session = this.sessions.get(userId);
     if (session?.view !== "list" || !session.kind || !session.blank) return;
-    if (this.plainCount(mp, actorId, session.blank) < 1) return this.notice(mp, userId, `You have no ${BLANK_LABEL[session.kind]} left.`);
+    if (this.plainCount(mp, actorId, session.blank) < 1) return this.notice(mp, userId, loc("writing.noBlank", { blank: BLANK_LABEL[session.kind] }));
     this.openCompose(mp, userId, session.kind, session.blank);
   }
 
@@ -318,23 +319,23 @@ export class WritingSystem implements System {
   private reconcile(mp: Mp, userId: number, actorId: number, id: string): { doc: WritingDoc; carried: Carried } | null {
     const carried = WRITING_ID.test(id) ? this.carried(mp, actorId).find((c) => c.id === id) : undefined;
     if (!carried) {
-      this.notice(mp, userId, "You no longer carry that writing.");
+      this.notice(mp, userId, loc("writing.notCarried"));
       return null;
     }
     const doc = this.store.load(id);
     if (!doc) {
-      this.notice(mp, userId, "The ink has faded beyond reading.");
+      this.notice(mp, userId, loc("writing.faded"));
       this.log(`[writing] ${hex(actorId)} carries ${id}, which has no document`);
       return null;
     }
     const sealed = carried.key === "sealed";
     if (doc.destroyedAt) {
       this.rewrite(mp, actorId, [[carried.entry, carried.entry.count]], []);
-      this.notice(mp, userId, "The writing crumbles to dust.");
+      this.notice(mp, userId, loc("writing.crumbles"));
       return null;
     }
     if (doc.kind !== KIND_OF[carried.key]) {
-      this.notice(mp, userId, "The writing is illegible.");
+      this.notice(mp, userId, loc("writing.illegible"));
       this.log(`[writing] ${hex(actorId)} carries ${id} as ${carried.key}, the document is a ${doc.kind}`);
       return null;
     }
@@ -363,17 +364,17 @@ export class WritingSystem implements System {
     const pages = this.readPages(mp, userId, kind, content["pages"]);
     if (!pages || !this.roomToWrite(mp, userId, actorId)) return;
     if (this.plainCount(mp, actorId, blank) < 1) {
-      this.notice(mp, userId, `You have no ${BLANK_LABEL[kind]} left.`);
+      this.notice(mp, userId, loc("writing.noBlank", { blank: BLANK_LABEL[kind] }));
       return;
     }
     const me = this.person(mp, actorId);
     const doc = this.newDoc(kind, title, pages, content["signed"] === true, me, me);
-    if (!doc) return this.notice(mp, userId, "Your writing could not be kept.");
+    if (!doc) return this.notice(mp, userId, loc("writing.notKept"));
     const item: Item = { baseId: this.base(WRITTEN_OF[kind]), count: 1, name: this.nameOf(doc, false) };
     if (!this.rewrite(mp, actorId, [[plain(blank), 1]], [item])) return;
     if (!this.persist(doc)) {
       this.rewrite(mp, actorId, [[item, 1]], [plain(blank)]);
-      return this.notice(mp, userId, "Your writing could not be kept.");
+      return this.notice(mp, userId, loc("writing.notKept"));
     }
     this.count(mp, actorId, doc.createdAt, true);
     this.appendLog(`${describeActor(mp, actorId)} wrote ${kind} ${doc.id} ${JSON.stringify(title)}${doc.signed ? " (signed)" : ""}: ${JSON.stringify(pages)}`);
@@ -385,7 +386,7 @@ export class WritingSystem implements System {
     const found = this.reconcile(mp, userId, actorId, id);
     if (!found) return;
     const { doc, carried } = found;
-    if (!this.canEdit(actorId, doc, carried)) return this.notice(mp, userId, "You cannot change this writing.");
+    if (!this.canEdit(actorId, doc, carried)) return this.notice(mp, userId, loc("writing.cannotChange"));
     const title = doc.fixedPages ? doc.title : cleanTitle(content["title"], this.cfg.writingTitleMaxLen);
     const sent = this.readPages(mp, userId, doc.kind, content["pages"]);
     if (!sent) return;
@@ -399,7 +400,7 @@ export class WritingSystem implements System {
     doc.pages = pages;
     doc.updatedAt = Date.now();
     if (retitled && !this.rewrite(mp, actorId, [[carried.entry, 1]], [{ ...carried.entry, count: 1, name: this.nameOf(doc, false) }])) return;
-    if (!this.persist(doc)) return this.notice(mp, userId, "Your changes could not be kept.");
+    if (!this.persist(doc)) return this.notice(mp, userId, loc("writing.changesNotKept"));
     const pageLines = changed.map((i) => `page ${i + 1}: ${JSON.stringify(pages[i] ?? "")}`).join(", ");
     this.appendLog(`${describeActor(mp, actorId)} edited ${doc.kind} ${id} ${JSON.stringify(title)}${pageLines ? " " + pageLines : ""}`);
     this.openDoc(mp, userId, actorId, id);
@@ -413,9 +414,9 @@ export class WritingSystem implements System {
     doc.finished = true;
     doc.fixedPages = doc.pages.length;
     doc.updatedAt = Date.now();
-    if (!this.persist(doc)) return this.notice(mp, userId, "The book could not be finished.");
+    if (!this.persist(doc)) return this.notice(mp, userId, loc("writing.book.notFinished"));
     this.appendLog(`${describeActor(mp, actorId)} finished book ${id} ${JSON.stringify(doc.title)} up to page ${doc.fixedPages}`);
-    this.notice(mp, userId, "The book is finished. Its pages are fixed now, and you can still write on new ones.");
+    this.notice(mp, userId, loc("writing.book.finished"));
     this.openDoc(mp, userId, actorId, id);
   }
 
@@ -426,13 +427,13 @@ export class WritingSystem implements System {
     if (!found || found.carried.key !== "letter") return;
     const { doc, carried } = found;
     const wax = this.base("wax");
-    if (this.plainCount(mp, actorId, wax) < 1) return this.notice(mp, userId, "Sealing a letter takes Sealing Wax.");
+    if (this.plainCount(mp, actorId, wax) < 1) return this.notice(mp, userId, loc("writing.seal.needWax"));
     const sealed: Item = { baseId: this.base("sealed"), count: 1, name: this.nameOf(doc, true) };
     if (!this.rewrite(mp, actorId, [[carried.entry, 1], [plain(wax), 1]], [sealed])) return;
     doc.seal = { ...this.person(mp, actorId), at: Date.now() };
     this.persist(doc);
     this.appendLog(`${describeActor(mp, actorId)} sealed letter ${id} ${JSON.stringify(doc.title)}${doc.seal.factionId ? ` as ${doc.seal.factionId}` : ""}`);
-    this.notice(mp, userId, doc.seal.title ? "You press your seal into the wax." : "You press a plain seal into the wax. Show a faction title to press its mark.");
+    this.notice(mp, userId, doc.seal.title ? loc("writing.seal.pressed") : loc("writing.seal.plain"));
     this.openDoc(mp, userId, actorId, id);
   }
 
@@ -459,13 +460,13 @@ export class WritingSystem implements System {
     const found = this.reconcile(mp, userId, actorId, id);
     if (!found) return;
     const { doc } = found;
-    if (doc.kind !== "book" || !doc.finished) return this.notice(mp, userId, "Only a finished book can be copied.");
+    if (doc.kind !== "book" || !doc.finished) return this.notice(mp, userId, loc("writing.copy.notFinished"));
     const blank = this.base("bookBlank");
-    if (this.plainCount(mp, actorId, blank) < 1) return this.notice(mp, userId, "Copying a book takes a Blank Book.");
+    if (this.plainCount(mp, actorId, blank) < 1) return this.notice(mp, userId, loc("writing.copy.needBlank"));
     if (!this.roomToWrite(mp, userId, actorId)) return;
     // Pages after fixedPages are the author's unfinished writing
     const copy = this.newDoc("book", doc.title, doc.pages.slice(0, doc.fixedPages), doc.signed, doc.author, this.person(mp, actorId));
-    if (!copy) return this.notice(mp, userId, "The copy could not be kept.");
+    if (!copy) return this.notice(mp, userId, loc("writing.copy.notKept"));
     copy.finished = true;
     copy.fixedPages = copy.pages.length;
     copy.copyOf = doc.copyOf || doc.id;
@@ -473,11 +474,11 @@ export class WritingSystem implements System {
     if (!this.rewrite(mp, actorId, [[plain(blank), 1]], [item])) return;
     if (!this.persist(copy)) {
       this.rewrite(mp, actorId, [[item, 1]], [plain(blank)]);
-      return this.notice(mp, userId, "The copy could not be kept.");
+      return this.notice(mp, userId, loc("writing.copy.notKept"));
     }
     this.count(mp, actorId, copy.createdAt, true);
     this.appendLog(`${describeActor(mp, actorId)} copied book ${id} ${JSON.stringify(doc.title)} as ${copy.id}`);
-    this.notice(mp, userId, `You copy ${doc.title || "the book"} onto a blank book.`);
+    this.notice(mp, userId, loc("writing.copy.done", { title: doc.title || loc("writing.copy.theBook") }));
     this.openDoc(mp, userId, actorId, id);
   }
 
@@ -490,7 +491,7 @@ export class WritingSystem implements System {
     this.appendLog(`${describeActor(mp, actorId)} burned ${doc.kind} ${id} ${JSON.stringify(doc.title)}`);
     this.sessions.delete(userId);
     sendJson(mp, userId, { customPacketType: "writingClosed" });
-    this.notice(mp, userId, "The writing burns away.");
+    this.notice(mp, userId, loc("writing.burned"));
   }
 
   private destroy(mp: Mp, doc: WritingDoc, by: string): void {
@@ -510,39 +511,39 @@ export class WritingSystem implements System {
       return;
     }
     const reply = (ok: boolean, text: string) => sendJson(mp, userId, { customPacketType: "adminActionResult", ok, text });
-    if (missingCap("players", this.roleCfg.tierCaps[tier])) return reply(false, "Your rank cannot moderate writings");
+    if (missingCap("players", this.roleCfg.tierCaps[tier])) return reply(false, loc("writing.staff.noCap"));
     const op = String(content["op"] ?? "");
     const id = String(content["id"] ?? "").trim().toUpperCase();
     const doc = WRITING_ID.test(id) ? this.store.load(id) : null;
-    if (!doc) return reply(false, `No writing ${id || "without an id"}`);
-    const staff = `profile ${profileIdOf(mp, actorId)} (${tier})`;
-    const what = `${doc.kind} ${id} ${JSON.stringify(doc.title)} by ${JSON.stringify(doc.author.realName)} (profile ${doc.author.profileId})`;
+    if (!doc) return reply(false, loc("writing.staff.noWriting", { id: id || loc("writing.staff.withoutId") }));
+    const staff = loc("writing.staff.who", { profileId: profileIdOf(mp, actorId), tier });
+    const what = loc("writing.staff.what", { kind: doc.kind, id, title: JSON.stringify(doc.title), author: JSON.stringify(doc.author.realName), profileId: doc.author.profileId });
     if (op === "read") {
       this.sessions.set(userId, { view: "read" });
       this.sendDoc(mp, userId, actorId, doc, null, true);
-      this.adminLog(`${staff} read ${what}`);
-      return reply(true, `Opened ${id}`);
+      this.adminLog(loc("writing.audit.read", { staff, what }));
+      return reply(true, loc("writing.staff.opened", { id }));
     }
     if (op === "rename") {
       const title = cleanTitle(content["title"], this.cfg.writingTitleMaxLen);
-      if (!title) return reply(false, "The new title is empty");
+      if (!title) return reply(false, loc("writing.staff.emptyTitle"));
       doc.title = title;
       doc.updatedAt = Date.now();
-      if (!this.persist(doc)) return reply(false, "Rename failed, see server log");
+      if (!this.persist(doc)) return reply(false, loc("writing.staff.renameFailed"));
       const held = this.renameOnline(mp, doc);
-      this.adminLog(`${staff} renamed ${what} to ${JSON.stringify(title)}`);
+      this.adminLog(loc("writing.audit.renamed", { staff, what, title: JSON.stringify(title) }));
       this.appendLog(`staff ${staff} renamed ${id} to ${JSON.stringify(title)}`);
-      return reply(true, `Renamed ${id}${held ? `, ${held} carried cop${held === 1 ? "y" : "ies"} updated` : ""}`);
+      return reply(true, loc("writing.staff.renamed", { id, held: !held ? "" : held === 1 ? loc("writing.staff.heldOne", { n: held }) : loc("writing.staff.heldMany", { n: held }) }));
     }
     if (op === "destroy") {
-      if (doc.destroyedAt) return reply(false, `${id} is already destroyed`);
-      this.destroy(mp, doc, `staff ${staff}`);
+      if (doc.destroyedAt) return reply(false, loc("writing.staff.alreadyDestroyed", { id }));
+      this.destroy(mp, doc, loc("writing.staff.destroyedBy", { staff }));
       const held = this.removeOnline(mp, id);
-      this.adminLog(`${staff} destroyed ${what}`);
+      this.adminLog(loc("writing.audit.destroyed", { staff, what }));
       this.appendLog(`staff ${staff} destroyed ${id}`);
-      return reply(true, `Destroyed ${id}${held ? `, removed from ${held} pack${held === 1 ? "" : "s"}` : ""}`);
+      return reply(true, loc("writing.staff.destroyed", { id, held: !held ? "" : held === 1 ? loc("writing.staff.removedOne", { n: held }) : loc("writing.staff.removedMany", { n: held }) }));
     }
-    reply(false, `Unknown writing action '${op}'`);
+    reply(false, loc("writing.staff.unknownAction", { op }));
   }
 
   // Copies in chests and offline packs catch up when they are next read
@@ -576,13 +577,13 @@ export class WritingSystem implements System {
   // Takes one carried open letter out of the pack for a door; null once the player was told why not
   takeLetterToPin(mp: Mp, userId: number, actorId: number, id: string): { id: string; title: string } | null {
     if (!this.available()) {
-      this.notice(mp, userId, "Writing is not available yet.");
+      this.notice(mp, userId, loc("writing.unavailable"));
       return null;
     }
     const found = this.reconcile(mp, userId, actorId, id);
     if (!found) return null;
     if (found.carried.key !== "letter") {
-      this.notice(mp, userId, found.carried.key === "sealed" ? "Only an open letter can be pinned." : "Only a letter can be pinned.");
+      this.notice(mp, userId, found.carried.key === "sealed" ? loc("writing.pin.notOpen") : loc("writing.pin.notLetter"));
       return null;
     }
     if (!this.rewrite(mp, actorId, [[found.carried.entry, 1]], [])) {
@@ -638,20 +639,20 @@ export class WritingSystem implements System {
   // A book's signature reads the same to every reader; a letter's, a journal's and a seal follow the introductions rule; staff see real names and profiles
   private readerLines(mp: Mp, viewerId: number, doc: WritingDoc, staff: boolean) {
     const nameFor = (who: WritingPerson): string => {
-      if (staff) return `${who.realName || "someone unrecorded"} (profile ${who.profileId})`;
+      if (staff) return loc("writing.read.staffName", { name: who.realName || loc("writing.read.unrecorded"), profileId: who.profileId });
       const known = who.actorId === viewerId || (!!who.actorId && isIntroduced(mp, viewerId, who.actorId));
       return known ? titledName(who.title, who.shownName) : "";
     };
     const sealName = (seal: WritingSeal): string => {
       const name = nameFor(seal);
-      return name ? `the seal of ${name}` : "an unfamiliar seal";
+      return name ? loc("writing.read.sealOf", { name }) : loc("writing.read.unfamiliarSeal");
     };
     const signer = staff || doc.kind !== "book" ? nameFor(doc.author) : doc.author.shownName ? titledName(doc.author.title, doc.author.shownName) : "";
     return {
       nameFor,
       sealName,
-      byline: !doc.signed ? "" : signer ? `Signed, ${signer}` : "Signed in an unfamiliar hand",
-      brokenSeals: doc.brokenSeals.map((b) => capitalise(`${sealName(b.seal)} was broken.`)),
+      byline: !doc.signed ? "" : signer ? loc("writing.read.signed", { name: signer }) : loc("writing.read.signedUnknown"),
+      brokenSeals: doc.brokenSeals.map((b) => capitalise(loc("writing.read.sealBroken", { seal: sealName(b.seal) }))),
     };
   }
 
@@ -661,10 +662,10 @@ export class WritingSystem implements System {
     const hidden = sealed && !staff;
     const { nameFor, sealName, byline, brokenSeals } = this.readerLines(mp, actorId, doc, staff);
     const staffLines = staff ? [
-      `Scribe: ${describePerson(doc.scribe)}`,
-      `Written ${new Date(doc.createdAt).toISOString()}, last changed ${new Date(doc.updatedAt).toISOString()}`,
-      doc.seal ? `Sealed by ${describePerson(doc.seal)}` : "",
-      doc.destroyedAt ? `Destroyed ${new Date(doc.destroyedAt).toISOString()} by ${doc.destroyedBy}` : "",
+      loc("writing.read.scribe", { who: describePerson(doc.scribe) }),
+      loc("writing.read.written", { created: new Date(doc.createdAt).toISOString(), changed: new Date(doc.updatedAt).toISOString() }),
+      doc.seal ? loc("writing.read.sealedBy", { who: describePerson(doc.seal) }) : "",
+      doc.destroyedAt ? loc("writing.read.destroyed", { at: new Date(doc.destroyedAt).toISOString(), by: doc.destroyedBy }) : "",
     ].filter((l) => l) : [];
     const editable = !!carried && !staff && this.canEdit(actorId, doc, carried);
     this.sendMenu(mp, userId, {
@@ -674,11 +675,11 @@ export class WritingSystem implements System {
         kind: doc.kind,
         title: hidden ? "Sealed Letter" : doc.title || KIND_LABEL[doc.kind],
         pages: hidden ? [] : doc.pages,
-        byline: hidden ? "" : staff ? `${doc.signed ? "Signed" : "Unsigned"}, by ${nameFor(doc.author)}` : byline,
+        byline: hidden ? "" : staff ? (doc.signed ? loc("writing.read.staffSigned", { name: nameFor(doc.author) }) : loc("writing.read.staffUnsigned", { name: nameFor(doc.author) })) : byline,
         copy: !!doc.copyOf,
         finished: doc.finished,
         fixedPages: hidden ? 0 : doc.fixedPages,
-        sealText: hidden ? `Closed with ${sealName(doc.seal || { ...this.nobody(), at: 0 })}.` : "",
+        sealText: hidden ? loc("writing.read.closedWith", { seal: sealName(doc.seal || { ...this.nobody(), at: 0 }) }) : "",
         // Heraldry is public: the marks show to every reader, only the names follow the introductions rule
         sealFaction: hidden ? doc.seal?.factionId || "" : "",
         signFaction: !hidden && doc.signed ? doc.author.factionId : "",
@@ -717,7 +718,7 @@ export class WritingSystem implements System {
     const maxPages = kind === "letter" ? 1 : kind === "journal" ? this.cfg.writingJournalMaxPages : this.cfg.writingBookMaxPages;
     const maxLen = kind === "letter" ? this.cfg.writingLetterMaxLen : this.cfg.writingPageMaxLen;
     if (raw.length > maxPages) {
-      this.notice(mp, userId, `A ${KIND_LABEL[kind].toLowerCase()} holds ${maxPages} page${maxPages === 1 ? "" : "s"} at most.`);
+      this.notice(mp, userId, (maxPages === 1 ? loc("writing.limit.pagesOne", { kind: KIND_LABEL[kind].toLowerCase(), n: maxPages }) : loc("writing.limit.pagesMany", { kind: KIND_LABEL[kind].toLowerCase(), n: maxPages })));
       return null;
     }
     const pages: string[] = [];
@@ -727,18 +728,18 @@ export class WritingSystem implements System {
       const text = sanitize(page);
       const tags = text.match(MARKUP_TAG)?.length ?? 0;
       if (text.length > maxLen * MARKUP_ROOM || tags > MAX_TAGS_PER_PAGE) {
-        this.notice(mp, userId, "That page carries too much formatting.");
+        this.notice(mp, userId, loc("writing.limit.formatting"));
         return null;
       }
       if (markupVisibleLength(text) > maxLen) {
-        this.notice(mp, userId, `A page holds ${maxLen} characters at most.`);
+        this.notice(mp, userId, loc("writing.limit.chars", { n: maxLen }));
         return null;
       }
       pages.push(text);
     }
     while (pages.length && !pages[pages.length - 1]) pages.pop();
     if (!pages.length) {
-      this.notice(mp, userId, "The page is still blank.");
+      this.notice(mp, userId, loc("writing.limit.blankPage"));
       return null;
     }
     return pages;
@@ -750,11 +751,11 @@ export class WritingSystem implements System {
     if (c.made.length >= max) {
       const made = c.made.slice().sort((a, b) => a - b);
       const days = Math.max(1, Math.ceil((made[made.length - max] + this.windowMs() - Date.now()) / DAY_MS));
-      this.notice(mp, userId, `You have made ${max} writings in the last ${this.cfg.writingDocumentDays} days. Burn one of them, or wait ${days} day${days === 1 ? "" : "s"}.`);
+      this.notice(mp, userId, (days === 1 ? loc("writing.limit.madeDay", { max, window: this.cfg.writingDocumentDays, days }) : loc("writing.limit.madeDays", { max, window: this.cfg.writingDocumentDays, days })));
       return false;
     }
     if (c.recent.length >= this.cfg.writingMaxPerDay) {
-      this.notice(mp, userId, "Your hand is tired. Write again tomorrow.");
+      this.notice(mp, userId, loc("writing.limit.tired"));
       return false;
     }
     return true;

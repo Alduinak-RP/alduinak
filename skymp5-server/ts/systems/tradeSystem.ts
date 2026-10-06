@@ -7,6 +7,7 @@ import {
 import { isBleedingOut, isIntroduced } from "./actorUtil";
 import { SettleWear, wearSettler } from "./durabilityNative";
 import { noteInventoryActivity } from "./goldWatchSystem";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -40,7 +41,7 @@ type Mp = any;
 const DEFAULT_MAX_TRADE_DISTANCE = 1024;      // game units; both must stay within this range
 const DEFAULT_INVITE_TTL_MS = 60 * 1000;      // pending invites auto-cancel after this
 const DEFAULT_INVITE_COOLDOWN_MS = 30 * 1000; // min gap between invites per initiator->target
-const CONDITION_NOTICE = 'An offered item is no longer in the condition shown. Check the offer and lock again.';
+const CONDITION_NOTICE = loc("trade.conditionChanged");
 
 // Which server entries an offer draws on; plain[i] marks a line the server only holds without its extras
 interface Resolution {
@@ -173,7 +174,7 @@ export class TradeSystem implements System {
     ctx.gm.on("userAssignActor", (userId: number) => {
       const s = this.sessions.get(userId);
       if (s && s.active) {
-        this.cancel(ctx.svr as Mp, s, 'The trade was interrupted.');
+        this.cancel(ctx.svr as Mp, s, loc("trade.interrupted"));
       }
     });
   }
@@ -206,7 +207,7 @@ export class TradeSystem implements System {
   disconnect(userId: number, ctx: SystemContext): void {
     const s = this.sessions.get(userId);
     if (s) {
-      this.cancel(ctx.svr as Mp, s, 'Your trading partner left.', userId);
+      this.cancel(ctx.svr as Mp, s, loc("trade.partnerLeft"), userId);
     }
   }
 
@@ -235,18 +236,18 @@ export class TradeSystem implements System {
   private nameOf(mp: Mp, userId: number): string {
     const actorId = this.actorOf(mp, userId);
     if (!actorId) {
-      return 'Player';
+      return loc("trade.player");
     }
     try {
-      return mp.getActorName(actorId) || 'Player';
+      return mp.getActorName(actorId) || loc("trade.player");
     } catch {
-      return 'Player';
+      return loc("trade.player");
     }
   }
 
   // The subject's name as the viewer may see it: real once introduced (gamemode ff_knownIds), otherwise the anonymity placeholder
   private nameShownTo(mp: Mp, viewerUserId: number, subjectUserId: number): string {
-    return isIntroduced(mp, this.actorOf(mp, viewerUserId), this.actorOf(mp, subjectUserId)) ? this.nameOf(mp, subjectUserId) : 'A stranger';
+    return isIntroduced(mp, this.actorOf(mp, viewerUserId), this.actorOf(mp, subjectUserId)) ? this.nameOf(mp, subjectUserId) : loc("trade.stranger");
   }
 
   // Push the current deal to one participant, framed from their point of view.
@@ -375,13 +376,13 @@ export class TradeSystem implements System {
     const seq = s.inviteSeq;
     this.markInviteCooldown(s.a, s.b);
     this.send(mp, s.b, { customPacketType: 'tradeInvite', fromName: this.nameShownTo(mp, s.b, s.a) });
-    this.notice(mp, s.a, 'Trade request sent to ' + this.nameShownTo(mp, s.a, s.b) + '.');
+    this.notice(mp, s.a, loc("trade.request.sent", { name: this.nameShownTo(mp, s.a, s.b) }));
     setTimeout(() => {
       try {
         if (this.sessions.get(s.a) !== s || s.active || s.inviteSeq !== seq) {
           return; // answered, cancelled, re-invited, or superseded meanwhile
         }
-        this.cancel(mp, s, 'The trade request expired.');
+        this.cancel(mp, s, loc("trade.request.expired"));
       } catch (err: any) {
         this.log('[trade] invite expiry error: ' + (err && err.message));
       }
@@ -406,42 +407,42 @@ export class TradeSystem implements System {
       targetUserId = -1;
     }
     if (targetUserId < 0 || targetUserId === userId || !mp.isConnected(targetUserId)) {
-      this.notice(mp, userId, 'That is not someone you can trade with.');
+      this.notice(mp, userId, loc("trade.request.invalidTarget"));
       return;
     }
 
     const existing = this.sessions.get(userId);
     if (existing) {
       if (existing.active || existing.a !== userId) {
-        this.notice(mp, userId, 'You are already in a trade.');
+        this.notice(mp, userId, loc("trade.request.alreadyTrading"));
         return;
       }
       // Our own invite is still pending: same target again -> re-invite; a different target -> drop the stale invite and start over
       if (existing.b === targetUserId) {
         if (this.onInviteCooldown(userId, targetUserId)) {
-          this.notice(mp, userId, 'Please wait before sending another trade request.');
+          this.notice(mp, userId, loc("trade.request.cooldown"));
           return;
         }
         this.sendInvite(mp, existing);
         return;
       }
-      this.cancel(mp, existing, this.nameShownTo(mp, existing.b === userId ? existing.a : existing.b, userId) + ' cancelled the trade.', userId);
+      this.cancel(mp, existing, loc("trade.cancelled", { name: this.nameShownTo(mp, existing.b === userId ? existing.a : existing.b, userId) }), userId);
     }
 
     if (this.sessions.has(targetUserId)) {
-      this.notice(mp, userId, this.nameShownTo(mp, userId, targetUserId) + ' is busy with another trade.');
+      this.notice(mp, userId, loc("trade.request.busy", { name: this.nameShownTo(mp, userId, targetUserId) }));
       return;
     }
     if (this.onInviteCooldown(userId, targetUserId)) {
-      this.notice(mp, userId, 'Please wait before sending another trade request.');
+      this.notice(mp, userId, loc("trade.request.cooldown"));
       return;
     }
     if (this.tradeBlockReason(mp, userId)) {
-      this.notice(mp, userId, 'You cannot trade right now.');
+      this.notice(mp, userId, loc("trade.request.cannotNow"));
       return;
     }
     if (this.tradeBlockReason(mp, targetUserId)) {
-      this.notice(mp, userId, this.nameShownTo(mp, userId, targetUserId) + ' cannot trade right now.');
+      this.notice(mp, userId, loc("trade.request.theyCannotNow", { name: this.nameShownTo(mp, userId, targetUserId) }));
       return;
     }
     const s: Session = {
@@ -456,7 +457,7 @@ export class TradeSystem implements System {
       seenA: '', seenB: '',
     };
     if (!this.withinRange(mp, s)) {
-      this.notice(mp, userId, 'You are too far away to trade.');
+      this.notice(mp, userId, loc("trade.request.tooFar"));
       return;
     }
     this.sessions.set(userId, s);
@@ -473,15 +474,15 @@ export class TradeSystem implements System {
     if (!content.accept) {
       // A decline also refreshes the brake so the initiator can't immediately re-seize the decliner's browser focus with a fresh invite
       this.markInviteCooldown(s.a, s.b);
-      this.cancel(mp, s, this.nameShownTo(mp, s.a === userId ? s.b : s.a, userId) + ' declined the trade.', userId);
+      this.cancel(mp, s, loc("trade.declined", { name: this.nameShownTo(mp, s.a === userId ? s.b : s.a, userId) }), userId);
       return;
     }
     if (!this.bothConnected(mp, s) || !this.withinRange(mp, s)) {
-      this.cancel(mp, s, 'The trade could not start.');
+      this.cancel(mp, s, loc("trade.couldNotStart"));
       return;
     }
     if (this.tradeBlockReason(mp, s.a) || this.tradeBlockReason(mp, s.b)) {
-      this.cancel(mp, s, 'The trade could not start.');
+      this.cancel(mp, s, loc("trade.couldNotStart"));
       return;
     }
     s.active = true;
@@ -505,7 +506,7 @@ export class TradeSystem implements System {
     const res = resolveOffer(inv, offer);
     if (!res.ok) {
       // Client and server disagree on holdings - resync rather than trust it.
-      this.notice(mp, userId, 'You no longer have all of those items.');
+      this.notice(mp, userId, loc("trade.offer.missingItems"));
       this.sendStateTo(mp, s, userId);
       return;
     }
@@ -513,7 +514,7 @@ export class TradeSystem implements System {
     const oldPlain = resolveOffer(inv, oldOffer).plain;
     const wasPlain = new Set(oldOffer.filter((_, n) => oldPlain[n]).map(lineKey));
     if (offer.some((i, n) => res.plain[n] && !wasPlain.has(lineKey(i)))) {
-      this.notice(mp, userId, 'The server has no saved enchantment, tempering, soul or poison on that item, so it will trade as a plain copy.');
+      this.notice(mp, userId, loc("trade.offer.plainCopy"));
     }
     if (s.a === userId) { s.offerA = offer; } else { s.offerB = offer; }
     this.resetCommitments(s); // the terms changed; everyone must re-lock
@@ -532,7 +533,7 @@ export class TradeSystem implements System {
     const inv = readInventory(mp, this.actorOf(mp, userId));
     const res = resolveOffer(inv, me ? s.offerA : s.offerB);
     if (!res.ok) {
-      this.notice(mp, userId, 'You no longer have all of those items.');
+      this.notice(mp, userId, loc("trade.offer.missingItems"));
       if (me) { s.offerA = []; } else { s.offerB = []; }
       this.resetCommitments(s);
       this.broadcastState(mp, s);
@@ -589,7 +590,7 @@ export class TradeSystem implements System {
     const s = this.sessions.get(userId);
     if (s) {
       // Blame the canceller: the packet goes to the PARTNER, so the name shown must be the canceller's own
-      this.cancel(mp, s, this.nameShownTo(mp, s.a === userId ? s.b : s.a, userId) + ' cancelled the trade.', userId);
+      this.cancel(mp, s, loc("trade.cancelled", { name: this.nameShownTo(mp, s.a === userId ? s.b : s.a, userId) }), userId);
     }
   }
 
@@ -605,15 +606,15 @@ export class TradeSystem implements System {
 
   private completeTrade(mp: Mp, s: Session): void {
     if (!this.bothConnected(mp, s)) {
-      this.cancel(mp, s, 'Your trading partner left.');
+      this.cancel(mp, s, loc("trade.partnerLeft"));
       return;
     }
     if (!this.withinRange(mp, s)) {
-      this.cancel(mp, s, 'You moved too far apart to finish the trade.');
+      this.cancel(mp, s, loc("trade.tooFarApart"));
       return;
     }
     if (this.tradeBlockReason(mp, s.a) || this.tradeBlockReason(mp, s.b)) {
-      this.cancel(mp, s, 'The trade was interrupted.');
+      this.cancel(mp, s, loc("trade.interrupted"));
       return;
     }
 
@@ -627,7 +628,7 @@ export class TradeSystem implements System {
     const resA = resolveOffer(invA, s.offerA);
     const resB = resolveOffer(invB, s.offerB);
     if (!resA.ok || !resB.ok) {
-      this.cancel(mp, s, 'The trade failed - an item was no longer available.');
+      this.cancel(mp, s, loc("trade.itemGone"));
       return;
     }
     // The partner agreed to the worn copies shown at the lock; another copy or more wear since then needs a fresh look
@@ -663,7 +664,7 @@ export class TradeSystem implements System {
             + (rollbackErr && rollbackErr.message) + ' - pre-swap inventory: ' + JSON.stringify(preSwapA));
         }
       }
-      this.cancel(mp, s, 'The trade failed unexpectedly.'); // no blame: both are told
+      this.cancel(mp, s, loc("trade.failed")); // no blame: both are told
       return;
     }
 

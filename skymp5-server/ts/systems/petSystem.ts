@@ -13,6 +13,7 @@ import { resolveEditorIds } from "./espmEditorIds";
 import { PET_ANCHORS } from "./adminMapMarkers";
 import { Inventory, addEntries, isNamedItem, readInventory, withCount } from "./inventoryExtras";
 import { every, soon } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -293,14 +294,14 @@ export class PetSystem implements System {
 
   // Adds a stored pet to a character; empty result on success, else the refusal
   grant(ownerId: number, kind: PetKind, baseRef: string, name: string): string {
-    if (!HOME_OF[kind]) return "Unknown pet kind";
+    if (!HOME_OF[kind]) return loc("pet.grant.unknownKind");
     const wanted = String(baseRef ?? "").trim().toLowerCase();
     const list = this.bases.get(kind) ?? [];
     const base = list.find((b) => b.desc.toLowerCase() === wanted || b.editorId.toLowerCase() === wanted) ?? list[0];
-    if (!base) return `No ${kind} base is configured`;
+    if (!base) return loc("pet.grant.noBase", { kind });
     const pets = this.readPets(ownerId);
-    if (!pets) return "That character has no pet storage";
-    if (this.keptCount(pets) >= this.cfg.petMaxPets) return `They already keep ${this.cfg.petMaxPets} pets`;
+    if (!pets) return loc("pet.grant.noStorage");
+    if (this.keptCount(pets) >= this.cfg.petMaxPets) return loc("pet.grant.full", { max: this.cfg.petMaxPets });
     const rec: StoredPet = {
       uid: this.newUid(),
       name: cleanDisplayName(name, MAX_NAME) || this.speciesOf(base.editorId, kind),
@@ -313,7 +314,7 @@ export class PetSystem implements System {
       createdAt: Date.now(),
     };
     pets.push(rec);
-    if (!this.writePets(ownerId, pets)) return "The pet could not be stored";
+    if (!this.writePets(ownerId, pets)) return loc("pet.grant.notStored");
     this.sendState(ownerId);
     this.log(`PetSystem: ${kind} ${rec.uid} (${base.editorId}) granted to ${hex(ownerId)}`);
     return "";
@@ -357,19 +358,19 @@ export class PetSystem implements System {
     if (companion) {
       if (companion.ownerId !== actorId) return;
       this.send(userId, {
-        customPacketType: "petMenu", target, title: "Companion", trade: false,
-        actions: [{ id: "pet", label: "Pet" }, { id: "follow", label: "Follow" }, { id: "unsummon", label: "Unsummon" }],
+        customPacketType: "petMenu", target, title: loc("pet.menu.companion"), trade: false,
+        actions: [{ id: "pet", label: loc("pet.menu.pet") }, { id: "follow", label: loc("pet.menu.follow") }, { id: "unsummon", label: loc("pet.menu.unsummon") }],
       });
       return;
     }
     const a = this.mine(userId, actorId, target);
     if (!a) return;
-    const actions: { id: string; label: string }[] = [{ id: "pet", label: "Pet" }];
+    const actions: { id: string; label: string }[] = [{ id: "pet", label: loc("pet.menu.pet") }];
     // The client sends Follow as a companionCommand, since a dog fights through CompanionSystem
-    if (a.kind === "dog" && !a.carriedBy) actions.push({ id: "follow", label: "Follow" });
-    if (a.kind !== "horse") actions.push({ id: "carry", label: a.carriedBy === actorId ? "Put down" : "Carry" });
-    if (this.homeNear(actorId, a.kind)) actions.push({ id: "unsummon", label: "Unsummon" });
-    actions.push({ id: "rename", label: "Rename" }, { id: "transfer", label: "Transfer" }, { id: "release", label: "Release" });
+    if (a.kind === "dog" && !a.carriedBy) actions.push({ id: "follow", label: loc("pet.menu.follow") });
+    if (a.kind !== "horse") actions.push({ id: "carry", label: a.carriedBy === actorId ? loc("pet.menu.putDown") : loc("pet.menu.carry") });
+    if (this.homeNear(actorId, a.kind)) actions.push({ id: "unsummon", label: loc("pet.menu.unsummon") });
+    actions.push({ id: "rename", label: loc("pet.menu.rename") }, { id: "transfer", label: loc("pet.menu.transfer") }, { id: "release", label: loc("pet.menu.release") });
     this.send(userId, { customPacketType: "petMenu", target, title: a.name, trade: a.kind !== "livestock", actions });
   }
 
@@ -392,7 +393,7 @@ export class PetSystem implements System {
     const a = this.active.get(target);
     if (!a || a.ownerId !== actorId || a.kind !== "dog") return;
     if (a.diedAt || a.carriedBy || a.ridingBy || a.pending || a.fleeSince || !isAlive(this.mp, a.id)) return;
-    if (!this.companions.orderAttack(a.id, victimId)) this.notice(userId, `${a.name} cannot go after that.`);
+    if (!this.companions.orderAttack(a.id, victimId)) this.notice(userId, loc("pet.cannotAttack", { name: a.name }));
   }
 
   private harvest(userId: number, actorId: number, a: Active): void {
@@ -402,43 +403,43 @@ export class PetSystem implements System {
     const product = this.productOf(rec.baseDesc);
     const itemDesc = product ? this.harvestItems.get(product) : undefined;
     if (!product || !itemDesc) {
-      this.notice(userId, `${a.name} gives nothing.`);
+      this.notice(userId, loc("pet.harvest.nothing", { name: a.name }));
       return;
     }
     const now = Date.now();
     const readyAt = rec.harvestAt + this.cfg.petHarvestHours * 3600 * 1000;
     if (readyAt > now) {
-      this.notice(userId, `${a.name} can be harvested again in ${formatWait(readyAt - now)}.`);
+      this.notice(userId, loc("pet.harvest.wait", { name: a.name, wait: formatWait(readyAt - now) }));
       return;
     }
     let itemId = 0;
     try { itemId = this.mp.getIdFromDesc(itemDesc) >>> 0; } catch { }
     if (!itemId) {
-      this.notice(userId, `${a.name} gives nothing.`);
+      this.notice(userId, loc("pet.harvest.nothing", { name: a.name }));
       return;
     }
     rec.harvestAt = now;
     if (!this.writePets(actorId, pets)) return;
     addItemTo(this.mp, actorId, itemId, 1);
-    this.notice(userId, `You gathered ${product} from ${a.name}.`);
+    this.notice(userId, loc("pet.harvest.gathered", { product, name: a.name }));
   }
 
   // ── Mount handshake (docs: Visible riding) ───────────────────────────────────
 
   private onMount(userId: number, actorId: number, target: number, mounted: unknown): void {
     const released = mounted === undefined && this.released.has(target);
-    if (released && !isNear(this.mp, actorId, target, this.cfg.petInteractMaxDistance)) return this.notice(userId, "Too far.");
-    if (released && this.rideOf(actorId)) return this.notice(userId, "You are already mounted.");
+    if (released && !isNear(this.mp, actorId, target, this.cfg.petInteractMaxDistance)) return this.notice(userId, loc("pet.tooFar"));
+    if (released && this.rideOf(actorId)) return this.notice(userId, loc("pet.mount.alreadyMounted"));
     const a = released ? this.adopt(userId, actorId, target) : this.active.get(target);
     if (!a || a.kind !== "horse") return;
     if (mounted === true || mounted === false) return this.onMountReport(userId, actorId, a, mounted);
-    if (a.diedAt || !isAlive(this.mp, a.id)) return this.notice(userId, "It is dead.");
+    if (a.diedAt || !isAlive(this.mp, a.id)) return this.notice(userId, loc("pet.mount.dead"));
     if (a.ridingBy || (a.pending && Date.now() - a.pending.at < this.cfg.petMountTimeoutSeconds * 1000)) {
-      return this.notice(userId, "Someone is already riding it.");
+      return this.notice(userId, loc("pet.mount.taken"));
     }
-    if (a.carriedBy) return this.notice(userId, "It is being carried.");
-    if (!isNear(this.mp, actorId, a.id, this.cfg.petInteractMaxDistance)) return this.notice(userId, "Too far.");
-    if (this.rideOf(actorId)) return this.notice(userId, "You are already mounted.");
+    if (a.carriedBy) return this.notice(userId, loc("pet.beingCarried"));
+    if (!isNear(this.mp, actorId, a.id, this.cfg.petInteractMaxDistance)) return this.notice(userId, loc("pet.tooFar"));
+    if (this.rideOf(actorId)) return this.notice(userId, loc("pet.mount.alreadyMounted"));
     if (a.ownerId !== actorId) {
       const refusal = this.roomFor(actorId);
       if (refusal) return this.notice(userId, refusal);
@@ -449,7 +450,7 @@ export class PetSystem implements System {
     try { hosted = (Number(this.mp.getHoster(a.id)) >>> 0) === actorId; } catch { }
     if (!this.hosting.assign(a.id, actorId, "rider")) {
       a.pending = undefined;
-      return this.notice(userId, "Try again.");
+      return this.notice(userId, loc("pet.tryAgain"));
     }
     this.send(userId, { customPacketType: "petMount", target: a.id, hosted });
   }
@@ -471,7 +472,7 @@ export class PetSystem implements System {
     // The caps may have filled while the rider climbed on
     if (a.ownerId !== actorId) {
       const other = this.rideOf(actorId);
-      const refusal = other && other !== a ? "You are already mounted." : this.roomFor(actorId);
+      const refusal = other && other !== a ? loc("pet.mount.alreadyMounted") : this.roomFor(actorId);
       if (refusal) {
         a.pending = undefined;
         this.hosting.assign(a.id, a.ownerId, "owner");
@@ -518,7 +519,7 @@ export class PetSystem implements System {
   private onTrade(userId: number, actorId: number, target: number): void {
     const a = this.mine(userId, actorId, target);
     if (!a) return;
-    if (a.kind === "livestock") return this.notice(userId, `${a.name} carries nothing.`);
+    if (a.kind === "livestock") return this.notice(userId, loc("pet.carry.nothing", { name: a.name }));
     if (!this.ctx) return;
     const refusal = this.search.openPetInventory(this.ctx, actorId, a.id);
     if (refusal) this.notice(userId, refusal);
@@ -533,19 +534,19 @@ export class PetSystem implements System {
   private onCarry(userId: number, actorId: number, target: number): void {
     const a = this.mine(userId, actorId, target);
     if (!a || !this.ctx) return;
-    if (a.kind === "horse") return this.notice(userId, "A horse is too heavy to carry.");
+    if (a.kind === "horse") return this.notice(userId, loc("pet.carry.tooHeavy"));
     if (a.carriedBy === actorId) {
       this.capture.stopCarrying(this.ctx, actorId);
       return;
     }
-    if (a.ridingBy) return this.notice(userId, "It is being ridden.");
+    if (a.ridingBy) return this.notice(userId, loc("pet.carry.beingRidden"));
     const refusal = this.capture.carryNpc(this.ctx, actorId, a.id, a.name);
     if (refusal) return this.notice(userId, refusal);
     a.carriedBy = actorId;
     // The carrier's client holds it in its arms and streams where it is
     this.hosting.assign(a.id, actorId, "carried");
     this.pushFf(a);
-    this.notice(userId, `You picked up ${a.name}.`);
+    this.notice(userId, loc("pet.carry.pickedUp", { name: a.name }));
   }
 
   private onCarryEnd(npcId: number): void {
@@ -565,18 +566,18 @@ export class PetSystem implements System {
     }
     const a = this.mine(userId, actorId, target);
     if (!a) return;
-    if (a.ridingBy) return this.notice(userId, "Dismount first.");
+    if (a.ridingBy) return this.notice(userId, loc("pet.store.dismountFirst"));
     const home = this.homeNear(actorId, a.kind);
     if (!home) return this.notice(userId, this.homeHint(a.kind));
     this.store(a, "unsummoned", home);
-    this.notice(userId, `${a.name} is now at ${home}.`);
+    this.notice(userId, loc("pet.store.done", { name: a.name, home }));
   }
 
   private onRename(userId: number, actorId: number, target: number, raw: unknown): void {
     const a = this.mine(userId, actorId, target);
     if (!a) return;
     const name = cleanDisplayName(raw, MAX_NAME);
-    if (!name) return this.notice(userId, "That name cannot be used.");
+    if (!name) return this.notice(userId, loc("pet.rename.invalid"));
     const pets = this.readPets(actorId) ?? [];
     const rec = pets.find((p) => p.uid === a.uid);
     if (!rec) return;
@@ -585,33 +586,33 @@ export class PetSystem implements System {
     a.name = name;
     this.pushFf(a);
     this.sendState(actorId);
-    this.notice(userId, `Renamed to ${name}.`);
+    this.notice(userId, loc("pet.rename.done", { name }));
   }
 
   private onTransfer(userId: number, actorId: number, target: number, recipientId: number): void {
     const a = this.mine(userId, actorId, target);
     if (!a) return;
     const recipientUser = userOf(this.mp, recipientId);
-    if (!recipientId || recipientId === actorId || recipientUser < 0) return this.notice(userId, "Look at the player who should receive it.");
-    if (!isNear(this.mp, actorId, recipientId, this.cfg.petInteractMaxDistance)) return this.notice(userId, "They are too far away.");
-    if (a.ridingBy || a.carriedBy) return this.notice(userId, "Not while it is ridden or carried.");
+    if (!recipientId || recipientId === actorId || recipientUser < 0) return this.notice(userId, loc("pet.transfer.lookAt"));
+    if (!isNear(this.mp, actorId, recipientId, this.cfg.petInteractMaxDistance)) return this.notice(userId, loc("pet.transfer.tooFar"));
+    if (a.ridingBy || a.carriedBy) return this.notice(userId, loc("pet.busy"));
     for (const t of this.transfers.values()) {
-      if (t.petId === a.id || t.recipientId === recipientId) return this.notice(userId, "A transfer is already pending.");
+      if (t.petId === a.id || t.recipientId === recipientId) return this.notice(userId, loc("pet.transfer.pending"));
     }
     const theirs = this.readPets(recipientId);
-    if (!theirs) return this.notice(userId, "They cannot keep pets.");
-    if (this.roomFor(recipientId)) return this.notice(userId, "They have no room for another pet.");
+    if (!theirs) return this.notice(userId, loc("pet.transfer.cannotKeep"));
+    if (this.roomFor(recipientId)) return this.notice(userId, loc("pet.transfer.noRoom"));
     const requestId = this.nextConsentId++;
     const timer = setTimeout(() => {
-      if (this.transfers.delete(requestId)) this.notice(userOf(this.mp, actorId), `${nameShownTo(this.mp, actorId, recipientId)} did not respond.`);
+      if (this.transfers.delete(requestId)) this.notice(userOf(this.mp, actorId), loc("pet.transfer.noResponse", { name: nameShownTo(this.mp, actorId, recipientId) }));
     }, CONSENT_TIMEOUT_MS);
     this.transfers.set(requestId, { petId: a.id, ownerId: actorId, recipientId, timer });
     this.send(recipientUser, {
       customPacketType: "captureConsentRequest",
       requestId,
-      text: `${nameShownTo(this.mp, recipientId, actorId)} offers you ${a.name} (${KIND_LABEL[a.kind].toLowerCase()}). Accept?`,
+      text: loc("pet.transfer.offer", { name: nameShownTo(this.mp, recipientId, actorId), pet: a.name, kind: KIND_LABEL[a.kind].toLowerCase() }),
     });
-    this.notice(userId, `Waiting for ${nameShownTo(this.mp, actorId, recipientId)} to accept…`);
+    this.notice(userId, loc("pet.transfer.waiting", { name: nameShownTo(this.mp, actorId, recipientId) }));
   }
 
   private onConsentResult(userId: number, content: Content): void {
@@ -626,35 +627,35 @@ export class PetSystem implements System {
     const ownerUser = userOf(this.mp, t.ownerId);
     const a = this.active.get(t.petId);
     if (content["accepted"] !== true) {
-      this.notice(ownerUser, `${nameShownTo(this.mp, t.ownerId, t.recipientId)} refused.`);
+      this.notice(ownerUser, loc("pet.transfer.refused", { name: nameShownTo(this.mp, t.ownerId, t.recipientId) }));
       return;
     }
     if (!a || a.ownerId !== t.ownerId || a.diedAt || a.ridingBy || a.carriedBy) {
-      this.notice(ownerUser, "The pet can no longer be handed over.");
+      this.notice(ownerUser, loc("pet.transfer.gone"));
       return;
     }
     if (!isNear(this.mp, t.ownerId, t.recipientId, this.cfg.petInteractMaxDistance)) {
-      this.notice(ownerUser, `${nameShownTo(this.mp, t.ownerId, t.recipientId)} is out of reach.`);
+      this.notice(ownerUser, loc("pet.transfer.outOfReach", { name: nameShownTo(this.mp, t.ownerId, t.recipientId) }));
       return;
     }
     const refusal = this.roomFor(t.recipientId);
     if (refusal) {
       this.notice(userId, refusal);
-      this.notice(ownerUser, "They have no room for another pet.");
+      this.notice(ownerUser, loc("pet.transfer.noRoom"));
       return;
     }
     if (!this.changeOwner(a, t.recipientId, "transferred")) {
-      this.notice(ownerUser, "The pet could not be handed over.");
+      this.notice(ownerUser, loc("pet.transfer.failed"));
       return;
     }
-    this.notice(ownerUser, `You handed ${a.name} to ${nameShownTo(this.mp, t.ownerId, t.recipientId)}.`);
-    this.notice(userId, `${nameShownTo(this.mp, t.recipientId, t.ownerId)} handed you ${a.name}.`);
+    this.notice(ownerUser, loc("pet.transfer.handed", { pet: a.name, name: nameShownTo(this.mp, t.ownerId, t.recipientId) }));
+    this.notice(userId, loc("pet.transfer.received", { name: nameShownTo(this.mp, t.recipientId, t.ownerId), pet: a.name }));
   }
 
   private onRelease(userId: number, actorId: number, target: number): void {
     const a = this.mine(userId, actorId, target);
     if (!a) return;
-    if (a.ridingBy || a.carriedBy) return this.notice(userId, "Not while it is ridden or carried.");
+    if (a.ridingBy || a.carriedBy) return this.notice(userId, loc("pet.busy"));
     const pets = (this.readPets(actorId) ?? []).filter((p) => p.uid !== a.uid);
     if (!this.writePets(actorId, pets)) return;
     this.endTrade(a.id);
@@ -670,7 +671,7 @@ export class PetSystem implements System {
     this.hosting.assign(a.id, 0, "released");
     this.save();
     this.sendState(actorId);
-    this.notice(userId, `${a.name} is free.`);
+    this.notice(userId, loc("pet.released", { name: a.name }));
     this.log(`PetSystem: ${hex(actorId)} released ${a.name} ${hex(a.id)}`);
   }
 
@@ -678,7 +679,7 @@ export class PetSystem implements System {
 
   private onList(userId: number, actorId: number, door: number): void {
     const category = this.categoryOfDoor(actorId, door);
-    if (!category) return this.notice(userId, "No pets are kept here.");
+    if (!category) return this.notice(userId, loc("pet.summon.noneHere"));
     const pets = (this.readPets(actorId) ?? []).filter((p) => p.home === category && !p.diedAt);
     this.send(userId, {
       customPacketType: "petList",
@@ -690,21 +691,21 @@ export class PetSystem implements System {
 
   private onSummon(userId: number, actorId: number, uid: string, door: number): void {
     const category = this.categoryOfDoor(actorId, door);
-    if (!category) return this.notice(userId, "No pets are kept here.");
-    if (!this.nearRef(actorId, door)) return this.notice(userId, "Stand at the door.");
+    if (!category) return this.notice(userId, loc("pet.summon.noneHere"));
+    if (!this.nearRef(actorId, door)) return this.notice(userId, loc("pet.summon.standAtDoor"));
     // Horses and livestock come out where they can be unsummoned again
-    if (category !== "house" && !this.anchorNearActor(actorId, category)) return this.notice(userId, "Summon it from the outside door.");
+    if (category !== "house" && !this.anchorNearActor(actorId, category)) return this.notice(userId, loc("pet.summon.outsideDoor"));
     const pets = this.readPets(actorId) ?? [];
     const rec = pets.find((p) => p.uid === uid);
-    if (!rec || rec.home !== category) return this.notice(userId, "That pet is not kept here.");
-    if (rec.actorId) return this.notice(userId, `${rec.name} is already out.`);
-    if (this.outCount(actorId) >= this.cfg.petMaxOut) return this.notice(userId, `You cannot have more than ${this.cfg.petMaxOut} pets out.`);
+    if (!rec || rec.home !== category) return this.notice(userId, loc("pet.summon.notKeptHere"));
+    if (rec.actorId) return this.notice(userId, loc("pet.summon.alreadyOut", { name: rec.name }));
+    if (this.outCount(actorId) >= this.cfg.petMaxOut) return this.notice(userId, loc("pet.maxOut", { max: this.cfg.petMaxOut }));
     if (!isAlive(this.mp, actorId)) return;
     const id = this.spawn(actorId, rec);
-    if (!id) return this.notice(userId, `${rec.name} could not be brought out.`);
+    if (!id) return this.notice(userId, loc("pet.summon.failed", { name: rec.name }));
     this.writePets(actorId, pets);
     this.sendState(actorId);
-    this.notice(userId, `${rec.name} is here.`);
+    this.notice(userId, loc("pet.summon.here", { name: rec.name }));
   }
 
   // ── Spawn, store, ownership ──────────────────────────────────────────────────
@@ -774,8 +775,8 @@ export class PetSystem implements System {
     this.sendState(previous);
     this.sendState(newOwnerId);
     if (reason === "stolen") {
-      this.notice(userOf(this.mp, previous), `${nameShownTo(this.mp, previous, newOwnerId)} took ${a.name}.`);
-      this.notice(userOf(this.mp, newOwnerId), `${a.name} is yours now.`);
+      this.notice(userOf(this.mp, previous), loc("pet.took", { name: nameShownTo(this.mp, previous, newOwnerId), pet: a.name }));
+      this.notice(userOf(this.mp, newOwnerId), loc("pet.yoursNow", { name: a.name }));
     }
     this.log(`PetSystem: ${a.name} ${hex(a.id)} ${reason}: ${hex(previous)} -> ${hex(newOwnerId)}`);
     return true;
@@ -808,7 +809,7 @@ export class PetSystem implements System {
       if (a.pending && now - a.pending.at > this.cfg.petMountTimeoutSeconds * 1000) {
         const rider = a.pending.rider;
         a.pending = undefined;
-        this.notice(userOf(mp, rider), "Try again.");
+        this.notice(userOf(mp, rider), loc("pet.tryAgain"));
       }
       if (a.ridingBy && !isAlive(mp, a.ridingBy)) this.clearRide(a, "rider died");
       // An owner in the dirt sends the pet running; it goes home after a while
@@ -862,7 +863,7 @@ export class PetSystem implements System {
       this.writePets(a.ownerId, pets);
     }
     this.pushFf(a);
-    this.notice(userOf(this.mp, a.ownerId), `${a.name} has died.`);
+    this.notice(userOf(this.mp, a.ownerId), loc("pet.died", { name: a.name }));
     this.log(`PetSystem: ${a.name} ${hex(a.id)} of ${hex(a.ownerId)} died`);
   }
 
@@ -952,9 +953,9 @@ export class PetSystem implements System {
   // Empty when the character may take one more pet, else why not
   private roomFor(actorId: number): string {
     const pets = this.readPets(actorId);
-    if (!pets) return "You cannot keep pets.";
-    if (this.keptCount(pets) >= this.cfg.petMaxPets) return "You already keep enough pets.";
-    if (this.outCount(actorId) >= this.cfg.petMaxOut) return `You cannot have more than ${this.cfg.petMaxOut} pets out.`;
+    if (!pets) return loc("pet.room.cannotKeep");
+    if (this.keptCount(pets) >= this.cfg.petMaxPets) return loc("pet.room.enough");
+    if (this.outCount(actorId) >= this.cfg.petMaxOut) return loc("pet.maxOut", { max: this.cfg.petMaxOut });
     return "";
   }
 
@@ -994,7 +995,7 @@ export class PetSystem implements System {
     this.pushFf(a);
     this.save();
     this.sendState(actorId);
-    this.notice(userId, `${rec.name} is yours now.`);
+    this.notice(userId, loc("pet.yoursNow", { name: rec.name }));
     this.log(`PetSystem: ${hex(actorId)} claimed the released horse ${hex(id)}`);
     return a;
   }
@@ -1043,15 +1044,15 @@ export class PetSystem implements System {
   private mine(userId: number, actorId: number, target: number): Active | undefined {
     const a = this.active.get(target);
     if (!a || a.ownerId !== actorId) {
-      this.notice(userId, "That is not yours.");
+      this.notice(userId, loc("pet.notYours"));
       return undefined;
     }
     if (a.diedAt || !isAlive(this.mp, a.id)) {
-      this.notice(userId, `${a.name} is dead.`);
+      this.notice(userId, loc("pet.isDead", { name: a.name }));
       return undefined;
     }
     if (!isNear(this.mp, actorId, a.id, this.cfg.petInteractMaxDistance)) {
-      this.notice(userId, "Too far.");
+      this.notice(userId, loc("pet.tooFar"));
       return undefined;
     }
     return a;
@@ -1105,14 +1106,14 @@ export class PetSystem implements System {
   private homeNear(actorId: number, kind: PetKind): string {
     if (kind === "dog") {
       const home = this.ctx ? this.housing.nearestOwnedRef(this.ctx, actorId) : null;
-      return home ? home.name || "your home" : "";
+      return home ? home.name || loc("pet.yourHome") : "";
     }
     const anchor = this.anchorNearActor(actorId, HOME_OF[kind] as "stable" | "farm");
     return anchor ? anchor.name : "";
   }
 
   private homeHint(kind: PetKind): string {
-    return kind === "horse" ? "Horses are left at a stable." : kind === "livestock" ? "Livestock is left at a farm." : "Dogs are left at your home.";
+    return kind === "horse" ? loc("pet.hint.horse") : kind === "livestock" ? loc("pet.hint.livestock") : loc("pet.hint.dog");
   }
 
   private anchorNearActor(actorId: number, kind: "stable" | "farm"): Anchor | null {

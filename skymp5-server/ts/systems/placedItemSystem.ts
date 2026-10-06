@@ -8,6 +8,7 @@ import { formIdFromConfig, toFormId } from "./formIdUtil";
 import { isOutdoors } from "./holdOf";
 import { onlineSnapshot } from "./onlineSnapshot";
 import { KeyedTimers, every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -137,7 +138,7 @@ export class PlacedItemSystem implements System {
     const by = this.grabs.get(targetId);
     if (by !== undefined && by !== casterId) return false;
     if (!this.nailedBy(mp, targetId)) return true;
-    notifyActor(mp, casterId, "It is nailed down.");
+    notifyActor(mp, casterId, loc("placedItem.nailedDown"));
     return false;
   }
 
@@ -316,7 +317,7 @@ export class PlacedItemSystem implements System {
 
   private nail(mp: Mp, actorId: number, target: number): void {
     if (!this.hasTools(mp, actorId) || !takeItemFrom(mp, actorId, this.nailId, 1)) {
-      notifyActor(mp, actorId, "You need a hammer and a nail.");
+      notifyActor(mp, actorId, loc("placedItem.needHammer"));
       return;
     }
     this.setNailed(mp, target, actorId);

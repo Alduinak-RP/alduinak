@@ -1,4 +1,5 @@
 // Faction rank policy on top of the backend definitions; pure data, no mp calls
+import { loc } from "../loc";
 
 // A character joins at most one faction of each type
 export type FactionType = "hold" | "military" | "guild";
@@ -129,7 +130,7 @@ export function currentFactionId(factionId: string, successors: Map<string, stri
 
 // "The Rift" reads "the Rift border"
 export const borderNotice = (rankName: string, factionName: string, holdName: string): string =>
-  `Your authority as ${rankName} of ${factionName} ends at the ${holdName.replace(/^the\s+/i, "")} border.`;
+  loc("faction.borderNotice", { rank: rankName, faction: factionName, hold: holdName.replace(/^the\s+/i, "") });
 
 // The master-api GET /factions reply as ladders keyed by faction id
 export function buildFactions(raw: { factions?: unknown[]; requirements?: unknown[] } | null): Map<string, FactionDef> {

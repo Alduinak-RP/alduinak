@@ -12,6 +12,7 @@ import { adminAudit } from "./discordAlerts";
 import { WRITING_ID } from "./writingStore";
 import { soon } from "./timers";
 import { onlineSnapshot } from "./onlineSnapshot";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -114,8 +115,8 @@ const MANAGER_ACTIONS = new Set(["abandon", "breaklock", "revoke", "rename", "re
 const OWNER_ACTIONS = new Set(["abandon", "rename", "revokekeys", "transfer", "grantcontainer", "createkey"]);
 // The owner of a faction claim; the faction id is in the record's `faction`
 const FACTION_OWNER = -1;
-const CHANGE_FAILED = "That cannot be changed right now.";
-const NAME_REFUSED = "That name will not do. Use letters, numbers, spaces, ' _ and - only.";
+const CHANGE_FAILED = loc("housing.changeFailed");
+const NAME_REFUSED = loc("housing.nameRefused");
 
 // The half of a door someone uses: outdoors or indoors of a worldspace-to-interior pair, "" for a property with one lock
 type DoorSide = "outside" | "inside" | "";
@@ -246,7 +247,7 @@ export class HousingSystem implements System {
     if (faction && !faction.allowed && !this.isAdmin(ctx, casterId)) {
       const userId = this.userOf(ctx, casterId);
       if (!this.firstDenial(userId)) return false;
-      this.notice(ctx, userId, faction.refusal || `Only ${faction.name} may use this.`);
+      this.notice(ctx, userId, faction.refusal || loc("housing.factionOnly", { faction: faction.name }));
       if (!faction.refusal) this.log(`[housing] ${targetId.toString(16)} denied to ${this.who(ctx, casterId)}: belongs to ${faction.name}`);
       return false;
     }
@@ -262,8 +263,8 @@ export class HousingSystem implements System {
     if (!this.firstDenial(userId)) return false;
     const role = this.accessRole(ctx, primary, rec, casterId);
     const lock = LOCK_OF_SIDE[side];
-    const text = side ? `The ${lock} of ${rec.name || "this property"} is locked.` : `${rec.name || "This"} is locked.`;
-    this.notice(ctx, userId, role ? `${text} Unlock it from the housing menu.` : text);
+    const text = side ? loc("housing.locked.side", { lock, name: rec.name || loc("housing.thisProperty") }) : loc("housing.locked.whole", { name: rec.name || loc("housing.this") });
+    this.notice(ctx, userId, role ? loc("housing.locked.withMenu", { text }) : text);
     this.log(`[housing] door ${targetId.toString(16)} of ${this.claimLabel(primary, rec)} denied to ${this.who(ctx, casterId)}: ${side ? `${lock} locked (${side})` : "locked"}${role ? `, may unlock as ${role}` : ""}`);
     return false;
   }
@@ -315,7 +316,7 @@ export class HousingSystem implements System {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     if (!this.withinReach(ctx, actorId, target)) {
-      this.refuse(ctx, userId, actorId, "menu", target, "That is too far away.");
+      this.refuse(ctx, userId, actorId, "menu", target, loc("housing.tooFar"));
       return;
     }
     this.menuDoors.set(userId, target);
@@ -334,13 +335,13 @@ export class HousingSystem implements System {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     if (!this.nearProperty(ctx, actorId, target)) {
-      this.refuse(ctx, userId, actorId, action, target, "That is too far away.");
+      this.refuse(ctx, userId, actorId, action, target, loc("housing.tooFar"));
       return;
     }
 
     const primary = this.primaryOf(ctx, target);
     if (!primary) {
-      this.refuse(ctx, userId, actorId, action, target, "You cannot claim that.");
+      this.refuse(ctx, userId, actorId, action, target, loc("housing.claim.cannot"));
       return;
     }
     const rec = this.read(ctx, primary) || emptyRecord();
@@ -386,13 +387,13 @@ export class HousingSystem implements System {
   private doClaim(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, factionId: string): void {
     const faction = this.factionGate ? this.factionGate(actorId, primary) : null;
     if (faction) {
-      this.notice(ctx, userId, `This belongs to ${faction.name}.`);
+      this.notice(ctx, userId, loc("housing.belongsTo", { faction: faction.name }));
       return;
     }
     let right: FactionRight | null = null;
     if (factionId) {
       right = this.factionRightsOf(actorId).find((f) => f.id === factionId) || null;
-      const refusal = right ? this.factionClaimRefusal(ctx, actorId, primary, right, "faction claim") : "You do not belong to that faction.";
+      const refusal = right ? this.factionClaimRefusal(ctx, actorId, primary, right, "faction claim") : loc("housing.claim.notMember");
       if (refusal) {
         this.refuse(ctx, userId, actorId, "claimfaction", primary, refusal);
         return;
@@ -403,17 +404,17 @@ export class HousingSystem implements System {
       }
     }
     if (rec.owner !== 0) {
-      this.notice(ctx, userId, "Somebody already owns this.");
+      this.notice(ctx, userId, loc("housing.claim.owned"));
       return;
     }
     const mp = ctx.svr as Mp;
     if (!holdsItem(mp, actorId, (id) => id === this.lockBaseId)) {
-      this.notice(ctx, userId, "You need a lock to claim this.");
+      this.notice(ctx, userId, loc("housing.claim.needLock"));
       return;
     }
     const profileId = this.profileOf(ctx, actorId);
     if (!profileId) {
-      this.notice(ctx, userId, "You cannot claim anything right now.");
+      this.notice(ctx, userId, loc("housing.claim.unavailable"));
       return;
     }
     // The lock goes first, so a failed inventory write never claims for free
@@ -431,7 +432,7 @@ export class HousingSystem implements System {
       return;
     }
     this.log(`[housing] lock spent by ${this.who(ctx, actorId)} on ${this.claimLabel(primary, rec)}${right ? ` (${right.name}), claimed as faction manager` : ""}`);
-    this.notice(ctx, userId, right ? `This belongs to ${right.name} now. The lock is fitted.` : "This is yours now. The lock is fitted.");
+    this.notice(ctx, userId, right ? loc("housing.claim.factionDone", { faction: right.name }) : loc("housing.claim.done"));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -444,13 +445,13 @@ export class HousingSystem implements System {
     rec.partner = this.partnerOf(ctx, primary);
     if (!this.commit(ctx, userId, primary, rec)) return;
     this.log(`[housing] ${this.claimLabel(primary, rec)} (${right.name}) handed to the faction by its owner ${this.who(ctx, actorId)}`);
-    this.notice(ctx, userId, `${rec.name || "This"} belongs to ${right.name} now. Old keys no longer fit.`);
+    this.notice(ctx, userId, loc("housing.claim.handedToFaction", { name: rec.name || loc("housing.this"), faction: right.name }));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
   private doAbandon(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean): void {
     if (!isOwner && !isManager) {
-      this.notice(ctx, userId, "This is not yours to give up.");
+      this.notice(ctx, userId, loc("housing.abandon.notYours"));
       return;
     }
     const claim = this.claimLabel(primary, rec);
@@ -460,18 +461,18 @@ export class HousingSystem implements System {
       return;
     }
     this.log(`[housing] ${claim} given up by ${this.who(ctx, actorId)} as ${role}`);
-    this.notice(ctx, userId, "Given up.");
+    this.notice(ctx, userId, loc("housing.abandon.done"));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
   // The owner and every key holder lose it, the keys are voided and the door is unlocked and claimable again
   private doBreakLock(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isManager: boolean): void {
     if (!isManager) {
-      this.refuse(ctx, userId, actorId, "breaklock", primary, "Only an admin or this territory's Jarl or Steward may break this lock.");
+      this.refuse(ctx, userId, actorId, "breaklock", primary, loc("housing.breakLock.notAllowed"));
       return;
     }
     if (rec.owner === 0) {
-      this.notice(ctx, userId, "Nobody owns this.");
+      this.notice(ctx, userId, loc("housing.breakLock.unowned"));
       return;
     }
     const former = { ...rec };
@@ -482,10 +483,10 @@ export class HousingSystem implements System {
       return;
     }
     this.log(`[housing] lock broken by ${this.who(ctx, actorId)} on ${claim} (${this.holdOf(ctx, primary)?.name ?? "no hold"})`);
-    this.notice(ctx, userId, "The lock is broken. Anyone may claim it now.");
+    this.notice(ctx, userId, loc("housing.breakLock.done"));
     this.noticeOwners(ctx, former, former.faction
-      ? `The lock on ${former.name || `a property of ${ownerName}`} was broken. It no longer belongs to ${ownerName}.`
-      : `The lock on ${former.name || "one of your properties"} was broken. It is no longer yours.`);
+      ? loc("housing.breakLock.factionOwners", { name: former.name || loc("housing.breakLock.propertyOf", { owner: ownerName }), owner: ownerName })
+      : loc("housing.breakLock.owners", { name: former.name || loc("housing.breakLock.yourProperty") }));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -494,16 +495,16 @@ export class HousingSystem implements System {
     const action = `${locked ? "lock" : "unlock"}${side ? LOCK_OF_SIDE[side] : ""}`;
     const sided = this.hasSides(ctx, primary, rec);
     if (sided && !EXIT_LOCKS && side === "inside") {
-      this.refuse(ctx, userId, actorId, action, primary, "An exit is never locked. Lock the entrance to keep people out.");
+      this.refuse(ctx, userId, actorId, action, primary, loc("housing.lock.exitNever"));
       return;
     }
     if (rec.owner === 0) {
-      this.refuse(ctx, userId, actorId, action, primary, "Claim it first.");
+      this.refuse(ctx, userId, actorId, action, primary, loc("housing.lock.claimFirst"));
       return;
     }
     const role = this.accessRole(ctx, primary, rec, actorId);
     if (!role) {
-      this.refuse(ctx, userId, actorId, action, primary, this.factionStanding(ctx, actorId, rec, `faction property ${action}`).refusal || "You have no key to this.");
+      this.refuse(ctx, userId, actorId, action, primary, this.factionStanding(ctx, actorId, rec, `faction property ${action}`).refusal || loc("housing.lock.noKey"));
       return;
     }
     const which: DoorSide = sided ? side : "";
@@ -513,13 +514,13 @@ export class HousingSystem implements System {
     const state = locked ? "locked" : "unlocked";
     const what = !sided ? "" : which ? `${LOCK_OF_SIDE[which]} ` : "entrance and exit ";
     this.log(`[housing] ${this.claimLabel(primary, rec)} ${what}${state} by ${this.who(ctx, actorId)} as ${role}`);
-    this.notice(ctx, userId, which ? `${which === "outside" ? "Entrance" : "Exit"} ${state}.` : locked ? "Locked." : "Unlocked.");
+    this.notice(ctx, userId, which === "outside" ? (locked ? loc("housing.lock.entranceLocked") : loc("housing.lock.entranceUnlocked")) : which ? (locked ? loc("housing.lock.exitLocked") : loc("housing.lock.exitUnlocked")) : locked ? loc("housing.lock.locked") : loc("housing.lock.unlocked"));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
   private doRename(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, raw: unknown): void {
     if (!isOwner && !isManager) {
-      this.notice(ctx, userId, "This is not yours to name.");
+      this.notice(ctx, userId, loc("housing.rename.notYours"));
       return;
     }
     const name = this.cleanName(raw);
@@ -531,7 +532,7 @@ export class HousingSystem implements System {
     rec.name = name;
     if (!this.commit(ctx, userId, primary, rec)) return;
     this.log(`[housing] ${claim} renamed "${name}" by ${this.who(ctx, actorId)} as ${this.managedAs(rec, isOwner)}`);
-    this.notice(ctx, userId, `Now called ${name}.`);
+    this.notice(ctx, userId, loc("housing.rename.done", { name }));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -539,7 +540,7 @@ export class HousingSystem implements System {
   // handed over in trade works immediately and needs no server bookkeeping.
   private doCreateKey(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, raw: unknown): void {
     if (!isOwner) {
-      this.notice(ctx, userId, "Only the owner cuts keys.");
+      this.notice(ctx, userId, loc("housing.key.ownerOnly"));
       return;
     }
     const label = typeof raw === "string" ? this.cleanName(raw) : DEFAULT_KEY_LABEL;
@@ -552,39 +553,39 @@ export class HousingSystem implements System {
     if (!this.commit(ctx, userId, primary, rec)) return;
     const keyName = this.keyNameOf(primary, rec, label);
     if (!this.giveKey(ctx, actorId, keyName)) {
-      this.notice(ctx, userId, "You are carrying too many keys.");
+      this.notice(ctx, userId, loc("housing.key.tooMany"));
       return;
     }
     if (rec.faction) this.log(`[housing] ${keyName} cut for ${this.claimLabel(primary, rec)} by ${this.who(ctx, actorId)} as faction manager`);
-    this.notice(ctx, userId, `${keyName} is in your pack.`);
+    this.notice(ctx, userId, loc("housing.key.cut", { key: keyName }));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
   private doRevokeKeys(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean): void {
     if (!isOwner && !isManager) {
-      this.notice(ctx, userId, "This is not yours to re-key.");
+      this.notice(ctx, userId, loc("housing.rekey.notYours"));
       return;
     }
     this.reKey(ctx, primary, rec);
     if (!this.commit(ctx, userId, primary, rec)) return;
     this.log(`[housing] keys of ${this.claimLabel(primary, rec)} voided by ${this.who(ctx, actorId)} as ${this.managedAs(rec, isOwner)}`);
-    this.notice(ctx, userId, "Every key turned to scrap.");
+    this.notice(ctx, userId, loc("housing.rekey.done"));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
   private doTransfer(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, rawRecipient: unknown): void {
     if (!isOwner && !isManager) {
-      this.notice(ctx, userId, "This is not yours to hand over.");
+      this.notice(ctx, userId, loc("housing.transfer.notYours"));
       return;
     }
     const recipientActor = toFormId(rawRecipient);
     const recipientProfile = recipientActor ? this.profileOf(ctx, recipientActor) : 0;
     if (!recipientProfile) {
-      this.notice(ctx, userId, "That is nobody.");
+      this.notice(ctx, userId, loc("housing.transfer.nobody"));
       return;
     }
     if (!rec.faction && recipientProfile === rec.owner) {
-      this.notice(ctx, userId, "They already own it.");
+      this.notice(ctx, userId, loc("housing.transfer.alreadyOwner"));
       return;
     }
     const claim = this.claimLabel(primary, rec);
@@ -597,16 +598,16 @@ export class HousingSystem implements System {
     rec.partner = this.partnerOf(ctx, primary);
     if (!this.commit(ctx, userId, primary, rec)) return;
     this.log(`[housing] ${claim} transferred to ${this.who(ctx, recipientActor)} by ${this.who(ctx, actorId)} as ${role}`);
-    this.notice(ctx, userId, `Handed to ${rec.ownerName}.`);
+    this.notice(ctx, userId, loc("housing.transfer.done", { name: rec.ownerName }));
     const recipientUser = this.userOf(ctx, recipientActor);
-    this.notice(ctx, recipientUser, rec.name ? `${rec.name} is yours now.` : "You have been given a property.");
+    this.notice(ctx, recipientUser, rec.name ? loc("housing.transfer.received", { name: rec.name }) : loc("housing.transfer.receivedUnnamed"));
   }
 
   // The menu only offers this on a container, and a container's claim is just
   // its own record, so handing one over is exactly a transfer.
   private doGrantContainer(ctx: SystemContext, userId: number, actorId: number, primary: number, rec: PropertyRecord, isOwner: boolean, isManager: boolean, rawRecipient: unknown): void {
     if (this.baseTypeOf(ctx, primary) !== "CONT") {
-      this.notice(ctx, userId, "That is not a container.");
+      this.notice(ctx, userId, loc("housing.container.notContainer"));
       return;
     }
     this.doTransfer(ctx, userId, actorId, primary, rec, isOwner, isManager, rawRecipient);
@@ -687,11 +688,11 @@ export class HousingSystem implements System {
   private menuDoorInReach(ctx: SystemContext, userId: number, actorId: number, primary: number, action: string): number {
     const door = this.menuDoor(ctx, userId, primary);
     if (!door) {
-      this.refuse(ctx, userId, actorId, action, primary, "Open the housing menu at the door first.");
+      this.refuse(ctx, userId, actorId, action, primary, loc("housing.menuFirst"));
       return 0;
     }
     if (!this.withinReach(ctx, actorId, door)) {
-      this.refuse(ctx, userId, actorId, action, door, "That is too far away.");
+      this.refuse(ctx, userId, actorId, action, door, loc("housing.tooFar"));
       return 0;
     }
     return door;
@@ -795,10 +796,10 @@ export class HousingSystem implements System {
     if (!door || !WRITING_ID.test(id) || !this.writings) return;
     const faction = this.factionGate ? this.factionGate(actorId, door) : null;
     let refusal = "";
-    if (this.baseTypeOf(ctx, door) !== "DOOR") refusal = "Notes can only be pinned to doors.";
-    else if (rec.owner === 0) refusal = "Only a claimed door takes a note.";
-    else if (faction) refusal = `This belongs to ${faction.name}.`;
-    else if (!this.writings.available()) refusal = "Writing is not available yet.";
+    if (this.baseTypeOf(ctx, door) !== "DOOR") refusal = loc("housing.note.doorsOnly");
+    else if (rec.owner === 0) refusal = loc("housing.note.claimedOnly");
+    else if (faction) refusal = loc("housing.belongsTo", { faction: faction.name });
+    else if (!this.writings.available()) refusal = loc("housing.note.unavailable");
     if (refusal) {
       this.refuse(ctx, userId, actorId, "pinnote", door, refusal);
       return;
@@ -808,7 +809,7 @@ export class HousingSystem implements System {
     if (there) {
       const view = this.writings.pinnedNoteView(ctx.svr, actorId, there.id);
       if (typeof view !== "string") {
-        this.refuse(ctx, userId, actorId, "pinnote", door, "A note is already pinned here.");
+        this.refuse(ctx, userId, actorId, "pinnote", door, loc("housing.note.alreadyPinned"));
         return;
       }
       this.crumble(ctx, door, there, view);
@@ -825,7 +826,7 @@ export class HousingSystem implements System {
     }
     this.writings.logDoorNote(`${describeActor(ctx.svr, actorId)} pinned letter ${id} ${JSON.stringify(taken.title)} to ${where}, owner ${rec.faction || `profile ${rec.owner}`}`);
     this.log(`[housing] note ${id} pinned to ${where} by ${this.who(ctx, actorId)}`);
-    this.notice(ctx, userId, "You pin the note to the door.");
+    this.notice(ctx, userId, loc("housing.note.pinned"));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -835,18 +836,18 @@ export class HousingSystem implements System {
     if (!door || !this.writings) return;
     const note = this.readNote(ctx, door);
     if (!note) {
-      this.notice(ctx, userId, "There is no note here any more.");
+      this.notice(ctx, userId, loc("housing.note.gone"));
       this.sendMenu(ctx, userId, actorId, primary);
       return;
     }
     const role = this.noteTakerRole(ctx, primary, rec, note, actorId);
     if (!role) {
-      this.refuse(ctx, userId, actorId, "takenote", door, "Only whoever pinned it, the owner, a key holder or an admin may take it down.");
+      this.refuse(ctx, userId, actorId, "takenote", door, loc("housing.note.notAllowed"));
       return;
     }
     const view = this.writings.pinnedNoteView(ctx.svr, actorId, note.id);
     if (!view) {
-      this.refuse(ctx, userId, actorId, "takenote", door, "Writing is not available yet.");
+      this.refuse(ctx, userId, actorId, "takenote", door, loc("housing.note.unavailable"));
       return;
     }
     if (typeof view !== "string" && !this.writeNote(ctx, door, null)) {
@@ -863,14 +864,14 @@ export class HousingSystem implements System {
     }
     if (given !== "given" || typeof view === "string") {
       if (given !== "given") this.crumble(ctx, door, note, given);
-      this.notice(ctx, userId, "The note crumbles to dust.");
+      this.notice(ctx, userId, loc("housing.note.crumbles"));
       this.sendMenu(ctx, userId, actorId, primary);
       return;
     }
     this.writings.logDoorNote(`${describeActor(ctx.svr, actorId)} took down letter ${note.id} ${JSON.stringify(view.title)} from ${where} as ${role}, pinned by [profile ${note.byProfile}] ${JSON.stringify(note.byName)} at ${new Date(note.at).toISOString()}`);
     this.log(`[housing] note ${note.id} taken down from ${where} by ${this.who(ctx, actorId)} as ${role}`);
-    if (role === "admin") adminAudit(`profile ${this.profileOf(ctx, actorId)} (${adminTierOf(ctx.svr as Mp, actorId, this.roleCfg)}) took down letter ${note.id} from door ${door.toString(16)} (${this.claimLabel(primary, rec)})`);
-    this.notice(ctx, userId, "You take the note down. It is in your pack.");
+    if (role === "admin") adminAudit(loc("housing.note.auditTakenDown", { profileId: this.profileOf(ctx, actorId), tier: adminTierOf(ctx.svr as Mp, actorId, this.roleCfg), id: note.id, door: door.toString(16), claim: this.claimLabel(primary, rec) }));
+    this.notice(ctx, userId, loc("housing.note.takenDown"));
     this.sendMenu(ctx, userId, actorId, primary);
   }
 
@@ -881,13 +882,13 @@ export class HousingSystem implements System {
     const door = this.menuDoorInReach(ctx, userId, actorId, primary, "knock");
     if (!door) return;
     if (this.baseTypeOf(ctx, door) !== "DOOR") {
-      this.refuse(ctx, userId, actorId, "knock", door, "Only a door can be knocked on.");
+      this.refuse(ctx, userId, actorId, "knock", door, loc("housing.knock.doorsOnly"));
       return;
     }
     const now = Date.now();
     const wait = KNOCK_COOLDOWN_MS - (now - (this.lastKnockMs.get(actorId) || 0));
     if (wait > 0) {
-      this.notice(ctx, userId, `You knocked a moment ago. Wait ${Math.ceil(wait / 1000)} s.`);
+      this.notice(ctx, userId, loc("housing.knock.cooldown", { seconds: Math.ceil(wait / 1000) }));
       return;
     }
     if (this.lastKnockMs.size > 256) {
@@ -898,13 +899,13 @@ export class HousingSystem implements System {
     let title = "";
     try { title = String(mp.get(actorId, TITLE_PROP) || ""); } catch { /* no title shown */ }
     const name = titledName(title, this.nameOf(ctx, actorId));
-    const line = (listenerId: number) => `${isIntroduced(mp, listenerId, actorId) ? name : "Someone"} knocks on the door.`;
+    const line = (listenerId: number) => loc("housing.knock.heard", { name: isIntroduced(mp, listenerId, actorId) ? name : loc("housing.someone") });
     const told = new Set<number>([actorId]);
     const here = this.noticeAround(ctx, door, told, line);
     const far = this.partnerOf(ctx, door);
     const beyond = far ? `${this.noticeAround(ctx, far, told, line)} at ${this.doorLabel(ctx, primary, rec, far, false)}` : "no other half";
     this.log(`[housing] knock on ${this.doorLabel(ctx, primary, rec, door)} by ${this.who(ctx, actorId)}: read within talking range by ${here} at that door, ${beyond}`);
-    this.notice(ctx, userId, "You knock on the door.");
+    this.notice(ctx, userId, loc("housing.knock.done"));
   }
 
   // A notice for every player not yet told within say range of a ref, in its cell or worldspace; returns how many it reached
@@ -1023,16 +1024,16 @@ export class HousingSystem implements System {
 
   // "" when the rank may claim for its faction here: it manages property, and a territory with land claims only inside its hold while standing in it
   private factionClaimRefusal(ctx: SystemContext, actorId: number, primary: number, right: FactionRight, action = ""): string {
-    if (!right.manage) return `Your rank in ${right.name} does not manage its property.`;
+    if (!right.manage) return loc("housing.claim.rankCannot", { faction: right.name });
     const court = factionLand(right.id, isHoldLand);
-    if (court && this.holdOf(ctx, primary)?.key !== court) return `${right.name} may only claim property inside ${holdName(court)}.`;
+    if (court && this.holdOf(ctx, primary)?.key !== court) return loc("housing.claim.outsideHold", { faction: right.name, hold: holdName(court) });
     return this.territoryRefusal ? this.territoryRefusal(actorId, right.id, action) : "";
   }
 
   // The faction's current name on a faction claim, else the owner's name at the claim
   private ownerNameOf(rec: PropertyRecord): string {
     if (rec.faction) return this.factionDef?.(rec.faction)?.name || rec.ownerName || rec.faction;
-    return rec.ownerName || "Someone";
+    return rec.ownerName || loc("housing.someone");
   }
 
   // How an owner or manager acted on a claim, for the log
@@ -1564,9 +1565,9 @@ export class HousingSystem implements System {
   private nameOf(ctx: SystemContext, actorId: number): string {
     try {
       const appearance = (ctx.svr as Mp).get(actorId, "appearance");
-      return String((appearance && appearance.name) || "Someone");
+      return String((appearance && appearance.name) || loc("housing.someone"));
     } catch {
-      return "Someone";
+      return loc("housing.someone");
     }
   }
 

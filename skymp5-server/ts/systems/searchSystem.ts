@@ -8,6 +8,7 @@ import { fieldData, view } from "./espmMagic";
 import { HostingSystem } from "./hostingSystem";
 import { SettleWear, wearSettler } from "./durabilityNative";
 import { every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -219,7 +220,7 @@ export class SearchSystem implements System {
       }
       // Respawned, revived or despawned
       if (s.body && !this.isDead(ctx, s.targetActorId)) {
-        this.endSession(ctx, s, "The body is gone.");
+        this.endSession(ctx, s, loc("search.end.bodyGone"));
         continue;
       }
       if (s.pet && this.isDead(ctx, s.targetActorId)) {
@@ -227,11 +228,11 @@ export class SearchSystem implements System {
         continue;
       }
       if (s.auto && !isBound(ctx.svr, s.targetActorId)) {
-        this.endSession(ctx, s, "They are no longer restrained.");
+        this.endSession(ctx, s, loc("search.end.released"));
         continue;
       }
       if (!this.nearEnough(ctx, s.searcherActorId, s.targetActorId, this.keepMaxDistance + this.bodyReach(ctx, s.targetActorId))) {
-        this.endSession(ctx, s, "They moved away.");
+        this.endSession(ctx, s, loc("search.end.movedAway"));
       }
     }
   }
@@ -251,7 +252,7 @@ export class SearchSystem implements System {
     }
     const asTarget = this.sessions.get(actorId);
     if (asTarget) {
-      this.endSession(ctx, asTarget, "They disconnected.");
+      this.endSession(ctx, asTarget, loc("search.end.disconnected"));
     }
     this.dropPending((pend) => pend.searcherActorId === actorId || pend.targetActorId === actorId);
   }
@@ -278,7 +279,7 @@ export class SearchSystem implements System {
       return;
     }
     if (!this.hasOccupantNative(ctx)) {
-      this.notice(ctx, userId, "Searching needs a newer server build.");
+      this.notice(ctx, userId, loc("search.needsBuild"));
       if (!this.warnedNoNative) {
         this.warnedNoNative = true;
         this.log("[search] setInventoryOccupant native missing - rebuild the server (CI) to enable searches");
@@ -289,7 +290,7 @@ export class SearchSystem implements System {
       return;
     }
     if (isRestrained(ctx.svr, searcherActorId)) {
-      this.notice(ctx, userId, "You cannot search while restrained.");
+      this.notice(ctx, userId, loc("search.whileRestrained"));
       return;
     }
     const targetActorId = toFormId(content.target);
@@ -298,21 +299,21 @@ export class SearchSystem implements System {
         const d = this.distance(ctx, searcherActorId, targetActorId);
         this.log(`[search] ${searcherActorId.toString(16)} refused ${targetActorId.toString(16)}: dead ${this.isDead(ctx, targetActorId)}, distance ${Number.isFinite(d) ? Math.round(d) : "other cell"}, reach ${this.startMaxDistance + this.bodyReach(ctx, targetActorId)}`);
       }
-      this.notice(ctx, userId, "Look at a player or a body to search.");
+      this.notice(ctx, userId, loc("search.lookAt"));
       return;
     }
     if (this.sessions.has(targetActorId)) {
-      this.notice(ctx, userId, `${nameShownTo(ctx.svr,searcherActorId, targetActorId)} is already being searched.`);
+      this.notice(ctx, userId, loc("search.alreadySearched", { name: nameShownTo(ctx.svr,searcherActorId, targetActorId) }));
       return;
     }
     if (this.searching.has(searcherActorId)) {
-      this.notice(ctx, userId, "You are already searching someone.");
+      this.notice(ctx, userId, loc("search.alreadySearching"));
       return;
     }
     this.dropPending((pend) => this.promptVoid(ctx, pend));
     for (const pend of this.pending.values()) {
       if (pend.targetActorId === targetActorId || pend.searcherActorId === searcherActorId) {
-        this.notice(ctx, userId, "A search request is already pending.");
+        this.notice(ctx, userId, loc("search.pending"));
         return;
       }
     }
@@ -337,7 +338,7 @@ export class SearchSystem implements System {
     const cooldownKey = `${searcherActorId}:${targetActorId}`;
     const lastPrompt = this.consentCooldown.get(cooldownKey);
     if (lastPrompt !== undefined && now - lastPrompt < this.consentCooldownMs) {
-      this.notice(ctx, userId, `Wait before asking ${nameShownTo(ctx.svr,searcherActorId, targetActorId)} again.`);
+      this.notice(ctx, userId, loc("search.cooldown", { name: nameShownTo(ctx.svr,searcherActorId, targetActorId) }));
       return;
     }
     if (this.consentCooldown.size > 512) {
@@ -357,7 +358,7 @@ export class SearchSystem implements System {
     const timer = setTimeout(() => {
       if (this.pending.delete(requestId)) {
         this.notice(ctx, this.userOf(ctx, searcherActorId),
-          `${nameShownTo(ctx.svr,searcherActorId, targetActorId)} did not respond.`);
+          loc("search.noResponse", { name: nameShownTo(ctx.svr,searcherActorId, targetActorId) }));
       }
     }, this.consentTimeoutMs);
     this.pending.set(requestId, { searcherActorId, targetActorId, timer });
@@ -366,9 +367,9 @@ export class SearchSystem implements System {
     ctx.svr.sendCustomPacket(targetUser, JSON.stringify({
       customPacketType: "searchConsentRequest",
       requestId,
-      text: `${searcherName} wants to search you. Allow?`,
+      text: loc("search.ask", { name: searcherName }),
     }));
-    this.notice(ctx, userId, `Waiting for ${nameShownTo(ctx.svr,searcherActorId, targetActorId)} to accept…`);
+    this.notice(ctx, userId, loc("search.waiting", { name: nameShownTo(ctx.svr,searcherActorId, targetActorId) }));
   }
 
   private onConsentResult(ctx: SystemContext, userId: number, content: Content): void {
@@ -388,18 +389,18 @@ export class SearchSystem implements System {
     const searcherUser = this.userOf(ctx, pend.searcherActorId);
     if (this.promptVoid(ctx, pend)) {
       this.log(`[search] ${pend.targetActorId.toString(16)} answered ${pend.searcherActorId.toString(16)}'s prompt after a death, ignored`);
-      this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} can no longer answer.`);
+      this.notice(ctx, searcherUser, loc("search.cannotAnswer", { name: nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId) }));
       return;
     }
     if (content.accepted !== true) {
-      this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} refused the search.`);
+      this.notice(ctx, searcherUser, loc("search.refused", { name: nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId) }));
       return;
     }
     if (searcherUser < 0) {
       return; // searcher left while we waited
     }
     if (!this.validTarget(ctx, pend.searcherActorId, pend.targetActorId)) {
-      this.notice(ctx, searcherUser, `${nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId)} is out of reach.`);
+      this.notice(ctx, searcherUser, loc("search.outOfReach", { name: nameShownTo(ctx.svr,pend.searcherActorId, pend.targetActorId) }));
       return;
     }
     if (this.sessions.has(pend.targetActorId) || this.searching.has(pend.searcherActorId) || isRestrained(ctx.svr, pend.searcherActorId)) {
@@ -420,24 +421,24 @@ export class SearchSystem implements System {
   // Only the dead are searched; the wording tells a pet's owner where its inventory is
   private npcRefusal(ctx: SystemContext, searcherActorId: number, targetActorId: number): string {
     const owner = this.ownedBy?.(targetActorId) ?? 0;
-    if (owner) return owner === searcherActorId ? "Use the pet menu." : "That is someone's companion.";
+    if (owner) return owner === searcherActorId ? loc("search.npc.usePetMenu") : loc("search.npc.companion");
     try {
-      if (this.isAnimal?.(ctx, targetActorId)) return "Look at a player or a body to search.";
+      if (this.isAnimal?.(ctx, targetActorId)) return loc("search.lookAt");
     } catch (e) {
       this.log(`[search] animal check failed: ${e}`);
     }
-    return "Only the dead can be searched.";
+    return loc("search.npc.onlyDead");
   }
 
   private startSession(ctx: SystemContext, searcherActorId: number, targetActorId: number, body: boolean, auto = false, pet = false): void {
     const searcherUser = this.userOf(ctx, searcherActorId);
     const taken = body ? this.bodyTakesOf(ctx, targetActorId) : undefined;
     if (taken && taken.size >= this.playerBodyTakeLimit) {
-      this.notice(ctx, searcherUser, "There is nothing left to take from this body.");
+      this.notice(ctx, searcherUser, loc("search.bodyEmpty"));
       return;
     }
     if (!this.setOccupant(ctx, targetActorId, searcherActorId)) {
-      this.notice(ctx, searcherUser, "The search could not start.");
+      this.notice(ctx, searcherUser, loc("search.couldNotStart"));
       return;
     }
     this.sessions.set(targetActorId, { searcherActorId, targetActorId, body, auto, pet });
@@ -452,7 +453,7 @@ export class SearchSystem implements System {
       entries: this.visibleEntriesOf(ctx, searcherActorId, targetActorId, body),
     }));
     this.notice(ctx, this.userOf(ctx, targetActorId),
-      `${nameShownTo(ctx.svr,targetActorId, searcherActorId)} is searching ${body ? "your body" : "you"}.`);
+      (body ? loc("search.searchingBody", { name: nameShownTo(ctx.svr,targetActorId, searcherActorId) }) : loc("search.searchingYou", { name: nameShownTo(ctx.svr,targetActorId, searcherActorId) })));
     this.log(`[search] ${searcherActorId.toString(16)} searches ${this.kindOf({ body })}${targetActorId.toString(16)}`);
   }
 
@@ -462,11 +463,11 @@ export class SearchSystem implements System {
 
   // Opens a pet's inventory for its owner in the vanilla container window; empty result on success, else the refusal
   openPetInventory(ctx: SystemContext, viewerActorId: number, targetActorId: number): string {
-    if (!this.hasOccupantNative(ctx)) return "Trading needs a newer server build.";
-    if (this.isDead(ctx, viewerActorId) || isBleedingOut(ctx.svr, viewerActorId)) return "You cannot do that now.";
-    if (isRestrained(ctx.svr, viewerActorId)) return "You cannot trade while restrained.";
-    if (this.sessions.has(targetActorId)) return "It is already being searched.";
-    if (this.searching.has(viewerActorId)) return "You are already searching someone.";
+    if (!this.hasOccupantNative(ctx)) return loc("search.pet.needsBuild");
+    if (this.isDead(ctx, viewerActorId) || isBleedingOut(ctx.svr, viewerActorId)) return loc("search.pet.cannotNow");
+    if (isRestrained(ctx.svr, viewerActorId)) return loc("search.pet.whileRestrained");
+    if (this.sessions.has(targetActorId)) return loc("search.pet.beingSearched");
+    if (this.searching.has(viewerActorId)) return loc("search.alreadySearching");
     this.startSession(ctx, viewerActorId, targetActorId, false, false, true);
     return "";
   }
@@ -538,7 +539,7 @@ export class SearchSystem implements System {
   private finishBody(ctx: SystemContext, targetActorId: number, searcherActorId: number): void {
     const s = this.sessions.get(targetActorId);
     if (s) {
-      this.endSession(ctx, s, "You cannot take anything else from this body.");
+      this.endSession(ctx, s, loc("search.bodyLimit"));
     }
     if (!this.isDead(ctx, targetActorId)) {
       return;

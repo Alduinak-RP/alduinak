@@ -5,6 +5,7 @@ import { appendLog, describeActor, displayNameOf, logDirOf, profileIdOf, sanitiz
 import { GOLD_BASE_ID, addGold, baseIdOf, baseTypeOf, destroyRef, guardMpHook } from "./actorUtil";
 import { containerDesc, moveRefTo, placeAtMe } from "./npcPlacement";
 import { every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -70,7 +71,7 @@ const DEFAULT_MAX_TEXT_LEN = 500;
 const DEFAULT_MAX_DISTANCE = 512;
 // StrongBox, the vanilla strongbox without items; a base with leveled items (TreasStrongBox, 10aad2) shows each client its own rolled loot
 const DEFAULT_STASH_BASE = "9424c:Skyrim.esm";
-const NOT_MANAGER_NOTICE = "Only the territory's steward or jarl may open the board's strongbox.";
+const NOT_MANAGER_NOTICE = loc("bountyBoard.strongbox.notManager");
 
 const POST_COOLDOWN_MS = 5000;
 const OPEN_COOLDOWN_MS = 1000;
@@ -287,7 +288,7 @@ export class BountyBoardSystem implements System {
     if (!actorId) return;
     const board = this.nearestBoard(ctx, actorId);
     if (!board) {
-      this.notice(ctx, userId, "There is no notice board within reach.");
+      this.notice(ctx, userId, loc("bountyBoard.noBoard"));
       return;
     }
     this.sessions.set(userId, { primary: board.primary, refr: board.refr, name: board.name });
@@ -344,7 +345,7 @@ export class BountyBoardSystem implements System {
   private onPost(ctx: SystemContext, userId: number, content: Content): void {
     const now = Date.now();
     if (now - (this.lastPostMs.get(userId) || 0) < POST_COOLDOWN_MS) {
-      this.notice(ctx, userId, "The pin is still warm; give it a moment.");
+      this.notice(ctx, userId, loc("bountyBoard.post.cooldown"));
       return;
     }
     this.lastPostMs.set(userId, now);
@@ -355,7 +356,7 @@ export class BountyBoardSystem implements System {
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
     if (!this.withinReach(ctx, actorId, session.refr)) {
-      this.notice(ctx, userId, "You are too far from the board.");
+      this.notice(ctx, userId, loc("bountyBoard.tooFar"));
       return;
     }
 
@@ -363,13 +364,13 @@ export class BountyBoardSystem implements System {
     if (typeof rawText !== "string") return;
     // Bound the work before sanitize walks the payload.
     if (rawText.length > this.maxTextLen * 4) {
-      this.notice(ctx, userId, `A notice holds ${this.maxTextLen} characters at most.`);
+      this.notice(ctx, userId, loc("bountyBoard.post.tooLong", { n: this.maxTextLen }));
       return;
     }
     const text = sanitize(rawText);
     if (!text) return;
     if (text.length > this.maxTextLen) {
-      this.notice(ctx, userId, `A notice holds ${this.maxTextLen} characters at most.`);
+      this.notice(ctx, userId, loc("bountyBoard.post.tooLong", { n: this.maxTextLen }));
       return;
     }
 
@@ -377,14 +378,14 @@ export class BountyBoardSystem implements System {
     const pruned = this.prune(ctx, session.primary, rec);
     if (rec.notes.length >= this.maxNotes) {
       if (pruned) this.write(ctx, session.primary, rec);
-      this.notice(ctx, userId, "The board is full. Older notices must fade first.");
+      this.notice(ctx, userId, loc("bountyBoard.post.full"));
       return;
     }
 
     // The fee is taken only once everything else has passed.
     if (this.costGold > 0 && !this.takeGold(ctx, actorId, this.costGold)) {
       if (pruned) this.write(ctx, session.primary, rec);
-      this.notice(ctx, userId, `Pinning a notice costs ${this.costGold} gold, and you do not have it.`);
+      this.notice(ctx, userId, loc("bountyBoard.post.noGold", { gold: this.costGold }));
       return;
     }
     const stash = this.costGold > 0 ? this.stashOf(ctx, session.primary, rec) : 0;
@@ -404,7 +405,7 @@ export class BountyBoardSystem implements System {
       try { addGold(ctx.svr, actorId, this.costGold); }
       catch (e) { this.log(`[bounty] could not refund gold to ${actorId.toString(16)}: ${e}`); }
       this.appendLog(`${describeActor(ctx.svr, actorId)} failed to post on the ${session.name} board, fee refunded`);
-      this.notice(ctx, userId, "The board would not take your notice.");
+      this.notice(ctx, userId, loc("bountyBoard.post.failed"));
       return;
     }
 
@@ -414,7 +415,7 @@ export class BountyBoardSystem implements System {
     }
     const fee = stash ? `${this.costGold} gold to the board strongbox` : `-${this.costGold} gold`;
     this.appendLog(`${describeActor(ctx.svr, actorId)} posted on the ${session.name} board (${fee}): ${JSON.stringify(text)}`);
-    this.notice(ctx, userId, "Your notice is pinned to the board.");
+    this.notice(ctx, userId, loc("bountyBoard.post.done"));
     this.refreshViewers(ctx, session.primary);
   }
 
@@ -424,17 +425,17 @@ export class BountyBoardSystem implements System {
     if (!session || !Number.isInteger(id) || id < 1 || toFormId(content["board"]) !== session.primary) return;
     const actorId = this.actorOf(ctx, userId);
     if (!actorId) return;
-    if (!this.withinReach(ctx, actorId, session.refr)) return this.notice(ctx, userId, "You are too far from the board.");
+    if (!this.withinReach(ctx, actorId, session.refr)) return this.notice(ctx, userId, loc("bountyBoard.tooFar"));
     const rec = this.read(ctx, session.primary) || emptyRecord();
     const at = rec.notes.findIndex((note) => note.id === id);
-    if (at < 0) return this.notice(ctx, userId, "That notice is no longer on this board.");
+    if (at < 0) return this.notice(ctx, userId, loc("bountyBoard.remove.gone"));
     const own = isPosterOf(rec.notes[at], actorId, profileIdOf(ctx.svr, actorId));
-    if (!own && !this.canRemove(actorId, session.name)) return this.notice(ctx, userId, "Only its poster or a non-citizen member of this territory may remove a notice.");
+    if (!own && !this.canRemove(actorId, session.name)) return this.notice(ctx, userId, loc("bountyBoard.remove.notAllowed"));
     const [note] = rec.notes.splice(at, 1);
-    if (!this.write(ctx, session.primary, rec)) return this.notice(ctx, userId, "The board would not remove that notice.");
+    if (!this.write(ctx, session.primary, rec)) return this.notice(ctx, userId, loc("bountyBoard.remove.failed"));
     const as = own ? "as its poster" : "as a hold officer or staff";
     this.appendLog(`${describeActor(ctx.svr, actorId)} removed note ${note.id} by [profile ${note.profileId}] ${JSON.stringify(note.author)} from the ${session.name} board ${as}: ${JSON.stringify(note.text)}`);
-    this.notice(ctx, userId, own ? "You take your notice down." : "The notice is taken down.");
+    this.notice(ctx, userId, own ? loc("bountyBoard.remove.own") : loc("bountyBoard.remove.done"));
     this.refreshViewers(ctx, session.primary);
   }
 
@@ -571,14 +572,14 @@ export class BountyBoardSystem implements System {
     const refr = toFormId(content["board"]);
     const board = this.boardOf(ctx, refr);
     if (!board) return;
-    if (!this.withinReach(ctx, actorId, refr)) return this.notice(ctx, userId, "You are too far from the board.");
+    if (!this.withinReach(ctx, actorId, refr)) return this.notice(ctx, userId, loc("bountyBoard.tooFar"));
     if (!this.canManage(actorId, board.name)) return this.notice(ctx, userId, NOT_MANAGER_NOTICE);
     const stash = this.stashOf(ctx, board.primary, this.read(ctx, board.primary) || emptyRecord());
-    if (!stash) return this.notice(ctx, userId, "This board has no strongbox.");
+    if (!stash) return this.notice(ctx, userId, loc("bountyBoard.strongbox.none"));
     try {
       // The Tamriel twin of a walled city is another worldspace, and the engine refuses an activation across worldspaces
       if (mp.get(actorId, "worldOrCellDesc") !== mp.get(stash, "worldOrCellDesc")) {
-        return this.notice(ctx, userId, "Open the strongbox from the board inside the city.");
+        return this.notice(ctx, userId, loc("bountyBoard.strongbox.insideCity"));
       }
       const self = { type: "form", desc: mp.getDescFromId(stash) };
       mp.callPapyrusFunction("method", "ObjectReference", "Activate", self, [{ type: "form", desc: mp.getDescFromId(actorId) }, false]);
@@ -730,7 +731,7 @@ export class BountyBoardSystem implements System {
           if (!text) continue;
           notes.push({
             id: Number(n.id) || 0,
-            author: typeof n.author === "string" ? n.author.slice(0, 100) : "Unknown",
+            author: typeof n.author === "string" ? n.author.slice(0, 100) : loc("bountyBoard.unknownAuthor"),
             profileId: Number.isFinite(Number(n.profileId)) ? Number(n.profileId) : -1,
             actorId: Number(n.actorId) >>> 0,
             text,

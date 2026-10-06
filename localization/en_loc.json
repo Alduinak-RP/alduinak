@@ -800,6 +800,521 @@
       "minutes": "{minutes} min",
       "hoursMinutes": "{hours} h {minutes} min",
       "hours": "{hours} h"
+    },
+    "pet": {
+      "grant": {
+        "unknownKind": "Unknown pet kind",
+        "noBase": "No {kind} base is configured",
+        "noStorage": "That character has no pet storage",
+        "full": "They already keep {max} pets",
+        "notStored": "The pet could not be stored"
+      },
+      "menu": {
+        "companion": "Companion",
+        "pet": "Pet",
+        "follow": "Follow",
+        "carry": "Carry",
+        "putDown": "Put down",
+        "unsummon": "Unsummon",
+        "rename": "Rename",
+        "transfer": "Transfer",
+        "release": "Release"
+      },
+      "cannotAttack": "{name} cannot go after that.",
+      "harvest": {
+        "nothing": "{name} gives nothing.",
+        "wait": "{name} can be harvested again in {wait}.",
+        "gathered": "You gathered {product} from {name}."
+      },
+      "tooFar": "Too far.",
+      "mount": {
+        "alreadyMounted": "You are already mounted.",
+        "dead": "It is dead.",
+        "taken": "Someone is already riding it."
+      },
+      "beingCarried": "It is being carried.",
+      "tryAgain": "Try again.",
+      "carry": {
+        "nothing": "{name} carries nothing.",
+        "tooHeavy": "A horse is too heavy to carry.",
+        "beingRidden": "It is being ridden.",
+        "pickedUp": "You picked up {name}."
+      },
+      "store": {
+        "dismountFirst": "Dismount first.",
+        "done": "{name} is now at {home}."
+      },
+      "rename": {
+        "invalid": "That name cannot be used.",
+        "done": "Renamed to {name}."
+      },
+      "transfer": {
+        "lookAt": "Look at the player who should receive it.",
+        "tooFar": "They are too far away.",
+        "pending": "A transfer is already pending.",
+        "cannotKeep": "They cannot keep pets.",
+        "noRoom": "They have no room for another pet.",
+        "noResponse": "{name} did not respond.",
+        "offer": "{name} offers you {pet} ({kind}). Accept?",
+        "waiting": "Waiting for {name} to accept…",
+        "refused": "{name} refused.",
+        "gone": "The pet can no longer be handed over.",
+        "outOfReach": "{name} is out of reach.",
+        "failed": "The pet could not be handed over.",
+        "handed": "You handed {pet} to {name}.",
+        "received": "{name} handed you {pet}."
+      },
+      "busy": "Not while it is ridden or carried.",
+      "released": "{name} is free.",
+      "summon": {
+        "noneHere": "No pets are kept here.",
+        "standAtDoor": "Stand at the door.",
+        "outsideDoor": "Summon it from the outside door.",
+        "notKeptHere": "That pet is not kept here.",
+        "alreadyOut": "{name} is already out.",
+        "failed": "{name} could not be brought out.",
+        "here": "{name} is here."
+      },
+      "maxOut": "You cannot have more than {max} pets out.",
+      "took": "{name} took {pet}.",
+      "yoursNow": "{name} is yours now.",
+      "died": "{name} has died.",
+      "room": {
+        "cannotKeep": "You cannot keep pets.",
+        "enough": "You already keep enough pets."
+      },
+      "notYours": "That is not yours.",
+      "isDead": "{name} is dead.",
+      "yourHome": "your home",
+      "hint": {
+        "horse": "Horses are left at a stable.",
+        "livestock": "Livestock is left at a farm.",
+        "dog": "Dogs are left at your home."
+      }
+    },
+    "faction": {
+      "error": {
+        "rankFull": "That rank is full.",
+        "holdsRank": "They already hold that rank.",
+        "leadsAnother": "They already lead another faction.",
+        "regentElsewhere": "They are a regent of another faction.",
+        "typeTaken": "They already belong to a faction of that type.",
+        "unavailable": "The faction records are unavailable, try again shortly."
+      },
+      "tenure": {
+        "unknown": "Unknown",
+        "today": "Today",
+        "day": "{n} day",
+        "days": "{n} days",
+        "months": "{n} months",
+        "years": "{n} years"
+      },
+      "offline": "Factions are unavailable right now.",
+      "gone": "That faction no longer exists.",
+      "admin": {
+        "notStaff": "You cannot manage factions.",
+        "selectPlayer": "Select an online player.",
+        "chooseRole": "Choose a faction role.",
+        "added": "{name} is now {rank} of {faction}.",
+        "notMember": "{name} is not in {faction}."
+      },
+      "rankIsFull": "{rank} is full.",
+      "nowRank": "You are now {rank} of {faction}.",
+      "audit": {
+        "added": "{by} added {who} to {faction} as {rank}",
+        "adminRemoved": "{by} removed {who} from {faction}",
+        "recruited": "{by} recruited {who} into {faction} as {rank}{staff}",
+        "staffSuffix": " (staff)",
+        "removed": "{by} removed {name} (profile {profileId}{character}) from {faction}, was {was}",
+        "character": ", character {n}",
+        "rankChanged": "{by} made {name} (profile {profileId}{character}) {rank} of {faction}, was {was}",
+        "left": "{who} left {faction}, was {was}",
+        "regency": "{who} changed the regency of {faction}: {action}{enabled}, {seats} seat(s)",
+        "released": "faction ranks of {name} (profile {profileId}, character {n}) removed after {reason}: {ranks}",
+        "releaseFailed": "faction ranks of {name} (profile {profileId}, character {n}) could not be removed after {reason}, remove them from the dashboard: {error}"
+      },
+      "removedYou": "You were removed from {faction}.",
+      "removedThem": "{name} was removed from {faction}.",
+      "recruit": {
+        "cannot": "You cannot recruit anyone.",
+        "cannotInto": "You cannot recruit anyone into {faction}.",
+        "pending": "An invitation is already waiting for an answer.",
+        "cooldown": "Wait a moment before inviting them again.",
+        "alreadyIn": "They already belong to {faction}.",
+        "sameType": "They already belong to {faction}; nobody joins two {type} factions.",
+        "noAnswer": "{name} did not answer.",
+        "prompt": "{name} recruits you into {faction} as {rank}. Accept?",
+        "waiting": "Waiting for {name} to accept…",
+        "lookAt": "Look at the player you want to recruit.",
+        "tooFar": "They are too far away.",
+        "declined": "{name} declined.",
+        "expired": "The invitation can no longer be accepted.",
+        "invalid": "The invitation is no longer valid.",
+        "joined": "You joined {faction} as {rank}.",
+        "theyJoined": "{name} joined {faction} as {rank}."
+      },
+      "member": {
+        "gone": "They are no longer in the faction.",
+        "useLeave": "Use Leave to step down.",
+        "cannotRemove": "You cannot remove them.",
+        "cannotSetRank": "You cannot give them that rank.",
+        "nowRank": "{name} is now {rank}."
+      },
+      "notIn": "You are not in {faction}.",
+      "left": "You left {faction}.",
+      "title": {
+        "shown": "Your {faction} title is shown with your name.",
+        "hidden": "Your title is hidden."
+      },
+      "regency": {
+        "leaderOnly": "Only the leader seats regents.",
+        "changed": "The regency list changed, reopen the tab.",
+        "pickMember": "Pick a member.",
+        "alreadySeated": "They already hold a regency seat.",
+        "notSeated": "They do not hold a regency seat.",
+        "on": "Regency is on for {faction}.",
+        "off": "Regency is off for {faction}.",
+        "updated": "The regency of {faction} was updated."
+      },
+      "leader": {
+        "vacant": "Vacant",
+        "acting": "{name} ({title})"
+      },
+      "gate": {
+        "or": " or "
+      },
+      "aMember": "a member",
+      "unknownName": "Unknown",
+      "borderNotice": "Your authority as {rank} of {faction} ends at the {hold} border."
+    },
+    "housing": {
+      "changeFailed": "That cannot be changed right now.",
+      "nameRefused": "That name will not do. Use letters, numbers, spaces, ' _ and - only.",
+      "factionOnly": "Only {faction} may use this.",
+      "locked": {
+        "side": "The {lock} of {name} is locked.",
+        "whole": "{name} is locked.",
+        "withMenu": "{text} Unlock it from the housing menu."
+      },
+      "thisProperty": "this property",
+      "this": "This",
+      "tooFar": "That is too far away.",
+      "claim": {
+        "cannot": "You cannot claim that.",
+        "notMember": "You do not belong to that faction.",
+        "owned": "Somebody already owns this.",
+        "needLock": "You need a lock to claim this.",
+        "unavailable": "You cannot claim anything right now.",
+        "factionDone": "This belongs to {faction} now. The lock is fitted.",
+        "done": "This is yours now. The lock is fitted.",
+        "handedToFaction": "{name} belongs to {faction} now. Old keys no longer fit.",
+        "rankCannot": "Your rank in {faction} does not manage its property.",
+        "outsideHold": "{faction} may only claim property inside {hold}."
+      },
+      "belongsTo": "This belongs to {faction}.",
+      "abandon": {
+        "notYours": "This is not yours to give up.",
+        "done": "Given up."
+      },
+      "breakLock": {
+        "notAllowed": "Only an admin or this territory's Jarl or Steward may break this lock.",
+        "unowned": "Nobody owns this.",
+        "done": "The lock is broken. Anyone may claim it now.",
+        "factionOwners": "The lock on {name} was broken. It no longer belongs to {owner}.",
+        "propertyOf": "a property of {owner}",
+        "owners": "The lock on {name} was broken. It is no longer yours.",
+        "yourProperty": "one of your properties"
+      },
+      "lock": {
+        "exitNever": "An exit is never locked. Lock the entrance to keep people out.",
+        "claimFirst": "Claim it first.",
+        "noKey": "You have no key to this.",
+        "entranceLocked": "Entrance locked.",
+        "entranceUnlocked": "Entrance unlocked.",
+        "exitLocked": "Exit locked.",
+        "exitUnlocked": "Exit unlocked.",
+        "locked": "Locked.",
+        "unlocked": "Unlocked."
+      },
+      "rename": {
+        "notYours": "This is not yours to name.",
+        "done": "Now called {name}."
+      },
+      "key": {
+        "ownerOnly": "Only the owner cuts keys.",
+        "tooMany": "You are carrying too many keys.",
+        "cut": "{key} is in your pack."
+      },
+      "rekey": {
+        "notYours": "This is not yours to re-key.",
+        "done": "Every key turned to scrap."
+      },
+      "transfer": {
+        "notYours": "This is not yours to hand over.",
+        "nobody": "That is nobody.",
+        "alreadyOwner": "They already own it.",
+        "done": "Handed to {name}.",
+        "received": "{name} is yours now.",
+        "receivedUnnamed": "You have been given a property."
+      },
+      "container": {
+        "notContainer": "That is not a container."
+      },
+      "menuFirst": "Open the housing menu at the door first.",
+      "note": {
+        "doorsOnly": "Notes can only be pinned to doors.",
+        "claimedOnly": "Only a claimed door takes a note.",
+        "unavailable": "Writing is not available yet.",
+        "alreadyPinned": "A note is already pinned here.",
+        "pinned": "You pin the note to the door.",
+        "gone": "There is no note here any more.",
+        "notAllowed": "Only whoever pinned it, the owner, a key holder or an admin may take it down.",
+        "crumbles": "The note crumbles to dust.",
+        "auditTakenDown": "profile {profileId} ({tier}) took down letter {id} from door {door} ({claim})",
+        "takenDown": "You take the note down. It is in your pack."
+      },
+      "knock": {
+        "doorsOnly": "Only a door can be knocked on.",
+        "cooldown": "You knocked a moment ago. Wait {seconds} s.",
+        "heard": "{name} knocks on the door.",
+        "done": "You knock on the door."
+      },
+      "someone": "Someone"
+    },
+    "capture": {
+      "carry": {
+        "doorNotice": "Set them down before going through this door.",
+        "carrierCollapsed": "Your carrier collapsed.",
+        "lostGrip": "You lost your grip.",
+        "carrierLeft": "Your carrier left without you.",
+        "lookAt": "Look at another player to carry them.",
+        "pickedUp": "You picked up {name}.",
+        "carryingYou": "{name} is carrying you.",
+        "notCarrying": "You are not carrying them.",
+        "setDown": "You set {name} down.",
+        "carrierRestrained": "Your carrier was restrained.",
+        "handsFull": "{name} has their hands full.",
+        "alreadyCarrying": "You are already carrying someone.",
+        "whileCarried": "You cannot carry anyone while being carried.",
+        "whileBound": "You cannot carry anyone while bound.",
+        "targetCarrying": "{name} is carrying someone.",
+        "targetCarried": "{name} is already being carried."
+      },
+      "npc": {
+        "isPlayer": "That is a player.",
+        "alreadyCarrying": "You are already carrying something.",
+        "whileCarried": "You cannot carry anything while being carried.",
+        "whileBound": "You cannot carry anything while bound.",
+        "beingCarried": "{name} is already being carried."
+      },
+      "putLoadDown": "Put the {load} down first.",
+      "restrain": {
+        "lookAt": "Look at another player to restrain them.",
+        "already": "{name} is already restrained.",
+        "needManacles": "You need manacles to restrain someone.",
+        "done": "You restrained {name}."
+      },
+      "release": {
+        "notAllowed": "Only their captor or carrier can release them.",
+        "fromBlock": "You pulled {name} away from the block.",
+        "fromBlockYou": "{name} pulled you away from the block.",
+        "done": "You released {name}."
+      },
+      "outOfReach": "{name} is out of reach.",
+      "consent": {
+        "refused": "{name} refused.",
+        "noManacles": "You no longer have manacles.",
+        "restrained": "{name} accepted — restrained.",
+        "cannotCarry": "{name} can no longer carry you.",
+        "carrying": "{name} accepted — carrying.",
+        "pending": "A consent request is already pending.",
+        "cooldown": "Wait before asking {name} again.",
+        "noResponse": "{name} did not respond.",
+        "askRestrain": "{name} wants to restrain you. Allow?",
+        "askCarry": "{name} wants to carry you. Allow?",
+        "waiting": "Waiting for {name} to accept…"
+      },
+      "cannotNow": "You cannot do that now."
+    },
+    "writing": {
+      "changeFailed": "That cannot be changed right now.",
+      "unavailable": "Writing is not available yet.",
+      "list": {
+        "writeNew": "Write a new {kind}"
+      },
+      "noBlank": "You have no {blank} left.",
+      "notCarried": "You no longer carry that writing.",
+      "faded": "The ink has faded beyond reading.",
+      "crumbles": "The writing crumbles to dust.",
+      "illegible": "The writing is illegible.",
+      "notKept": "Your writing could not be kept.",
+      "cannotChange": "You cannot change this writing.",
+      "changesNotKept": "Your changes could not be kept.",
+      "book": {
+        "notFinished": "The book could not be finished.",
+        "finished": "The book is finished. Its pages are fixed now, and you can still write on new ones."
+      },
+      "seal": {
+        "needWax": "Sealing a letter takes Sealing Wax.",
+        "pressed": "You press your seal into the wax.",
+        "plain": "You press a plain seal into the wax. Show a faction title to press its mark."
+      },
+      "copy": {
+        "notFinished": "Only a finished book can be copied.",
+        "needBlank": "Copying a book takes a Blank Book.",
+        "notKept": "The copy could not be kept.",
+        "done": "You copy {title} onto a blank book.",
+        "theBook": "the book"
+      },
+      "burned": "The writing burns away.",
+      "staff": {
+        "noCap": "Your rank cannot moderate writings",
+        "noWriting": "No writing {id}",
+        "withoutId": "without an id",
+        "who": "profile {profileId} ({tier})",
+        "what": "{kind} {id} {title} by {author} (profile {profileId})",
+        "opened": "Opened {id}",
+        "emptyTitle": "The new title is empty",
+        "renameFailed": "Rename failed, see server log",
+        "renamed": "Renamed {id}{held}",
+        "heldOne": ", {n} carried copy updated",
+        "heldMany": ", {n} carried copies updated",
+        "alreadyDestroyed": "{id} is already destroyed",
+        "destroyedBy": "staff {staff}",
+        "destroyed": "Destroyed {id}{held}",
+        "removedOne": ", removed from {n} pack",
+        "removedMany": ", removed from {n} packs",
+        "unknownAction": "Unknown writing action '{op}'"
+      },
+      "audit": {
+        "read": "{staff} read {what}",
+        "renamed": "{staff} renamed {what} to {title}",
+        "destroyed": "{staff} destroyed {what}"
+      },
+      "pin": {
+        "notOpen": "Only an open letter can be pinned.",
+        "notLetter": "Only a letter can be pinned."
+      },
+      "read": {
+        "staffName": "{name} (profile {profileId})",
+        "unrecorded": "someone unrecorded",
+        "sealOf": "the seal of {name}",
+        "unfamiliarSeal": "an unfamiliar seal",
+        "signed": "Signed, {name}",
+        "signedUnknown": "Signed in an unfamiliar hand",
+        "sealBroken": "{seal} was broken.",
+        "scribe": "Scribe: {who}",
+        "written": "Written {created}, last changed {changed}",
+        "sealedBy": "Sealed by {who}",
+        "destroyed": "Destroyed {at} by {by}",
+        "staffSigned": "Signed, by {name}",
+        "staffUnsigned": "Unsigned, by {name}",
+        "closedWith": "Closed with {seal}."
+      },
+      "limit": {
+        "pagesOne": "A {kind} holds {n} page at most.",
+        "pagesMany": "A {kind} holds {n} pages at most.",
+        "formatting": "That page carries too much formatting.",
+        "chars": "A page holds {n} characters at most.",
+        "blankPage": "The page is still blank.",
+        "madeDay": "You have made {max} writings in the last {window} days. Burn one of them, or wait {days} day.",
+        "madeDays": "You have made {max} writings in the last {window} days. Burn one of them, or wait {days} days.",
+        "tired": "Your hand is tired. Write again tomorrow."
+      }
+    },
+    "bountyBoard": {
+      "strongbox": {
+        "notManager": "Only the territory's steward or jarl may open the board's strongbox.",
+        "none": "This board has no strongbox.",
+        "insideCity": "Open the strongbox from the board inside the city."
+      },
+      "noBoard": "There is no notice board within reach.",
+      "post": {
+        "cooldown": "The pin is still warm; give it a moment.",
+        "tooLong": "A notice holds {n} characters at most.",
+        "full": "The board is full. Older notices must fade first.",
+        "noGold": "Pinning a notice costs {gold} gold, and you do not have it.",
+        "failed": "The board would not take your notice.",
+        "done": "Your notice is pinned to the board."
+      },
+      "tooFar": "You are too far from the board.",
+      "remove": {
+        "gone": "That notice is no longer on this board.",
+        "notAllowed": "Only its poster or a non-citizen member of this territory may remove a notice.",
+        "failed": "The board would not remove that notice.",
+        "own": "You take your notice down.",
+        "done": "The notice is taken down."
+      },
+      "unknownAuthor": "Unknown"
+    },
+    "search": {
+      "end": {
+        "bodyGone": "The body is gone.",
+        "released": "They are no longer restrained.",
+        "movedAway": "They moved away.",
+        "disconnected": "They disconnected."
+      },
+      "needsBuild": "Searching needs a newer server build.",
+      "whileRestrained": "You cannot search while restrained.",
+      "lookAt": "Look at a player or a body to search.",
+      "alreadySearched": "{name} is already being searched.",
+      "alreadySearching": "You are already searching someone.",
+      "pending": "A search request is already pending.",
+      "cooldown": "Wait before asking {name} again.",
+      "noResponse": "{name} did not respond.",
+      "ask": "{name} wants to search you. Allow?",
+      "waiting": "Waiting for {name} to accept…",
+      "cannotAnswer": "{name} can no longer answer.",
+      "refused": "{name} refused the search.",
+      "outOfReach": "{name} is out of reach.",
+      "npc": {
+        "usePetMenu": "Use the pet menu.",
+        "companion": "That is someone's companion.",
+        "onlyDead": "Only the dead can be searched."
+      },
+      "bodyEmpty": "There is nothing left to take from this body.",
+      "couldNotStart": "The search could not start.",
+      "searchingBody": "{name} is searching your body.",
+      "searchingYou": "{name} is searching you.",
+      "pet": {
+        "needsBuild": "Trading needs a newer server build.",
+        "cannotNow": "You cannot do that now.",
+        "whileRestrained": "You cannot trade while restrained.",
+        "beingSearched": "It is already being searched."
+      },
+      "bodyLimit": "You cannot take anything else from this body."
+    },
+    "trade": {
+      "conditionChanged": "An offered item is no longer in the condition shown. Check the offer and lock again.",
+      "interrupted": "The trade was interrupted.",
+      "partnerLeft": "Your trading partner left.",
+      "player": "Player",
+      "stranger": "A stranger",
+      "request": {
+        "sent": "Trade request sent to {name}.",
+        "expired": "The trade request expired.",
+        "invalidTarget": "That is not someone you can trade with.",
+        "alreadyTrading": "You are already in a trade.",
+        "cooldown": "Please wait before sending another trade request.",
+        "busy": "{name} is busy with another trade.",
+        "cannotNow": "You cannot trade right now.",
+        "theyCannotNow": "{name} cannot trade right now.",
+        "tooFar": "You are too far away to trade."
+      },
+      "cancelled": "{name} cancelled the trade.",
+      "declined": "{name} declined the trade.",
+      "couldNotStart": "The trade could not start.",
+      "offer": {
+        "missingItems": "You no longer have all of those items.",
+        "plainCopy": "The server has no saved enchantment, tempering, soul or poison on that item, so it will trade as a plain copy."
+      },
+      "tooFarApart": "You moved too far apart to finish the trade.",
+      "itemGone": "The trade failed - an item was no longer available.",
+      "failed": "The trade failed unexpectedly."
+    },
+    "placedItem": {
+      "nailedDown": "It is nailed down.",
+      "needHammer": "You need a hammer and a nail."
     }
   },
   "client": {},
