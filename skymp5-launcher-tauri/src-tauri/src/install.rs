@@ -220,9 +220,12 @@ fn archive_ids(files: &[Value]) -> Vec<String> {
     files.iter().filter(|f| f.get("keep").is_none()).filter_map(|f| mo2::archive_id(&f["archive"])).filter(|id| seen.insert(id.clone())).collect()
 }
 
-// Marks each file of a mod to install that is already on disk with the manifest's size and sha256 as kept; returns their count and bytes
+// Marks each file of a mod to install that is already on disk with the manifest's size and sha256 as kept, and a player-editable file the
+// player changed (it matches neither the manifest nor the server copy recorded at the last install; one with no record or still equal to the
+// old server copy takes the manifest's); returns their count and bytes
 async fn keep_unchanged_files(m: &mut Value, game: &Path, direct: bool, on_percent: impl Fn(u64)) -> (usize, u64) {
-    let dir = if direct { game.join("Data") } else { mo2::mods_dir().join(mo2::sanitize(m["name"].as_str().unwrap_or(""))) };
+    let name = m["name"].as_str().unwrap_or("").to_string();
+    let dir = if direct { game.join("Data") } else { mo2::mods_dir().join(mo2::sanitize(&name)) };
     let Some(files) = m["files"].as_array_mut().filter(|_| dir.is_dir()) else { return (0, 0) };
     let total: u64 = files.iter().filter_map(|f| f["size"].as_u64()).sum::<u64>().max(1);
     let (mut kept, mut bytes, mut seen, mut shown) = (0, 0u64, 0u64, u64::MAX);
@@ -230,11 +233,17 @@ async fn keep_unchanged_files(m: &mut Value, game: &Path, direct: bool, on_perce
         let (Some(to), Some(want), Some(size)) = (f["to"].as_str(), f["sha256"].as_str(), f["size"].as_u64()) else { continue };
         seen += size;
         let p = mo2::join_rel(&dir, to);
-        // The player's copy of an editable file stays whatever it holds
         let editable = mo2::is_player_editable(to);
         if !fs::metadata(&p).is_ok_and(|md| md.is_file() && (editable || md.len() == size)) { continue; }
         if seen * 100 / total != shown { shown = seen * 100 / total; on_percent(shown); }
-        if !editable && !mo2::sha256_file(&p).await.is_ok_and(|h| h.eq_ignore_ascii_case(want)) { continue; }
+        let Ok(have) = mo2::sha256_file(&p).await else { continue };
+        let same = have.eq_ignore_ascii_case(want);
+        if !same {
+            if !editable { continue; }
+            let old = mo2::recorded_editable_hash(game, direct, &name, to);
+            if old.is_empty() || have.eq_ignore_ascii_case(&old) { continue; }
+            log(format!("[install] {name}: {to} differs from the server copy last installed - keeping the player's edited file"));
+        }
         f["keep"] = json!(p.to_string_lossy());
         kept += 1;
         bytes += size;
@@ -788,23 +797,41 @@ mod tests {
         let _ = std::fs::remove_dir_all(&game);
     }
 
-    // An edited SSEDisplayTweaks.ini is kept through a reinstall and passes the check; a deleted one is a problem
+    // An edited SSEDisplayTweaks.ini is kept through a reinstall and passes the check; an unedited one takes a changed server copy, and so
+    // does a foreign one with no record; a deleted one is a problem
     #[tokio::test]
     async fn player_editable_file_stays() {
+        use base64::Engine;
         use serde_json::json;
         let sha = |b: &[u8]| hex::encode(<sha2::Sha256 as sha2::Digest>::digest(b));
+        let inline = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
         let game = std::env::temp_dir().join(format!("alduinak-editable-test-{}", std::process::id()));
         let ini = game.join("Data/SKSE/Plugins/SSEDisplayTweaks.ini");
         std::fs::create_dir_all(ini.parent().unwrap()).unwrap();
-        std::fs::write(&ini, b"edited by the player").unwrap();
-        let mut m = json!({ "name": "SSE Display Tweaks", "hash": "h", "files": [
-            { "to": "SKSE/Plugins/SSEDisplayTweaks.ini", "archive": "a", "from": "SKSE/Plugins/SSEDisplayTweaks.ini", "sha256": sha(b"server"), "size": 6 },
+        let manifest = |hash: &str, body: &[u8]| json!({ "name": "SSE Display Tweaks", "hash": hash, "files": [
+            { "to": "SKSE/Plugins/SSEDisplayTweaks.ini", "inline": inline(body), "sha256": sha(body), "size": body.len() },
         ] });
-        assert_eq!(super::keep_unchanged_files(&mut m, &game, true, |_| {}).await, (1, 6));
+        // A copy from the player's old setup, with no record of a server copy, gives way to the server's on the first install
+        std::fs::write(&ini, b"foreign").unwrap();
+        let mut m = manifest("h1", b"server");
+        assert_eq!(super::keep_unchanged_files(&mut m, &game, true, |_| {}).await, (0, 0));
+        crate::mo2::apply_mod_direct(&game, &m, &std::collections::HashMap::new()).await.unwrap();
+        assert_eq!(std::fs::read(&ini).unwrap(), b"server");
+        assert_eq!(crate::mo2::recorded_editable_hash(&game, true, "SSE Display Tweaks", "SKSE/Plugins/SSEDisplayTweaks.ini"), sha(b"server"));
+        // The player edits it: a reinstall with a changed server copy keeps the edit
+        std::fs::write(&ini, b"edited by the player").unwrap();
+        let mut m = manifest("h2", b"server2");
+        assert_eq!(super::keep_unchanged_files(&mut m, &game, true, |_| {}).await, (1, 7));
         assert!(super::archive_ids(m["files"].as_array().unwrap()).is_empty());
         crate::mo2::apply_mod_direct(&game, &m, &std::collections::HashMap::new()).await.unwrap();
         assert_eq!(std::fs::read(&ini).unwrap(), b"edited by the player");
         assert!(crate::mo2::direct_mod_problem(&game, &m).await.is_none());
+        // Untouched since that install (still the old server copy), a changed server copy replaces it
+        std::fs::write(&ini, b"server2").unwrap();
+        let mut m = manifest("h3", b"server3");
+        assert_eq!(super::keep_unchanged_files(&mut m, &game, true, |_| {}).await, (0, 0));
+        crate::mo2::apply_mod_direct(&game, &m, &std::collections::HashMap::new()).await.unwrap();
+        assert_eq!(std::fs::read(&ini).unwrap(), b"server3");
         std::fs::remove_file(&ini).unwrap();
         assert_eq!(crate::mo2::direct_mod_problem(&game, &m).await.as_deref(), Some("missing file SKSE/Plugins/SSEDisplayTweaks.ini"));
         let _ = std::fs::remove_dir_all(&game);

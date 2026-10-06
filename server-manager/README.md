@@ -289,10 +289,18 @@ fails it prints a direct download URL - save that zip as
     shipped file a player may edit (`mo2::is_player_editable`, launchers after
     3.0.6): it stays in the manifest and is installed when missing, but it is
     left out of the folder size check and of the Mod Manager None size check,
-    and a reinstall of its mod keeps the copy on disk whatever it holds, so an
-    edit is never reverted. Only Repair Modlist puts the server's copy back,
-    which is also how a changed default in the reference install reaches a PC
-    that already has the file. On every Play the launcher also deletes, from a
+    and a reinstall of its mod keeps the player's edit. The launcher records
+    the sha256 of the server copy it installed (`alduinakEditable=` in the
+    mod's `meta.ini` under MO2, `editable` in `alduinak-installed.json` with
+    Mod Manager None) and on a reinstall keeps the file on disk only when it
+    matches neither the manifest's copy nor that record, that is when the
+    player changed it (`[install] <mod>: <path> differs from the server copy
+    last installed - keeping the player's edited file`); a file still equal to
+    the old server copy, or one with no record (a first install over a
+    player's own copy, or an install made by a launcher before the record),
+    takes the manifest's. So a changed default in the reference install
+    reaches every PC whose player never edited the file, and Repair Modlist
+    puts the server's copy back on the rest. On every Play the launcher also deletes, from a
     portable game copy (`<install>\skyrim`), each file it did not put there
     (`[game] removed stray file <path>` in `install.log`); logs, the client's
     own files under `Data/Platform` and, in launchers after 3.0.6, `.png`

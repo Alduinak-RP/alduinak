@@ -432,7 +432,7 @@ pub async fn apply_mod(name: &str, files: &[Value], extracted: &HashMap<String, 
                 match archive_id(&f["archive"]) { Some(a) => format!("{to}: {e} [archive {a}, from {}]", f["from"].as_str().unwrap_or("")), None => format!("{to}: {e} [inline]") }
             })?;
         }
-        fs::write(build.join("meta.ini"), ["[General]", "gameName=SkyrimSE", &format!("modid={mod_id}"), &format!("name={folder}"), "repository=Nexus", "alduinakManaged=true", &format!("alduinakHash={hash}"), ""].join("\r\n")).map_err(|e| e.to_string())?;
+        fs::write(build.join("meta.ini"), ["[General]", "gameName=SkyrimSE", &format!("modid={mod_id}"), &format!("name={folder}"), "repository=Nexus", "alduinakManaged=true", &format!("alduinakHash={hash}"), &format!("alduinakEditable={}", editable_hashes(files)), ""].join("\r\n")).map_err(|e| e.to_string())?;
         // Rename-aside swap: a locked file fails the rename cleanly instead of leaving a half-deleted mod
         let stale = mods_dir().join(format!("{folder}.stale"));
         rmrf(&stale);
@@ -465,6 +465,27 @@ fn meta_value(mod_name: &str, key: &str) -> String {
 
 pub fn is_managed(mod_name: &str) -> bool { meta_value(mod_name, "alduinakManaged").eq_ignore_ascii_case("true") }
 pub fn read_mod_hash(mod_name: &str) -> String { meta_value(mod_name, "alduinakHash") }
+
+// The server's copy of each player-editable file a mod ships, lowercase path -> sha256 of the manifest, recorded with the install so a later
+// install can tell a player's edit (kept) from a stale server copy (replaced)
+pub fn editable_hashes(files: &[Value]) -> Value {
+    let mut out = serde_json::Map::new();
+    for f in files {
+        let (Some(to), Some(sha)) = (f["to"].as_str(), f["sha256"].as_str()) else { continue };
+        if is_player_editable(to) { out.insert(to.to_lowercase(), json!(sha.to_lowercase())); }
+    }
+    Value::Object(out)
+}
+
+// The recorded server copy's sha256 of an editable file, "" when the install that wrote it predates the record
+pub fn recorded_editable_hash(game_dir: &Path, direct: bool, mod_name: &str, to: &str) -> String {
+    let record = if direct {
+        read_direct_record(game_dir)["mods"][mod_name]["editable"].clone()
+    } else {
+        serde_json::from_str(&meta_value(mod_name, "alduinakEditable")).unwrap_or(Value::Null)
+    };
+    record.get(to.to_lowercase().as_str()).and_then(|v| v.as_str()).unwrap_or("").to_string()
+}
 
 // Launcher-managed mod folders the manifest order no longer lists; a player's own or copied folder is kept
 fn list_stale_managed_mods(order: &[String]) -> Vec<String> {
@@ -593,7 +614,7 @@ pub async fn apply_mod_direct(game_dir: &Path, m: &Value, extracted: &HashMap<St
     let files = m["files"].as_array().cloned().unwrap_or_default();
     for f in &files { write_directive(f, &data, extracted).await?; }
     let mut record = read_direct_record(game_dir);
-    record["mods"][m["name"].as_str().unwrap_or("")] = json!({ "hash": m["hash"].as_str().unwrap_or(""), "files": files.iter().map(|f| f["to"].clone()).collect::<Vec<_>>() });
+    record["mods"][m["name"].as_str().unwrap_or("")] = json!({ "hash": m["hash"].as_str().unwrap_or(""), "files": files.iter().map(|f| f["to"].clone()).collect::<Vec<_>>(), "editable": editable_hashes(&files) });
     write_direct_record(game_dir, &record);
     Ok(())
 }
@@ -640,7 +661,8 @@ pub fn is_unverified(rel: &str) -> bool {
     l.ends_with(".log") || l.rsplit('/').next() == Some("actorlimitfix.pdb")
 }
 
-// Config a mod ships for the player to edit: installed when missing, never sized, and only Repair Modlist replaces it
+// Config a mod ships for the player to edit: installed when missing, never sized, kept through a reinstall while it differs from the server copy
+// last installed (the player's edit), replaced by a changed server copy otherwise; Repair Modlist always restores the server's copy
 pub fn is_player_editable(rel: &str) -> bool {
     let l = rel.to_lowercase();
     l.rsplit('/').next() == Some("ssedisplaytweaks.ini")
