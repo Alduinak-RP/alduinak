@@ -194,6 +194,7 @@ export class Login implements System {
         }
 
 
+        const mp = ctx.svr as unknown as Mp;
         let roles: string[] = new Array<string>();
 
         let fetchedRoles: string[] = [];
@@ -204,7 +205,6 @@ export class Login implements System {
           let isBanned = false;
 
           const actorId = ctx.svr.getActorsByProfileId(profile.id)[0];
-          const mp = ctx.svr as unknown as Mp;
           // The profile index can hold a deleted character's id; a stale entry must not abort the login (delete-then-relog lockout)
           let currentRoles: string[] | null = null;
           if (actorId) {
@@ -295,6 +295,15 @@ export class Login implements System {
         }
 
         const rolesToAssign = isMemberOfAny ? [...new Set(fetchedRoles)] : roles;
+
+        // A verified answer goes onto every character of the profile, so a login during a Discord outage falls back to the last verified roles whichever character the index lists first
+        if (isMemberOfAny) {
+          for (const id of ctx.svr.getActorsByProfileId(profile.id)) {
+            try {
+              if (JSON.stringify(mp.get(id, "private.discordRoles")) !== JSON.stringify(rolesToAssign)) mp.set(id, "private.discordRoles", rolesToAssign);
+            } catch { /* form destroyed, ignore */ }
+          }
+        }
 
         // Mirror master-api faction access into private.skympAccess; account-level, the same payload applies to every character on this profile
         const skympAccess = {
