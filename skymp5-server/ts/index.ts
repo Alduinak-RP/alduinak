@@ -181,7 +181,7 @@ const setupStreams = (scampNative: any) => {
   };
 };
 
-// A gamemode that does not load leaves chat, introductions, admin tools and every ff_ property off: the server log and the Discord admin alerts both say so
+// A gamemode that does not load leaves the parts from the failure on off: the server log and the Discord admin alerts both say so
 const reportGamemodeLoadFailure = (gamemodePath: string, e: unknown, hotReload: boolean) => {
   const stack = String((e as Error)?.stack || e);
   // The bundle runs from a random temp copy, so the frame naming that copy is mapped back to gamemode.js
