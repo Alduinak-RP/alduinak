@@ -31,6 +31,9 @@ type Mp = any;
 //
 // A swing of the axe, every ore off a vein and every harvest cost one gathering action of the fatigue bar by the rank in
 // woodworker, miner, or farmer and alchemist (NeedsSystem), and a bar that cannot pay for one more turns the station away. A chopper keeps swinging, a yield every swing, until the bar cannot pay for the next.
+// Each yield that costs fatigue is one piece of mastery work (MasterySystem.creditWork) handed over with the items, never at the
+// station's activation: a swing's firewood is the woodworker's, an ore collection the miner's, a harvest the work of the professions
+// that price it (flora: farmer or alchemist, whichever slot comes first; a crop: the farmer's). A free rack taking credits nobody.
 // A swing's firewood lands only after a whole cycle seated at the block (the client's seat claim, FurnitureSeatSystem);
 // standing up mid-cycle ends the sitting with nothing for that cycle, and sitting down again starts a new cycle.
 // A vein comes back whole a day after its first ore was taken; gatheringVeinRegenMinutes makes that gradual instead.
@@ -410,7 +413,10 @@ export class GatheringSystem implements System {
     const kneelMs = props["instant"] ? 0 : flora ? FLORA_MS : CROP_MS;
     const settle = () => {
       const extra = alchemist ? `, alchemist -${Math.round(this.alchemistFloraDiscount * 100)}%` : priceRank !== rank ? `, alchemist r${rank} pays the Free crop price` : "";
-      if (!props["free"]) this.needs.pay(ctx, actorId, "gather", priceRank, `harvest ${name} ${flora ? "flora" : "crop"} r${priceRank}${extra}`, flora, multiplier);
+      if (!props["free"]) {
+        this.needs.pay(ctx, actorId, "gather", priceRank, `harvest ${name} ${flora ? "flora" : "crop"} r${priceRank}${extra}`, flora, multiplier);
+        this.mastery.creditWork(actorId, ...(flora ? PICKERS : CROP_PRICERS));
+      }
       if (kneelMs > 0) sendActionLock(mp, actorId, flora ? HARVEST_ANIM : CROP_ANIM, kneelMs / 1000, flora ? undefined : CROP_EXIT_ANIM);
     };
     return () => {
@@ -609,6 +615,7 @@ export class GatheringSystem implements System {
     this.addItem(ctx, s.actorId, s.resource, count);
     s.given += count;
     this.needs.pay(ctx, s.actorId, "gather", rank, "chop");
+    this.mastery.creditWork(s.actorId, "woodworker");
     if (!this.needs.canPay(s.actorId, "gather", rank)) this.finish(ctx, s, CHOP_TIRED);
   }
 
@@ -623,6 +630,7 @@ export class GatheringSystem implements System {
     if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, loc("gathering.mineTired"));
     this.addItem(ctx, s.actorId, s.resource, s.perStrike * YIELD_BY_RANK[rank]);
     this.needs.pay(ctx, s.actorId, "gather", rank, "ore");
+    this.mastery.creditWork(s.actorId, "miner");
     if (Math.random() < GEM_CHANCE) {
       const gem = this.rollItem(ctx, GEM_LIST);
       if (gem !== GEM_LIST) this.addItem(ctx, s.actorId, gem, 1);

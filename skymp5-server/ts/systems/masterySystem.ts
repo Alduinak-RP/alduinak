@@ -24,10 +24,11 @@ type Mp = any;
 // docs/docs_professions_revamp_contract.md is the fixed interface. Everyone is Free (rank 0); choosing a primary profession
 // makes the character a Novice of it, and hours of its work raise it to Adept, Expert, Master and Legendary. Every
 // server-observed activity of the profession is worth one hour, at most one per hour. This system chains the native
-// onCraft/onActivate/onSpellCast/onDeath hooks on `mp`; other systems credit their own work (skinning) through creditWork. Each rank
+// onCraft/onSpellCast/onDeath hooks on `mp`; other systems credit the work they verified through creditWork: gatheringSystem
+// every yield it hands over (firewood, ore, a harvest), huntingSystem every skinning. A station's activation credits nothing. Each rank
 // grants a cumulative marker spell AldProf_<Label>_<Rank>; the plugin's recipes condition on it with HasSpell.
 // A mage cannot rise above Adept without having cast an Adept spell, above Expert without an Expert one, and so on.
-// A character counts one hour per interval, whichever craft did the work. Hour bank: a craft inside the counted hour banks
+// A character counts one hour per interval, whichever craft did the work. Hour bank: a craft or a piece of work inside the counted hour banks
 // one hour for its craft, the character's bank being a queue of up to masteryHourBank entries in craft order; the head is
 // paid one interval after the last counted hour (real time, or online time without masteryBankOffline) and dated then, so
 // the hours that fell due while logged out are paid at login. The Skills tab draws the clock and the queue from `bank`.
@@ -69,9 +70,8 @@ type Mp = any;
 //   masteryBankOffline           banked hours also fall due while the character is logged out, default true
 //   masterySpells                { "<professionId>": [novice, adept, expert, master, legendary] } marker form ids
 //                                overriding the plugin's AldProf_<Label>_<Rank> spells
-//   masteryActivities            { "<professionId>": { craftKeywords, craftStations, activatePrefixes, activateTypes,
-//                                killKeywords } } overriding DEFAULT_ACTIVITIES key by key. Keywords take an editor id,
-//                                a hex id or a desc ("88105:Skyrim.esm").
+//   masteryActivities            { "<professionId>": { craftKeywords, craftStations, killKeywords } } overriding
+//                                DEFAULT_ACTIVITIES key by key. Keywords take an editor id, a hex id or a desc ("88105:Skyrim.esm").
 //   masteryKits                  { "<professionId>": [{ baseId, count }] } overriding DEFAULT_KITS key by key; [] gives nothing
 //   masteryKitGold               gold every profession's kit carries, default 50; 0 turns it off. A character marked
 //                                private.starterGold (its starting items carried gold) gets none.
@@ -111,8 +111,8 @@ const CHOOSE_COOLDOWN_MS = 1000;
 export const MAX_GRANT = 1000;
 // Events queue up until the next turn drains them; anything past this is a runaway loop.
 const MAX_QUEUED_EVENTS = 4096;
-// The C++ never asks where an activator or crafter stands, so a forged packet from afar must not count as work
-const ACTIVATE_REACH = 600;
+// The C++ never asks where a crafter stands, so a forged packet from afar must not count as work
+const BENCH_REACH = 600;
 // Bow kills skip the engine's distance check; the reach a bow means is used instead
 const KILL_REACH = 8192;
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
@@ -249,17 +249,19 @@ const PROFESSIONS: Profession[] = [
 
 const PROFESSION_IDS = PROFESSIONS.map((p) => p.id);
 const ALL_SKILLS = Array.from(new Set(PROFESSIONS.flatMap((p) => p.skills)));
+// A work event names its professions as a bit set by PROFESSION_IDS index; 0 for an unknown id
+const professionBit = (id: string): number => {
+  const index = PROFESSION_IDS.indexOf(id);
+  return index === -1 ? 0 : 1 << index;
+};
 
 // What counts as work, per profession. Every list is optional; an empty list never matches.
+// Gathering is not here: gatheringSystem credits the woodworker, miner, farmer and alchemist with every yield through creditWork.
 interface ActivityRules {
   // Recipe (COBJ) workbench keyword of a server-validated craft or temper.
   craftKeywords: string[];
   // Keyword on the station itself: every craft made there counts, whatever the recipe.
   craftStations: string[];
-  // Editor id prefix of the activated reference's base object.
-  activatePrefixes: string[];
-  // Record type of the activated reference's base object (FLOR, TREE...).
-  activateTypes: string[];
   // Keywords on the victim's base or race when this character lands the kill.
   killKeywords: string[];
 }
@@ -273,21 +275,23 @@ const PLAYER_KEYWORD = "ActorTypeNPC";
 const MEAD_STATIONS = ["AldCraftingMead", "AldCraftingMeadHonningbrew", "AldCraftingMeadBlackBriar"];
 
 const DEFAULT_ACTIVITIES: Record<string, Partial<ActivityRules>> = {
-  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: MEAD_STATIONS, activateTypes: ["FLOR", "TREE"] },
+  // Harvests are the alchemist's and the farmer's work, credited by gatheringSystem with the yield
+  alchemist: { craftKeywords: ["AldCraftingAlchemy"], craftStations: MEAD_STATIONS },
   // Anything made at a forge, anvil or smelter counts, and a temper at the workbench or grindstone
   blacksmith: {
     craftKeywords: ["CraftingSmithingForge", "CraftingSmelter", "CraftingSmithingSkyforge", "DLC2CraftingSmithingSkaalForge", "DLC1CraftingDawnguard", "DLC1LD_CraftingForgeAetherium", "CraftingSmithingArmorTable", "CraftingSmithingSharpeningWheel"],
     craftStations: ["isBlacksmithForge", "isBlacksmithAnvil", "isSmelter"],
   },
   cook: { craftKeywords: ["CraftingCookpot", "BYOHCraftingOven"], craftStations: MEAD_STATIONS },
-  farmer: { activateTypes: ["FLOR", "TREE"] },
+  farmer: {},
   // Hunters and tailors both tan leather
   hunter: { killKeywords: ["ActorTypeAnimal"], craftKeywords: ["CraftingTanningRack"] },
-  // Veins hand the swing to a linked PickaxeMining*Marker furniture; smiths and miners both smelt
-  miner: { activatePrefixes: ["MineOre", "PickaxeMining"], craftKeywords: ["CraftingSmelter"] },
+  // Ore is credited with each collection by gatheringSystem; smiths and miners both smelt
+  miner: { craftKeywords: ["CraftingSmelter"] },
   tailor: { craftKeywords: ["CraftingTanningRack", "MCE_CraftingLoom", "CraftingSmithingArmorTable"] },
   warrior: { killKeywords: ACTOR_TYPES },
-  woodworker: { activatePrefixes: ["WoodChoppingBlock", "DLC2WoodChoppingBlock"], craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter", "AldCraftingWoodcrafting", "AldCraftingKiln", "CraftingSmithingSharpeningWheel"] },
+  // Firewood is credited with each swing's yield by gatheringSystem
+  woodworker: { craftKeywords: ["BYOHCarpenterTable", "BYOHBuildingCarpenter", "AldCraftingWoodcrafting", "AldCraftingKiln", "CraftingSmithingSharpeningWheel"] },
 };
 
 interface KitItem {
@@ -311,8 +315,10 @@ const DEFAULT_KIT_GOLD = 50;
 // The farmer's hoe, a plugin record
 const HOE_EDID = "AldToolHoe";
 
-const ACTIVITY_KINDS = ["craft", "activate", "kill", "cast", "work"] as const;
+const ACTIVITY_KINDS = ["craft", "kill", "cast", "work"] as const;
 type ActivityKind = typeof ACTIVITY_KINDS[number];
+// Crafts and verified work bank inside the counted hour; kills and casts never do
+const BANKING_KINDS: ActivityKind[] = ["craft", "work"];
 
 interface ActivityEvent {
   kind: ActivityKind;
@@ -323,8 +329,6 @@ interface ActivityEvent {
 interface ResolvedRules {
   craftKeywords: Set<number>;
   craftStations: Set<number>;
-  activatePrefixes: string[];
-  activateTypes: Set<string>;
   killKeywords: Set<number>;
 }
 
@@ -539,7 +543,6 @@ export class MasterySystem implements System {
     // The inputs are consumed the moment the hook returns, so ownership is read here.
     chainMpHook(mp, "onCraft", (actorId: number, _craftedId: number, _count: number, recipeId: number) =>
       this.enqueue("craft", actorId, { recipeId, held: this.holdsInputs(ctx, Number(actorId) >>> 0, Number(recipeId) >>> 0) ? 1 : 0 }));
-    chainMpHook(mp, "onActivate", (refrId: number, casterId: number) => this.enqueue("activate", casterId, { refrId }));
     chainMpHook(mp, "onSpellCast", (casterId: number, spellId: number) => this.enqueue("cast", casterId, { spellId }));
     chainMpHook(mp, "onDeath", (victimId: number, killerId: number) => {
       if (killerId) this.enqueue("kill", killerId, { victimId });
@@ -572,10 +575,10 @@ export class MasterySystem implements System {
     }
   }
 
-  // Work another system verified (skinning); credited like any activity of that profession
-  creditWork(actorId: number, professionId: string): void {
-    const index = PROFESSION_IDS.indexOf(professionId);
-    if (index !== -1) this.enqueue("work", actorId, { profession: index });
+  // One piece of work another system verified (a gathering yield, a skinning), work of any of the professions named: the first slot in slot order following one of them is credited
+  creditWork(actorId: number, ...professionIds: string[]): void {
+    const professions = professionIds.reduce((mask, id) => mask | professionBit(id), 0);
+    if (professions) this.enqueue("work", actorId, { professions });
   }
 
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
@@ -589,7 +592,7 @@ export class MasterySystem implements System {
 
   // ── Worked hours ────────────────────────────────────────────────────────────
 
-  // One hour per interval for the character, to the first slot in slot order that qualifies; inside the counted hour only a craft earns anything, a banked hour
+  // One hour per interval for the character, to the first slot in slot order that qualifies; inside the counted hour only a craft or verified work earns anything, a banked hour
   private creditActivity(ctx: SystemContext, ev: ActivityEvent): void {
     const char = this.load(ctx, ev.actorId);
     const slots = char ? this.activeSlots(char) : [];
@@ -599,7 +602,7 @@ export class MasterySystem implements System {
     // A banked hour that fell due since the last bank check is paid first, so the work cannot take its place in the clock
     if (char.primary.queue.length) this.payDue(ctx, ev.actorId, char, now);
     const counted = this.countedMs(char, now) > 0;
-    if (counted && (ev.kind !== "craft" || char.primary.queue.length >= this.bankMax)) return;
+    if (counted && (BANKING_KINDS.indexOf(ev.kind) === -1 || char.primary.queue.length >= this.bankMax)) return;
     const gates = ev.kind === "craft" ? this.recipeGates(ctx, ev.detail["recipeId"]) : [];
     for (const slot of slots) {
       const profession = slot.rec.profession || "";
@@ -793,22 +796,12 @@ export class MasterySystem implements System {
         return this.benchInReach(ctx, ev.actorId, bench, (keywords) =>
           byKeyword || Array.from(rules.craftStations).some((k) => keywords.has(k)));
       }
-      case "activate": {
-        const refrId = ev.detail["refrId"];
-        const loc = this.locationOf(ctx, ev.actorId);
-        if (!loc || !this.inReach(ctx, loc, refrId) || this.isDisabled(ctx, refrId)) return false;
-        const base = this.baseOf(ctx, refrId);
-        if (!base) return false;
-        if (rules.activateTypes.has(base.type)) return true;
-        const edid = base.editorId.toLowerCase();
-        return rules.activatePrefixes.some((p) => edid.startsWith(p));
-      }
       case "kill":
         return this.killCounts(ctx, ev.actorId, ev.detail["victimId"], rules.killKeywords);
       case "cast":
         return profession === "mage";
       case "work":
-        return PROFESSION_IDS[ev.detail["profession"]] === profession;
+        return (ev.detail["professions"] & professionBit(profession)) !== 0;
       default:
         return false;
     }
@@ -1459,8 +1452,6 @@ export class MasterySystem implements System {
       const rules: ActivityRules = {
         craftKeywords: pick("craftKeywords"),
         craftStations: pick("craftStations"),
-        activatePrefixes: pick("activatePrefixes"),
-        activateTypes: pick("activateTypes"),
         killKeywords: pick("killKeywords"),
       };
       merged[id] = rules;
@@ -1494,8 +1485,6 @@ export class MasterySystem implements System {
       this.rules[id] = {
         craftKeywords: toIds(r.craftKeywords),
         craftStations: toIds(r.craftStations),
-        activatePrefixes: r.activatePrefixes.map((p) => p.toLowerCase()),
-        activateTypes: new Set(r.activateTypes.map((t) => t.toUpperCase())),
         killKeywords: toIds(r.killKeywords),
       };
     }
@@ -1511,11 +1500,7 @@ export class MasterySystem implements System {
     }
   }
 
-  private isDisabled(ctx: SystemContext, refrId: number): boolean {
-    try { return !!(ctx.svr as Mp).get(refrId, "isDisabled"); } catch { return true; }
-  }
-
-  private inReach(ctx: SystemContext, loc: Location, refrId: number, reach = ACTIVATE_REACH): boolean {
+  private inReach(ctx: SystemContext, loc: Location, refrId: number, reach = BENCH_REACH): boolean {
     const mp = ctx.svr as Mp;
     try {
       if (loc.cell !== String(mp.get(refrId, "worldOrCellDesc"))) return false;

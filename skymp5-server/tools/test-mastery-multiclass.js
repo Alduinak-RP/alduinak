@@ -83,7 +83,9 @@ const makeMp = () => {
   }
 }
 
-const rulesOf = (keywords, extra = {}) => ({ craftKeywords: new Set(keywords), craftStations: new Set(), activatePrefixes: [], activateTypes: new Set(), killKeywords: new Set(), ...extra })
+const rulesOf = (keywords, extra = {}) => ({ craftKeywords: new Set(keywords), craftStations: new Set(), killKeywords: new Set(), ...extra })
+// A work event's professions, the bit set creditWork builds
+const workOf = (...professions) => professions.reduce((mask, p) => mask | (1 << PROFESSION_IDS.indexOf(p)), 0)
 
 // A system as initAsync leaves it, with the given masterySlots value and an optional race magicka bonus
 const setup = ({ slots = THREE, bonus = null } = {}) => {
@@ -103,6 +105,7 @@ const setup = ({ slots = THREE, bonus = null } = {}) => {
     mage: rulesOf([]),
     woodworker: rulesOf([WOODBENCH]),
     alchemist: rulesOf([ALCHEMY]),
+    farmer: rulesOf([]),
   }
   sys.kits = { blacksmith: [{ baseId: 0x5ace4, count: 5 }], tailor: [{ baseId: 0xdb5d2, count: 5 }], miner: [{ baseId: 0xe3c16, count: 1 }], mage: [], hunter: [], woodworker: [], alchemist: [] }
   const recipe = (id, bench, editorId, gates) => {
@@ -125,7 +128,7 @@ const setup = ({ slots = THREE, bonus = null } = {}) => {
   const reset = (profession) => { sys.lastChooseMs.clear(); sys.onResetRequest(ctx, USER, profession ? { profession } : {}) }
   const craft = (recipeId) => sys.creditActivity(ctx, { kind: 'craft', actorId: ACTOR, detail: { recipeId, held: 1 } })
   const cast = () => sys.creditActivity(ctx, { kind: 'cast', actorId: ACTOR, detail: { spellId: FLAMES } })
-  const work = (profession) => sys.creditActivity(ctx, { kind: 'work', actorId: ACTOR, detail: { profession: PROFESSION_IDS.indexOf(profession) } })
+  const work = (...professions) => sys.creditActivity(ctx, { kind: 'work', actorId: ACTOR, detail: { professions: workOf(...professions) } })
   const notices = () => mp.packets.filter((p) => p.customPacketType === 'masteryNotice').map((p) => p.text)
   const last = (type) => mp.packets.filter((p) => p.customPacketType === type).pop()
   const primary = () => mp.props.get(`${ACTOR}:private.mastery`)
@@ -268,7 +271,7 @@ test('work landing between a banked hour falling due and the bank check pays tha
   assert.deepEqual([t.primary().points, t.primary().queue.length], [1, 2], 'the check finds nothing else due')
   now += HOUR
   t.work('woodworker')
-  assert.deepEqual([t.primary().points, t.primary().lastPointAt, t.primary().queue], [2, start + 2 * HOUR, ['woodworker']], 'a due hour is paid before any kind of work, which then earns nothing inside it')
+  assert.deepEqual([t.primary().points, t.primary().lastPointAt, t.primary().queue], [2, start + 2 * HOUR, ['woodworker', 'woodworker']], 'a due hour is paid before any kind of work, which then banks inside it like a craft')
 })
 
 test('one piece of work credits one slot, the first in slot order that qualifies', () => {
@@ -281,6 +284,71 @@ test('one piece of work credits one slot, the first in slot order that qualifies
   now += HOUR
   t.craft(STRIPS)
   assert.deepEqual([t.subs().secondary.points, t.subs().tertiary.points], [2, 0])
+})
+
+test('gathering credits with the yield: a chop counts the hour, the next two bank, a fourth inside the hour earns nothing at the cap, and the block alone credits nothing', () => {
+  const t = setup()
+  t.choose('woodworker', 0)
+  const start = now
+  t.sys.hookNativeEvents(t.ctx)
+  assert.equal(t.mp.onActivate, undefined, 'no activation hook: a block, a vein or a plant credits nothing by itself')
+  assert.equal(typeof t.mp.onCraft, 'function')
+  t.sys.enqueue('activate', ACTOR, { refrId: 0x1234 })
+  assert.deepEqual([t.sys.events.length, t.primary().points], [0, 0], 'an activation is no kind of work')
+  t.work('woodworker')
+  assert.deepEqual([t.primary().points, t.primary().lastPointAt, t.primary().queue], [1, start, []], 'the first swing\'s firewood counts the hour')
+  assert.equal(t.notices().pop(), 'Your work as a Woodworker is counted: 1 hour at the craft.')
+  now += 10000
+  t.work('woodworker')
+  assert.deepEqual([t.primary().points, t.primary().queue], [1, ['woodworker']], 'the second swing banks')
+  assert.equal(t.notices().pop(), 'Extra work banked: 1 hour will be counted, one per hour, online or not.')
+  now += 10000
+  t.work('woodworker')
+  assert.deepEqual(t.primary().queue, ['woodworker', 'woodworker'], 'the third banks')
+  assert.ok(t.lines.some((l) => /woodworker hour banked \(2\/2: woodworker, woodworker\), next paid in 60 min/.test(l)))
+  now += 10000
+  const sent = t.mp.packets.length
+  t.work('woodworker')
+  assert.deepEqual([t.primary().points, t.primary().queue.length, t.mp.packets.length], [1, 2, sent], 'the fourth inside the hour earns nothing at the cap')
+  now = start + HOUR
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().queue], [2, ['woodworker']], 'the second hour is paid an interval after the first')
+  now += HOUR
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().lastPointAt, t.primary().queue], [3, start + 2 * HOUR, []])
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: HOUR, counted: 'woodworker' }))
+})
+
+test('a harvest is farmer or alchemist work and credits the first slot in slot order that follows either; a crop is the farmer\'s alone', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.choose('alchemist', 1)
+  t.choose('farmer', 2)
+  t.work('farmer', 'alchemist')
+  assert.deepEqual([t.primary().points, t.subs().secondary.points, t.subs().tertiary.points], [0, 1, 0], 'flora: the alchemist is the lower slot')
+  assert.match(t.notices().pop(), /Alchemist is counted: 1 of 20 hours toward Novice\.$/)
+  now += HOUR
+  t.work('farmer')
+  assert.deepEqual([t.subs().secondary.points, t.subs().tertiary.points], [1, 1], 'a crop is the farmer\'s')
+  now += HOUR
+  t.work('miner')
+  assert.deepEqual([t.primary().points, t.subs().secondary.points, t.subs().tertiary.points, t.primary().queue], [0, 1, 1, []], 'ore is nobody\'s work here')
+  const u = setup()
+  u.choose('farmer', 0)
+  u.choose('alchemist', 1)
+  u.work('farmer', 'alchemist')
+  assert.deepEqual([u.primary().points, u.subs().secondary.points], [1, 0], 'the farmer primary comes first')
+  const queued = []
+  const realImmediate = global.setImmediate
+  global.setImmediate = (fn) => queued.push(fn)
+  try {
+    u.sys.creditWork(ACTOR, 'farmer', 'alchemist')
+    u.sys.creditWork(ACTOR, 'bard')
+  } finally {
+    global.setImmediate = realImmediate
+  }
+  assert.deepEqual(u.sys.events.map((e) => [e.kind, e.detail.professions]), [['work', workOf('farmer', 'alchemist')]], 'creditWork names every profession of the work in one event and queues nothing for an unknown craft')
+  queued[0]()
 })
 
 test('the bank check reads only online characters with banked hours, saves their online time and lets them go once paid', () => {

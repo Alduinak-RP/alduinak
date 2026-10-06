@@ -55,12 +55,21 @@ character, see "Hour bank"):
 | Warrior | killing NPCs and creatures |
 | Mage | casting spells (the native `onSpellCast` event) |
 
+Gathering is credited **with the yield**, never at the station (since 2026-10-06; until then the activation of a
+chopping block, a vein or a plant was the hour, so a woodworker's hour came at the key press and the two firewood
+earned nothing): `gatheringSystem.ts` calls `MasterySystem.creditWork` once per swing's firewood, once per ore
+collection and once per harvest that costs fatigue, each one a piece of work like a craft (see "Chopping", "Mining" and
+"Farming"). `masterySystem.ts` chains only the native `onCraft`, `onSpellCast` and `onDeath` hooks; `onActivate` is
+not read, and `masteryActivities` has no `activatePrefixes` or `activateTypes` key any more.
+
 **Hour bank.** A character counts one hour per `masteryPointIntervalMinutes` whichever of its crafts did the work, the
 hour going to the first craft slot in slot order that qualifies. A craft made inside that counted hour (a craft or
 temper that would have counted, at a bench of the profession, with the inputs in the bag) banks one hour for its own
 craft instead, up to `masteryHourBank` (default 2; 0 turns the bank off) banked hours per character, shared by every
-craft it holds. Only crafts bank; gathering, kills, casts and skinning come many an hour and never do, and inside the
-counted hour they earn nothing. The bank is a queue in craft order: a banked hour is counted one interval after the
+craft it holds. Verified work banks the same way: a swing's firewood, an ore collection, a harvest or a skinning inside
+the counted hour banks an hour for its craft, so a chopper's first swing counts the hour, the second and third bank one
+each and the fourth earns nothing until an hour is paid out. Kills and casts never bank, and inside the counted hour
+they earn nothing. The bank is a queue in craft order: a banked hour is counted one interval after the
 character's last counted hour, whether that came from work or from the bank, the head of the queue first, and a
 counted hour of work restarts that wait, so no hour is ever counted twice in one interval (a banked hour that fell due
 since the last bank check is paid before any new work is weighed, so the work cannot take its turn). A bow, then a potion, then
@@ -251,8 +260,10 @@ multiclassing off: the primary then works exactly as before. The Test value:
 - **What counts.** One piece of work credits every slot it qualifies for, so a leather strip counts for a Tailor and
   a Hunter slot alike. A crafted recipe counts for a slot only when it has no rank gate, or when one of its `HasSpell`
   gates is a marker of that slot's own profession at a rank the slot holds; another profession's gated recipe never
-  counts, even at a shared bench. Gathering, kills and casts count as they do for the primary; a vein above the
-  character's miner rank is refused anyway, and skinning needs a Novice hunter, so it is no free work. Work only a
+  counts, even at a shared bench. Gathering yields, kills and casts count as they do for the primary (a harvest is
+  farmer or alchemist work, credited to whichever of the two slots comes first in slot order; a crop is the farmer's
+  alone); a vein above the character's miner rank is refused anyway, and skinning needs a Novice hunter, so it is no
+  free work. Work only a
   Free sub-slot's craft does is priced at Free (a Free craft at a forge costs a third of the fatigue bar, so three in a row
   empty it; cooking, brewing, smelting and tanning cost half); where a higher slot works the same bench, the better
   rank prices it.
@@ -321,11 +332,11 @@ tab shows the same list under a Free sub-slot's rank):
 |---|---|
 | Blacksmith | forge: nails, iron fittings, locks and hinges (`BYOHRecipeNails`, `BYOHRecipeFittings`, `BYOHRecipeLock`, `BYOHRecipeHinge`); armour table: the seven Bandit armour tempers (`TemperArmorBandit*`); smelter: sea salt (`12RecipeSeaSaltPile`), charcoal and the Apotheus hood and scarf breakdowns |
 | Tailor | tanning rack: leather strips, the Bandit fur set and the fur armour, the blank parchment, journal and book; loom: thread and the roughspun tunic; the armour table's Bandit tempers |
-| Woodworker | woodcrafting bench: the blank parchment, journal and book; charcoal (kiln or smelter); chopping at a chopping block; the Hearthfire building recipes at a drafting table or carpenter's workbench, where one is reachable |
+| Woodworker | woodcrafting bench: the blank parchment, journal and book; charcoal (kiln or smelter); every swing's firewood at a chopping block; the Hearthfire building recipes at a drafting table or carpenter's workbench, where one is reachable |
 | Cook | cooking pot: salmon steak, rabbit haunch, pheasant roast, chicken breast and honey; every drink at a meadery boiler |
-| Alchemist | alchemy lab: honey; every drink at a meadery boiler; picking plants and trees |
-| Miner | the Free veins (iron, sea salt; higher veins are refused while Free); sea salt and charcoal at the smelter |
-| Farmer | picking plants and trees, and crops with a hoe |
+| Alchemist | alchemy lab: honey; every drink at a meadery boiler; every harvest of a plant, tree or nirnroot |
+| Miner | every ore collection off a Free vein (iron, sea salt; higher veins are refused while Free); sea salt and charcoal at the smelter |
+| Farmer | every harvest of a plant, tree or nirnroot, and of a crop with a hoe |
 | Hunter | animal kills; the tanning rack's free recipes |
 | Warrior | any kill of a person or creature |
 | Mage | any spell cast; characters start without spells (`playersInheritBaseSpells` false), so a mage slot needs a tome first |
@@ -862,7 +873,10 @@ Every vein holds **six ore** (`gatheringVeinTotal`,
 one per strike, so six strikes of five seconds) and **comes back whole 24 hours
 after its first ore was taken** (`gatheringVeinRespawnMinutes`), whether one
 ore or all six were mined; `gatheringVeinRegenMinutes` switches that to one
-collection at a time. The state is `private.gathering = { left, regenAt }` on
+collection at a time. Every ore collection handed over is one piece of miner
+work (`creditWork`, with the ore, the gem roll adding none): the first counts
+the hour, the next ones inside it bank, so a full vein is one counted hour and
+two banked. Using the vein or its pickaxe marker credits nothing by itself. The state is `private.gathering = { left, regenAt }` on
 the vein; older `{ left, resetAt }` records are read as the next regrowth time,
 and a record with ore missing and no regrowth pending (written before the total
 rose from three to six) is read as full.
@@ -877,8 +891,13 @@ plugin hoe `AldToolHoe` in the inventory: "You need a hoe to harvest this crop."
 Tree fruit, mushrooms, flowers and nirnroot (the wild `TreeFloraNirnroot01`, the
 crimson `TreeFloraNirnrootRed01` and Hearthfire's `BYOHHouseIngrdNirnroot01`
 planter) need nothing, kneel 2 seconds and cost half the fatigue. Fish and hanging
-clutter never kneel. Picking credits farmer and alchemist hours and costs a
-gathering action of fatigue. Flora is priced by the farmer or alchemist rank,
+clutter never kneel. Every harvest that costs fatigue is one piece of work, credited with the
+plant (`creditWork`, once the native harvest handed it over, or with the server's own grant
+for a nirnroot): flora is farmer or alchemist work and goes to whichever of the two slots
+comes first in slot order (a farmer primary with an alchemist secondary earns farmer hours
+from flowers, a blacksmith with an alchemist secondary and a farmer tertiary earns alchemist
+hours); a crop is the farmer's alone, like its price. A plant the native side refused, and a
+free rack taking (hanging rabbits, pheasants, salmon), credit nobody. Flora is priced by the farmer or alchemist rank,
 so an alchemist pays what a farmer of the same rank pays for a flower (2.1% at
 Novice and Adept, 1.4% from Expert, where a Free picker pays 4.2%). A crop is
 priced by the farmer rank alone: an alchemist of any rank pays the Free crop
@@ -932,7 +951,11 @@ second timing, and the server logs `[gathering] <actor> chops at <block> with
 no seat claim` once per sitting. Each swing costs one gathering action of the
 fatigue bar by woodworker rank (8.3% Free, 4.2% Novice and Adept, 2.8% Expert
 and up; `docs_roleplay_creations_and_needs.md`), and yields double at Adept and
-triple at Master.
+triple at Master. Each swing's firewood is one piece of woodworker work
+(`creditWork`, with the items): the first swing of a sitting counts the hour,
+the second and third bank one each, the fourth and later earn nothing until an
+hour is paid out. Sitting down at the block credits nothing; a swing the fatigue
+bar cannot pay for lands nothing and credits nothing.
 
 ### Hunting
 
