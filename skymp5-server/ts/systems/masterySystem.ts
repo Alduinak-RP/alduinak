@@ -578,6 +578,8 @@ export class MasterySystem implements System {
   // One piece of work another system verified (a gathering yield, a skinning), work of any of the professions named: the first slot in slot order following one of them is credited; bank false for work that earns nothing inside the counted hour
   creditWork(actorId: number, professionIds: string[], bank = true): void {
     const professions = professionIds.reduce((mask, id) => mask | professionBit(id), 0);
+    const unknown = professionIds.filter((id) => !professionBit(id));
+    if (unknown.length) this.log(`[mastery] ${hex(actorId)} work names no craft of this server: ${unknown.join(", ")}`);
     if (professions) this.enqueue("work", actorId, { professions, bank: bank ? 1 : 0 });
   }
 

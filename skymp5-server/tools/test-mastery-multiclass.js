@@ -348,6 +348,7 @@ test('a harvest is farmer or alchemist work and credits the first slot in slot o
     global.setImmediate = realImmediate
   }
   assert.deepEqual(u.sys.events.map((e) => [e.kind, e.detail.professions, e.detail.bank]), [['work', workOf('farmer', 'alchemist'), 1]], 'creditWork names every profession of the work in one event, banking by default, and queues nothing for an unknown craft')
+  assert.ok(u.lines.some((l) => /^\[mastery\] [0-9a-f]+ work names no craft of this server: bard$/.test(l)), 'the unknown craft is logged')
   queued[0]()
 })
 
