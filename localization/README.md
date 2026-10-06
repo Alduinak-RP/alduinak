@@ -5,7 +5,7 @@ show to people. Reword a line here and rebuild the component that owns its secti
 
 | Section | Used by | Rebuild |
 |---|---|---|
-| `gamemode` | `gamemode_extensions` | manager "Build gamemode only" (inlined into `gamemode.js`) |
+| `gamemode` | `gamemode_extensions` | manager "Build gamemode only" (inlined into `gamemode.js`; a bundle built without that prelude uses the table "Build server" compiled into the server) |
 | `server` | `skymp5-server/ts` | manager "Build server", restart the server |
 | `client` | `skymp5-client/src` | client build (new client version) |
 | `front` | `skymp5-front/src` | client build (new client version) |
