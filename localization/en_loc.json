@@ -322,6 +322,7 @@
         "ticket": "Staff call",
         "keyword": "Keyword",
         "login": "Login",
+        "integrity": "Client integrity",
         "death": "Death"
       },
       "skipped": "({n} more alert(s) skipped in the burst, see the server logs)",
@@ -754,6 +755,23 @@
       "serviceUnavailable": "The login service is unavailable, please try again in a minute.",
       "ipHidden": "hidden",
       "discordLine": "Server Login: Server Slot {slot}, IP {ip}, Actor ID {actorIds}, Master API {profileId}, Discord ID {discordId}"
+    },
+    "integrity": {
+      "kick": "Your game files do not match the server:\n{problems}\nRemove extra mods and dlls, then repair your files from the launcher.",
+      "more": "...and {count} more",
+      "alert": "{who} (slot {slot}) failed the client check at {when}, {action}: {problems}",
+      "kicked": "kicked",
+      "logged": "logged only",
+      "noReport": "the client sent no file report (outdated client)",
+      "noPlugins": "the client sent no plugin list",
+      "noModules": "the client cannot list its dlls (outdated SkyrimPlatform)",
+      "noServerManifest": "the server cannot read its plugin manifest",
+      "noModuleList": "the server cannot get the allowed dll list",
+      "extraPlugin": "extra plugin {name}",
+      "missingPlugin": "missing plugin {name}",
+      "changedPlugin": "modified plugin {name}",
+      "unknownModule": "extra dll {path}",
+      "changedModule": "modified dll {path}"
     },
     "afk": {
       "kicked": "You were disconnected after {minutes} minutes of inactivity.",

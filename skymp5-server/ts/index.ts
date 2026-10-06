@@ -20,6 +20,7 @@ import { Content, System, WORLD_LOADED_EVENT } from "./systems/system";
 import { MasterClient } from "./systems/masterClient";
 import { Spawn } from "./systems/spawn";
 import { Login } from "./systems/login";
+import { ClientIntegritySystem } from "./systems/clientIntegrity";
 import { QueueSystem } from "./systems/queueSystem";
 import { HousingSystem } from "./systems/housingSystem";
 import { MasterySystem } from "./systems/masterySystem";
@@ -329,12 +330,14 @@ const main = async () => {
   bountyBoardSystem.titleOf = (actorId) => factionSystem.titleOfActor(actorId);
   // Letters pinned to doors from the housing menu
   const writingSystem = new WritingSystem(log, factionSystem);
+  const clientIntegritySystem = new ClientIntegritySystem(log, master, masterKey);
   housingSystem.writings = writingSystem;
   systems.push(
     new MetricsSystem(),
     new MasterClient(log, port, master, maxPlayers, name, masterKey, 5000, offlineMode),
     spawn,
-    new Login(log, maxPlayers, master, port, masterKey, offlineMode),
+    clientIntegritySystem,
+    new Login(log, maxPlayers, master, port, masterKey, offlineMode, clientIntegritySystem),
     // Holds verified logins while the play slots are full and releases them to Spawn in arrival order
     new QueueSystem(log),
     // First activation hook, so it is the last one called: a door refused by any other system never reaches the override

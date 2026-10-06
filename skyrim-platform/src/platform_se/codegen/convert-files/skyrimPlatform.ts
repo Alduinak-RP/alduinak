@@ -1604,6 +1604,10 @@ export declare function getNumCreatedTexts(): number;
 
 export declare function getFileInfo(filename: string): { crc32: number, size: number };
 
+export declare function getLoadedModules(): { path: string, size: number }[];
+
+export declare function getModuleSha256(path: string): string;
+
 export interface Extra {
   health?: number;
   enchantmentId?: number;

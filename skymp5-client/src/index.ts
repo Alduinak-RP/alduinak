@@ -40,6 +40,7 @@ import { NpcTorchCheckService } from "./services/services/npcTorchCheckService";
 import { WorldCleanerService } from "./services/services/worldCleanerService";
 import { CompanionService } from "./services/services/companionService";
 import { LoadOrderVerificationService } from "./services/services/loadOrderVerificationService";
+import { ClientIntegrityService } from "./services/services/clientIntegrityService";
 import { BrowserService } from "./services/services/browserService";
 import { AuthService } from "./services/services/authService";
 import { CharacterSelectService } from "./services/services/characterSelectService";
@@ -156,6 +157,7 @@ const main = () => {
       new WorldCleanerService(sp, controller),
       new CompanionService(sp, controller),
       new LoadOrderVerificationService(sp, controller),
+      new ClientIntegrityService(sp, controller),
       new BrowserService(sp, controller),
       new AuthService(sp, controller),
       new CharacterSelectService(sp, controller),

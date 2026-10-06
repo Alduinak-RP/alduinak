@@ -6,6 +6,7 @@ import { hasDiscordBanRole } from "./discordBanSystem";
 import { discordAlert } from "./discordAlerts";
 import { kickWithReason } from "./kickUtil";
 import { loc } from "../loc";
+import { ClientIntegritySystem } from "./clientIntegrity";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
@@ -36,7 +37,8 @@ export class Login implements System {
     private masterUrl: string | null,
     private serverPort: number,
     private masterKey: string,
-    private offlineMode: boolean
+    private offlineMode: boolean,
+    private integrity: ClientIntegritySystem
   ) { }
 
   private getFetchOptions(callerFunctionName: string) {
@@ -175,6 +177,10 @@ export class Login implements System {
         if (connection === "banned") {
           ctx.svr.sendCustomPacket(userId, loginFailedBanned);
           throw new Error("Banned by backend connection-check");
+        }
+
+        if (!await this.integrity.checkLogin(userId, profile.id, profile.discordId, gameData.integrity, ctx)) {
+          throw new Error("Client integrity check failed");
         }
 
 

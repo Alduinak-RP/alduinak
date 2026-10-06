@@ -16,6 +16,8 @@
  *     Offline-mode profileId check, same lock/whitelist rules as session validation. Returns { allowed: true } or 403/404 { error }
  *   POST /api/servers/:key/connection-check  (X-Auth-Token)
  *     Game server reports a connecting player. Body: { profileId, ip }  Returns { allowed: true } or { allowed: false, reason: 'banned' }
+ *   GET /api/servers/:key/client-modules  (X-Auth-Token)
+ *     Dlls a client may load: { modules: { <lowercase name>: [{ sha256, size }] }, anyHashRoot: [names] }; 404 without a published manifest
  *   GET /api/servers/:key/players  (X-Auth-Token)
  *     Full player roster (identity fields only) for the in-game admin panel.
  *   POST /api/servers/:key/profiles/:profileId/factions  (X-Auth-Token)
@@ -38,6 +40,7 @@
 const router = require('express').Router()
 const { loc } = require('../sources/loc')
 const crypto = require('crypto')
+const { clientModules } = require('../sources/clientModules')
 const config = require('../config')
 const factionWhitelist = require('../sources/factionWhitelist')
 const characters = require('../sources/characters')
@@ -339,6 +342,16 @@ router.post('/:key/connection-check', (req, res) => {
   }
 
   res.json({ allowed: true })
+})
+
+// GET /api/servers/:key/client-modules  (X-Auth-Token)
+// The game server's client integrity check compares each loaded dll with this list.
+
+router.get('/:key/client-modules', (req, res) => {
+  if (!checkKey(req, res, { write: false }) || !checkWriteToken(req, res)) return
+  const value = clientModules(req.server.id)
+  if (!value) return res.status(404).json({ error: loc('files.manifestNotPublished') })
+  res.json(value)
 })
 
 // POST /api/servers/:key/ban  (X-Auth-Token)

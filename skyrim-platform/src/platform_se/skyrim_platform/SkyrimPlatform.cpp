@@ -18,6 +18,7 @@
 #include "LoadGameApi.h"
 #include "MagicApi.h"
 #include "MenuListApi.h"
+#include "ModuleListApi.h"
 #include "MpClientPluginApi.h"
 #include "ObjectReferenceApi.h"
 #include "Sp3Api.h"
@@ -291,6 +292,7 @@ private:
       InventoryApi::Register(env, e);
       MagicApi::Register(env, e);
       MenuListApi::Register(env, e);
+      ModuleListApi::Register(env, e);
       ConstEnumApi::Register(env, e);
       CallNativeApi::Register(env, e, getNativeCallRequirements);
       Sp3Api::Register(env, e, getNativeCallRequirements);

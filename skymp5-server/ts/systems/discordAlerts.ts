@@ -14,13 +14,13 @@ type Mp = any;
 // ADMIN_TAB_KINDS also reach online staff's in-game Admin tab, whatever discordAlertKinds lists
 // Deaths are no alert kind: deathAlert writes them to the server log and the Admin tab only
 
-export type AlertKind = "execute" | "admin" | "ticket" | "keyword" | "login";
+export type AlertKind = "execute" | "admin" | "ticket" | "keyword" | "login" | "integrity";
 export interface AlertOptions { here?: boolean; discordIds?: string[] }
 
-const LABELS: Record<AlertKind, string> = { execute: loc("discord.label.execute"), admin: loc("discord.label.admin"), ticket: loc("discord.label.ticket"), keyword: loc("discord.label.keyword"), login: loc("discord.label.login") };
-const DEFAULT_ALERT_KINDS: AlertKind[] = ["admin", "execute", "ticket"];
+const LABELS: Record<AlertKind, string> = { execute: loc("discord.label.execute"), admin: loc("discord.label.admin"), ticket: loc("discord.label.ticket"), keyword: loc("discord.label.keyword"), login: loc("discord.label.login"), integrity: loc("discord.label.integrity") };
+const DEFAULT_ALERT_KINDS: AlertKind[] = ["admin", "execute", "ticket", "integrity"];
 let allowedKinds = new Set<string>(DEFAULT_ALERT_KINDS);
-const ADMIN_TAB_KINDS = new Set<string>(["execute"]);
+const ADMIN_TAB_KINDS = new Set<string>(["execute", "integrity"]);
 const FLUSH_MS = 2000;
 const MAX_MESSAGE = 2000;
 const MAX_LINE = 1800;

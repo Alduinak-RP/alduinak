@@ -13,6 +13,7 @@ import { logTrace, logError } from "../../logging";
 import { ConnectionMessage } from "../events/connectionMessage";
 import { CreateActorMessage } from "../messages/createActorMessage";
 import { CustomPacketMessage } from "../messages/customPacketMessage";
+import { ClientIntegrityService } from "./clientIntegrityService";
 import { NetworkingService } from "./networkingService";
 import { MsgType } from "../../messages";
 import { ConnectionDenied } from "../events/connectionDenied";
@@ -629,6 +630,7 @@ export class AuthService extends ClientListener {
           customPacketType: 'loginWithSkympIo',
           gameData: {
             session: authData.remote.session,
+            integrity: this.controller.lookupListener(ClientIntegrityService).buildReport(),
           },
         }),
       };

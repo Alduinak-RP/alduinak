@@ -16,7 +16,7 @@ const PROTECTED_SETTINGS = ['name', 'port', 'maxPlayers', 'playerSlots', 'queueG
   // Test-only features the owner copies to live by hand once signed off
   'alduinakDamageFormulaSettings', 'survivalEnabled', 'masterySlots', 'healthRegenerationMultiplier',
   // Authority checks enforced on test stay log-only on live until the owner switches them there
-  'enforceMovementSpeed', 'enforceActivateDistance', 'enforceMeleeReach', 'enforceShotDistance', 'enforceSpellHitWindow', 'enforceAppearanceLimits']
+  'enforceMovementSpeed', 'enforceActivateDistance', 'enforceMeleeReach', 'enforceShotDistance', 'enforceSpellHitWindow', 'enforceAppearanceLimits', 'clientIntegrity']
 // Synced by Migrate client from the manifest, so its diff records the plugin shifts the MongoDB purge needs
 const MANIFEST_SETTINGS = ['loadOrder', 'archives']
 

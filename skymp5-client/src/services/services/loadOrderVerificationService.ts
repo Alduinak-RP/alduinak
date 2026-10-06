@@ -13,9 +13,9 @@ const LIGHT_MOD_OFFSET = 0x100;
 const MAX_LIGHT_MODS = 0x1000;
 
 // Steam and GOG copies of these may differ, and Skyrim.esm is too big to hash on every connect
-const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm']);
+export const VANILLA_MASTERS = new Set(['skyrim.esm', 'update.esm', 'dawnguard.esm', 'hearthfires.esm', 'dragonborn.esm']);
 // Creation Club files come from the player's own install, where the store copy may differ as well
-const CREATION_CLUB_RE = /^cc[a-z]{3}sse\d{3}-.*\.es[mlp]$/i;
+export const CREATION_CLUB_RE = /^cc[a-z]{3}sse\d{3}-.*\.es[mlp]$/i;
 
 interface FileInfo {
   crc32: number;
@@ -106,7 +106,7 @@ export class LoadOrderVerificationService extends ClientListener {
     return [];
   }
 
-  private getFullPlugins(): string[] {
+  getFullPlugins(): string[] {
     const names: string[] = [];
     for (let i = 0; i < Game.getModCount(); ++i) {
       names.push(Game.getModName(i));
@@ -114,7 +114,7 @@ export class LoadOrderVerificationService extends ClientListener {
     return names;
   }
 
-  private getLightPlugins(): string[] {
+  getLightPlugins(): string[] {
     const names: string[] = [];
     for (let i = 0; i < MAX_LIGHT_MODS; ++i) {
       const name = Game.getModName(LIGHT_MOD_OFFSET + i);
@@ -163,7 +163,7 @@ export class LoadOrderVerificationService extends ClientListener {
     }
   }
 
-  private getFileInfoCached(filename: string): FileInfo {
+  getFileInfoCached(filename: string): FileInfo {
     const key = filename.toLowerCase();
     const fileInfos = this.getState().fileInfos || {};
     if (!fileInfos[key]) {
