@@ -40,6 +40,8 @@ const reset = (lists, rename) => {
   engine.renames = []
   engine.misses = 0
   engine.rename = rename ? renameInPlace : undefined
+  // The engine's inventory is read once per update; a new engine state is a new update
+  if (global.__durabilityDropMemo) global.__durabilityDropMemo()
 }
 function renameInPlace (refrId, baseId, from, to, worn, wornLeft) {
   engine.renames.push([baseId, from, to, worn, wornLeft])
@@ -52,6 +54,7 @@ const names = (baseId) => engine.lists.filter((l) => l.baseId === baseId).map((l
 const platform = {
   FormType: TYPES,
   DxScanCode: { Escape: 1 },
+  Menu: { Crafting: 'Crafting Menu', Inventory: 'InventoryMenu', Favorites: 'FavoritesMenu' },
   storage: {},
   printConsole: () => {},
   once: () => {},
@@ -121,7 +124,8 @@ const stubs = {
     stub(/^(skyrimPlatform|@skyrim-platform\/skyrim-platform)$/, 'module.exports = global.__durabilityTestPlatform')
     stub(/^\.\/remoteServer$/, 'exports.getPcInventory = () => undefined; exports.holdPcInventoryApply = () => {}; exports.requestPcInventoryApply = () => { global.__durabilityTestUi.applies++ }')
     stub(/^\.\/clientListener$/, 'exports.ClientListener = class {}')
-    stub(/^\.\/customPacketUtil$/, 'exports.parseCustomPacket = (e) => JSON.parse(e.message.contentJsonDump); exports.notifyNextUpdate = (controller, sp, text) => global.__durabilityTestUi.notices.push(text); exports.sendCustomPacket = (controller, packet) => global.__durabilityTestPackets.push(packet)')
+    stub(/^\.\/customPacketUtil$/, `exports.parseCustomPacket = (e) => JSON.parse(e.message.contentJsonDump); exports.notifyNextUpdate = (controller, sp, text) => global.__durabilityTestUi.notices.push(text); exports.sendCustomPacket = (controller, packet) => global.__durabilityTestPackets.push(packet);
+      exports.onCustomPacket = (controller, types, handler) => { for (const t of [].concat(types)) controller.routes[t] = handler }`)
     stub(/^\.\/widgetMenuUtil$/, `exports.closeWidget = () => {}; exports.showUi = () => {}; exports.buttonEventKeyCode = (e) => e.code;
       exports.openFormMenu = (sp, setter, args) => global.__durabilityTestUi.calls.push(['open', args.info]);
       exports.refreshFormMenu = (sp, setter, args) => global.__durabilityTestUi.calls.push(['refresh', args.info]);
@@ -143,6 +147,7 @@ const stubs = {
   const compiled = new Module(entry)
   compiled._compile(outputFiles[0].text, entry)
   const { names: d, inventory: inv, getCraftReport, TradeService, RepairService } = compiled.exports
+  global.__durabilityDropMemo = inv.dropPlayerInventoryMemo
 
   const player = { getFormID: () => PLAYER, getBaseObject: () => ({ getFormID: () => 7 }), removeAllItems: () => {} }
   const pass = (server, options) => d.applyDurabilityNames(player, { entries: server }, options)
@@ -365,12 +370,12 @@ const stubs = {
     }
     const controller = {
       on: (name, fn) => { handlers[name] = fn }, once: (name, fn) => updates.push(fn),
-      emitter: { on: (name, fn) => { handlers[name] = fn }, emit: () => {} },
+      emitter: { on: (name, fn) => { handlers[name] = fn }, emit: () => {} }, routes: {},
     }
     const service = new TradeService(sp, controller)
     assert.ok(service)
     const state = (myOffer, theirOffer, mySeq) => {
-      handlers.customPacketMessage({ message: { contentJsonDump: JSON.stringify({ customPacketType: 'tradeState', partnerName: 'Brynjolf', myOffer, theirOffer, mySeq }) } })
+      controller.routes.tradeState({ customPacketType: 'tradeState', partnerName: 'Brynjolf', myOffer, theirOffer, mySeq })
       updates.splice(0).forEach((fn) => fn())
       return widgets.find((w) => w.type === 'trade')
     }
@@ -423,10 +428,10 @@ const stubs = {
   // The repair service: the server's word switches the tags on, the menu mirrors its packet and the buttons go back as packets
   {
     const handlers = {}
-    const controller = { on: (name, fn) => { handlers[name] = fn }, once: () => {}, emitter: { on: (name, fn) => { handlers[name] = fn }, emit: () => {} } }
+    const controller = { on: (name, fn) => { handlers[name] = fn }, once: () => {}, emitter: { on: (name, fn) => { handlers[name] = fn }, emit: () => {} }, routes: {} }
     const sent = packets.length
     assert.ok(new RepairService({}, controller))
-    const packet = (content) => handlers.customPacketMessage({ message: { contentJsonDump: JSON.stringify(content) } })
+    const packet = (content) => controller.routes[content.customPacketType](content)
     const browser = (...args) => handlers.browserMessage({ arguments: args })
     handlers.connectionAccepted({})
     browser('repairMenu:repair', 'k1')
