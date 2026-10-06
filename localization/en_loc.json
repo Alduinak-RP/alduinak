@@ -817,6 +817,7 @@
     "npcZone": {
       "unreadable": "{file} unreadable: {error}",
       "invalidJson": "{file} is not valid JSON: {error}",
+      "trailingComma": "{file} has a trailing comma before ] or }, read anyway; the next in-game zone edit rewrites it cleanly",
       "badShape": "{file} must be an array or { \"zones\": [...] }",
       "noName": "entry without a Name skipped",
       "nameTooLong": "'{name}...' skipped, Name longer than {max} characters",

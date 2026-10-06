@@ -362,7 +362,13 @@ export class NpcSpawnSystem implements System {
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      return loc("npcZone.invalidJson", { file: ZONES_FILE, error: String(e) });
+      // A hand edit that leaves a comma before ] or } must not empty the zones
+      try {
+        parsed = JSON.parse(text.replace(/,(\s*[\]}])/g, "$1"));
+        this.log(loc("npcZone.trailingComma", { file: ZONES_FILE }));
+      } catch {
+        return loc("npcZone.invalidJson", { file: ZONES_FILE, error: String(e) });
+      }
     }
     if (Array.isArray(parsed)) return { list: parsed, root: null, key: "", missing: false };
     const key = pickKey(parsed, "zones");
