@@ -6,7 +6,10 @@ export const UNKNOWN_MEMBER_CODE = 10007;
 export const DISCORD_RATE_WINDOW_MS = 1100;
 export const DISCORD_RATE_LIMIT = 4;
 export const DISCORD_RETRIES = 6;
+// One deadline covers every attempt of a lookup; the client gives a login 15 s in all
+export const DISCORD_DEADLINE_MS = 12000;
 const MAX_BACKOFF_MS = 5000;
+const MAX_RETRY_AFTER_MS = 10000;
 
 export type DiscordAnswer =
   | { kind: "member"; roles: string[] }
@@ -25,17 +28,20 @@ export const classifyDiscordAnswer = (status: number, body: unknown): DiscordAns
 
 type RetryResponse = { status: number; headers: { get(name: string): string | null } } | null;
 
-// fetch-retry options: network errors, 5xx and 429 are retried, a 429 waits what Retry-After says
+// fetch-retry options: network errors, 5xx and 429 are retried inside one deadline, a 429 waits what Retry-After says up to a cap
 export const discordRetryOptions = (callerFunctionName: string, log: (text: string) => void = console.log) => ({
+  signal: AbortSignal.timeout(DISCORD_DEADLINE_MS),
   retryOn: (attempt: number, error: Error | null, response: RetryResponse) => {
     const status = response ? response.status : null;
-    const retry = attempt < DISCORD_RETRIES && (error !== null || status === 429 || (status !== null && status >= 500));
+    // fetch rejects every attempt at once after the deadline, so an abort is final
+    const aborted = error !== null && (error.name === "TimeoutError" || error.name === "AbortError");
+    const retry = !aborted && attempt < DISCORD_RETRIES && (error !== null || status === 429 || (status !== null && status >= 500));
     if (retry) log(`${callerFunctionName}: retrying request ${JSON.stringify({ attempt, error: error && error.message, status })}`);
     return retry;
   },
   retryDelay: (attempt: number, _error: Error | null, response: RetryResponse) => {
     const after = Number(response?.headers.get("retry-after"));
-    return Number.isFinite(after) && after > 0 ? Math.ceil(after * 1000) + 100 : Math.min(1000 * (attempt + 1), MAX_BACKOFF_MS);
+    return Number.isFinite(after) && after > 0 ? Math.min(Math.ceil(after * 1000) + 100, MAX_RETRY_AFTER_MS) : Math.min(1000 * (attempt + 1), MAX_BACKOFF_MS);
   },
 });
 

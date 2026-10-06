@@ -51,6 +51,11 @@ const main = async () => {
   assert.equal(opts.retryDelay(0, null, res(503, null)), 1000)
   assert.equal(opts.retryDelay(2, null, res(503, null)), 3000)
   assert.equal(opts.retryDelay(9, new Error('x'), null), 5000, 'backoff is capped')
+  assert.equal(opts.retryDelay(0, null, res(429, '120')), 10000, 'Retry-After is capped')
+  // The deadline: fetch rejects with the signal's TimeoutError, which must not be retried
+  assert.ok(opts.signal instanceof AbortSignal && !opts.signal.aborted, 'one deadline covers every attempt')
+  assert.equal(opts.retryOn(1, Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }), null), false, 'an abort is final')
+  assert.equal(logged.length, 3, 'the abort is not logged as a retry')
 
   // Pacer: 4 slots per window, the fifth waits for the window, order is kept
   let now = 0
