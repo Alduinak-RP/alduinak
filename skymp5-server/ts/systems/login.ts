@@ -7,6 +7,7 @@ import { discordAlert } from "./discordAlerts";
 import { kickWithReason } from "./kickUtil";
 import { loc } from "../loc";
 import { ClientIntegritySystem } from "./clientIntegrity";
+import { RequestPacer, classifyDiscordAnswer, discordRetryOptions } from "./discordMembership";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
@@ -22,9 +23,11 @@ interface UserProfile {
   username?: string;
 }
 
-namespace DiscordErrors {
-  export const unknownMember = 10007;
-}
+// One pacer for every login, since Discord's member bucket is per bot, not per player
+const discordPacer = new RequestPacer();
+// A Discord outage is reported to staff once per this long
+const DISCORD_OUTAGE_ALERT_MS = 10 * 60000;
+let discordOutageAlertedAt = 0;
 
 // See NetworkingCombined.h: it implements a hack to prevent the soul-transmission bug
 // TODO: reimplement Login system. Preferably, in C++ with clear data flow.
@@ -208,41 +211,63 @@ export class Login implements System {
             roles = currentRoles;
           }
 
+          // Null while every guild answered; the last status Discord could not answer with otherwise
+          let unavailable: number | null = null;
           for (const guildConfig of discordAuth.guilds) {
-            const response = await this.fetchRetry(
-              `https://discord.com/api/guilds/${guildConfig.guildId}/members/${profile.discordId}`,
-              {
-                method: 'GET',
-                headers: { 'Authorization': `Bot ${discordAuth.botToken}` },
-                ...this.getFetchOptions('discordAuth_multi'),
-              },
-            );
-
-            if (response.status === 401 || response.status === 403) {
-              console.error(`discordAuth: Discord API returned ${response.status} for guild ${guildConfig.guildId} - ` +
-                `check that the bot token is valid and Server Members Intent is enabled`);
+            await discordPacer.acquire();
+            let response: Response;
+            try {
+              response = await this.fetchRetry(
+                `https://discord.com/api/guilds/${guildConfig.guildId}/members/${profile.discordId}`,
+                {
+                  method: 'GET',
+                  headers: { 'Authorization': `Bot ${discordAuth.botToken}` },
+                  ...discordRetryOptions('discordAuth_multi'),
+                },
+              );
+            } catch (e: any) {
+              unavailable = 0;
+              console.error(`discordAuth: Discord API unreachable for guild ${guildConfig.guildId} (profile ${profile.id}): ${e?.message || e}`);
+              continue;
             }
-
-            if (response.ok) {
-              const responseData = await response.json();
+            const body = response.ok || response.status === 404 ? await response.json().catch(() => null) : null;
+            const answer = classifyDiscordAnswer(response.status, body);
+            if (answer.kind === "member") {
               isMemberOfAny = true;
-
-              const guildRoles: string[] = responseData.roles || [];
-              fetchedRoles = [...fetchedRoles, ...guildRoles];
-
-              if (hasDiscordBanRole(guildConfig, guildRoles)) {
+              fetchedRoles = [...fetchedRoles, ...answer.roles];
+              if (hasDiscordBanRole(guildConfig, answer.roles)) {
                 isBanned = true;
               }
-              if (guildConfig.hideIpRoleId && guildRoles.indexOf(guildConfig.hideIpRoleId) !== -1) {
+              if (guildConfig.hideIpRoleId && answer.roles.indexOf(guildConfig.hideIpRoleId) !== -1) {
                 shouldHideIp = true;
               }
+            } else if (answer.kind === "unavailable") {
+              unavailable = answer.status;
+              const hint = answer.status === 401 || answer.status === 403 ? " - check that the bot token is valid and Server Members Intent is enabled" : "";
+              console.error(`discordAuth: Discord API returned ${answer.status} for guild ${guildConfig.guildId} (profile ${profile.id})${hint}`);
             }
           }
 
-
-          if (!isMemberOfAny) {
+          if (!isMemberOfAny && unavailable === null) {
             ctx.svr.sendCustomPacket(userId, loginFailedNotInTheDiscordServer);
             throw new Error("Not in any of the Discord servers");
+          }
+
+          // Discord could not vouch either way: the login goes on with the roles stored at the last verified login, staff are told once per outage
+          if (!isMemberOfAny) {
+            for (const guildConfig of discordAuth.guilds) {
+              if (hasDiscordBanRole(guildConfig, roles)) {
+                isBanned = true;
+              }
+              if (guildConfig.hideIpRoleId && roles.indexOf(guildConfig.hideIpRoleId) !== -1) {
+                shouldHideIp = true;
+              }
+            }
+            console.log(`discordAuth: Discord API unavailable (HTTP ${unavailable}) for profile ${profile.id}, logged in with ${roles.length} stored role(s)`);
+            if (Date.now() - discordOutageAlertedAt >= DISCORD_OUTAGE_ALERT_MS) {
+              discordOutageAlertedAt = Date.now();
+              discordAlert("admin", loc("login.discordUnavailable", { status: String(unavailable) }));
+            }
           }
 
           if (isBanned) {

@@ -754,7 +754,8 @@
       "staffOnly": "This server is for staff only.",
       "serviceUnavailable": "The login service is unavailable, please try again in a minute.",
       "ipHidden": "hidden",
-      "discordLine": "Server Login: Server Slot {slot}, IP {ip}, Actor ID {actorIds}, Master API {profileId}, Discord ID {discordId}"
+      "discordLine": "Server Login: Server Slot {slot}, IP {ip}, Actor ID {actorIds}, Master API {profileId}, Discord ID {discordId}",
+      "discordUnavailable": "Discord did not answer the member check (HTTP {status}); logins go on with each player's stored roles until it does"
     },
     "integrity": {
       "kick": "Your game files do not match the server:\n{problems}\nRemove extra mods and dlls, then repair your files from the launcher.",
