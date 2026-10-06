@@ -24,3 +24,7 @@ text from the table on load; `data-loc-title`, `data-loc-placeholder` and
 for inner HTML.
 
 Logs, data catalogs (location, race and item names) and protocol strings stay in code.
+
+`node localization/check-keys.js` lists every `loc("key")` and `data-loc` key in the code
+that is missing from `en_loc.json`; add `--unused` to also list keys nothing uses
+(keys built at run time, like `loc(\`pet.mode.${mode}\`)`, show as unused).
