@@ -194,9 +194,11 @@ export class ItemService extends ClientListener {
     const pending = this.pending;
     if (pending && !this.activateHeld()) {
       this.pending = null;
+      logToPlatformLog(this, `item ${pending.remoteId.toString(16)}: tap, key up after ${Date.now() - pending.at} ms`);
       this.controller.lookupListener(ActivationService).sendActivation(0x14, pending.remoteId);
     } else if (pending && Date.now() - pending.at >= HOLD_MS) {
       this.pending = null;
+      logToPlatformLog(this, `item ${pending.remoteId.toString(16)}: carry, key held ${HOLD_MS} ms`);
       this.request(pending.localId, pending.remoteId, false);
     }
     const carry = this.carry;

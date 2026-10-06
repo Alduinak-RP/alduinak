@@ -173,7 +173,10 @@ live world and removes it. Plugin-placed items never expire. Without
 `databaseDriver` mongodb nothing is swept. Loose non-clutter items and coin
 purses the plugins place are disabled in the plugin (`disableLooseItems`).
 The client logs every drop point and release: `drop point: hit ref ... layer
-... at ...`; `missing` there means an old SkyrimPlatform in `Platform/`.
+... at ...`; `missing` there means an old SkyrimPlatform in `Platform/`. It
+also logs how each press on an item resolved: `item <id>: tap, key up after
+N ms` or `item <id>: carry, key held 400 ms`, so a hold that ended as a pickup
+shows as a tap with a short key-up time.
 
 A taken item is given once. A tap on a dropped item gives it and deletes the
 drop (`ProcessActivate - Deleting 0xff item`, DestroyActor removes every
