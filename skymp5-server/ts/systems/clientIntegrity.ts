@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { Settings } from "../settings";
-import { System, Log, SystemContext, Content } from "./system";
+import { System, Log, SystemContext, Content, WORLD_LOADED_EVENT } from "./system";
 import { kickWithReason } from "./kickUtil";
 import { discordAlert } from "./discordAlerts";
 import { loc } from "../loc";
@@ -147,7 +147,10 @@ export class ClientIntegritySystem implements System {
     }
     this.log(`ClientIntegrity: mode ${this.mode}${this.allowModules.size ? `, extra dlls allowed: ${[...this.allowModules].join(", ")}` : ""}`);
     if (this.mode !== "off" && this.masterUrl) {
-      this.prefetchModuleList().catch((err) => console.error("ClientIntegrity: boot prefetch failed:", err));
+      // After every initAsync, so an outage alert passes DiscordAlerts' discordAlertKinds filter
+      ctx.gm.once(WORLD_LOADED_EVENT, () => {
+        this.prefetchModuleList().catch((err) => console.error("ClientIntegrity: boot prefetch failed:", err));
+      });
     }
   }
 
