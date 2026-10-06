@@ -7,6 +7,8 @@ import { AuthGameData, authGameDataStorageKey } from "../../features/authModel";
 import { introducedName, localIdToRemoteId } from "../../view/worldViewMisc";
 import { formDesc } from "../../lib/formDesc";
 import { isPlayerCharacterId } from "./playerActionService";
+import { TimersService } from "./timersService";
+import { logToPlatformLog } from "../../logging";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { ActiveEffectApplyRemoveEvent, Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectReference } from "skyrimPlatform";
 
@@ -40,6 +42,9 @@ const GLOBAL_MONTH = 0x36;
 const GLOBAL_YEAR = 0x35;
 const GLOBAL_DAYS_PASSED = 0x39;
 const ITEM_QUERY_MAX = 64;
+// The replies every open expects, by the request that asks for them; adminMenu is refused silently for non-staff and is not expected
+const MENU_ANSWERS: Record<string, string> = { debugInfo: "debugInfoRequest", masteryMenu: "masteryInfoRequest", factionMenu: "factionMenuRequest" };
+const MENU_ANSWER_WAIT_MS = 3000;
 
 const events = {
   tp: "admin::tp",
@@ -251,6 +256,16 @@ export class AdminMenuService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" });
     sendCustomPacket(this.controller, { customPacketType: "masteryInfoRequest" });
     sendCustomPacket(this.controller, { customPacketType: "factionMenuRequest" });
+    this.answers.clear();
+    const open = ++this.openSeq;
+    this.controller.lookupListener(TimersService).setTimeout(() => this.reportUnanswered(open), MENU_ANSWER_WAIT_MS);
+  }
+
+  // The Skills tab stays on its loading text without masteryMenu, so a silent server side is named in the log
+  private reportUnanswered(open: number): void {
+    if (open !== this.openSeq || !this.menuOpen) return;
+    const missing = Object.keys(MENU_ANSWERS).filter((reply) => !this.answers.has(reply)).map((reply) => MENU_ANSWERS[reply]);
+    if (missing.length) logToPlatformLog(this, `Personal Menu: ${missing.join(", ")} unanswered ${MENU_ANSWER_WAIT_MS} ms after the open`);
   }
 
   private onButtonEvent(e: ButtonEvent) {
@@ -273,6 +288,7 @@ export class AdminMenuService extends ClientListener {
   }
 
   private onCustomPacketMessage(content: CustomPacketContent): void {
+    this.answers.add(String(content["customPacketType"]));
     if (content["customPacketType"] === "adminMenu") {
       const caps = content["caps"];
       panelData = {
@@ -842,6 +858,9 @@ export class AdminMenuService extends ClientListener {
 
   private menuOpen = false;
   private activeTab = "";
+  // The replies that came since the last open, and which open the unanswered report belongs to
+  private answers = new Set<string>();
+  private openSeq = 0;
   private lastDebugAt = 0;
   private lastTargetAt = 0;
   private crosshairMoved = false;

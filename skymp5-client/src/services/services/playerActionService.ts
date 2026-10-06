@@ -1,6 +1,6 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared, armHeldMenu, claimHeldMenu, closeContainerMenu } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, isConsoleOpen, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared, armHeldMenu, claimHeldMenu, closeContainerMenu, keyLabel } from "./widgetMenuUtil";
 import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
 import { AdminMenuService } from "./adminMenuService";
@@ -8,7 +8,7 @@ import { isFreeCamera } from "./adminModeService";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, Menu, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
 import { introducedName, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
 import { ModelApplyUtils } from "../../view/modelApplyUtils";
-import { logTrace } from "../../logging";
+import { logTrace, logToPlatformLog } from "../../logging";
 import { RemoteServer } from "./remoteServer";
 import { RestraintService } from "./restraintService";
 import { TimersService } from "./timersService";
@@ -30,6 +30,8 @@ const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
 const HUNTING_KNIFE_ID = 0x0001f25a;
 // The menu waits up to this long for the server's answer so no row moves under the cursor; an older server never answers
 const MENU_STATE_WAIT_MS = 500;
+
+const hex = (id: number): string => id.toString(16);
 
 // Server-spawned NPCs share the dynamic id space; only player characters carry an appearance
 export const isPlayerCharacterId = (controller: CombinedController, remoteId: number): boolean =>
@@ -151,20 +153,31 @@ export class PlayerActionService extends ClientListener {
     // When one key is both, the Activate rules win
     const isActivate = e.userEventName === "Activate";
     const isInteract = !isActivate && code === this.interactKey;
-    if ((!isActivate && !isInteract) || this.menuOpen) return;
+    if (!isActivate && !isInteract) return;
+    const outcome = this.routePress(isActivate, isInteract);
+    // One line per interact press, so a key that seems dead reads from skyrim-platform.log
+    if (isInteract) logToPlatformLog(this, `${keyLabel(code)} press: ${outcome}`);
+  }
+
+  // Returns what the press did, or why it was ignored
+  private routePress(isActivate: boolean, isInteract: boolean): string {
+    if (this.menuOpen) return "ignored, the interaction menu is open";
     if (this.menuWait) {
       // A second press during the wait is the one the waiting menu follows
       if (isInteract && this.holdMode && this.menuWaitHeld) armHeldMenu(this.sp, this.controller, this.interactKey);
-      return;
+      return "ignored, a menu is waiting for the server's answer";
     }
-    if (isGameInputBlocked(this.sp, this.controller) || isPlayerDowned(this.controller)) return;
+    if (isGameInputBlocked(this.sp, this.controller)) {
+      return `ignored, ${this.sp.browser.isFocused() ? "the page has focus" : isConsoleOpen(this.sp) ? "the console is open" : "a vanilla menu is open"}`;
+    }
+    if (isPlayerDowned(this.controller)) return "ignored, the player is down";
     // A hidden interface must not trap a rider, so the saddle is checked before the rest of the hotkey block
     const mount = this.controller.lookupListener(MountService);
     if (isActivate && mount.isMounted) {
       mount.dismountByKey();
-      return;
+      return "dismount";
     }
-    if (isUiHidden(this.controller)) return;
+    if (isUiHidden(this.controller)) return "ignored, the interface is hidden";
     // Every press replaces the armed one, so a menu Activate opens is never taken for a held one
     armHeldMenu(this.sp, this.controller, isInteract && this.holdMode ? this.interactKey : 0);
     this.menuWaitHeld = isInteract && this.holdMode;
@@ -178,49 +191,56 @@ export class PlayerActionService extends ClientListener {
     const ref = isFreeCamera(this.sp) ? null : this.sp.Game.getCurrentCrosshairRef();
     const actor = ref && ref.getFormID() !== PLAYER_FORM_ID ? Actor.from(ref) : null;
     const remoteId = ref && actor ? localIdToRemoteId(ref.getFormID()) : 0;
-    if (isInteract && (housing.takePendingPick() || pets.takePendingPick(remoteId))) return;
+    if (isInteract && (housing.takePendingPick() || pets.takePendingPick(remoteId))) return "completed a pending pick";
     // Command mode owns Activate on a living target and on the commanded pet itself; the interact key keeps opening the menus
-    if (isActivate && ref && actor && !actor.isDead() && (pets.orderFollow(remoteId, ref) || pets.orderAttack(remoteId, ref))) return;
+    if (isActivate && ref && actor && !actor.isDead() && (pets.orderFollow(remoteId, ref) || pets.orderAttack(remoteId, ref))) return "pet order";
 
     if (ref && actor && (actor.isDead() ? remoteId >= FIRST_DYNAMIC_REMOTE_ID : isPlayerCharacterId(this.controller, remoteId))) {
-      this.interactWithPlayer(ref, actor, remoteId);
-      return;
+      return this.interactWithPlayer(ref, actor, remoteId);
     }
     // A dead pet took the Search path above
     if (ref && actor && !actor.isDead() && pets.kindOf(remoteId)) {
-      if (isInteract) pets.openMenu(remoteId, ref);
-      else pets.use(remoteId, ref);
-      return;
+      if (isInteract) {
+        pets.openMenu(remoteId, ref);
+        return `pet menu for ${hex(remoteId)}`;
+      }
+      pets.use(remoteId, ref);
+      return "pet use";
     }
     // Any other living server NPC is taunted, which does nothing yet; its body is searched once it is dead
     if (ref && actor && remoteId >= FIRST_DYNAMIC_REMOTE_ID) {
       try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-      return;
+      return `taunt of npc ${hex(remoteId)}`;
     }
-    if (isActivate) return;
+    if (isActivate) return "left to the game";
     // A menu left open without focus (F6) is still on screen
-    if (housing.isOpen || personal.isOpen || pets.isOpen) return;
+    if (housing.isOpen || personal.isOpen || pets.isOpen) {
+      return `ignored, the ${housing.isOpen ? "property" : personal.isOpen ? "Personal" : "pet"} menu is already open`;
+    }
     // The server opens the strongbox for the hold's managers and answers everyone else with a notice
     if (ref && this.controller.lookupListener(InteractionPromptService).isBoard(ref)) {
-      sendCustomPacket(this.controller, { customPacketType: "bountyBoardManage", board: localIdToRemoteId(ref.getFormID()) });
+      const board = localIdToRemoteId(ref.getFormID());
+      sendCustomPacket(this.controller, { customPacketType: "bountyBoardManage", board });
       this.containerAsked = true;
       this.strongboxAsked = true;
-      return;
+      return `bountyBoardManage sent for ${hex(board)}`;
     }
     if (ref && isPropertyRef(ref)) {
       housing.requestMenuFor(ref);
-      return;
+      return `property menu requested for ${hex(localIdToRemoteId(ref.getFormID()))}`;
     }
     if (ref && this.controller.lookupListener(ItemService).isItem(ref)) {
       this.interactWithItem(ref);
-      return;
+      return `itemMenuRequest sent for ${hex(this.itemTarget)}`;
     }
     const load = this.controller.lookupListener(JobService).load;
     if (load) {
       this.openLoadMenu(load);
-      return;
+      return "load menu";
     }
-    if (claimHeldMenu(() => personal.isOpen, () => personal.closeMenu())) personal.open();
+    if (!claimHeldMenu(() => personal.isOpen, () => personal.closeMenu())) return "ignored, the held key was already let go";
+    personal.open();
+    return "Personal Menu opened";
   }
 
   // FormView gives a container the server's inventory only under the crosshair, which this press left on the board: the strongbox gets it here, before RemoteServer opens it
@@ -267,11 +287,10 @@ export class PlayerActionService extends ClientListener {
     this.itemLocalId = ref.getFormID();
     this.itemState = null;
     sendCustomPacket(this.controller, { customPacketType: "itemMenuRequest", target: this.itemTarget });
-    const wait = this.menuWait = ++this.menuWaitSeq;
-    this.controller.lookupListener(TimersService).setTimeout(() => this.openWaitingMenu(wait), MENU_STATE_WAIT_MS);
+    this.startMenuWait();
   }
 
-  private interactWithPlayer(ref: ObjectReference, actor: Actor, remoteId: number): void {
+  private interactWithPlayer(ref: ObjectReference, actor: Actor, remoteId: number): string {
     this.itemTarget = 0;
     // Belt and braces next to the prompt service's block: no clone dialogue.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
@@ -279,7 +298,7 @@ export class PlayerActionService extends ClientListener {
     this.bodyTarget = actor.isDead();
     if (this.bodyTarget && !this.holdsSkinningKnife(remoteId)) {
       this.requestSearch(remoteId);
-      return;
+      return `searchRequest sent for body ${hex(remoteId)}`;
     }
     targetName = introducedName(ref, remoteId, this.bodyTarget);
     this.playerTarget = remoteId;
@@ -289,8 +308,15 @@ export class PlayerActionService extends ClientListener {
     this.hasPotion = false;
     sendCustomPacket(this.controller, { customPacketType: "playerMenuRequest", target: remoteId });
     logTrace(this, `Opening player-action menu for`, targetName);
+    this.startMenuWait();
+    return `playerMenuRequest sent for ${this.bodyTarget ? "body " : ""}${hex(remoteId)} (${targetName})`;
+  }
+
+  // The menu opens on the server's answer or when the wait runs out, whichever comes first
+  private startMenuWait(): void {
+    this.menuAnswered = false;
     const wait = this.menuWait = ++this.menuWaitSeq;
-    this.controller.lookupListener(TimersService).setTimeout(() => this.openWaitingMenu(wait), MENU_STATE_WAIT_MS);
+    this.controller.lookupListener(TimersService).setTimeout(() => this.openWaitingMenu(wait, true), MENU_STATE_WAIT_MS);
   }
 
   private onCustomPacketMessage(content: CustomPacketContent): void {
@@ -298,10 +324,19 @@ export class PlayerActionService extends ClientListener {
       if (content["target"] !== this.itemTarget) return;
       this.itemState = { nailed: content["nailed"] === true, canPry: content["canPry"] === true, canNail: content["canNail"] === true };
       const wait = this.menuWait;
-      if (wait) this.controller.once("update", () => this.openWaitingMenu(wait));
+      if (wait) {
+        this.menuAnswered = true;
+        this.controller.once("update", () => this.openWaitingMenu(wait));
+      } else if (this.menuOpen) {
+        // A late answer corrects a menu opened without it; a nailed item nobody may pry closes it
+        const args = this.menuArgs();
+        if ((args.ACTIONS as PlayerAction[]).length) refreshFormMenu(this.sp, this.playerWidgetSetter, args);
+        else this.closeMenu();
+      }
       return;
     }
     if (content["target"] !== this.playerTarget) return;
+    if (this.menuWait) this.menuAnswered = true;
     const flags: Record<string, boolean> = {};
     for (const [id, key] of Object.entries(SERVER_FLAGS)) flags[id] = content[key] === true;
     const hasPotion = content["hasPotion"] === true;
@@ -320,14 +355,19 @@ export class PlayerActionService extends ClientListener {
   }
 
   // Opens once the server's answer is in or the wait ran out, unless another screen took over or a held key was let go meanwhile
-  private openWaitingMenu(wait: number): void {
+  private openWaitingMenu(wait: number, timedOut = false): void {
     if (wait !== this.menuWait) return;
     this.menuWait = 0;
     // A body nobody may skin, or an older server's silence, is searched as before
     if (this.bodyTarget && !this.skin) this.requestSearch(this.playerTarget);
-    // A nailed item its viewer may not pry offers nothing, and an unanswered request opens nothing
+    // A nailed item its viewer may not pry offers nothing
     else if (this.itemTarget && !(this.menuArgs().ACTIONS as PlayerAction[]).length) return;
     else if (!this.menuOpen && !isMenuHotkeyBlocked(this.sp, this.controller)) this.openMenu();
+    if (!timedOut || this.menuAnswered) return;
+    // A silent server side is the usual reason a menu "does nothing", so the unanswered packet is named in the log
+    const packet = this.itemTarget ? "itemMenuRequest" : "playerMenuRequest";
+    const result = this.bodyTarget && !this.skin ? "the body is searched" : this.menuOpen ? "the menu opened with the actions that need no answer" : "nothing opened";
+    logToPlatformLog(this, `${packet} for ${hex(this.itemTarget || this.playerTarget)} unanswered after ${MENU_STATE_WAIT_MS} ms, ${result}`);
   }
 
   // Only a player's body is skinned through the menu, and only with the knife, so every other body opens at once
@@ -421,7 +461,8 @@ export class PlayerActionService extends ClientListener {
   private menuArgs(): Record<string, unknown> {
     if (this.itemTarget) {
       const st = this.itemState;
-      const actions = !st ? [] : st.nailed ? (st.canPry ? [ITEM_PRY] : []) : [ITEM_PICKUP, ITEM_MOVE, st.canNail ? ITEM_NAIL : { ...ITEM_NAIL, disabled: true }];
+      // Without the server's answer the item is offered as loose; the server still refuses a nailed one with its notice
+      const actions = !st ? [ITEM_PICKUP, ITEM_MOVE, { ...ITEM_NAIL, disabled: true }] : st.nailed ? (st.canPry ? [ITEM_PRY] : []) : [ITEM_PICKUP, ITEM_MOVE, st.canNail ? ITEM_NAIL : { ...ITEM_NAIL, disabled: true }];
       return { ACTIONS: actions, targetName, hideTrade: true, events, WIDGET_ID };
     }
     if (this.bodyTarget) {
@@ -474,9 +515,10 @@ export class PlayerActionService extends ClientListener {
   private menuFlags: Record<string, boolean> = {};
   // Whether the server found a healing potion on this player for Give Potion
   private hasPotion = false;
-  // Token of the open waiting for the server's answer, 0 when none
+  // Token of the open waiting for the server's answer, 0 when none, and whether that answer came
   private menuWait = 0;
   private menuWaitSeq = 0;
+  private menuAnswered = false;
   // Whether the press the waiting menu answers was a held interact press
   private menuWaitHeld = false;
   private interactKey: number;
