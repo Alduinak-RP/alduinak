@@ -43,8 +43,10 @@ the highest minimum skill level of the spell's magic effects: 0 Novice, 25 Appre
 Storage stays `private.mastery = { profession, points, lastPointAt, rank, granted[] }` plus `v: 2`; `points` are hours.
 `rank` uses the index above. Characters without `v: 2` are migrated at login: rank recomputed from points, markers
 re-synced. One hour is credited per profession activity when `lastPointAt` is at least 60 minutes old. Since 2026-10
-(F9) extra crafts inside a counted hour bank up to `masteryHourBank` (2) hours, kept as `bank` and `onlineMs` in the
-same record and paid one per 60 online minutes (see `docs_roleplay_mastery.md`).
+(F9) extra crafts inside the counted hour bank up to `masteryHourBank` (2) hours for the character, kept as `queue` (the
+craft each one pays, in craft order) and `onlineMs` in the same record and paid one per 60 minutes, online or not by
+default (see `docs_roleplay_mastery.md`); the per-slot `bank` counts of records from before 2026-10-05 are folded into
+the queue when the record is next loaded.
 
 Activities that credit hours: crafting at a station for crafters; gathering (mine, chop, pick, skin) for gatherers;
 killing NPCs (hunter: animals) and casting spells (mage) for fighters.
@@ -66,7 +68,8 @@ earning their Novice by 20 hours of their class's free work. The server setting 
 - A sub-slot starts at Free with no marker and earns hours only from free work: a recipe with no marker condition at
   one of its benches, or its Free activity (the table is in `docs_roleplay_mastery.md`). Once ranked, a gated recipe
   counts for it only through a marker of its own profession at a rank it holds.
-- Each slot has its own hour clock and hour bank; one activity credits every slot it qualifies for.
+- The hour clock and the hour bank are the character's, shared by every slot; one activity credits the first slot in
+  slot order it qualifies for, and a craft inside the counted hour banks an hour for its own slot.
 - Rank readers for other systems (`rankOf`, `rankIn`, `craftRank`, `craftCost`) take the best slot holding the
   profession; `professionOf` returns the primary and must gain no callers.
 - Markers stay `AldProf_<Label>_<Rank>`: a sub-slot holds its profession's markers up to its rank, so recipe gates,
@@ -74,7 +77,7 @@ earning their Novice by 20 hours of their class's free work. The server setting 
 - Resets: one shared count (`masteryResetsPerCharacter`); a reset clears one slot and nothing moves up.
 
 Storage: the primary stays in `private.mastery` as above. The sub-slots live in `private.masterySlots = { v: 1,
-secondary, tertiary, granted[], kits[] }`, each sub-slot `{ profession, points, lastPointAt, rank, bank, onlineMs }` or
+secondary, tertiary, granted[], kits[] }`, each sub-slot `{ profession, points, lastPointAt, rank }` or
 `null`; `granted` lists the markers held for either sub-slot (the manager's MongoDB purge re-encodes it) and `kits` the
 crafts whose sub-slot kit was given. Nothing is migrated: no record means two empty sub-slots.
 
@@ -119,9 +122,10 @@ r27 additions, all optional so older clients keep working with the primary alone
 - `masteryChoose` takes `slot` (0, 1 or 2, default 0) and `masteryResetRequest` takes `profession` (default the
   primary's craft).
 - The admin panel's `masteryGrant` and `masteryReset` take a `slot` (default 0).
-- `masteryMenu` and `professionState` carry `bank: { max, intervalMs, offline, slots: [{ slot, countedMs, banked,
-  payMs, capped }] }`, the hour clock and banked hours of every held craft for the Skills tab's hour bank strip, times
-  as left at sending; optional like the rest (see `docs_roleplay_mastery.md`, "The hour bank strip").
+- `masteryMenu` and `professionState` carry `bank: { max, intervalMs, offline, countedMs, counted, payMs, queue }`,
+  the character's hour clock (the time until work counts again and the profession of the hour counting now) and the
+  profession each banked hour pays, in pay order, for the Skills tab's hour bank strip, times as left at sending;
+  optional like the rest (see `docs_roleplay_mastery.md`, "The hour bank strip").
 
 ## Starter kits
 

@@ -54,55 +54,72 @@ than `masteryPointIntervalMinutes` (default 60) after the last one:
 | Warrior | killing NPCs and creatures |
 | Mage | casting spells (the native `onSpellCast` event) |
 
-**Hour bank.** A craft of the profession made inside an hour that was already counted (a craft or temper that would
-have counted, at a bench of the profession, with the inputs in the bag) banks one hour instead, up to
-`masteryHourBank` (default 2; 0 turns the bank off). Only crafts bank; gathering, kills, casts and skinning come many
-an hour and never do. A banked hour is counted once the character has been **online** for a full
-`masteryPointIntervalMinutes` since the last counted hour, whether that hour came from work or from the bank; time
-logged out does not count, and a counted hour of work restarts that wait, so no hour is ever counted twice in one
-interval. The bank is checked once a minute, so a banked hour is counted within a minute of falling due. Three
-crafts at a forge in a few minutes therefore count one hour at once and the other two after 60 and 120 online
-minutes, with no further crafting. A craft right after a banked hour is paid refills the bank. The player
-sees "Extra work banked: N hours will be counted, one per hour you stay online." and "Your banked work as a
-Blacksmith is counted: H hours at the craft, 1 hour still banked." The server logs:
+**Hour bank.** A character counts one hour per `masteryPointIntervalMinutes` whichever of its crafts did the work, the
+hour going to the first craft slot in slot order that qualifies. A craft made inside that counted hour (a craft or
+temper that would have counted, at a bench of the profession, with the inputs in the bag) banks one hour for its own
+craft instead, up to `masteryHourBank` (default 2; 0 turns the bank off) banked hours per character, shared by every
+craft it holds. Only crafts bank; gathering, kills, casts and skinning come many an hour and never do, and inside the
+counted hour they earn nothing. The bank is a queue in craft order: a banked hour is counted one interval after the
+character's last counted hour, whether that came from work or from the bank, the head of the queue first, and a
+counted hour of work restarts that wait, so no hour is ever counted twice in one interval. A bow, then a potion, then
+another bow within a few minutes therefore count one woodworking hour at once, an alchemy hour an hour later and a
+second woodworking hour an hour after that, with no further crafting (the owner's example of 2026-10-05). The pay
+clock runs in real time (`masteryBankOffline`, default true since 2026-10-05): the hours that fell due while the
+character was logged out are counted at login, in queue order, each dated one interval after the last, so two hours
+banked before a night's sleep are both there in the morning and the hour clock is open; online, the bank is checked
+once a minute, so a banked hour is counted within a minute of falling due. A craft right after a banked hour is paid
+refills the bank. The player sees "Extra work banked for your secondary craft: 2 hours will be counted, one per hour,
+online or not." and "Your banked work as a Blacksmith is counted: H hours at the craft, 1 hour still banked." The
+server logs:
 
 - `[mastery] <id> <profession> hour counted by work: <H>h[, N hours still banked]`
-- `[mastery] <id> <profession> hour banked (<N>/<max>), next paid in <M> online min`
-- `[mastery] <id> <profession> hour paid from the bank after 60 online min: <H>h[, N hours still banked]`
-- `[mastery] <id> online with <N> hours banked, next paid in <M> online min` at login
+- `[mastery] <id> <profession> hour banked (<N>/<max>: <craft>, <craft>), next paid in <M> min`
+- `[mastery] <id> <profession> hour paid from the bank after 60 min: <H>h[, N hours still banked]`
+- `[mastery] <id> online with <N> hours banked (<craft>, <craft>), next paid in <M> min` at login, once the hours that
+  fell due while away are paid
+- `[mastery] <id> <N> hours dropped from the bank, the craft is set aside, out of force or at its cap: <craft>`
+- `[mastery] <id> <N> hours moved from the old per-craft banks into the shared bank: <craft>, <craft>` once per record
+  from before the shared bank (see "Old records")
 
-The online time since the last counted hour is saved at logout, at every counted or banked hour and, while hours are
-banked, at the first bank check 5 minutes after the last save, so a crash loses at most 6 minutes of it. A profession
-reset empties the bank, and so does a profession changed or cleared in the manager's character editor (Players
-tab), which also restarts the hour clock.
+A profession reset empties that craft's banked hours and leaves the others, and so does a profession changed or
+cleared in the manager's character editor (Players tab), which also restarts the hour clock; a sub-slot that reaches
+its cap drops its own banked hours. With `masteryBankOffline: false` (the owner's rule of 2026-09-30) the pay clock is
+the character's online time since its last counted hour instead, saved at logout, at every counted or banked hour and,
+while hours are banked, at the first bank check 5 minutes after the last save, so a crash loses at most 6 minutes of
+it; nothing then falls due while logged out, and the texts say "one per hour you stay online", `next paid in <M>
+online min` and `hour paid from the bank after 60 online min`.
 
-**The hour bank strip.** The Skills tab shows the bank at its top, under the title: one group per held craft (its
-name and, with craft slots, the slot), each with `1 + masteryHourBank` cells. "Hour 1" is the counted hour: "Counted,
-next in N min" while the hour that was just earned runs (real time, so it also runs out while logged out), "Open,
-counts now" otherwise. "Hour 2" and "Hour 3" are the bank: "Pending, in N min" for a banked hour and when it
-will be counted (the second an interval after the first), "Empty" otherwise; a sub-slot at its cap shows "At its cap,
-earns no more hours". The cell texts stay this short because three held crafts leave each cell about 76 px in the
-948 px menu; the strip's caption states the rule in force (online or not) and each cell's tooltip carries the full
-sentence. The data is `bank` in `masteryMenu` (sent when
-the Personal Menu opens and when the Skills tab is picked) and in `professionState`:
-`{ max, intervalMs, offline, slots: [{ slot, countedMs, banked, payMs, capped }] }`, one entry per held craft,
-`countedMs` the time until work counts an hour again, `payMs` the time on the pay clock until the next banked hour
-is counted, both as left at sending and both read from the stored record (`lastPointAt`, `bank`, `onlineMs`) plus the
-online time of this session, so the strip is right after a relog or a server restart. A banked hour now sends a
+**The hour bank strip.** The Skills tab shows the bank at its top, under the title: one strip of `1 + masteryHourBank`
+cells for the whole character. "Hour 1" is the hour counting now: "Counted, Blacksmith, next in N min" while the hour
+that was just earned runs (real time, so it also runs out while logged out), "Open, work counts now" otherwise. "Hour
+2" and "Hour 3" are the bank in pay order: "Pending, Alchemist, in N min" names the craft a banked hour will pay and
+when (the second an interval after the first), "Empty" otherwise. With the default `masteryHourBank` of 2 the strip is
+the owner's "hour 1, 2 and 3"; if three banked hours beyond the counted one are meant, `masteryHourBank: 3` adds an
+"Hour 4" cell, and a record whose old per-craft banks folded into more hours than the bank holds draws a cell for each
+until they are paid. The strip's caption states the rule in force (online or not). The data is `bank` in `masteryMenu`
+(sent when the Personal Menu opens and when the Skills tab is picked) and in `professionState`:
+`{ max, intervalMs, offline, countedMs, counted, payMs, queue }`, `countedMs` the time until work counts an hour
+again and `counted` the profession id of the hour counting now (`null` when work counts now), `payMs` the time until
+the first banked hour is counted and `queue` the profession id each banked hour pays, in order; the times are as left
+at sending and read from the stored record (the slots' `lastPointAt`, `queue`, `onlineMs`) plus the online time of
+this session, so the strip is right after a relog or a server restart, and at login the hours that fell due while away
+are paid before the first state is sent, so it never shows a due hour as pending. A banked hour sends a
 `professionState` as a counted one always did, and `AdminMenuService` lays every `professionState` over an open Skills
 tab (hours, ranks and bank), so the open tab follows each change with no poll; between two packets the front counts
 the minutes down by itself (a 15 s re-render while something is running).
 
-**Online or not.** The owner's rule of 2026-09-30 is that banked hours count only while the character is online, and
-that stays the default. `masteryBankOffline: true` changes the pay clock to all the time since the slot's last
-counted hour: a banked hour falls due one interval after it whether the character is online or not, and the hours
-that fell due while away are counted at the first bank check after login (within a minute), each dated an interval
-after the last, so two hours banked before a night's sleep are both there in the morning and the hour clock is open.
-The texts follow the rule: "one per hour, online or not", "in N min", `next paid in <M> min`, `hour paid from the bank
-after 60 min`. Nothing runs for a logged out character either way.
+**Old records.** Until 2026-10-05 each craft slot had its own hour clock and its own bank, kept as `bank` and
+`onlineMs` on the primary record and on each sub-slot record. Such a record is folded when it is next loaded: every
+`bank` count of a slot in force becomes that many entries of its craft in the shared queue, the slot whose counted hour
+is oldest first and then in slot order; the `bank` fields are dropped, the sub-slots' `onlineMs` go and the primary's
+stays as the character's. The next save writes the new shape, at login at the latest (with the log line above), nothing
+is paid twice, and a folded queue longer than `masteryHourBank` is paid down in order and takes no new hour until it is
+below the cap. A sub-slot out of force (multiclassing turned off) keeps its old `bank` count until it is back in force,
+when it is folded. The character's hour clock is the latest `lastPointAt` of its slots in force, so no new field holds
+it; a slot's own `lastPointAt` still says when its last hour was counted.
 
 Hours are **per character**: the record `private.mastery`
-`{ v: 2, profession, points, lastPointAt, rank, granted, spellTier, resets, bank, onlineMs }` lives on the
+`{ v: 2, profession, points, lastPointAt, rank, granted, spellTier, resets, queue, onlineMs }` lives on the
 actor form (the primary craft; a secondary and a tertiary live in `private.masterySlots`, see "Secondary and
 tertiary crafts"). A record without `v: 2` is migrated at login: its rank is recomputed,
 markers that are not the new ones are removed and the right ones granted. Common
@@ -126,7 +143,7 @@ plugin r27a, `RacialSystem.baseBonus`, the character's own race also under an ad
 plus that bonus, so a character who stops being a mage drops back at once. While the character is still in creation
 a mage gets the rank value alone and anyone else `null`. `slots` lists every configured slot,
 `[{ slot, name, profession, label, rank, rankName, hours, cap, capName, rankHours }]`, an empty one with
-`profession: null`; one entry with multiclassing off. `bank` is the hour bank state of the held crafts, see
+`profession: null`; one entry with multiclassing off. `bank` is the character's hour clock and shared bank, see
 "The hour bank strip" above.
 
 ## The professions
@@ -223,8 +240,10 @@ multiclassing off: the primary then works exactly as before. The Test value:
   Free sub-slot's craft does is priced at Free (a Free craft at a forge costs a third of the fatigue bar, so three in a row
   empty it; cooking, brewing, smelting and tanning cost half); where a higher slot works the same bench, the better
   rank prices it.
-- **Clocks and banks.** Each slot has its own hour clock and its own hour bank (`masteryHourBank` each), so work for a
-  secondary never costs the primary its hour.
+- **Clock and bank.** The hour clock and the hour bank are the character's, shared by every slot (`masteryHourBank` in
+  all): one hour per interval whichever craft worked it, one piece of work credits the first slot in slot order that
+  qualifies (a leather strip with a tailor secondary and a hunter tertiary is tailor work), and a craft of any held
+  craft inside the counted hour banks an hour for that craft, paid in craft order (see "Hour bank").
 - **Ranks for other systems.** Every rank reader (`rankOf`, `rankIn`, `craftRank`, `craftCost`) takes the best slot
   that holds the profession, so a secondary Adept Blacksmith mines, pays fatigue and crafts like any Adept
   Blacksmith; `craftCost` also names the profession that priced a craft, which the drink rule reads
@@ -302,11 +321,11 @@ CraftingTanningRack 18 and MCE_CraftingLoom 6 (the common recipes are left out).
 gates are not being read.
 
 Log lines (`C:\logs\test\gameserver.log`): the boot line `[mastery] slots: Primary to Legendary (0/40/100/180/6000
-h), Secondary to Adept (20/60 h), Tertiary to Novice (20 h); each slot has its own 60 min clock and 2 hours bank, N
-reset(s) shared, sub-slot kits on (items, no gold), 50 rank markers read as recipe gates` (or `..., multiclass off`),
+h), Secondary to Adept (20/60 h), Tertiary to Novice (20 h); one 60 min hour clock and a 2 hours bank shared by every
+slot, N reset(s) shared, sub-slot kits on (items, no gold), 50 rank markers read as recipe gates` (or `..., multiclass off`),
 `[mastery] <id> slots at login: Primary blacksmith Adept 52h, Secondary tailor Free 7h, Tertiary empty`, `[mastery]
 <id> took up tailor as secondary craft (up to Adept), Free at 0h`, `[mastery] <id> secondary tailor hour counted by
-work: 7h, 7 of 20 hours toward Novice`, `... hour banked (1/2), next paid in N online min`, `[mastery] <id> secondary
+work: 7h, 7 of 20 hours toward Novice`, `... hour banked (1/2: tailor), next paid in N min`, `[mastery] <id> secondary
 tailor Free -> Novice at 20h`, `[mastery] <id> secondary kit for tailor: ...`, `[mastery] <id> <slot> <craft>
 dropped at login: a lower slot already follows it` and `[mastery] <id> N sub-slot marker(s) revoked at login: ...`.
 
@@ -1278,9 +1297,9 @@ Server -> Client: { "customPacketType": "masteryNotice", "text" }
 `slot` defaults to the primary and `profession` of a reset request to the primary's
 craft, so an older client keeps working with the primary alone. `slots` is the
 list `professionState` carries; the client reads a server older than r27, which
-sends none, as `[]` and keeps the one-craft Skills tab. `bank` is the hour bank
-state `professionState` carries too (see "Hour bank"); a server that sends none
-shows no strip.
+sends none, as `[]` and keeps the one-craft Skills tab. `bank` is the character's hour
+clock and shared bank, which `professionState` carries too (see "The hour bank strip");
+a server that sends none shows no strip.
 
 ## Settings reference
 
