@@ -306,8 +306,10 @@ export class FormView {
   private logCopyPlacement(localId: number, spawnPos: readonly number[]): void {
     const placedAt = ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
     const away = Math.round(ObjectReferenceEx.getDistance(placedAt, spawnPos as NiPoint3));
-    this.spawnPoint = [spawnPos[0], spawnPos[1], spawnPos[2]];
-    logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy ${localId.toString(16)} placed at the player ${fmtPos(placedAt)} for ${fmtPos(spawnPos)} (${away} units away), hosted here ${isRemoteHostedByMe(this.remoteRefrId ?? 0)}, ${this.spawnReason}`);
+    // Kept from the view's first placement: a respawn's target is only the last relayed report, the ragdoll spot after an engine death
+    const first = this.spawnPoint ? `, first placed for ${fmtPos(this.spawnPoint)}` : "";
+    if (!this.spawnPoint) this.spawnPoint = [spawnPos[0], spawnPos[1], spawnPos[2]];
+    logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy ${localId.toString(16)} placed at the player ${fmtPos(placedAt)} for ${fmtPos(spawnPos)} (${away} units away)${first}, hosted here ${isRemoteHostedByMe(this.remoteRefrId ?? 0)}, ${this.spawnReason}`);
     this.spawnReason = "fresh";
   }
 
@@ -692,7 +694,7 @@ export class FormView {
     const pos = ObjectReferenceEx.getPos(actor);
     const player = ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
     const sinceSpawn = this.spawnMoment ? `${Date.now() - this.spawnMoment} ms after its spawn` : "before its spawn finished";
-    const fromSpawn = this.spawnPoint ? `, ${Math.round(ObjectReferenceEx.getDistanceNoZ(pos, this.spawnPoint))} units from its spawn point and ${Math.round(pos[2] - this.spawnPoint[2])} in height` : "";
+    const fromSpawn = this.spawnPoint ? `, ${Math.round(ObjectReferenceEx.getDistanceNoZ(pos, this.spawnPoint))} units from its first spawn point and ${Math.round(pos[2] - this.spawnPoint[2])} in height` : "";
     const health = model.movement ? `, server health ${Math.round((model.movement.healthPercentage ?? 0) * 100)}%` : "";
     return `${sinceSpawn} at ${fmtPos(pos)}${fromSpawn}, ${Math.round(ObjectReferenceEx.getDistance(pos, player))} units from the player, 3D ${actor.is3DLoaded()}, hosted here ${isRemoteHostedByMe(this.remoteRefrId ?? 0)}${health}`;
   }
@@ -1136,7 +1138,7 @@ export class FormView {
   private spawnMoment = 0;
   // Why the next placement happens, for its log line
   private spawnReason = "fresh";
-  // The server position the last spawn moved an NPC copy to
+  // The server position of the view's first NPC copy placement, the spawn spot when this client saw the spawn
   private spawnPoint: NiPoint3 | undefined;
   private loaded3DMoment = 0;
   private was3DLoaded = false;

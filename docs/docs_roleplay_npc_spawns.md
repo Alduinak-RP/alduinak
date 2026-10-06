@@ -208,8 +208,13 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   Each placement logs `FormView: <id> copy <local id> placed at the player x,y,z
   for x,y,z (<n> units away), hosted here <bool>, <reason>` (`fresh`, `it died
   in the engine`, `its packet named another cell`, `the server revived it`, ...)
-  and a copy still more than 32 units from its spawn point once the spawn
-  finished logs `stands <n> units from its spawn point after the spawn, ...`.
+  and a copy still more than 32 units from that target once the spawn finished
+  logs `stands <n> units from its spawn point after the spawn, ...`. The `for`
+  position is the server's at that moment: the spawn spot for `fresh`, for a
+  respawn only the last relayed report (the ragdoll spot after an engine death),
+  when the line adds `first placed for x,y,z`. The death line's `first spawn
+  point` is that first placement's, kept for the view's life, so its height
+  difference still reads a fall or a sink after any number of respawns.
   While the copy is still disabled at the player, the client hosting the NPC
   does not report its movement (it would put the NPC at the player for every
   other viewer until the next report); the first such skip per copy logs
@@ -550,7 +555,7 @@ Everything goes through the server log and the manager console, prefixed
   the zone; there is no line for leaving
 - `navmesh spots for N/M zone(s) in X ms; rings kept for: ...` after each scan, naming the zones without navmesh near `POS`;
   `navmesh scan failed, ...` or `navmesh scan missed unreadable plugins, ...` when the result is not cached
-- `'<Name>' spawned 4/4 npc(s) (navmesh): 23a99:Skyrim.esm x4; ff000123 at x,y,z, ...`, `(rings)` for `Spread: 0` or a zone without navmesh; the ids and spawn spots match the clients' `FormView` placement lines
+- `'<Name>' spawned 4/4 npc(s) (navmesh): 23a99:Skyrim.esm x4; ff000123 at x,y,z, ...`, `(rings)` for `Spread: 0` or a zone without navmesh; the ids and spawn spots match the clients' `fresh` `FormView` placement lines
 - `'<Name>' respawned 23a99:Skyrim.esm (ff000123 -> ff000456) at x,y,z`
 - `npc ff000123 of '<Name>' jumped 1800 units since the last poll, now at x,y,z, 900 units from its spawn spot x,y,z, host ff000456` / `stands 12 units from <player> (ff000456)` for a living NPC of an occupied zone that moved 1500 units within one 2 s poll or stands within 32 units of a player, at most once per 30 s per NPC: the server-side trace of a copy a client placed at its player, only with `npcCorpseWatch` on
 - `'<Name>' despawned 4 npc(s)`
