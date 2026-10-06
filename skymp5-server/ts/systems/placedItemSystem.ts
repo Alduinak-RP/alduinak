@@ -1,7 +1,7 @@
 import { MongoClient } from "mongodb";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content, USER_MENU_QUIT_EVENT, WORLD_LOADED_EVENT } from "./system";
-import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, neighborUsers, notifyActor, sendActionLock, takeItemFrom, userOf } from "./actorUtil";
+import { baseIdOf, baseTypeOf, chainMpHook, countItem, destroyRef, hex, isHarvestedRef, neighborUsers, notifyActor, sendActionLock, takeItemFrom, userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { AdminRoleConfig, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 import { formIdFromConfig, toFormId } from "./formIdUtil";
@@ -263,9 +263,9 @@ export class PlacedItemSystem implements System {
       const id = desc.includes(":") ? formIdFromConfig(mp, desc) : (0xff000000 | parseInt(desc, 16)) >>> 0;
       if (!id || this.grabs.has(id) || !this.setCarried(mp, id, 0)) continue;
       cleared++;
-      // Plugin-placed copies are shown again only by itemMoved
+      // Plugin-placed copies are shown again only by itemMoved, and a taken one stays hidden
       try {
-        if (!mp.get(id, "isDisabled")) {
+        if (!mp.get(id, "isDisabled") && !isHarvestedRef(mp, id)) {
           const loc = mp.get(id, "locationalData");
           this.tellMoved(mp, id, loc.pos, loc.rot);
         }
@@ -419,9 +419,10 @@ export class PlacedItemSystem implements System {
     return this.placedAt(mp, id) !== null;
   }
 
+  // A taken plugin item stays harvested for good (forbiddenReloot), so a stale copy of it cannot be carried
   private isItem(mp: Mp, id: number): boolean {
     try {
-      return !mp.get(id, "isDisabled") && ITEM_TYPES.has(baseTypeOf(mp, id));
+      return !mp.get(id, "isDisabled") && ITEM_TYPES.has(baseTypeOf(mp, id)) && !isHarvestedRef(mp, id);
     } catch {
       return false;
     }

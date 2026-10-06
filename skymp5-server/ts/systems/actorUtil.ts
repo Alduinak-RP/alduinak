@@ -157,6 +157,15 @@ export const isWeaponDrawn = (mp: Mp, actorId: number): boolean => {
   }
 };
 
+// The native harvested flag of a world item or plant, which has no mp.get binding; false for an unknown form
+export const isHarvestedRef = (mp: Mp, refId: number): boolean => {
+  try {
+    return mp.callPapyrusFunction("method", "ObjectReference", "IsHarvested", { type: "form", desc: mp.getDescFromId(refId) }, []) === true;
+  } catch {
+    return false;
+  }
+};
+
 // Through Papyrus, which reads the sneak flag the client's movement reports; false for an unknown form
 export const isSneaking = (mp: Mp, actorId: number): boolean => {
   try {
