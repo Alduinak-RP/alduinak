@@ -1349,6 +1349,10 @@
     "placedItem": {
       "nailedDown": "It is nailed down.",
       "needHammer": "You need a hammer and a nail."
+    },
+    "gamemode": {
+      "loadFailed": "GAMEMODE FAILED TO LOAD from {path}: {error}; chat, introductions, admin tools and every ff_ property are OFF until it loads",
+      "reloadFailed": "GAMEMODE HOT RELOAD FAILED from {path}: {error}; the running gamemode was cleared, so chat, introductions, admin tools and every ff_ property are OFF until a fixed gamemode.js is saved"
     }
   },
   "client": {

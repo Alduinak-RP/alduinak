@@ -53,7 +53,8 @@ import { DoorTeleportSystem } from "./systems/doorTeleportSystem";
 import { LeverLinkSystem } from "./systems/leverLinkSystem";
 import { NpcSpawnSystem } from "./systems/npcSpawnSystem";
 import { DiscordBanSystem } from "./systems/discordBanSystem";
-import { DiscordAlerts } from "./systems/discordAlerts";
+import { DiscordAlerts, discordAlert } from "./systems/discordAlerts";
+import { loc, gamemodeLoc } from "./loc";
 import { TorchSystem } from "./systems/torchSystem";
 import { PlacedItemSystem } from "./systems/placedItemSystem";
 import { CombatReadoutSystem } from "./systems/combatReadoutSystem";
@@ -95,9 +96,8 @@ function requireTemp(module: string) {
     const tempPath = path.join(tmpDir, Math.random() + '-' + Date.now() + '.js');
     fs.writeFileSync(tempPath, contents);
 
+    // A load error reaches the caller, which reports it
     require(tempPath);
-  } catch (e) {
-    console.error(e.stack);
   } finally {
     try {
       if (tmpDir) {
@@ -128,9 +128,15 @@ function requireUncached(
         // Native module registers mp-api methods on ScampServer; aliasing global 'mp' lets code bound to it run
         // @ts-ignore
         globalThis.mp = globalThis.mp || server;
+        // The parts call loc() over the gamemode section of en_loc.json; a bundle carrying its own prelude shadows this one
+        (globalThis as any).loc = (globalThis as any).loc || gamemodeLoc;
 
-        requireTemp(module);
-        reclaimGamemodeHooks(server);
+        // The server's hook dispatchers go back in place after a failed load too
+        try {
+          requireTemp(module);
+        } finally {
+          reclaimGamemodeHooks(server);
+        }
         return;
       } catch (e) {
         if (`${e}`.indexOf("'JsRun' returned error 0x30002") === -1) {
@@ -171,6 +177,21 @@ const setupStreams = (scampNative: any) => {
   };
 };
 
+// A gamemode that does not load leaves chat, introductions, admin tools and every ff_ property off: the server log and the Discord admin alerts both say so
+const reportGamemodeLoadFailure = (gamemodePath: string, e: unknown, hotReload: boolean) => {
+  const stack = String((e as Error)?.stack || e);
+  // The bundle runs from a random temp copy, so its first frame is mapped back to gamemode.js
+  const frame = stack.match(/\.js:(\d+)(?::(\d+))?/);
+  const where = frame ? ` at ${path.basename(gamemodePath)}:${frame[1]}${frame[2] ? `:${frame[2]}` : ""}` : "";
+  const error = `${e}${where}`;
+  const line = hotReload
+    ? loc("gamemode.reloadFailed", { path: gamemodePath, error })
+    : loc("gamemode.loadFailed", { path: gamemodePath, error });
+  console.error(line);
+  console.error(stack);
+  discordAlert("admin", line);
+};
+
 const setupGamemode = (server: any, gamemodePath: string, hotReload: boolean) => {
   // NOTE: ScampServer.on is a read-only native property, so listener stacking
   // across hot reloads cannot be fixed here by wrapping it (assignment
@@ -200,7 +221,7 @@ const setupGamemode = (server: any, gamemodePath: string, hotReload: boolean) =>
   try {
     requireUncached(absoluteGamemodePath, clear, server);
   } catch (e) {
-    console.error(e);
+    reportGamemodeLoadFailure(absoluteGamemodePath, e, false);
   }
 
   if (!hotReload) {
@@ -221,7 +242,7 @@ const setupGamemode = (server: any, gamemodePath: string, hotReload: boolean) =>
       requireUncached(absoluteGamemodePath, clear, server);
       numReloads.n++;
     } catch (e) {
-      console.error(e);
+      reportGamemodeLoadFailure(absoluteGamemodePath, e, true);
     }
   };
 
