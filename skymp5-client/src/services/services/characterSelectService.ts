@@ -1,7 +1,7 @@
 import { FunctionInfo } from "../../lib/functionInfo";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
-import { keyLabel, openFormMenu, readMenuLanguage } from "./widgetMenuUtil";
+import { keyLabel, openFormMenu } from "./widgetMenuUtil";
 import { BrowserMessageEvent, Menu, MenuOpenEvent } from "skyrimPlatform";
 import { logTrace } from "../../logging";
 import { NetworkingService } from "./networkingService";
@@ -11,6 +11,7 @@ import { VoiceService } from "./voiceService";
 import { PlayerActionService } from "./playerActionService";
 import { EmoteService } from "./emoteService";
 import { CreationLightService } from "./creationLightService";
+import { loc } from "../../loc";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
@@ -70,47 +71,24 @@ const events = {
   introCancel: 'characterSelect:introCancel',   // back to the start locations
 };
 
-const translations = {
-  "ru": {
-    selectCharacter: 'Выбор персонажа',
-    emptySlot: 'Пусто',
-    unnamed: 'Безымянный',
-    play: 'Играть',
-    edit: 'Изменить',
-    del: 'Удалить',
-    confirmDelete: 'Удалить этого персонажа навсегда?',
-    confirm: 'Подтвердить',
-    cancel: 'Отмена',
-    quit: 'Выйти',
-    dead: 'Мёртв',
-    next: 'Продолжить',
-    back: 'Назад',
-    beginAt: 'Начать путь здесь: {0}?',
-    loadFailed: 'Не удалось войти в мир: {0}. Отправьте администрации skyrim-platform.log из Документы > My Games > папка Skyrim > SKSE.',
-  },
-  "en": {
-    selectCharacter: 'Select Character',
-    emptySlot: 'Empty',
-    unnamed: 'Unnamed',
-    play: 'Play',
-    edit: 'Edit',
-    del: 'Delete',
-    confirmDelete: 'Permanently delete this character? This cannot be undone.',
-    confirm: 'Confirm',
-    cancel: 'Cancel',
-    quit: 'Quit',
-    dead: 'Dead',
-    next: 'Continue',
-    back: 'Back',
-    beginAt: 'Begin at {0}?',
-    loadFailed: 'Could not enter the world: {0}. Send staff skyrim-platform.log from Documents > My Games > your Skyrim folder > SKSE.',
-  },
-} as const;
-
-type TranslationStrings = { [K in keyof typeof translations['ru']]: string };
+const strings = {
+  selectCharacter: loc("charSelect.selectCharacter"),
+  emptySlot: loc("charSelect.emptySlot"),
+  unnamed: loc("charSelect.unnamed"),
+  play: loc("charSelect.play"),
+  edit: loc("charSelect.edit"),
+  del: loc("charSelect.del"),
+  confirmDelete: loc("charSelect.confirmDelete"),
+  confirm: loc("charSelect.confirm"),
+  cancel: loc("charSelect.cancel"),
+  quit: loc("charSelect.quit"),
+  dead: loc("charSelect.dead"),
+  next: loc("charSelect.next"),
+  back: loc("charSelect.back"),
+  beginAt: loc("charSelect.beginAt"),
+};
 
 // State read by the browser-side widget setter via FunctionInfo injection.
-let strings: TranslationStrings = translations['en'];
 let characters: (CharacterSlot | null)[] = [];
 let maxCharacters = 3;
 // Empty slots the server will not create in while the living limit is reached; hidden
@@ -183,11 +161,6 @@ export class CharacterSelectService extends ClientListener {
     this.controller.once("update", () => { this.sawGameplay = true; });
     // The hide UI key drops focus; the modal must be clickable again once shown
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (!e.hidden && this.menuOpen) this.sp.browser.setFocused(true); });
-
-    const lang = readMenuLanguage(this.sp);
-    if (lang in translations) {
-      strings = translations[lang as keyof typeof translations];
-    }
   }
 
   private onCustomPacketMessage(content: CustomPacketContent): void {
@@ -328,7 +301,7 @@ export class CharacterSelectService extends ClientListener {
 
   // The server log gets the reason without the Windows user name
   public showLoadFailure(reason: string): void {
-    notice = strings.loadFailed.replace('{0}', reason);
+    notice = loc("charSelect.loadFailed", { reason });
     keepNotice = true;
     const loadError = reason.replace(/[A-Za-z]:\\Users\\[^\\]+/g, '%USERPROFILE%').slice(0, 300);
     sendCustomPacket(this.controller, { customPacketType: 'characterSelectMenuRequest', loadError });
@@ -405,7 +378,7 @@ export class CharacterSelectService extends ClientListener {
         form.elements.push({ type: "button", text: strings.back, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introBack) });
       } else {
         form.caption = intro.question;
-        form.elements.push({ type: "text", text: strings.beginAt.replace("{0}", intro.locations[introPick].label), tags: [] });
+        form.elements.push({ type: "text", text: strings.beginAt.replace("{location}", intro.locations[introPick].label), tags: [] });
         form.elements.push({ type: "button", text: strings.back, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introCancel) });
         form.elements.push({ type: "button", text: strings.confirm, tags: ["ELEMENT_SAME_LINE"], width: 240, click: () => window.skyrimPlatform.sendMessage(events.introConfirm) });
       }

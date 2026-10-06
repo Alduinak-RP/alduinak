@@ -5,6 +5,7 @@ import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, ObjectRe
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -17,7 +18,7 @@ const KEY_PROMPT_WIDGET_ID = 38;
 const PENDING_RECIPIENT_MS = 30000;
 const REPLY_WAIT_MS = 5000;
 
-const NOT_PROPERTY_TEXT = "That cannot be claimed.";
+const NOT_PROPERTY_TEXT = loc("housing.notProperty");
 
 // Event keys exchanged with the browser. Namespaced to avoid collisions.
 const events = {
@@ -59,7 +60,7 @@ const keyPromptEvents = {
 };
 
 // The server's cleanName rule for a key label
-const keyNameRule = { chars: "A-Za-z0-9 '_-", maxLength: 32, hint: "Letters, numbers, spaces, ' _ and - only." };
+const keyNameRule = { chars: "A-Za-z0-9 '_-", maxLength: 32, hint: loc("housing.keyNameHint") };
 
 // A letter pinned to the door half the menu was opened at, as this viewer reads it
 interface DoorNoteInfo {
@@ -231,13 +232,13 @@ export class HousingService extends ClientListener {
     const pending = this.pendingRecipient;
     this.pendingRecipient = null;
     if (Date.now() > pending.expiresAt) {
-      notifyNextUpdate(this.controller, this.sp, "That hand-over expired.");
+      notifyNextUpdate(this.controller, this.sp, loc("handover.expired"));
       return true;
     }
     const ref = this.sp.Game.getCurrentCrosshairRef();
     const recipient = ref && Actor.from(ref) ? ref : null;
     if (!recipient || recipient.getFormID() === 0x14) {
-      notifyNextUpdate(this.controller, this.sp, "Cancelled - that is not a person.");
+      notifyNextUpdate(this.controller, this.sp, loc("handover.notPerson"));
       return true;
     }
     sendCustomPacket(this.controller, {
@@ -255,7 +256,7 @@ export class HousingService extends ClientListener {
       notifyNextUpdate(this.controller, this.sp, NOT_PROPERTY_TEXT);
       return;
     }
-    targetLabel = (ref.getDisplayName() || "").trim() || "Property";
+    targetLabel = (ref.getDisplayName() || "").trim() || loc("housing.defaultLabel");
     logTrace(this, `Requesting property info for`, targetLabel, `(${this.target})`);
     this.awaitingAt = Date.now();
     sendCustomPacket(this.controller, { customPacketType: "propertyInfoRequest", target: this.target });
@@ -385,7 +386,7 @@ export class HousingService extends ClientListener {
         break;
       case events.createKey:
         releaseHeldMenus();
-        keyPromptCaption = "Name the key";
+        keyPromptCaption = loc("housing.nameKey");
         keyPromptValue = (info.name || targetLabel).replace(new RegExp(`[^${keyNameRule.chars}]`, "g"), "").trim().slice(0, keyNameRule.maxLength);
         this.openKeyPrompt();
         break;
@@ -418,7 +419,7 @@ export class HousingService extends ClientListener {
           expiresAt: Date.now() + PENDING_RECIPIENT_MS,
         };
         this.closeMenu();
-        notifyNextUpdate(this.controller, this.sp, "Look at the recipient and press the interact key.");
+        notifyNextUpdate(this.controller, this.sp, loc("housing.lookAtRecipient"));
         break;
       }
       case events.pets:

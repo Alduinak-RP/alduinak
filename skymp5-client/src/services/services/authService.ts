@@ -17,6 +17,7 @@ import { NetworkingService } from "./networkingService";
 import { MsgType } from "../../messages";
 import { ConnectionDenied } from "../events/connectionDenied";
 import { SettingsService } from "./settingsService";
+import { loc } from "../../loc";
 
 // for browsersideWidgetSetter
 declare const window: any;
@@ -42,82 +43,43 @@ let browserState = {
 };
 let authData: RemoteAuthGameData | null = null;
 
-const translations = {
-  "ru": {
-    loginViaDiscord: 'войдите через discord',
-    joinDiscordServer: 'вступите в discord сервер',
-    banned: 'вы забанены',
-    whatWasThat: 'что это было?',
-    openingBrowser: 'открываем браузер...',
-    loginFirst: 'сначала войдите',
-    linkedSuccessfully: 'привязан успешно',
-    connecting: 'подключение',
-    technicalIssues: 'технические шоколадки\nпопробуйте еще раз\nпожалуйста\nили напишите нам в discord',
-    authorization: 'Авторизация',
-    notAuthorized: 'не авторизирован',
-    changeAccount: 'сменить аккаунт',
-    loginViaSkymp: 'войти через skymp',
-    play: 'Играть',
-    loginOrChangeHint: 'Вы можете войти или поменять аккаунт',
-    connectToServer: 'Подключиться к игровому серверу',
-    updateCaption: 'новинка',
-    updateAvailable: 'ура! вышло обновление',
-    downloadAt: 'спешите скачать на',
-    openSkympNet: 'открыть skymp.net',
-    updateDownloadHint: 'Перейти на страницу скачивания обновления',
-    oops: 'упс',
-    join: 'вступить',
-    back: 'назад',
-    quitGame: 'выйти из игры',
-    quitGameHint: 'Закрыть игру и выйти на рабочий стол',
-    serverFull: 'Сервер полон, повторная попытка...',
-    unreachable: 'Сервер недоступен, повторная попытка...',
-  },
-  "en": {
-    loginViaDiscord: 'log in via Discord',
-    joinDiscordServer: 'join the Discord server',
-    banned: 'you are banned',
-    whatWasThat: 'what was that?',
-    openingBrowser: 'opening browser...',
-    loginFirst: 'log in first',
-    linkedSuccessfully: 'linked successfully',
-    connecting: 'connecting',
-    technicalIssues: 'technical difficulties\nplease try again\nor contact us on Discord',
-    authorization: 'Authorization',
-    notAuthorized: 'not authorized',
-    changeAccount: 'change account',
-    loginViaSkymp: 'log in via skymp',
-    play: 'Play',
-    loginOrChangeHint: 'You can log in or change your account',
-    connectToServer: 'Connect to game server',
-    updateCaption: 'Update',
-    updateAvailable: 'a new update is available!',
-    downloadAt: 'download it at',
-    openSkympNet: 'open skymp.net',
-    updateDownloadHint: 'Go to the update download page',
-    oops: 'oops',
-    join: 'join',
-    back: 'back',
-    quitGame: 'quit game',
-    quitGameHint: 'Close the game and return to desktop',
-    serverFull: 'The server is full, retrying...',
-    unreachable: 'Could not reach the server, retrying...',
-  },
-} as const;
-
-type TranslationStrings = { [K in keyof typeof translations['ru']]: string };
-
-let strings: TranslationStrings = translations['en'];
+const strings = {
+  loginViaDiscord: loc("auth.loginViaDiscord"),
+  joinDiscordServer: loc("auth.joinDiscordServer"),
+  banned: loc("auth.banned"),
+  whatWasThat: loc("auth.whatWasThat"),
+  openingBrowser: loc("auth.openingBrowser"),
+  loginFirst: loc("auth.loginFirst"),
+  linkedSuccessfully: loc("auth.linkedSuccessfully"),
+  connecting: loc("auth.connecting"),
+  technicalIssues: loc("auth.technicalIssues"),
+  authorization: loc("auth.authorization"),
+  notAuthorized: loc("auth.notAuthorized"),
+  play: loc("auth.play"),
+  connectToServer: loc("auth.connectToServer"),
+  updateCaption: loc("auth.updateCaption"),
+  updateAvailable: loc("auth.updateAvailable"),
+  downloadAt: loc("auth.downloadAt"),
+  openSkympNet: loc("auth.openSkympNet"),
+  updateDownloadHint: loc("auth.updateDownloadHint"),
+  oops: loc("auth.oops"),
+  join: loc("auth.join"),
+  back: loc("auth.back"),
+  quitGame: loc("auth.quitGame"),
+  quitGameHint: loc("auth.quitGameHint"),
+  serverFull: loc("auth.serverFull"),
+  masterId: loc("auth.masterId"),
+  unreachable: loc("auth.unreachable"),
+};
 
 try {
   const lang = fs.readFileSync('./Data/Platform/Distribution/locale', 'utf8').trim();
-  if (lang in translations) {
-    strings = translations[lang as keyof typeof translations];
+  if (lang === 'en' || lang === 'ru') {
     const src = `window.setLanguage(${lang})`;
     browser.executeJavaScript(src);
   }
 } catch {
-  // locale file not found or unreadable, default to 'en'
+  // locale file not found or unreadable
 }
 
 export class AuthService extends ClientListener {
@@ -408,11 +370,11 @@ export class AuthService extends ClientListener {
             case 403: // Forbidden
             case 404: // Not found
               browserState.failCount = 9000;
-              browserState.comment = (`Fail: ${response.body}`);
+              browserState.comment = loc("auth.fail", { body: response.body });
               break;
             default:
               ++browserState.failCount;
-              browserState.comment = `Server returned ${response.status.toString() || "???"} "${response.body || response.error}"`;
+              browserState.comment = loc("auth.serverReturned", { status: response.status.toString() || "???", body: response.body || response.error });
               timersService.setTimeout(() => this.checkLoginState(), Math.floor((1.5 + Math.random() * 2) * 1000));
           }
         });
@@ -581,7 +543,7 @@ export class AuthService extends ClientListener {
             authData ? (
               authData.discordUsername
                 ? `${authData.discordUsername}`
-                : `id: ${authData.masterApiId}`
+                : strings.masterId.replace("{id}", String(authData.masterApiId))
             ) : strings.notAuthorized
           ),
           tags: [/*"ELEMENT_SAME_LINE", "ELEMENT_STYLE_MARGIN_EXTENDED"*/],

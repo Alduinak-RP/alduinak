@@ -6,6 +6,7 @@ import { Actor, BrowserMessageEvent, Form } from "skyrimPlatform";
 import { remoteIdToLocalId } from "../../view/worldViewMisc";
 import { getInventory } from "../../sync/inventory";
 import { logTrace, logError } from "../../logging";
+import { loc } from "../../loc";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -29,6 +30,7 @@ const events = {
 
 // Module-level so the browser-side widget setter can read it via runtime injection.
 let promptText = "";
+const formText = { caption: loc("search.caption"), allow: loc("consent.allow"), refuse: loc("consent.refuse") };
 
 // Player-search plumbing: searchConsentRequest pops a Yes/No widget on the target; searchApproved opens the target's inventory for the searcher in the vanilla container window (TakeItem/PutItem server-authorized); searchClose force-closes it.
 // Protocol (MsgType.CustomPacket JSON): server sends searchConsentRequest{requestId,text}, searchApproved{target,body,npc,entries}, searchClose, searchNotice{text}; client sends searchConsentResult{requestId,accepted} and searchEnd when the window closes.
@@ -65,7 +67,7 @@ export class SearchService extends ClientListener {
         this.pendingRequestId = typeof content["requestId"] === "number"
           ? (content["requestId"] as number) : null;
         promptText = typeof content["text"] === "string"
-          ? (content["text"] as string) : "Allow this?";
+          ? (content["text"] as string) : loc("consent.defaultPrompt");
         if (this.pendingRequestId !== null) {
           logTrace(this, `Search consent request`, this.pendingRequestId);
           this.openPrompt();
@@ -194,7 +196,7 @@ export class SearchService extends ClientListener {
   private openPrompt(): void {
     this.controller.once("update", () => {
       this.promptOpen = true;
-      openFormMenu(this.sp, this.browsersideWidgetSetter, { events, promptText, WIDGET_ID }, this.controller);
+      openFormMenu(this.sp, this.browsersideWidgetSetter, { events, promptText, formText, WIDGET_ID }, this.controller);
       const timers = this.controller.lookupListener(TimersService);
       if (this.expiryTimer !== undefined) {
         timers.clearTimeout(this.expiryTimer);
@@ -216,16 +218,16 @@ export class SearchService extends ClientListener {
     closeFormMenu(this.sp, WIDGET_ID);
   }
 
-  // Runs inside the CEF browser; only the injected vars (events, promptText, WIDGET_ID) and window exist here.
+  // Runs inside the CEF browser; only the injected vars (events, promptText, formText, WIDGET_ID) and window exist here.
   private browsersideWidgetSetter = () => {
     const widget = {
       type: "form",
       id: WIDGET_ID,
-      caption: "Search Request",
+      caption: formText.caption,
       elements: [
         { type: "text", text: promptText, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] },
-        { type: "button", text: "Allow", tags: [], click: () => window.skyrimPlatform.sendMessage(events.yes) },
-        { type: "button", text: "Refuse", tags: ["ELEMENT_SAME_LINE"], click: () => window.skyrimPlatform.sendMessage(events.no) },
+        { type: "button", text: formText.allow, tags: [], click: () => window.skyrimPlatform.sendMessage(events.yes) },
+        { type: "button", text: formText.refuse, tags: ["ELEMENT_SAME_LINE"], click: () => window.skyrimPlatform.sendMessage(events.no) },
       ],
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);

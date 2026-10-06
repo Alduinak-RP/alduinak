@@ -1,6 +1,7 @@
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { GameLoadEvent } from "../events/gameLoadEvent";
 import { NetworkingService } from "./networkingService";
+import { loc } from "../../loc";
 
 export class SinglePlayerService extends ClientListener {
     constructor(private sp: Sp, private controller: CombinedController) {
@@ -14,9 +15,7 @@ export class SinglePlayerService extends ClientListener {
 
     private onGameLoad(event: GameLoadEvent) {
         if (!event.isCausedBySkyrimPlatform && !this._isSinglePlayer) {
-            this.sp.Debug.messageBox(
-                'Save has been loaded in multiplayer, switching to the single-player mode',
-            );
+            this.sp.Debug.messageBox(loc("platform.saveLoaded"));
             this.controller.lookupListener(NetworkingService).close();
             this._isSinglePlayer = true;
             this.sp.Game.setInChargen(false, false, false);

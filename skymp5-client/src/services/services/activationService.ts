@@ -10,6 +10,7 @@ import { formProp, isRemoteHostedByMe, localIdToRemoteId } from "../../view/worl
 import { logError, logToPlatformLog, logTrace } from "../../logging";
 import { takeSyntheticActivation } from "../../sync/mountApply";
 import { ItemService } from "./itemService";
+import { loc } from "../../loc";
 
 // A press on a door mid-swing is dropped, but a door stuck between states would never take one, so it goes through after this long
 const STUCK_PRESS_MS = 1500;
@@ -20,7 +21,7 @@ const IGNORED_PRESS_TTL_MS = 5000;
 const SEAT_RELEASE_LOG_GAP_MS = 5000;
 
 // Read by a carrier holding a player at a load door, at most this often; CaptureSystem words its own refusal the same
-const CARRY_DOOR_NOTICE = "Set them down before going through this door.";
+const CARRY_DOOR_NOTICE = loc("carry.doorBlocked");
 const CARRY_DOOR_NOTICE_MS = 2000;
 
 // The engine activations RemoteServer issues itself to open a server-approved container or furniture, by remote target id

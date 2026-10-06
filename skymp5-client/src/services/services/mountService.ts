@@ -4,6 +4,7 @@ import { isModelHostedByOther, isRemoteHostedByMe, remoteIdToLocalId } from "../
 import { Movement } from "../../sync/movement";
 import { RemoteServer } from "./remoteServer";
 import { logError, logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 type Phase = "idle" | "waitHost" | "waitMount" | "mounted";
 
@@ -63,7 +64,7 @@ export class MountService extends ClientListener {
       return;
     }
     if (!player.dismount()) {
-      notifyNextUpdate(this.controller, this.sp, "You cannot dismount here.");
+      notifyNextUpdate(this.controller, this.sp, loc("mount.noDismount"));
       logTrace(this, "dismount (key) refused");
       return;
     }

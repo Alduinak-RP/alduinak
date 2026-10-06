@@ -1,10 +1,11 @@
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, closeFormMenu, readMenuLanguage, onWidgetsCleared } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu, closeFormMenu, onWidgetsCleared } from "./widgetMenuUtil";
 import { showSystemNotification } from "./systemNotification";
 import { ConnectionDenied } from "../events/connectionDenied";
 import { logTrace, logToPlatformLog } from "../../logging";
+import { loc } from "../../loc";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
@@ -17,34 +18,13 @@ const events = {
   quit: 'queue:quit',
 };
 
-const translations = {
-  "ru": {
-    caption: 'Сервер полон',
-    position: 'Вы {position} из {total} в очереди',
-    waited: 'Ожидание: {t}',
-    eta: 'Примерно осталось: {t}',
-    etaUnknown: 'Примерно осталось: неизвестно',
-    sec: '{n} с',
-    min: '{n} мин',
-    quit: 'Выйти из игры',
-    full: 'Сервер полон, повторная попытка...',
-  },
-  "en": {
-    caption: 'Server full',
-    position: 'You are {position} of {total} in the queue',
-    waited: 'Waiting for {t}',
-    eta: 'Estimated wait: about {t}',
-    etaUnknown: 'Estimated wait: unknown',
-    sec: '{n} s',
-    min: '{n} min',
-    quit: 'Quit game',
-    full: 'The server is full, retrying...',
-  },
-} as const;
+const strings = {
+  caption: loc("queue.caption"),
+  etaUnknown: loc("queue.etaUnknown"),
+  quit: loc("menu.quitGame"),
+  full: loc("auth.serverFull"),
+};
 
-type TranslationStrings = { [K in keyof typeof translations['en']]: string };
-
-let strings: TranslationStrings = translations['en'];
 let lines: string[] = [];
 
 // Login queue page, shown instead of the character select while the server holds the login (QueueSystem).
@@ -61,11 +41,6 @@ export class QueueService extends ClientListener {
     onWidgetsCleared(this.controller, () => { this.open = false; });
     // The hide UI key drops focus; the page must be clickable again once shown
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (!e.hidden && this.open) this.sp.browser.setFocused(true); });
-
-    const lang = readMenuLanguage(this.sp);
-    if (lang in translations) {
-      strings = translations[lang as keyof typeof translations];
-    }
   }
 
   private onCustomPacketMessage(content: CustomPacketContent): void {
@@ -84,9 +59,9 @@ export class QueueService extends ClientListener {
     const total = num(content["total"], 1);
     const etaSec = content["etaSec"];
     lines = [
-      strings.position.replace('{position}', String(position)).replace('{total}', String(total)),
-      strings.waited.replace('{t}', this.duration(num(content["waitedSec"], 0))),
-      typeof etaSec === "number" ? strings.eta.replace('{t}', this.duration(etaSec)) : strings.etaUnknown,
+      loc("queue.position", { position, total }),
+      loc("queue.waited", { t: this.duration(num(content["waitedSec"], 0)) }),
+      typeof etaSec === "number" ? loc("queue.eta", { t: this.duration(etaSec) }) : strings.etaUnknown,
     ];
     const args = { lines, strings, events, WIDGET_ID };
     if (this.open) {
@@ -101,7 +76,7 @@ export class QueueService extends ClientListener {
 
   private duration(seconds: number): string {
     const s = Math.max(0, Math.round(seconds));
-    return s < 60 ? strings.sec.replace('{n}', String(s)) : strings.min.replace('{n}', String(Math.max(1, Math.round(s / 60))));
+    return s < 60 ? loc("queue.sec", { n: s }) : loc("queue.min", { n: Math.max(1, Math.round(s / 60)) });
   }
 
   private onConnectionDenied(e: ConnectionDenied): void {

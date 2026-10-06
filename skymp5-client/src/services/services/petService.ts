@@ -8,6 +8,7 @@ import { EmoteService } from "./emoteService";
 import { RemoteServer } from "./remoteServer";
 import { isPlayerCharacterId } from "./playerActionService";
 import { logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // for the browser-side widget setters (executed inside the CEF browser)
 declare const window: any;
@@ -71,6 +72,7 @@ const promptEvents = {
 let petMenuTitle = "";
 let petMenuActions: PetAction[] = [];
 let petMenuHideTrade = false;
+const petTradeLabel = loc("pet.trade");
 let promptCaption = "";
 let promptValue = "";
 
@@ -145,11 +147,11 @@ export class PetService extends ClientListener {
     if (!pending) return false;
     this.pendingTransfer = null;
     if (Date.now() > pending.expiresAt) {
-      notifyNextUpdate(this.controller, this.sp, "That hand-over expired.");
+      notifyNextUpdate(this.controller, this.sp, loc("handover.expired"));
       return true;
     }
     if (!isPlayerCharacterId(this.controller, remoteId)) {
-      notifyNextUpdate(this.controller, this.sp, "Cancelled - that is not a person.");
+      notifyNextUpdate(this.controller, this.sp, loc("handover.notPerson"));
       return true;
     }
     sendCustomPacket(this.controller, { customPacketType: "petRequest", action: "transfer", target: pending.target, recipient: remoteId });
@@ -164,7 +166,7 @@ export class PetService extends ClientListener {
         break;
       case "petMenu":
         if (target !== this.menuTarget || Date.now() - this.menuRequestedAt > MENU_ANSWER_MS) break;
-        petMenuTitle = typeof content["title"] === "string" ? content["title"] as string : "Pet";
+        petMenuTitle = typeof content["title"] === "string" ? content["title"] as string : loc("pet.defaultTitle");
         petMenuActions = Array.isArray(content["actions"])
           ? (content["actions"] as PetAction[]).filter((a) => a && typeof a.id === "string" && typeof a.label === "string") : [];
         petMenuHideTrade = content["trade"] !== true;
@@ -235,7 +237,7 @@ export class PetService extends ClientListener {
     if (this.commanded !== remoteId) this.endCommandMode();
     actor.setDoingFavor(true);
     this.commanded = remoteId;
-    this.commandName = this.petOf(remoteId)?.name || (actor.getDisplayName() || "").trim() || "Companion";
+    this.commandName = this.petOf(remoteId)?.name || (actor.getDisplayName() || "").trim() || loc("pet.defaultName");
     this.commandUntil = Date.now() + COMMAND_MODE_MS;
     logTrace(this, `Command mode on`, remoteId.toString(16));
   }
@@ -324,7 +326,7 @@ export class PetService extends ClientListener {
     if (!dog) return;
     dog.setDoingFavor(false);
     dog.evaluatePackage();
-    notifyNextUpdate(this.controller, this.sp, "Dogs do not sit.");
+    notifyNextUpdate(this.controller, this.sp, loc("pet.dogsNoSit"));
   }
 
   private onButtonEvent(e: ButtonEvent): void {
@@ -363,13 +365,13 @@ export class PetService extends ClientListener {
     this.closeMenu();
     switch (id) {
       case "rename":
-        promptCaption = "Rename";
+        promptCaption = loc("pet.rename");
         promptValue = petMenuTitle;
         this.openPrompt();
         break;
       case "transfer":
         this.pendingTransfer = { target: this.menuTarget, expiresAt: Date.now() + PENDING_RECIPIENT_MS };
-        notifyNextUpdate(this.controller, this.sp, "Look at the player who should receive it and press the interact key.");
+        notifyNextUpdate(this.controller, this.sp, loc("pet.lookAtRecipient"));
         break;
       case "follow":
         this.recall(this.menuTarget);
@@ -398,7 +400,7 @@ export class PetService extends ClientListener {
     if (!claimHeldMenu(() => this.menuOpen, () => this.closeMenu())) return;
     this.menuOpen = true;
     logTrace(this, `Opening pet menu for`, petMenuTitle);
-    openFormMenu(this.sp, this.menuWidgetSetter, { petMenuTitle, petMenuActions, petMenuHideTrade, events, WIDGET_ID }, this.controller);
+    openFormMenu(this.sp, this.menuWidgetSetter, { petMenuTitle, petMenuActions, petMenuHideTrade, petTradeLabel, events, WIDGET_ID }, this.controller);
   }
 
   private closeMenu(): void {
@@ -429,7 +431,7 @@ export class PetService extends ClientListener {
       targetName: petMenuTitle,
       actions: petMenuActions,
       hideTrade: petMenuHideTrade,
-      tradeLabel: "Trade",
+      tradeLabel: petTradeLabel,
       events: events,
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);

@@ -89,6 +89,7 @@ import { SpellCastMessage } from '../messages/spellCastMessage';
 import { UpdateAnimVariablesMessage } from '../messages/updateAnimVariablesMessage';
 import { MsgType } from '../../messages';
 import { notifyNextUpdate, sendCustomPacket, CustomPacketContent, onCustomPacket } from './customPacketUtil';
+import { loc } from "../../loc";
 
 export const getPcInventory = (): Inventory | undefined => {
   const res = storage['pcInv'];
@@ -655,7 +656,7 @@ export class RemoteServer extends ClientListener {
         // A repeat of the accepted potion refreshed its effects, so roll them back to the first drink
         natives.agePotionEffects?.(player.getFormID(), baseId, acceptedSecondsAgo);
       }
-      Debug.notification(isFood ? "You must wait before having more food or drink." : "You must wait before drinking another potion.");
+      Debug.notification(loc(isFood ? "consume.foodCooldown" : "consume.potionCooldown"));
     });
   }
 
@@ -875,7 +876,7 @@ export class RemoteServer extends ClientListener {
     this.playerTeleport = undefined;
     this.resyncing = true;
     this.reportPlayerTeleport('stuck', target, at);
-    notifyNextUpdate(this.controller, this.sp, 'Your position fell out of sync with the server. Returning to character select, choose your character to continue.');
+    notifyNextUpdate(this.controller, this.sp, loc("sync.positionLost"));
     this.controller.lookupListener(TimersService).setTimeoutOnUpdate(() => { if (this.resyncing) Game.quitToMainMenu(); }, PLAYER_TELEPORT_RESYNC_MS);
   }
 

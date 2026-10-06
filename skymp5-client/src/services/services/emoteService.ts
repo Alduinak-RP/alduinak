@@ -9,6 +9,7 @@ import { SHEATHE_MAX_POLLS, SHEATHE_POLL_S, SHEATHE_SETTLE_S } from "../../sync/
 import { formIdFromDesc } from "../../view/worldViewMisc";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, Inventory } from "skyrimPlatform";
 import { logToPlatformLog, logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -39,15 +40,15 @@ interface PropNeed {
 }
 
 const PROPS: Record<string, PropNeed> = {
-  lute: { label: "a lute", items: ["dabab:Skyrim.esm", "a8a0e:City of Dawnstar.esp"] },
-  flute: { label: "a flute", items: ["daba7:Skyrim.esm", "105177:Skyrim.esm", "105109:Skyrim.esm"] },
-  drum: { label: "a drum", items: ["daba9:Skyrim.esm"] },
-  broom: { label: "a broom", items: ["6717f:Skyrim.esm"] },
+  lute: { label: loc("emote.prop.lute"), items: ["dabab:Skyrim.esm", "a8a0e:City of Dawnstar.esp"] },
+  flute: { label: loc("emote.prop.flute"), items: ["daba7:Skyrim.esm", "105177:Skyrim.esm", "105109:Skyrim.esm"] },
+  drum: { label: loc("emote.prop.drum"), items: ["daba9:Skyrim.esm"] },
+  broom: { label: loc("emote.prop.broom"), items: ["6717f:Skyrim.esm"] },
   // The plugin's own hoe, pinned to 0x2100 by proficiency-patcher/spec.json
-  hoe: { label: "a hoe", items: ["2100:AlduinakAdditions.esp"] },
-  imperialHorn: { label: "an Imperial war horn", items: ["200ba:Skyrim.esm"] },
+  hoe: { label: loc("emote.prop.hoe"), items: ["2100:AlduinakAdditions.esp"] },
+  imperialHorn: { label: loc("emote.prop.imperialHorn"), items: ["200ba:Skyrim.esm"] },
   // Nord War Horn, Torygg's War Horn, Vrage's Horn
-  nordHorn: { label: "a Nord war horn", items: ["200b6:Skyrim.esm", "e77bb:Skyrim.esm", "1252be:WindhelmSSE.esp"] },
+  nordHorn: { label: loc("emote.prop.nordHorn"), items: ["200b6:Skyrim.esm", "e77bb:Skyrim.esm", "1252be:WindhelmSSE.esp"] },
 };
 
 interface EmoteDef {
@@ -68,83 +69,83 @@ interface EmoteGroup {
 const GROUPS: EmoteGroup[] = [
   {
     id: 'greetings',
-    label: 'Greetings',
+    label: loc("emote.group.greetings"),
     emotes: [
-      { anim: 'IdleWave', label: 'Wave' },
-      { anim: 'IdleCivilWarCheer', label: 'War Cheer' },
-      { anim: 'IdleSalute', label: 'Salute' },
-      { anim: 'IdleSilentBow', label: 'Silent Bow' },
-      { anim: 'IdleGetAttention', label: 'Get Attention' },
-      { anim: 'IdleLookFar', label: 'Look Far' },
-      { anim: 'IdleMT_DoorBang', label: 'Knock Door' },
+      { anim: 'IdleWave', label: loc("emote.anim.wave") },
+      { anim: 'IdleCivilWarCheer', label: loc("emote.anim.warCheer") },
+      { anim: 'IdleSalute', label: loc("emote.anim.salute") },
+      { anim: 'IdleSilentBow', label: loc("emote.anim.silentBow") },
+      { anim: 'IdleGetAttention', label: loc("emote.anim.getAttention") },
+      { anim: 'IdleLookFar', label: loc("emote.anim.lookFar") },
+      { anim: 'IdleMT_DoorBang', label: loc("emote.anim.knockDoor") },
     ],
   },
   {
     id: 'reactions',
-    label: 'Reactions',
+    label: loc("emote.group.reactions"),
     emotes: [
-      { anim: 'IdleApplaud2', label: 'Clapping' },
-      { anim: 'IdleApplaud4', label: 'Applaud' },
-      { anim: 'IdleApplaud5', label: 'Clapping Overhead' },
-      { anim: 'IdleLaugh', label: 'Laugh' },
-      { anim: 'IdleSurrender', label: 'Surrender' },
-      { anim: 'IdleCowerEnter', label: 'Scared' },
-      { anim: 'IdleWipeBrow', label: 'Wipe Brow' },
-      { anim: 'IdleWounded_02', label: 'Wounded' },
+      { anim: 'IdleApplaud2', label: loc("emote.anim.clapping") },
+      { anim: 'IdleApplaud4', label: loc("emote.anim.applaud") },
+      { anim: 'IdleApplaud5', label: loc("emote.anim.clappingOverhead") },
+      { anim: 'IdleLaugh', label: loc("emote.anim.laugh") },
+      { anim: 'IdleSurrender', label: loc("emote.anim.surrender") },
+      { anim: 'IdleCowerEnter', label: loc("emote.anim.scared") },
+      { anim: 'IdleWipeBrow', label: loc("emote.anim.wipeBrow") },
+      { anim: 'IdleWounded_02', label: loc("emote.anim.wounded") },
     ],
   },
   {
     id: 'stances',
-    label: 'Stances',
+    label: loc("emote.group.stances"),
     emotes: [
-      { anim: 'IdleLayDown', label: 'Lay Down' },
-      { anim: 'IdleWarmHandsStanding', label: 'Warm Hands' },
-      { anim: 'IdleWarmHandsCrouched', label: 'Warm Hands (Sit)' },
-      { anim: 'IdleGrave_01', label: 'Pray' },
-      { anim: 'IdlePray', label: 'Worship' },
-      { anim: 'IdleSitCrossLeggedEnter', label: 'Sit Crossed' },
-      { anim: 'IdleKneelingEnter', label: 'Kneel' },
-      { anim: 'IdleWounded_03', label: 'Sit Lazy' },
+      { anim: 'IdleLayDown', label: loc("emote.anim.layDown") },
+      { anim: 'IdleWarmHandsStanding', label: loc("emote.anim.warmHands") },
+      { anim: 'IdleWarmHandsCrouched', label: loc("emote.anim.warmHandsSit") },
+      { anim: 'IdleGrave_01', label: loc("emote.anim.pray") },
+      { anim: 'IdlePray', label: loc("emote.anim.worship") },
+      { anim: 'IdleSitCrossLeggedEnter', label: loc("emote.anim.sitCrossed") },
+      { anim: 'IdleKneelingEnter', label: loc("emote.anim.kneel") },
+      { anim: 'IdleWounded_03', label: loc("emote.anim.sitLazy") },
     ],
   },
   {
     id: 'dialog',
-    label: 'Dialog',
+    label: loc("emote.group.dialog"),
     emotes: [
-      { anim: 'OffsetArmsCrossedStart', label: 'Crossed Arms' },
-      { anim: 'IdleGrave_02', label: 'Formal Stand' },
-      { anim: 'IdleHandsBehindBack', label: 'Hands Behind' },
-      { anim: 'IdleExamine', label: 'Examine' },
-      { anim: 'IdleStudy', label: 'Study' },
-      { anim: 'IdleDialogueHandOnChinGesture', label: 'Hand On Chin' },
-      { anim: 'IdlePointFar_01', label: 'Point Far' },
+      { anim: 'OffsetArmsCrossedStart', label: loc("emote.anim.crossedArms") },
+      { anim: 'IdleGrave_02', label: loc("emote.anim.formalStand") },
+      { anim: 'IdleHandsBehindBack', label: loc("emote.anim.handsBehind") },
+      { anim: 'IdleExamine', label: loc("emote.anim.examine") },
+      { anim: 'IdleStudy', label: loc("emote.anim.study") },
+      { anim: 'IdleDialogueHandOnChinGesture', label: loc("emote.anim.handOnChin") },
+      { anim: 'IdlePointFar_01', label: loc("emote.anim.pointFar") },
     ],
   },
   {
     id: 'activities',
-    label: 'Activities',
+    label: loc("emote.group.activities"),
     emotes: [
-      { anim: 'IdleDrink', label: 'Drink', prop: true },
-      { anim: 'IdleEatingStandingStart', label: 'Eating', prop: true },
-      { anim: 'IdleLooseSweepingStart', label: 'Sweeping', prop: true, needs: PROPS.broom },
-      { anim: 'IdleHoe', label: 'Use Hoe', prop: true, needs: PROPS.hoe },
-      { anim: 'IdleRitualStart', label: 'Ritual' },
-      { anim: 'IdleNoteRead', label: 'Read Note', prop: true },
-      { anim: 'IdleBook_PageTurn', label: 'Read Book', prop: true },
+      { anim: 'IdleDrink', label: loc("emote.anim.drink"), prop: true },
+      { anim: 'IdleEatingStandingStart', label: loc("emote.anim.eating"), prop: true },
+      { anim: 'IdleLooseSweepingStart', label: loc("emote.anim.sweeping"), prop: true, needs: PROPS.broom },
+      { anim: 'IdleHoe', label: loc("emote.anim.useHoe"), prop: true, needs: PROPS.hoe },
+      { anim: 'IdleRitualStart', label: loc("emote.anim.ritual") },
+      { anim: 'IdleNoteRead', label: loc("emote.anim.readNote"), prop: true },
+      { anim: 'IdleBook_PageTurn', label: loc("emote.anim.readBook"), prop: true },
     ],
   },
   {
     id: 'entertainment',
-    label: 'Entertain',
+    label: loc("emote.group.entertainment"),
     emotes: [
-      { anim: 'IdleCiceroDance1', label: 'Cicero Dance 1' },
-      { anim: 'IdleCiceroDance2', label: 'Cicero Dance 2' },
-      { anim: 'IdleCiceroDance3', label: 'Cicero Dance 3' },
-      { anim: 'IdleDrumStart', label: 'Play Drum', prop: true, needs: PROPS.drum },
-      { anim: 'IdleFluteStart', label: 'Play Flute', prop: true, needs: PROPS.flute },
-      { anim: 'IdleLuteStart', label: 'Play Lute', prop: true, needs: PROPS.lute },
-      { anim: 'IdleBlowHornImperial', label: 'Horn (Imper.)', prop: true, needs: PROPS.imperialHorn },
-      { anim: 'IdleBlowHornStormcloak', label: 'Horn (Stormcl.)', prop: true, needs: PROPS.nordHorn },
+      { anim: 'IdleCiceroDance1', label: loc("emote.anim.ciceroDance1") },
+      { anim: 'IdleCiceroDance2', label: loc("emote.anim.ciceroDance2") },
+      { anim: 'IdleCiceroDance3', label: loc("emote.anim.ciceroDance3") },
+      { anim: 'IdleDrumStart', label: loc("emote.anim.playDrum"), prop: true, needs: PROPS.drum },
+      { anim: 'IdleFluteStart', label: loc("emote.anim.playFlute"), prop: true, needs: PROPS.flute },
+      { anim: 'IdleLuteStart', label: loc("emote.anim.playLute"), prop: true, needs: PROPS.lute },
+      { anim: 'IdleBlowHornImperial', label: loc("emote.anim.hornImperial"), prop: true, needs: PROPS.imperialHorn },
+      { anim: 'IdleBlowHornStormcloak', label: loc("emote.anim.hornStormcloak"), prop: true, needs: PROPS.nordHorn },
     ],
   },
 ];
@@ -312,7 +313,7 @@ export class EmoteService extends ClientListener {
   private playEmote(anim: string): void {
     const need = this.missingProp(anim, getPcInventory());
     if (need) {
-      notifyNextUpdate(this.controller, this.sp, `You need ${need.label} for this emote.`);
+      notifyNextUpdate(this.controller, this.sp, loc("emote.needProp", { item: need.label }));
       return;
     }
     const previous = this.activeEmote;
@@ -339,7 +340,7 @@ export class EmoteService extends ClientListener {
       if (anim.indexOf("Offset") !== 0 && isSeatedOrMounted(player)) {
         this.activeEmote = "";
         logToPlatformLog(this, `emote ${anim} skipped: the player is ${player.isOnMount() ? "mounted" : `seated (sit state ${player.getSitState()})`}`);
-        notifyNextUpdate(this.controller, this.sp, "Stand up to use emotes.");
+        notifyNextUpdate(this.controller, this.sp, loc("emote.standUp"));
         return;
       }
       // An idle started with a weapon or spell in hand glitches, so the hands are emptied first
@@ -348,7 +349,7 @@ export class EmoteService extends ClientListener {
           this.activeEmote = "";
           // Observers were already told the weapon is going away
           this.controller.lookupListener(SendInputsService).relayPlayerAnimEvent("Equip");
-          notifyNextUpdate(this.controller, this.sp, "Put your weapon away to use emotes.");
+          notifyNextUpdate(this.controller, this.sp, loc("emote.sheathe"));
           return;
         }
         if (sheathePolls === 0) {
@@ -363,7 +364,7 @@ export class EmoteService extends ClientListener {
       const firstPerson = this.sp.Game.getCameraState() === FIRST_PERSON_CAMERA;
       if (firstPerson && cameraWaits >= CAMERA_MAX_WAITS) {
         this.activeEmote = "";
-        notifyNextUpdate(this.controller, this.sp, "Emotes play in third person.");
+        notifyNextUpdate(this.controller, this.sp, loc("emote.thirdPerson"));
         return;
       }
       this.holdCamera();
@@ -516,9 +517,9 @@ export class EmoteService extends ClientListener {
   private poseLockNotice(): string {
     try {
       const restraint = this.controller.lookupListener(RestraintService);
-      if (restraint.isCarrying && !restraint.isCarried) return "Put down what you carry to use emotes.";
+      if (restraint.isCarrying && !restraint.isCarried) return loc("emote.carrying");
     } catch { /* restraint wording */ }
-    return "You cannot use emotes while restrained.";
+    return loc("emote.restrained");
   }
 
   private openMenu(): void {
@@ -574,7 +575,7 @@ export class EmoteService extends ClientListener {
       // activeEmote outlives an idle ended by combat, furniture or mounting; only a prop still in hand is stopped
       if (player && player.getAnimationVariableBool("bAnimObjectLoaded")) {
         this.stopActiveEmote();
-        notifyNextUpdate(this.controller, this.sp, `You no longer carry ${need.label}.`);
+        notifyNextUpdate(this.controller, this.sp, loc("emote.propLost", { item: need.label }));
       } else {
         this.activeEmote = "";
       }

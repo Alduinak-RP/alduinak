@@ -150,17 +150,6 @@ export function isConsoleOpen(sp: Sp): boolean {
   }
 }
 
-// Reads the UI language from the skymp5-client settings block.
-export function readMenuLanguage(sp: Sp): string {
-  try {
-    const settings = sp.settings["skymp5-client"] as any;
-    const lang = settings && settings["language"];
-    return typeof lang === "string" ? lang : "";
-  } catch {
-    return "";
-  }
-}
-
 // Reads a DxScanCode key binding from the skymp5-client settings block.
 export function readMenuKeyCode(sp: Sp, settingName: string, fallback: number): number {
   return readClientSettingNumber(sp, settingName, fallback);

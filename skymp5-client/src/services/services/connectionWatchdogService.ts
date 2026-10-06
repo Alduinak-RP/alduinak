@@ -4,6 +4,7 @@ import { NetworkingService } from "./networkingService";
 import { SinglePlayerService } from "./singlePlayerService";
 import { showSystemNotification } from "./systemNotification";
 import { logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // Paces reconnects after a lost connection: five attempts 10 s apart, then the game closes
 
@@ -40,7 +41,7 @@ export class ConnectionWatchdogService extends ClientListener {
   private onConnectionRestored() {
     if (this.downSince) {
       logTrace(this, `Connection restored after ${this.attemptsMade} attempts`);
-      if (this.attemptsMade > 0) showSystemNotification(this.sp, "Connection restored.");
+      if (this.attemptsMade > 0) showSystemNotification(this.sp, loc("connection.restored"));
     }
     this.everConnected = true;
     this.downSince = 0;
@@ -68,10 +69,10 @@ export class ConnectionWatchdogService extends ClientListener {
 
   // A server that was never reached (startup with the server down) is retried without limit
   private attemptText(attempt: number) {
-    if (!this.everConnected) return "Could not reach Alduinak. Retrying...";
+    if (!this.everConnected) return loc("connection.unreachable");
     return attempt === 1
-      ? `Connection to Alduinak lost. Reconnecting (1/${ATTEMPTS})...`
-      : `Still reconnecting (${attempt}/${ATTEMPTS})...`;
+      ? loc("connection.lost", { attempts: ATTEMPTS })
+      : loc("connection.retrying", { attempt, attempts: ATTEMPTS });
   }
 
   private giveUp() {
@@ -79,6 +80,6 @@ export class ConnectionWatchdogService extends ClientListener {
     this.gaveUp = true;
     logTrace(this, "Server unreachable for a minute, closing the game");
     const kick = this.controller.lookupListener(KickService);
-    kick.showDisconnectedAndExit(kick.strings.unreachable);
+    kick.showDisconnectedAndExit(loc("kick.unreachable"));
   }
 }

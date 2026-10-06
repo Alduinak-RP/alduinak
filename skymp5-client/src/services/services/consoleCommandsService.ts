@@ -5,6 +5,7 @@ import { MsgType } from "../../messages";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 
 import { ClientListener, Sp, CombinedController } from "./clientListener";
+import { loc } from "../../loc";
 
 enum CmdArgument {
     ObjectReference,
@@ -81,7 +82,7 @@ export class ConsoleCommandsService extends ClientListener {
                     case CmdArgument.ObjectReference:
                         args[i] = localIdToRemoteId(parseInt(`${args[i]}`));
                         if (!args[i]) {
-                            this.sp.printConsole("no server id for the selected ref");
+                            this.sp.printConsole(loc("console.noServerId"));
                             return false;
                         }
                         break;
@@ -107,7 +108,7 @@ export class ConsoleCommandsService extends ClientListener {
             });
 
             // Meant to be shown to user, not for logging
-            this.sp.printConsole("sent");
+            this.sp.printConsole(loc("console.sent"));
             return false;
         };
     }

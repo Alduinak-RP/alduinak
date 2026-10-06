@@ -2,6 +2,7 @@ import { CameraStateChangedEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { sendCustomPacket, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { showSystemNotification } from "./systemNotification";
+import { loc } from "../../loc";
 import { ApplyDeathStateEvent } from "../events/applyDeathStateEvent";
 import { adminGhostAlpha, setAdminGhostShader } from "../../view/adminGhostLook";
 import { refreshMovement } from "../../sync/actorvalues";
@@ -76,28 +77,28 @@ export class AdminModeService extends ClientListener {
         player?.setGhost(on);
         if (player) setAdminGhostShader(player, on);
         this.applyAlpha(true);
-        if (notify) showSystemNotification(this.sp, on ? "Ghost: everyone sees you as a ghost and hits pass through you" : "Ghost off");
+        if (notify) showSystemNotification(this.sp, loc(on ? "admin.ghostOn" : "admin.ghostOff"));
         break;
       case "invis":
         this.invisible = on;
         this.applyAlpha(true);
-        if (notify) showSystemNotification(this.sp, on ? "Invisible: players cannot see you, other admins see you as a ghost" : "Invisible off");
+        if (notify) showSystemNotification(this.sp, loc(on ? "admin.invisibleOn" : "admin.invisibleOff"));
         break;
       case "speed":
         this.setSpeed(on);
-        if (notify) showSystemNotification(this.sp, on ? "Speed: you move three times as fast" : "Speed off");
+        if (notify) showSystemNotification(this.sp, loc(on ? "admin.speedOn" : "admin.speedOff"));
         break;
       case "freecam":
         this.setFreecam(on, notify);
         break;
       case "smite":
-        showSystemNotification(this.sp, on ? "Smite enabled" : "Smite disabled");
+        showSystemNotification(this.sp, loc(on ? "admin.smiteOn" : "admin.smiteOff"));
         break;
       case "healhit":
-        showSystemNotification(this.sp, on ? "Heal-on-hit enabled" : "Heal-on-hit disabled");
+        showSystemNotification(this.sp, loc(on ? "admin.healHitOn" : "admin.healHitOff"));
         break;
       case "names":
-        if (notify) showSystemNotification(this.sp, on ? "Show account name: players near you see your account name in your staff colour" : "Show account name off, your tag shows your character again");
+        if (notify) showSystemNotification(this.sp, loc(on ? "admin.namesOn" : "admin.namesOff"));
         break;
       default:
         break;
@@ -128,8 +129,8 @@ export class AdminModeService extends ClientListener {
     this.armFreecamCheck(FREECAM_CHECK_MS);
     if (on && !active) this.reportFreecamOff();
     if (!notify) return;
-    showSystemNotification(this.sp, active ? "Freecam: movement keys fly the camera, your character stays put; turn it off in Modes"
-      : !on ? "Freecam off" : hasNative ? "Freecam could not start here" : "Freecam needs the updated SkyrimPlatform native build");
+    showSystemNotification(this.sp, loc(active ? "admin.freecamOn"
+      : !on ? "admin.freecamOff" : hasNative ? "admin.freecamFailed" : "admin.freecamNoNative"));
   }
 
   private onCameraStateChanged(e: CameraStateChangedEvent): void {

@@ -18,6 +18,7 @@ import { JobService } from "./jobService";
 import { InteractionPromptService } from "./interactionPromptService";
 import { ActivationService } from "./activationService";
 import { ItemService } from "./itemService";
+import { loc } from "../../loc";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -43,24 +44,24 @@ interface PlayerAction {
 
 // Character interaction menu, kept intentionally small (Trade is a dedicated button above these).
 const ACTIONS: PlayerAction[] = [
-  { id: 'givePotion', label: 'Give Potion' },
-  { id: 'introduce', label: 'Introduce' },
-  { id: 'search', label: 'Search' },
-  { id: 'capture', label: 'Restrain', danger: true },
-  { id: 'carry', label: 'Carry' },
-  { id: 'release', label: 'Release' },
-  { id: 'finishOff', label: 'Finish Off', danger: true },
-  { id: 'prepareExecution', label: 'Prepare Execution', danger: true },
-  { id: 'execute', label: 'Execute', danger: true },
-  { id: 'assassinate', label: 'Assassinate', danger: true },
-  { id: 'factionRecruit', label: 'Recruit' },
+  { id: 'givePotion', label: loc("playerAction.menu.givePotion") },
+  { id: 'introduce', label: loc("playerAction.menu.introduce") },
+  { id: 'search', label: loc("playerAction.menu.search") },
+  { id: 'capture', label: loc("playerAction.menu.capture"), danger: true },
+  { id: 'carry', label: loc("playerAction.menu.carry") },
+  { id: 'release', label: loc("playerAction.menu.release") },
+  { id: 'finishOff', label: loc("playerAction.menu.finishOff"), danger: true },
+  { id: 'prepareExecution', label: loc("playerAction.menu.prepareExecution"), danger: true },
+  { id: 'execute', label: loc("playerAction.menu.execute"), danger: true },
+  { id: 'assassinate', label: loc("playerAction.menu.assassinate"), danger: true },
+  { id: 'factionRecruit', label: loc("playerAction.menu.factionRecruit") },
 ];
 
 // A player-placed item; the server's itemMenuState says which apply
-const ITEM_PICKUP: PlayerAction = { id: 'itemPickup', label: 'Pick Up' };
-const ITEM_MOVE: PlayerAction = { id: 'itemMove', label: 'Move' };
-const ITEM_NAIL: PlayerAction = { id: 'itemNail', label: 'Nail Down' };
-const ITEM_PRY: PlayerAction = { id: 'itemPry', label: 'Pry Free' };
+const ITEM_PICKUP: PlayerAction = { id: 'itemPickup', label: loc("playerAction.menu.itemPickup") };
+const ITEM_MOVE: PlayerAction = { id: 'itemMove', label: loc("playerAction.menu.itemMove") };
+const ITEM_NAIL: PlayerAction = { id: 'itemNail', label: loc("playerAction.menu.itemNail") };
+const ITEM_PRY: PlayerAction = { id: 'itemPry', label: loc("playerAction.menu.itemPry") };
 
 // Every action goes to the server systems as a custom packet (by server form id).
 const PACKET_ACTIONS: Record<string, string> = {
@@ -88,13 +89,13 @@ const SERVER_FLAGS: Record<string, string> = {
 };
 
 // A dead player's body a hunter may skin (the server's playerMenuState skin flag) opens these instead of the search window
-const BODY_SEARCH: PlayerAction = { id: 'search', label: 'Search' };
-const BODY_SKIN: PlayerAction = { id: 'skin', label: 'Skin' };
-const BODY_SKIN_TIRED: PlayerAction = { id: 'skin', label: 'Skin (too tired)', disabled: true };
+const BODY_SEARCH: PlayerAction = { id: 'search', label: loc("playerAction.menu.search") };
+const BODY_SKIN: PlayerAction = { id: 'skin', label: loc("playerAction.menu.skin") };
+const BODY_SKIN_TIRED: PlayerAction = { id: 'skin', label: loc("playerAction.menu.skinTired"), disabled: true };
 
 // While a passive job load is carried: Put down joins the menu, and the interact key on nothing opens this one first
-const PUT_DOWN: PlayerAction = { id: 'putDown', label: 'Put down' };
-const LOAD_ACTIONS: PlayerAction[] = [PUT_DOWN, { id: 'personal', label: 'Personal Menu' }];
+const PUT_DOWN: PlayerAction = { id: 'putDown', label: loc("playerAction.menu.putDown") };
+const LOAD_ACTIONS: PlayerAction[] = [PUT_DOWN, { id: 'personal', label: loc("playerAction.menu.personal") }];
 
 const events = {
   action: 'pa:action',
@@ -259,7 +260,7 @@ export class PlayerActionService extends ClientListener {
   }
 
   private interactWithItem(ref: ObjectReference): void {
-    targetName = ref.getDisplayName() || "Item";
+    targetName = ref.getDisplayName() || loc("playerAction.defaultItem");
     this.playerTarget = 0;
     this.bodyTarget = false;
     this.itemTarget = localIdToRemoteId(ref.getFormID());
@@ -387,7 +388,7 @@ export class PlayerActionService extends ClientListener {
       } else if (packetType && this.playerTarget) {
         sendCustomPacket(this.controller, { customPacketType: packetType, target: this.playerTarget });
       } else if (packetType) {
-        notifyNextUpdate(this.controller, this.sp, "Look at a player first.");
+        notifyNextUpdate(this.controller, this.sp, loc("playerAction.lookAtPlayer"));
       }
       this.closeMenu();
       return;

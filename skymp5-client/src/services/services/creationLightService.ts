@@ -3,6 +3,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { BrowserService } from "./browserService";
 import { closeWidget, isConsoleOpen, keyLabel, readMenuKeyCode, refreshFormMenu } from "./widgetMenuUtil";
 import { logToPlatformLog } from "../../logging";
+import { loc } from "../../loc";
 
 // Skyrim.esm LIGH MagicLightLightSpell01, the light Candlelight and Magelight carry (radius 450)
 const LIGHT_BASE = 0x3fa58;
@@ -134,7 +135,7 @@ export class CreationLightService extends ClientListener {
     if (show === this.hintShown) return;
     this.hintShown = show;
     if (show) {
-      hintText = `Press ${keyLabel(this.key)} to toggle the light`;
+      hintText = loc("creationLight.hint", { key: keyLabel(this.key) });
       refreshFormMenu(this.sp, this.hintWidgetSetter, { hintText, HINT_WIDGET_ID });
     } else {
       closeWidget(this.sp, HINT_WIDGET_ID);

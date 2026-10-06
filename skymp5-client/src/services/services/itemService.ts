@@ -11,6 +11,7 @@ import { WritingService } from "./writingService";
 import { TimersService } from "./timersService";
 import { logToPlatformLog } from "../../logging";
 import { setAdminGhostShader } from "../../view/adminGhostLook";
+import { loc } from "../../loc";
 
 // Set by the server's PlacedItemSystem on a nailed item
 export const NAILED_PROP = "ff_nailed";
@@ -26,7 +27,7 @@ const LAST_SKILL_AV = 23;
 // The Book Menu follows the activation within a few frames; without it the copy is removed after this long
 const READ_OPEN_MS = 2000;
 // PlacedItemSystem's own words for a refused pickup
-const NAILED_NOTICE = "It is nailed down.";
+const NAILED_NOTICE = loc("item.nailedDown");
 // How far under the nailed book its copy waits, out of sight and out of the crosshair's reach
 const COPY_DEPTH = 4000;
 

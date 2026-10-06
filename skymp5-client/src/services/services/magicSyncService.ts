@@ -15,6 +15,7 @@ import { describeAim, describeCastGraph, describeCastHands } from '../../sync/ca
 import { MsgType } from "../../messages";
 import { SpellCastMsgData, SpellCastMessage } from "../messages/spellCastMessage";
 import { UpdateAnimVariablesMessageMsgData } from "../messages/updateAnimVariablesMessage";
+import { loc } from "../../loc";
 
 const CASTING_RECENT_MS = 500;
 // The player's spell slots, and casting vars while no relayed cast reads them every frame, are read this often
@@ -33,10 +34,10 @@ interface RationedPower {
 // The server's formatWait wording
 const formatWait = (ms: number): string => {
     const minutes = Math.ceil(ms / 60000);
-    if (minutes < 60) return `${minutes} min`;
+    if (minutes < 60) return loc("magic.waitMinutes", { minutes });
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
-    return rest ? `${hours} h ${rest} min` : `${hours} h`;
+    return rest ? loc("magic.waitHoursMinutes", { hours, minutes: rest }) : loc("magic.waitHours", { hours });
 };
 
 // A relayed channel, tracked per caster and hand until its stop and echoes are sent
@@ -217,13 +218,13 @@ export class MagicSyncService extends ClientListener {
 
     // The server's refusal text for a blocked or rationed power it would refuse now, "" when the cast may go through
     private powerRefusal(spellId: number, spellName: string): string {
-        if (isBlockedPower(spellId)) return `${spellName || "This power"} is disabled on this server.`;
+        if (isBlockedPower(spellId)) return loc("magic.powerDisabled", { name: spellName || loc("magic.thisPower") });
         const power = this.rationedPowers.get(spellId);
         if (!power) return "";
         const name = power.name || spellName;
-        if (!power.available) return `${name} is not available yet.`;
+        if (!power.available) return loc("magic.powerNotAvailable", { name });
         const wait = power.readyAt - Date.now();
-        return wait > 0 ? `${name} is ready again in ${formatWait(wait)}.` : "";
+        return wait > 0 ? loc("magic.powerCooldown", { name, wait: formatWait(wait) }) : "";
     }
 
     // A cast the server would refuse: dispelled locally with a notification and never relayed

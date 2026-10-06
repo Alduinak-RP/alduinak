@@ -4,6 +4,7 @@ import { openFormMenu, closeFormMenu } from "./widgetMenuUtil";
 import { TimersService } from "./timersService";
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -21,6 +22,7 @@ const events = {
 
 // Module-level so the browser-side widget setter can read it via runtime injection.
 let promptText = "";
+const formText = { caption: loc("consent.caption"), allow: loc("consent.allow"), refuse: loc("consent.refuse") };
 
 /**
  * Consent prompt for the arrest/capture/carry feature, also used by pet
@@ -57,7 +59,7 @@ export class CaptureConsentService extends ClientListener {
         this.pendingRequestId = typeof content["requestId"] === "number"
           ? (content["requestId"] as number) : null;
         promptText = typeof content["text"] === "string"
-          ? (content["text"] as string) : "Allow this?";
+          ? (content["text"] as string) : loc("consent.defaultPrompt");
         if (this.pendingRequestId !== null) {
           logTrace(this, `Consent request`, this.pendingRequestId);
           this.openPrompt();
@@ -93,7 +95,7 @@ export class CaptureConsentService extends ClientListener {
   private openPrompt(): void {
     this.controller.once("update", () => {
       this.promptOpen = true;
-      openFormMenu(this.sp, this.browsersideWidgetSetter, { events, promptText, WIDGET_ID }, this.controller);
+      openFormMenu(this.sp, this.browsersideWidgetSetter, { events, promptText, formText, WIDGET_ID }, this.controller);
       const timers = this.controller.lookupListener(TimersService);
       if (this.expiryTimer !== undefined) {
         timers.clearTimeout(this.expiryTimer);
@@ -115,16 +117,16 @@ export class CaptureConsentService extends ClientListener {
     closeFormMenu(this.sp, WIDGET_ID);
   }
 
-  // Runs inside the CEF browser; only the injected vars (events, promptText, WIDGET_ID) and window exist here.
+  // Runs inside the CEF browser; only the injected vars (events, promptText, formText, WIDGET_ID) and window exist here.
   private browsersideWidgetSetter = () => {
     const widget = {
       type: "form",
       id: WIDGET_ID,
-      caption: "Request",
+      caption: formText.caption,
       elements: [
         { type: "text", text: promptText, tags: ["ELEMENT_STYLE_MARGIN_EXTENDED"] },
-        { type: "button", text: "Allow", tags: [], click: () => window.skyrimPlatform.sendMessage(events.yes) },
-        { type: "button", text: "Refuse", tags: ["ELEMENT_SAME_LINE"], click: () => window.skyrimPlatform.sendMessage(events.no) },
+        { type: "button", text: formText.allow, tags: [], click: () => window.skyrimPlatform.sendMessage(events.yes) },
+        { type: "button", text: formText.refuse, tags: ["ELEMENT_SAME_LINE"], click: () => window.skyrimPlatform.sendMessage(events.no) },
       ],
     };
     const others = (window.skyrimPlatform.widgets.get() || []).filter((w: any) => w.id !== WIDGET_ID);

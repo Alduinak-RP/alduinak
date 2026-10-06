@@ -1,9 +1,10 @@
 import { BrowserMessageEvent } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
-import { openFormMenu, refreshFormMenu, readMenuLanguage } from "./widgetMenuUtil";
+import { openFormMenu, refreshFormMenu } from "./widgetMenuUtil";
 import { NetworkingService } from "./networkingService";
 import { logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // for browsersideWidgetSetter (executed inside the CEF browser)
 declare const window: any;
@@ -15,34 +16,17 @@ const events = {
   quit: 'kicked:quit',
 };
 
-const translations = {
-  "ru": {
-    disconnected: 'Отключено',
-    closing: 'Игра закроется через {s} с. Перезапустите её из лаунчера, чтобы вернуться.',
-    quit: 'Выйти из игры',
-    unreachable: 'Не удалось переподключиться к Alduinak за минуту.',
-  },
-  "en": {
-    disconnected: 'Disconnected',
-    closing: 'The game will close in {s} s. Restart it from the launcher to play again.',
-    quit: 'Quit game',
-    unreachable: 'Could not reconnect to Alduinak for a minute.',
-  },
-} as const;
+const strings = {
+  disconnected: loc("kick.disconnected"),
+  quit: loc("menu.quitGame"),
+};
 
-type TranslationStrings = { [K in keyof typeof translations['en']]: string };
-
-let strings: TranslationStrings = translations['en'];
 let reason = '';
 let closing = '';
 
 // Server kick (AFK, admin, ban) or a lost server: stay disconnected, show why, then close the game so the player must relaunch.
 // Server -> Client: { "customPacketType": "kicked", "reason": "..." }
 export class KickService extends ClientListener {
-  get strings() {
-    return strings;
-  }
-
   constructor(private sp: Sp, private controller: CombinedController) {
     super();
 
@@ -52,11 +36,6 @@ export class KickService extends ClientListener {
     this.controller.on("tick", () => this.onTick());
     // The hide UI key drops focus; the dialog must be clickable again once shown
     this.controller.emitter.on("uiHiddenChanged", (e) => { if (!e.hidden && this.exitAt) this.sp.browser.setFocused(true); });
-
-    const lang = readMenuLanguage(this.sp);
-    if (lang in translations) {
-      strings = translations[lang as keyof typeof translations];
-    }
   }
 
   private onCustomPacketMessage(content: CustomPacketContent): void {
@@ -72,7 +51,7 @@ export class KickService extends ClientListener {
     this.controller.lookupListener(NetworkingService).closeAfterKick();
     this.exitAt = Date.now() + EXIT_DELAY_MS;
     this.shownSeconds = this.secondsLeft();
-    closing = strings.closing.replace('{s}', String(this.shownSeconds));
+    closing = loc("kick.closing", { s: this.shownSeconds });
     openFormMenu(this.sp, this.browsersideWidgetSetter, { reason, closing, strings, events, WIDGET_ID }, this.controller);
   }
 
@@ -82,7 +61,7 @@ export class KickService extends ClientListener {
     if (seconds <= 0) return this.quitGame();
     if (seconds === this.shownSeconds) return;
     this.shownSeconds = seconds;
-    closing = strings.closing.replace('{s}', String(seconds));
+    closing = loc("kick.closing", { s: seconds });
     refreshFormMenu(this.sp, this.browsersideWidgetSetter, { reason, closing, strings, events, WIDGET_ID });
   }
 

@@ -6,6 +6,7 @@ import { BrowserMessageEvent, FormType, ObjectReference } from "skyrimPlatform";
 import { getInventory, getRawEntries, Entry, EnchantmentEffect, effectsKey, isBoundItem, isNamedItemBase } from "../../sync/inventory";
 import { conditionOfName, conditionPercent, getDurabilityConfig, isDurableBase, percentLabel, stripTag } from "../../sync/durabilityNames";
 import { logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // for the browser-side widget setters (executed inside the CEF browser)
 declare const window: any;
@@ -186,7 +187,7 @@ export class TradeService extends ClientListener {
         this.cancelTrade("character select", true);
         break;
       case "tradeInvite":
-        inviteFrom = typeof content["fromName"] === "string" ? content["fromName"] as string : "Someone";
+        inviteFrom = typeof content["fromName"] === "string" ? content["fromName"] as string : loc("trade.someone");
         logTrace(this, `Trade invite from`, inviteFrom);
         this.openInvite();
         break;
@@ -216,7 +217,7 @@ export class TradeService extends ClientListener {
         break;
       }
       case "tradeCompleted":
-        notifyNextUpdate(this.controller, this.sp, "Trade complete.");
+        notifyNextUpdate(this.controller, this.sp, loc("trade.complete"));
         this.closeAll();
         break;
       case "tradeCancelled":
@@ -249,7 +250,7 @@ export class TradeService extends ClientListener {
             .filter((x) => Number.isFinite(x.baseId) && x.count > 0)
         : [];
     return {
-      partnerName: typeof content["partnerName"] === "string" ? content["partnerName"] as string : "Player",
+      partnerName: typeof content["partnerName"] === "string" ? content["partnerName"] as string : loc("trade.partner"),
       myOffer: items(content["myOffer"]),
       theirOffer: items(content["theirOffer"]),
       myLocked: !!content["myLocked"],
@@ -486,20 +487,20 @@ export class TradeService extends ClientListener {
       tags.push(percentLabel(conditionPercent(i.condition)));
     }
     if (i.enchantmentId || (i.enchantmentEffects && i.enchantmentEffects.length)) {
-      tags.push("enchanted");
+      tags.push(loc("trade.tag.enchanted"));
     }
     const maxCharge = i.chargePercent !== undefined ? i.maxCharge || this.baseCharge(i.baseId) : 0;
     if (maxCharge > 0) {
-      tags.push("charge " + Math.round(Math.min(100, ((i.chargePercent as number) / maxCharge) * 100)) + "%");
+      tags.push(loc("trade.tag.charge", { percent: Math.round(Math.min(100, ((i.chargePercent as number) / maxCharge) * 100)) }));
     }
     if (i.soul && SOUL_LABELS[i.soul - 1]) {
-      tags.push(SOUL_LABELS[i.soul - 1] + " soul");
+      tags.push(loc("trade.tag.soul", { soul: SOUL_LABELS[i.soul - 1] }));
     }
     if (i.poisonId) {
-      tags.push("poisoned");
+      tags.push(loc("trade.tag.poisoned"));
     }
     if (i.plain) {
-      tags.push("trades as plain");
+      tags.push(loc("trade.tag.plain"));
     }
     return tags;
   }
@@ -636,7 +637,7 @@ export class TradeService extends ClientListener {
     showUi(this.controller);
     this.sp.browser.setVisible(true);
     this.invitePending = true;
-    notifyNextUpdate(this.controller, this.sp, inviteFrom + " wants to trade with you.");
+    notifyNextUpdate(this.controller, this.sp, loc("trade.invited", { name: inviteFrom }));
   }
 
   private closeWidget(): void {

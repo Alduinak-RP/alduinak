@@ -9,6 +9,7 @@ import { PROPERTY_KEY_BASE_ID, getDiff, getInventory, hasItemExtras, isNamedItem
 import { droppedName, getDurabilityConfig } from "../../sync/durabilityNames";
 import { getPcInventory } from "./remoteServer";
 import { ItemService } from "./itemService";
+import { loc } from "../../loc";
 
 const DROP_SCAN_RADIUS = 2000;
 // Eating, drinking or poisoning from the inventory takes the item out with no container or world reference, like a drop, and equips it in the same frame
@@ -115,8 +116,8 @@ export class DropItemService extends ClientListener {
 
         // The server keeps a dropped key or writing in the pack; they move by trade or chest
         if (isNamedItemBase(baseId)) {
-            const what = (baseId >>> 0) === PROPERTY_KEY_BASE_ID ? "Keys" : "Writings";
-            notifyNextUpdate(this.controller, this.sp, `${what} cannot be dropped. Trade them or leave them in a chest.`);
+            const what = (baseId >>> 0) === PROPERTY_KEY_BASE_ID ? "item.keysNoDrop" : "item.writingsNoDrop";
+            notifyNextUpdate(this.controller, this.sp, loc(what));
             return;
         }
 

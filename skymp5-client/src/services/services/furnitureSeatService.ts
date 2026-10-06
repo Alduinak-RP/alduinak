@@ -5,6 +5,7 @@ import { BlockedAnimationsService } from "./blockedAnimationsService";
 import { isMenuShown } from "./menuStateService";
 import { localIdToRemoteId } from "../../view/worldViewMisc";
 import { logToPlatformLog, logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // Sit state 3 is fully seated, so the engine has settled on a marker
 const SIT_STATE_SEATED = 3;
@@ -180,7 +181,7 @@ export class FurnitureSeatService extends ClientListener {
     if (content.furniture !== this.claimedFurniture) return;
     logTrace(this, `seat taken, standing up`);
     this.controller.lookupListener(BlockedAnimationsService).requestStandUp();
-    notifyNextUpdate(this.controller, this.sp, "Someone is already sitting there. Try another seat.");
+    notifyNextUpdate(this.controller, this.sp, loc("seat.taken"));
   }
 
   private claimedFurniture = 0;

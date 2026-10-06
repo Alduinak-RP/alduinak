@@ -1317,7 +1317,341 @@
       "needHammer": "You need a hammer and a nail."
     }
   },
-  "client": {},
+  "client": {
+    "admin": {
+      "ghostOn": "Ghost: everyone sees you as a ghost and hits pass through you",
+      "ghostOff": "Ghost off",
+      "invisibleOn": "Invisible: players cannot see you, other admins see you as a ghost",
+      "invisibleOff": "Invisible off",
+      "speedOn": "Speed: you move three times as fast",
+      "speedOff": "Speed off",
+      "smiteOn": "Smite enabled",
+      "smiteOff": "Smite disabled",
+      "healHitOn": "Heal-on-hit enabled",
+      "healHitOff": "Heal-on-hit disabled",
+      "namesOn": "Show account name: players near you see your account name in your staff colour",
+      "namesOff": "Show account name off, your tag shows your character again",
+      "freecamOn": "Freecam: movement keys fly the camera, your character stays put; turn it off in Modes",
+      "freecamOff": "Freecam off",
+      "freecamFailed": "Freecam could not start here",
+      "freecamNoNative": "Freecam needs the updated SkyrimPlatform native build"
+    },
+    "connection": {
+      "restored": "Connection restored.",
+      "unreachable": "Could not reach Alduinak. Retrying...",
+      "lost": "Connection to Alduinak lost. Reconnecting (1/{attempts})...",
+      "retrying": "Still reconnecting ({attempt}/{attempts})..."
+    },
+    "menu": {
+      "quitGame": "Quit game"
+    },
+    "kick": {
+      "disconnected": "Disconnected",
+      "closing": "The game will close in {s} s. Restart it from the launcher to play again.",
+      "unreachable": "Could not reconnect to Alduinak for a minute."
+    },
+    "queue": {
+      "caption": "Server full",
+      "position": "You are {position} of {total} in the queue",
+      "waited": "Waiting for {t}",
+      "eta": "Estimated wait: about {t}",
+      "etaUnknown": "Estimated wait: unknown",
+      "sec": "{n} s",
+      "min": "{n} min"
+    },
+    "auth": {
+      "loginViaDiscord": "log in via Discord",
+      "joinDiscordServer": "join the Discord server",
+      "banned": "you are banned",
+      "whatWasThat": "what was that?",
+      "openingBrowser": "opening browser...",
+      "loginFirst": "log in first",
+      "linkedSuccessfully": "linked successfully",
+      "connecting": "connecting",
+      "technicalIssues": "technical difficulties\nplease try again\nor contact us on Discord",
+      "authorization": "Authorization",
+      "notAuthorized": "not authorized",
+      "play": "Play",
+      "connectToServer": "Connect to game server",
+      "updateCaption": "Update",
+      "updateAvailable": "a new update is available!",
+      "downloadAt": "download it at",
+      "openSkympNet": "open skymp.net",
+      "updateDownloadHint": "Go to the update download page",
+      "oops": "oops",
+      "join": "join",
+      "back": "back",
+      "quitGame": "quit game",
+      "quitGameHint": "Close the game and return to desktop",
+      "serverFull": "The server is full, retrying...",
+      "unreachable": "Could not reach the server, retrying...",
+      "fail": "Fail: {body}",
+      "serverReturned": "Server returned {status} \"{body}\"",
+      "masterId": "id: {id}"
+    },
+    "charSelect": {
+      "selectCharacter": "Select Character",
+      "emptySlot": "Empty",
+      "unnamed": "Unnamed",
+      "play": "Play",
+      "edit": "Edit",
+      "del": "Delete",
+      "confirmDelete": "Permanently delete this character? This cannot be undone.",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "quit": "Quit",
+      "dead": "Dead",
+      "next": "Continue",
+      "back": "Back",
+      "beginAt": "Begin at {location}?",
+      "loadFailed": "Could not enter the world: {reason}. Send staff skyrim-platform.log from Documents > My Games > your Skyrim folder > SKSE."
+    },
+    "chat": {
+      "oocLow": "{name} (OOC - Low): \"{text}\"",
+      "oocLong": "{name} (OOC - Long): \"{text}\"",
+      "pmUsage": "Usage: /pm <player|account|id> <message>",
+      "pmTo": "To {target}: {text}",
+      "you": "You",
+      "adminOnly": "Only admins can use that command.",
+      "pmSender": "PM",
+      "pmFrom": "{sender}: {text}"
+    },
+    "prompt": {
+      "dismount": "Dismount",
+      "read": "Read",
+      "noticeBoard": "Notice Board",
+      "attack": "Attack",
+      "follow": "Follow",
+      "talk": "Talk",
+      "taunt": "Taunt",
+      "search": "Search",
+      "interact": "Interact",
+      "ride": "Ride",
+      "harvest": "Harvest",
+      "command": "Command",
+      "unlock": "Unlock",
+      "open": "Open",
+      "activate": "Activate",
+      "use": "Use",
+      "admire": "Admire",
+      "take": "Take"
+    },
+    "playerAction": {
+      "lookAtPlayer": "Look at a player first.",
+      "menu": {
+        "givePotion": "Give Potion",
+        "introduce": "Introduce",
+        "capture": "Restrain",
+        "carry": "Carry",
+        "release": "Release",
+        "finishOff": "Finish Off",
+        "prepareExecution": "Prepare Execution",
+        "execute": "Execute",
+        "assassinate": "Assassinate",
+        "factionRecruit": "Recruit",
+        "itemPickup": "Pick Up",
+        "itemMove": "Move",
+        "itemNail": "Nail Down",
+        "itemPry": "Pry Free",
+        "skin": "Skin",
+        "personal": "Personal Menu",
+        "search": "Search",
+        "skinTired": "Skin (too tired)",
+        "putDown": "Put down"
+      },
+      "defaultItem": "Item"
+    },
+    "emote": {
+      "anim": {
+        "wave": "Wave",
+        "warCheer": "War Cheer",
+        "salute": "Salute",
+        "silentBow": "Silent Bow",
+        "getAttention": "Get Attention",
+        "lookFar": "Look Far",
+        "knockDoor": "Knock Door",
+        "clapping": "Clapping",
+        "applaud": "Applaud",
+        "clappingOverhead": "Clapping Overhead",
+        "laugh": "Laugh",
+        "surrender": "Surrender",
+        "scared": "Scared",
+        "wipeBrow": "Wipe Brow",
+        "wounded": "Wounded",
+        "layDown": "Lay Down",
+        "warmHands": "Warm Hands",
+        "warmHandsSit": "Warm Hands (Sit)",
+        "pray": "Pray",
+        "worship": "Worship",
+        "sitCrossed": "Sit Crossed",
+        "kneel": "Kneel",
+        "sitLazy": "Sit Lazy",
+        "crossedArms": "Crossed Arms",
+        "formalStand": "Formal Stand",
+        "handsBehind": "Hands Behind",
+        "examine": "Examine",
+        "study": "Study",
+        "handOnChin": "Hand On Chin",
+        "pointFar": "Point Far",
+        "drink": "Drink",
+        "eating": "Eating",
+        "sweeping": "Sweeping",
+        "useHoe": "Use Hoe",
+        "ritual": "Ritual",
+        "readNote": "Read Note",
+        "readBook": "Read Book",
+        "ciceroDance1": "Cicero Dance 1",
+        "ciceroDance2": "Cicero Dance 2",
+        "ciceroDance3": "Cicero Dance 3",
+        "playDrum": "Play Drum",
+        "playFlute": "Play Flute",
+        "playLute": "Play Lute",
+        "hornImperial": "Horn (Imper.)",
+        "hornStormcloak": "Horn (Stormcl.)"
+      },
+      "group": {
+        "greetings": "Greetings",
+        "reactions": "Reactions",
+        "stances": "Stances",
+        "dialog": "Dialog",
+        "activities": "Activities",
+        "entertainment": "Entertain"
+      },
+      "prop": {
+        "lute": "a lute",
+        "flute": "a flute",
+        "drum": "a drum",
+        "broom": "a broom",
+        "hoe": "a hoe",
+        "imperialHorn": "an Imperial war horn",
+        "nordHorn": "a Nord war horn"
+      },
+      "needProp": "You need {item} for this emote.",
+      "standUp": "Stand up to use emotes.",
+      "sheathe": "Put your weapon away to use emotes.",
+      "thirdPerson": "Emotes play in third person.",
+      "carrying": "Put down what you carry to use emotes.",
+      "restrained": "You cannot use emotes while restrained.",
+      "propLost": "You no longer carry {item}."
+    },
+    "item": {
+      "nailedDown": "It is nailed down.",
+      "keysNoDrop": "Keys cannot be dropped. Trade them or leave them in a chest.",
+      "writingsNoDrop": "Writings cannot be dropped. Trade them or leave them in a chest.",
+      "countChanged": "{sign} {name} ({count})"
+    },
+    "carry": {
+      "doorBlocked": "Set them down before going through this door."
+    },
+    "seat": {
+      "taken": "Someone is already sitting there. Try another seat."
+    },
+    "handover": {
+      "expired": "That hand-over expired.",
+      "notPerson": "Cancelled - that is not a person."
+    },
+    "housing": {
+      "notProperty": "That cannot be claimed.",
+      "lookAtRecipient": "Look at the recipient and press the interact key.",
+      "keyNameHint": "Letters, numbers, spaces, ' _ and - only.",
+      "defaultLabel": "Property",
+      "nameKey": "Name the key"
+    },
+    "pet": {
+      "dogsNoSit": "Dogs do not sit.",
+      "lookAtRecipient": "Look at the player who should receive it and press the interact key.",
+      "trade": "Trade",
+      "defaultTitle": "Pet",
+      "defaultName": "Companion",
+      "rename": "Rename"
+    },
+    "mount": {
+      "noDismount": "You cannot dismount here."
+    },
+    "trade": {
+      "complete": "Trade complete.",
+      "invited": "{name} wants to trade with you.",
+      "someone": "Someone",
+      "partner": "Player",
+      "tag": {
+        "enchanted": "enchanted",
+        "charge": "charge {percent}%",
+        "soul": "{soul} soul",
+        "poisoned": "poisoned",
+        "plain": "trades as plain"
+      }
+    },
+    "writing": {
+      "takeToRead": "Take the writing into your pack to read it."
+    },
+    "consume": {
+      "foodCooldown": "You must wait before having more food or drink.",
+      "potionCooldown": "You must wait before drinking another potion."
+    },
+    "magic": {
+      "waitMinutes": "{minutes} min",
+      "waitHoursMinutes": "{hours} h {minutes} min",
+      "waitHours": "{hours} h",
+      "thisPower": "This power",
+      "powerDisabled": "{name} is disabled on this server.",
+      "powerNotAvailable": "{name} is not available yet.",
+      "powerCooldown": "{name} is ready again in {wait}."
+    },
+    "time": {
+      "noWait": "Time follows the realm's clock, so waiting and sleeping are unavailable."
+    },
+    "voice": {
+      "micUnavailable": "Voice: microphone unavailable",
+      "mode": {
+        "whisper": "Whisper",
+        "talk": "Talk",
+        "shout": "Shout"
+      }
+    },
+    "sync": {
+      "positionLost": "Your position fell out of sync with the server. Returning to character select, choose your character to continue."
+    },
+    "consent": {
+      "defaultPrompt": "Allow this?",
+      "caption": "Request",
+      "allow": "Allow",
+      "refuse": "Refuse"
+    },
+    "search": {
+      "caption": "Search Request"
+    },
+    "creationLight": {
+      "hint": "Press {key} to toggle the light"
+    },
+    "loadOrder": {
+      "clientFull": "Client full plugins: {plugins}",
+      "clientLight": "Client light plugins: {plugins}",
+      "noServerOrder": "Could not receive the server load order",
+      "serverOrder": "Server load order: {plugins}",
+      "mismatch": "LOAD ORDER MISMATCH: your plugins differ from the server.\nModded buildings, doors and items will not work.\nRe-run the Alduinak launcher (Repair Modlist). Details are in the console.",
+      "fullPluginDiffers": "Full plugin #{i} does not match. Server has {server}, we have {client}",
+      "lightPluginDiffers": "Light plugin #{i} does not match. Server has {server}, we have {client}",
+      "nothing": "(nothing)",
+      "fileDiffers": "{name} differs from the server copy. Server has {server}, we have {client}"
+    },
+    "console": {
+      "noServerId": "no server id for the selected ref",
+      "sent": "sent"
+    },
+    "platform": {
+      "saveLoaded": "Save has been loaded in multiplayer, switching to the single-player mode",
+      "versionMismatch": "You need to have on of those SkyrimPlatform versions {required} to join this server. Your current version is {current}"
+    },
+    "netInfo": {
+      "connection": "connection:",
+      "on": "ON",
+      "off": "OFF",
+      "incoming": "incoming (p/s):",
+      "outgoing": "outgoing (p/s):",
+      "localLag": "local lag:",
+      "lagAmount": "{units} units (~{meters} m)"
+    }
+  },
   "front": {},
   "backend": {},
   "dashboard": {},

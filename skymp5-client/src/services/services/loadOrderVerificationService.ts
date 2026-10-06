@@ -4,6 +4,7 @@ import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { ServerManifest } from "../messages_http/serverManifest";
 import { logTrace } from "../../logging";
 import { SettingsService } from "./settingsService";
+import { loc } from "../../loc";
 
 const STATE_KEY = 'loadOrderCheckState';
 
@@ -43,15 +44,15 @@ export class LoadOrderVerificationService extends ClientListener {
     this.resetText();
     const full = this.getFullPlugins();
     const light = this.getLightPlugins();
-    printConsole(`Client full plugins: ${JSON.stringify(full)}`);
-    printConsole(`Client light plugins: ${JSON.stringify(light)}`);
+    printConsole(loc("loadOrder.clientFull", { plugins: JSON.stringify(full) }));
+    printConsole(loc("loadOrder.clientLight", { plugins: JSON.stringify(light) }));
     return settingsService.getServerManifest()
       .then((manifest) => {
         if (!manifest || !Array.isArray(manifest.loadOrder)) {
-          printConsole('Could not receive the server load order');
+          printConsole(loc("loadOrder.noServerOrder"));
           return;
         }
-        printConsole(`Server load order: ${JSON.stringify(manifest.loadOrder)}`);
+        printConsole(loc("loadOrder.serverOrder", { plugins: JSON.stringify(manifest.loadOrder) }));
         const problems = this.findProblems(manifest, full, light);
         if (problems.length === 0) {
           return;
@@ -59,7 +60,7 @@ export class LoadOrderVerificationService extends ClientListener {
         problems.forEach((problem) => printConsole(problem));
         // Plugins out of step with the server get other form ids, so modded doors bounce the player back
         this.updateText(
-          'LOAD ORDER MISMATCH: your plugins differ from the server.\nModded buildings, doors and items will not work.\nRe-run the Alduinak launcher (Repair Modlist). Details are in the console.',
+          loc("loadOrder.mismatch"),
           [255, 64, 64, 1], 30,
         );
       })
@@ -73,8 +74,8 @@ export class LoadOrderVerificationService extends ClientListener {
     const lower = (name: string) => name.toLowerCase();
     const lightSet = new Set(light.map(lower));
     const problems = [
-      ...this.orderProblems('Full', manifest.loadOrder.filter((name) => !lightSet.has(lower(name))), full),
-      ...this.orderProblems('Light', manifest.loadOrder.filter((name) => lightSet.has(lower(name))), light),
+      ...this.orderProblems("loadOrder.fullPluginDiffers", manifest.loadOrder.filter((name) => !lightSet.has(lower(name))), full),
+      ...this.orderProblems("loadOrder.lightPluginDiffers", manifest.loadOrder.filter((name) => lightSet.has(lower(name))), light),
     ];
 
     const serverMods = new Map((manifest.mods || []).map((mod) => [lower(mod.filename), mod]));
@@ -89,17 +90,17 @@ export class LoadOrderVerificationService extends ClientListener {
         continue;
       }
       if ((crc32 >>> 0) !== (serverMod.crc32 >>> 0) || size !== serverMod.size) {
-        problems.push(`${name} differs from the server copy. Server has ${JSON.stringify(serverMod)}, we have ${JSON.stringify({ crc32, size })}`);
+        problems.push(loc("loadOrder.fileDiffers", { name, server: JSON.stringify(serverMod), client: JSON.stringify({ crc32, size }) }));
       }
     }
     return problems;
   }
 
-  private orderProblems(kind: string, server: string[], client: string[]): string[] {
+  private orderProblems(key: string, server: string[], client: string[]): string[] {
     const count = Math.max(server.length, client.length);
     for (let i = 0; i < count; ++i) {
       if ((server[i] || '').toLowerCase() !== (client[i] || '').toLowerCase()) {
-        return [`${kind} plugin #${i} does not match. Server has ${server[i] || '(nothing)'}, we have ${client[i] || '(nothing)'}`];
+        return [loc(key, { i, server: server[i] || loc("loadOrder.nothing"), client: client[i] || loc("loadOrder.nothing") })];
       }
     }
     return [];

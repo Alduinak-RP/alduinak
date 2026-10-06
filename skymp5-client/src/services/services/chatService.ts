@@ -12,6 +12,7 @@ import { VoiceService } from "./voiceService";
 import { TimersService } from "./timersService";
 import { OwnerPropertyChangedEvent } from "../events/ownerPropertyChangedEvent";
 import { CustomPacketContent, onCustomPacket } from "./customPacketUtil";
+import { loc, gamemodeLoc } from "../../loc";
 
 declare const window: any;
 
@@ -22,6 +23,24 @@ const SYSTEM_OVERLAY_MS = 15000;
 
 // Skyrim world units per meter ~69.99.
 const UNITS_PER_METER = 70;
+
+const chatLines = (): Record<string, string> => ({
+  say: gamemodeLoc("chat.say"),
+  sayquiet: gamemodeLoc("chat.low"),
+  whisper: gamemodeLoc("chat.whisper"),
+  sayloud: gamemodeLoc("chat.wide"),
+  shout: gamemodeLoc("chat.shout"),
+  my: gamemodeLoc("chat.my"),
+  ooc: gamemodeLoc("chat.looc"),
+  ooclow: loc("chat.oocLow"),
+  ooclong: loc("chat.oocLong"),
+  pmUsage: loc("chat.pmUsage"),
+  pmTo: loc("chat.pmTo"),
+  you: loc("chat.you"),
+  adminOnly: loc("chat.adminOnly"),
+  pmSender: loc("chat.pmSender"),
+  pmFrom: loc("chat.pmFrom"),
+});
 
 const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `(function(){
   try {
@@ -50,6 +69,7 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
     var SYS='#eda841';
     var PM='#4ec9b0';
     var NAME='#fbf724';
+    var LINE=${JSON.stringify(chatLines())};
 
     var DARKEN_RANGE_M=80;
     // Audible range per channel is enforced server-side, so it is not stored here.
@@ -68,9 +88,9 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       do:      {color:ME,     tab:'local',    fmt:'do'},
       dolow:   {color:ME,     tab:'local',    fmt:'do'},
       dolong:  {color:ME,     tab:'local',    fmt:'do'},
-      ooc:     {color:OOC,    tab:'local',    fmt:'ooc', oocLabel:'OOC'},
-      ooclow:  {color:OOC,    tab:'local',    fmt:'ooc', oocLabel:'OOC - Low'},
-      ooclong: {color:OOC,    tab:'local',    fmt:'ooc', oocLabel:'OOC - Long'},
+      ooc:     {color:OOC,    tab:'local',    fmt:'ooc'},
+      ooclow:  {color:OOC,    tab:'local',    fmt:'ooc'},
+      ooclong: {color:OOC,    tab:'local',    fmt:'ooc'},
       system:  {color:SYS,    tab:'all',      fmt:'plain', admin:1},
       flavor:  {color:SYS,    tab:'system',   fmt:'plain'},
       pm:      {color:PM,     tab:'personal', fmt:'pm'}
@@ -182,16 +202,32 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       return segs;
     }
 
-    var VERB={say:'says',sayquiet:'says quietly',whisper:'whispers',sayloud:'says loudly',shout:'shouts'};
+    function fill(tpl, vars){
+      return tpl.replace(/\\{(\\w+)\\}/g, function(m, k){ return k in vars ? String(vars[k]) : m; });
+    }
+    // A line template as segments: the name its own segment, a quoted body as quoteSegs
+    function lineSegs(tpl, n, body, c, quoted){
+      var i=tpl.indexOf('{name}'), segs=[];
+      var head=i<0?'':tpl.slice(0,i), rest=i<0?tpl:tpl.slice(i+6);
+      if (head) segs.push({text:fill(head,{text:body}),color:c});
+      if (i>=0) segs.push({text:n,color:c,nohl:1});
+      var j=quoted?rest.indexOf('{text}'):-1;
+      if (j<0){ if (rest) segs.push({text:fill(rest,{text:body}),color:c}); return segs; }
+      if (j>0) segs.push({text:rest.slice(0,j),color:c});
+      segs=segs.concat(quoteSegs(body,c));
+      if (rest.slice(j+6)) segs.push({text:rest.slice(j+6),color:c});
+      return segs;
+    }
+
     // Leading name is its own nohl segment so highlighting skips your own name.
     function fmtLine(kind, n, body){
       var ch=CH[kind], c=ch.color, f=ch.fmt;
       var nm={text:n,color:c,nohl:1};
-      if (VERB[f]) return [nm,{text:' '+VERB[f]+': "'+body+'"',color:c}];
+      if (f==='say' || f==='sayquiet' || f==='whisper' || f==='sayloud' || f==='shout') return lineSegs(LINE[f],n,body,c,false);
       if (f==='me')      return [nm,{text:' ',color:c}].concat(quoteSegs(body,c));
-      if (f==='my')      return [nm,{text:"'s ",color:c}].concat(quoteSegs(body,c));
+      if (f==='my')      return lineSegs(LINE.my,n,body,c,true);
       if (f==='do')      return quoteSegs(body,c);
-      if (f==='ooc')     return [nm,{text:' ('+ch.oocLabel+'): "'+body+'"',color:c}];
+      if (f==='ooc')     return lineSegs(LINE[kind],n,body,c,false);
       return [{text:body,color:c}]; // plain: system / flavour
     }
 
@@ -230,11 +266,11 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
         var i2=body.indexOf(' ');
         var target=i2<0?body:body.slice(0,i2);
         var pmText=i2<0?'':body.slice(i2+1).trim();
-        if (!target || !pmText) return { error:'Usage: /pm <player|account|id> <message>' };
-        return { kind:kind, segs:[{text:'To '+target+': '+pmText,color:PM}], tab:'personal', fwd:raw };
+        if (!target || !pmText) return { error:LINE.pmUsage };
+        return { kind:kind, segs:[{text:fill(LINE.pmTo,{target:target,text:pmText}),color:PM}], tab:'personal', fwd:raw };
       }
       if (!body) return null;
-      var n=window.__alduinakName||'You';
+      var n=window.__alduinakName||LINE.you;
       return { kind:kind, segs:fmtLine(kind,n,body), tab:ch.tab, fwd:forwardFor(kind,body) };
     }
 
@@ -263,7 +299,7 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
     var sf=function(raw){
       var p=parse(raw); if(!p) return;
 	  if (p.command){ if (window.skyrimPlatform && window.skyrimPlatform.sendMessage) window.skyrimPlatform.sendMessage('cef::chat:send', raw); return; }
-      if (p.denied){ pushSegs([{text:'Only admins can use that command.',color:SYS}],'all'); return; }
+      if (p.denied){ pushSegs([{text:LINE.adminOnly,color:SYS}],'all'); return; }
       if (p.error){ pushSegs([{text:p.error,color:SYS}],'personal'); return; }
       pushSegs(p.segs, p.tab);
       var fwd=(p.fwd!=null)?p.fwd:raw;
@@ -285,14 +321,14 @@ const buildMountJs = (name: string, isAdmin: boolean, settingsJson: string) => `
       // Private messages
       if (s.indexOf('[[PM]]')===0){
         var rest=s.slice(6), bar=rest.indexOf('|');
-        var sender=bar<0?'PM':rest.slice(0,bar), pmTxt=bar<0?rest:rest.slice(bar+1);
+        var sender=bar<0?LINE.pmSender:rest.slice(0,bar), pmTxt=bar<0?rest:rest.slice(bar+1);
         // Fix for some system messages not going into system
         var lo=String(sender).toLowerCase();
         if (lo==='system' || lo==='server'){
           pushSegs([{text:pmTxt,color:SYS}],'system');
           return;
         }
-        pushSegs([{text:sender+': '+pmTxt,color:PM}],'personal');
+        pushSegs([{text:fill(LINE.pmFrom,{sender:sender,text:pmTxt}),color:PM}],'personal');
         return;
       }
       // Channel tag -> tab. Untagged lines are local (spoken / emote / ooc).

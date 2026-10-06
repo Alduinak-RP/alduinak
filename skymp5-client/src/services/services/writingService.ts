@@ -6,6 +6,7 @@ import { BrowserService } from "./browserService";
 import { WRITTEN_KEYWORD } from "../../sync/inventory";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode, EquipEvent, Form, Menu } from "skyrimPlatform";
 import { logToPlatformLog } from "../../logging";
+import { loc } from "../../loc";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -80,7 +81,7 @@ export class WritingService extends ClientListener {
     this.controller.once("update", () => {
       closeGameMenu(this.sp, Menu.Book);
       if (fromChest) {
-        notifyNextUpdate(this.controller, this.sp, "Take the writing into your pack to read it.");
+        notifyNextUpdate(this.controller, this.sp, loc("writing.takeToRead"));
       }
     });
     if (fromChest) return;

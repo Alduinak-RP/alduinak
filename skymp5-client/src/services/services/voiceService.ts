@@ -7,6 +7,7 @@ import { ObjectReferenceEx } from "../../extensions/objectReferenceEx";
 import { PlayerCharacterDataHolder } from "../../view/playerCharacterDataHolder";
 import { BrowserMessageEvent, ButtonEvent, DxScanCode } from "skyrimPlatform";
 import { logToPlatformLog, logTrace } from "../../logging";
+import { loc } from "../../loc";
 
 // Proximity voice chat: push-to-talk (default V, launcher-configurable via voicePushToTalkKeyCode) + LiveKit room managed by VoiceManager in the skymp5-front CEF page.
 // This service owns the game side: room token requests, the chosen mode to the server, peer distances and ranges to the browser, and the PTT key; audibility is distance vs each speaker's ff_voiceRange, same-world only.
@@ -31,9 +32,9 @@ interface VoiceMode { key: string; label: string; units: number }
 
 // Fallbacks; the server sends the real list with the token
 const DEFAULT_MODES: VoiceMode[] = [
-  { key: "whisper", label: "Whisper", units: 140 },
-  { key: "talk", label: "Talk", units: 840 },
-  { key: "shout", label: "Shout", units: 3150 },
+  { key: "whisper", label: loc("voice.mode.whisper"), units: 140 },
+  { key: "talk", label: loc("voice.mode.talk"), units: 840 },
+  { key: "shout", label: loc("voice.mode.shout"), units: 3150 },
 ];
 
 export class VoiceService extends ClientListener {
@@ -220,7 +221,7 @@ export class VoiceService extends ClientListener {
       if (!this.micDeniedShown) {
         this.micDeniedShown = true;
         this.controller.once("update", () => {
-          showSystemNotification(this.sp, "Voice: microphone unavailable");
+          showSystemNotification(this.sp, loc("voice.micUnavailable"));
         });
       }
     } else if (kind === "voice::error") {

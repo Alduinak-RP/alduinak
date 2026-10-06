@@ -12,6 +12,7 @@ import { JobService } from "./jobService";
 import { ItemService, NAILED_PROP } from "./itemService";
 import { formProp } from "../../view/worldViewMisc";
 import { PlayerCharacterDataHolder } from "../../view/playerCharacterDataHolder";
+import { loc } from "../../loc";
 
 // for the browser-side widget setter (executed inside the CEF browser)
 declare const window: any;
@@ -151,7 +152,7 @@ export class InteractionPromptService extends ClientListener {
 
   private promptFor(ref: ObjectReference): Prompt | null {
     if (this.controller.lookupListener(MountService).isMounted) {
-      return { verb: "Dismount", label: "" };
+      return { verb: loc("prompt.dismount"), label: "" };
     }
     // The crosshair can rest on a placed hazard or projectile, where Actor.from throws
     const actor = ObjectReferenceEx.asActor(ref);
@@ -160,7 +161,7 @@ export class InteractionPromptService extends ClientListener {
     if (!base) return null;
 
     if (this.isBoardBase(base)) {
-      return { verb: "Read", label: "Notice Board" };
+      return { verb: loc("prompt.read"), label: loc("prompt.noticeBoard") };
     }
 
     const label = (ref.getDisplayName() || base.getName() || "").trim();
@@ -188,7 +189,7 @@ export class InteractionPromptService extends ClientListener {
     const remoteId = localIdToRemoteId(ref.getFormID());
     const pets = this.controller.lookupListener(PetService);
     // While commanding a pet, a valid target reads "{pet name} Attack", the pet itself "{pet name} Follow", and the interact router issues the order
-    const order = dead ? "" : pets.canAttack(remoteId) ? "Attack" : pets.canFollow(remoteId) ? "Follow" : "";
+    const order = dead ? "" : pets.canAttack(remoteId) ? loc("prompt.attack") : pets.canFollow(remoteId) ? loc("prompt.follow") : "";
     if (order) {
       return { verb: pets.commandingName(), label: order };
     }
@@ -200,14 +201,14 @@ export class InteractionPromptService extends ClientListener {
       if (pet) return pet;
       const name = (ref.getDisplayName() || "").trim();
       if (!name) return null;
-      if (remoteId < 0xff000000) return { verb: "Talk", label: name };
+      if (remoteId < 0xff000000) return { verb: loc("prompt.talk"), label: name };
       // A living server NPC is taunted and searched only once dead; no dialogue on the clone
       try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-      return { verb: this.isAnimal(ref) ? "" : "Taunt", label: name };
+      return { verb: this.isAnimal(ref) ? "" : loc("prompt.taunt"), label: name };
     }
     // The engine must not start a dialogue or a local loot window on the clone under our menu.
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-    return { verb: dead ? "Search" : "Interact", label: introducedName(ref, remoteId, dead) };
+    return { verb: dead ? loc("prompt.search") : loc("prompt.interact"), label: introducedName(ref, remoteId, dead) };
   }
 
   // Living pets show their ff_pet name and a verb only for what E does here (PetService owns the key); own summons read Command
@@ -220,9 +221,9 @@ export class InteractionPromptService extends ClientListener {
     const label = pet && alive ? pet.name : (ref.getDisplayName() || "").trim();
     if (!label) return null;
     try { ref.blockActivation(true); } catch { /* unloaded ref */ }
-    const verb = kind === "horse" || kind === "horse-foreign" ? "Ride"
-      : kind === "livestock" ? "Harvest"
-      : kind === "dog" || kind === "companion" ? "Command" : "";
+    const verb = kind === "horse" || kind === "horse-foreign" ? loc("prompt.ride")
+      : kind === "livestock" ? loc("prompt.harvest")
+      : kind === "dog" || kind === "companion" ? loc("prompt.command") : "";
     return { verb, label };
   }
 
@@ -239,20 +240,20 @@ export class InteractionPromptService extends ClientListener {
   private verbFor(ref: ObjectReference, type: number): string | null {
     switch (type) {
       case FormType.Door:
-        return ref.isLocked() ? "Unlock" : "Open";
+        return ref.isLocked() ? loc("prompt.unlock") : loc("prompt.open");
       case FormType.Container:
-        return ref.isLocked() ? "Unlock" : "Search";
+        return ref.isLocked() ? loc("prompt.unlock") : loc("prompt.search");
       case FormType.Activator:
       case FormType.TalkingActivator:
-        return "Activate";
+        return loc("prompt.activate");
       case FormType.Furniture:
-        return "Use";
+        return loc("prompt.use");
       case FormType.Book:
         // A nailed writing, spell tome or skill book stays shut
-        return this.formFlag(ref, NAILED_PROP) && !this.controller.lookupListener(ItemService).isReadable(ref) ? "Admire" : "Read";
+        return this.formFlag(ref, NAILED_PROP) && !this.controller.lookupListener(ItemService).isReadable(ref) ? loc("prompt.admire") : loc("prompt.read");
       case FormType.Flora:
       case FormType.Tree:
-        return ref.isHarvested() ? null : "Harvest";
+        return ref.isHarvested() ? null : loc("prompt.harvest");
       case FormType.Weapon:
       case FormType.Armor:
       case FormType.Ammo:
@@ -263,7 +264,7 @@ export class InteractionPromptService extends ClientListener {
       case FormType.Key:
       case FormType.ScrollItem:
       case FormType.Light:
-        return this.formFlag(ref, NAILED_PROP) ? "Admire" : "Take";
+        return this.formFlag(ref, NAILED_PROP) ? loc("prompt.admire") : loc("prompt.take");
       default:
         return null;
     }

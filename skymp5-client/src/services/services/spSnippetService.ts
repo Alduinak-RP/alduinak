@@ -9,6 +9,7 @@ import { showSystemNotification } from "./systemNotification";
 import { remoteIdToLocalId } from '../../view/worldViewMisc';
 import { logError, logTrace } from "../../logging";
 import { WorldView } from "../../view/worldView";
+import { loc } from "../../loc";
 
 export class SpSnippetService extends ClientListener {
   constructor(private sp: Sp, private controller: CombinedController) {
@@ -137,7 +138,7 @@ export class SpSnippetService extends ClientListener {
           if (name.trim() === "") {
             logTrace(this, "Notification will not be shown because item has no name")
           } else {
-            showSystemNotification(this.sp, sign + " " + name + " (" + count + ")");
+            showSystemNotification(this.sp, loc("item.countChanged", { sign, name, count }));
           }
           logTrace(this, sign + " " + name + " (" + count + ")");
         }
