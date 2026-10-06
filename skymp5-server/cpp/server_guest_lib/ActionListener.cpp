@@ -447,6 +447,37 @@ bool CanCastSpell(CombatEspmCache& cache, const MpActor& actor,
     IsSpellInTemplateTree(cache, actor, spellId);
 }
 
+// The enchantment of a worn staff (WEAP EITM), which the staff's cast names as its spell
+bool IsWornStaffEnchantment(const MpActor& actor, uint32_t enchantmentId)
+{
+  WorldState* worldState = actor.GetParent();
+  if (!worldState || !worldState->HasEspm()) {
+    return false;
+  }
+  auto& browser = worldState->GetEspm().GetBrowser();
+  const auto enchantment = browser.LookupById(enchantmentId);
+  if (!enchantment.rec || !(enchantment.rec->GetType() == "ENCH")) {
+    return false;
+  }
+  for (const auto& entry : actor.GetEquipment().inv.entries) {
+    if (entry.GetWorn() == Inventory::Worn::None) {
+      continue;
+    }
+    const auto lookup = browser.LookupById(entry.baseId);
+    const auto* weapon = espm::Convert<espm::WEAP>(lookup.rec);
+    if (!weapon) {
+      continue;
+    }
+    const auto data = weapon->GetData(worldState->GetEspmCache());
+    if (data.weapDNAM && data.weapDNAM->animType == espm::WEAP::AnimType::Staff &&
+        data.enchantmentFormId &&
+        lookup.ToGlobalId(data.enchantmentFormId) == enchantmentId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Scrolls sit in the inventory, not in a spell slot
 bool IsHeldScroll(const MpActor& actor, uint32_t scrollId)
 {
@@ -2089,7 +2120,10 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   const bool fastPath = validated != nullptr;
   const bool isScroll = fastPath ? validated->isScroll
                                  : IsHeldScroll(*caster, spellCastData.spell);
-  if (!fastPath && !isScroll &&
+  // A staff's bolt or stream is relayed for the observers; the hit path prices nothing from it yet
+  const bool isStaff = !fastPath && !isScroll &&
+    IsWornStaffEnchantment(*caster, spellCastData.spell);
+  if (!fastPath && !isScroll && !isStaff &&
       !CanCastSpell(*combatEspmCache, *caster, spellCastData.spell)) {
     spdlog::info("ActionListener::OnSpellCast - spell {0:x} not "
                  "found in equipment of {1:x}",
@@ -2123,7 +2157,9 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   // A clone replay would cast the scroll again on every observer
   if (!isScroll) {
     SendToNeighbours(myActor->idx, rawMsgData, true, kSkipSender);
-    UpdateWardChannel(caster->GetFormId(), spellCastData);
+    if (!isStaff) {
+      UpdateWardChannel(caster->GetFormId(), spellCastData);
+    }
   } else if (!spellCastData.keepAlive) {
     // The caster's engine used one up
     caster->RemoveItem(spellCastData.spell, 1, nullptr);
@@ -2141,14 +2177,15 @@ void ActionListener::OnSpellCast(const RawMessageData& rawMsgData,
   }
 
   if (!spellCastData.keepAlive) {
-    spdlog::debug("ActionListener::OnSpellCast - {:x} cast spell {:x}",
-                  caster->GetFormId(), spellCastData.spell);
+    spdlog::debug("ActionListener::OnSpellCast - {:x} cast {} {:x}",
+                  caster->GetFormId(), isStaff ? "staff enchantment" : "spell",
+                  spellCastData.spell);
     FireGamemodeEvent(partOne.worldState, caster->GetFormId(), "onSpellCast",
                       nlohmann::json::array({ spellCastData.spell }));
   }
 
-  // GetData<SPEL> below throws for a SCRL record
-  if (isScroll) {
+  // GetData<SPEL> below throws for a SCRL or ENCH record
+  if (isScroll || isStaff) {
     return;
   }
 

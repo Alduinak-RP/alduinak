@@ -378,6 +378,14 @@ TEST_CASE("Loads Weapon", "[espm]")
   REQUIRE(npc->GetData(cache).weapData->damage == 7);
   REQUIRE(npc->GetData(cache).weapData->value == 25);
   REQUIRE(npc->GetData(cache).weapData->weight == 9.f);
+  REQUIRE(npc->GetData(cache).enchantmentFormId == 0);
+
+  // StaffIncinerate carries its enchantment in EITM
+  auto staff = espm::Convert<espm::WEAP>(br.LookupById(0x10fcf2).rec);
+  REQUIRE(staff);
+  REQUIRE(staff->GetData(cache).weapDNAM->animType ==
+          espm::WEAP::AnimType::Staff);
+  REQUIRE(staff->GetData(cache).enchantmentFormId == 0x10fcf3);
 }
 
 TEST_CASE("Loads NPC factions", "[espm]")

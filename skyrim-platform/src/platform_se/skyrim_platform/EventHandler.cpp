@@ -1342,7 +1342,8 @@ EventResult EventHandler::ProcessEvent(
     auto obj = Napi::Object::New(env);
 
     auto* caster = RE::TESForm::LookupByID<RE::Actor>(casterId);
-    auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellId);
+    // A staff's cast names its enchantment, a MagicItem that is no SpellItem
+    auto* spell = RE::TESForm::LookupByID<RE::MagicItem>(spellId);
 
     if (!caster && casterId != 0) {
       return;
@@ -1360,12 +1361,20 @@ EventResult EventHandler::ProcessEvent(
       return;
     }
 
+    // The hand that holds a staff with this enchantment is the one casting it
+    const auto staffIn = [&](bool left) -> bool {
+      auto* equipped = caster->GetEquippedObject(left);
+      auto* weapon = equipped ? equipped->As<RE::TESObjectWEAP>() : nullptr;
+      return weapon && weapon->IsStaff() && weapon->formEnchanting == spell;
+    };
     const bool isLeftHand =
       caster->GetActorRuntimeData()
-        .selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell;
+          .selectedSpells[RE::Actor::SlotTypes::kLeftHand] == spell ||
+      staffIn(true);
     const bool isRightHand =
       caster->GetActorRuntimeData()
-        .selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell;
+          .selectedSpells[RE::Actor::SlotTypes::kRightHand] == spell ||
+      staffIn(false);
     const bool isVoise =
       caster->GetActorRuntimeData()
         .selectedSpells[RE::Actor::SlotTypes::kUnknown] == spell;
@@ -1401,7 +1410,10 @@ EventResult EventHandler::ProcessEvent(
 
     AddObjProperty(&obj, "caster", caster, "Actor");
     AddObjProperty(&obj, "target", handleTarget, "ObjectReference");
-    AddObjProperty(&obj, "spell", spell, "Spell");
+    AddObjProperty(&obj, "spell", spell,
+                   spell->GetFormType() == RE::FormType::Enchantment
+                     ? "Enchantment"
+                     : "Spell");
     AddObjProperty(&obj, "isDualCasting", isDualCasting);
     AddObjProperty(&obj, "castingSource",
                    static_cast<uint32_t>(castingSource));

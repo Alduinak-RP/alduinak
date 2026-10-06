@@ -25,12 +25,17 @@ export const CASTING_CONCENTRATION = 2;
 export const isHarmfulEffect = (effect: MagicEffect): boolean =>
   effect.isEffectFlagSet(EFFECT_FLAG_HOSTILE) || effect.isEffectFlagSet(EFFECT_FLAG_DETRIMENTAL);
 
+// A Spell, or the Enchantment a staff's cast names (the spellCast event carries either)
+export interface MagicWithEffects {
+  getNthEffectMagicEffect(index: number): MagicEffect | null;
+}
+
 // By the first effect's casting type
-export const isConcentration = (spell: Spell | null | undefined): boolean =>
+export const isConcentration = (spell: MagicWithEffects | null | undefined): boolean =>
   spell?.getNthEffectMagicEffect(0)?.getCastingType() === CASTING_CONCENTRATION;
 
 // By the first effect's delivery
-export const isSelfDelivered = (spell: Spell | null | undefined): boolean =>
+export const isSelfDelivered = (spell: MagicWithEffects | null | undefined): boolean =>
   spell?.getNthEffectMagicEffect(0)?.getDeliveryType() === DELIVERY_SELF;
 
 // Listed spells stay, removing and re-adding one in the same frame would dispel and recast it

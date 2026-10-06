@@ -195,6 +195,27 @@ blocked swing (15 to 36 for the Falmer the spawn file uses); damage the server c
 spell hits) never passes through the report and is not affected. Two Falmer poisoning through a block at once can
 exceed the points, and the excess lands.
 
+## Staff casts (2026-10-05)
+
+A staff's cast raises the engine's `TESSpellCastEvent` with the staff's enchantment (an `ENCH`, the staff's `EITM`)
+as its spell. SkyrimPlatform looked that id up as a `SpellItem`, found none and dropped the event (`ProcessEvent
+TESSpellCastEvent error! spell not a MagicItem`, 19 times in the owner's log of 2026-10-05), so no `SpellCast`
+message left the caster's client and observers saw a staff raised with nothing coming out of it. Now
+(`EventHandler.cpp`) the event looks the form up as a `MagicItem`, takes the hand from the staff that carries the
+enchantment (`GetEquippedObject`, `formEnchanting`) and hands the client an `Enchantment` object as `spell`, which
+`MagicSyncService` relays like any spell (its casting type and delivery come from the first effect, which both
+`Spell` and `Enchantment` answer). The server (`ActionListener::OnSpellCast`) accepts an enchantment the caster
+cannot have learned when a worn staff carries it (`IsWornStaffEnchantment`, from the `WEAP` record's `EITM`, which
+libespm now reads), records the cast, relays it to the neighbours and fires `onSpellCast` for the gamemode, and
+skips the `SPEL`-only tail (restoration channels, wards) as it does for a scroll. On the observers
+`castSpellImmediate` (`MagicApi.cpp`) now casts any `MagicItem`: a concentration enchantment (Staff of Flames) runs
+on the copy's hand caster, a bolt (Staff of Firebolts) is launched with the staff named as the projectile's weapon,
+as the engine's own staff cast does. The copy keeps its staff raised through the relayed animation events and the
+anim variable stream as before. **Not yet priced:** a staff bolt's hit reaches the server with the enchantment as
+its source, which is neither a `SPEL` nor a worn item, so `OnHit` drops it as it did before this change; staff
+damage to players is still only what the victim's own client reports. Needs a SkyrimPlatform build (CI flatrim)
+and the native server build; the client bundle changes with the `isConcentration` type only.
+
 ## Blocked hits
 
 `OnWeaponHit` resolves a weapon hit as blocked when the target holds a block (`IsBlockActive`) with the aggressor

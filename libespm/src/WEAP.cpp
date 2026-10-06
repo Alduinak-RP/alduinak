@@ -15,6 +15,8 @@ WEAP::Data WEAP::GetData(
         result.weapData = reinterpret_cast<const WeapData*>(data);
       } else if (!std::memcmp(type, "DNAM", 4)) {
         result.weapDNAM = reinterpret_cast<const DNAM*>(data);
+      } else if (!std::memcmp(type, "EITM", 4) && dataSize >= 4) {
+        result.enchantmentFormId = *reinterpret_cast<const uint32_t*>(data);
       }
     },
     compressedFieldsCache);

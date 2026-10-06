@@ -49,6 +49,8 @@ public:
   {
     const WeapData* weapData = nullptr;
     const DNAM* weapDNAM = nullptr;
+    // EITM, a staff's or an enchanted weapon's enchantment, local id, 0 without one
+    uint32_t enchantmentFormId = 0;
   };
 
   Data GetData(CompressedFieldsCache& compressedFieldsCache) const noexcept;

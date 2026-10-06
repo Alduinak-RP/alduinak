@@ -155,13 +155,15 @@ Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
 
      animVars = skymp::magic::details::GetAnimationVariablesFromJSArg(
        NapiHelper::ExtractObject(info[6], "animationVariables"))](Viet::Void) {
-      auto* pSpell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormId);
+      // A staff's enchantment is a MagicItem the hand's caster fires like a spell
+      auto* pSpell = RE::TESForm::LookupByID<RE::MagicItem>(spellFormId);
 
       auto* pActor = RE::TESForm::LookupByID<RE::Actor>(actorFormId);
 
       if (!pSpell || !pActor) {
         return;
       }
+      const auto* pSpellItem = pSpell->As<RE::SpellItem>();
 
       const auto t = pSpell->GetFormType();
 
@@ -200,9 +202,10 @@ Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
       }
 
       // Self spells launch no projectile, so buffs and guarded area spells are cast on the clone
-      if (pSpell->data.delivery == RE::MagicSystem::Delivery::kSelf &&
+      if (pSpell->GetDelivery() == RE::MagicSystem::Delivery::kSelf &&
           (replayHostileSelf ||
-           skymp::magic::details::IsReplayableSelfBuff(*pSpell))) {
+           (pSpellItem &&
+            skymp::magic::details::IsReplayableSelfBuff(*pSpellItem)))) {
         magicCaster->CastSpellImmediate(pSpell, false, pActor, 1.0f, false,
                                         0.0f, pActor);
         return;
@@ -221,8 +224,7 @@ Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
         origin.z += (boundMax.z - boundMin.z) * 0.7f;
       }
 
-      if (pSpell->data.delivery ==
-          RE::MagicSystem::Delivery::kTargetLocation) {
+      if (pSpell->GetDelivery() == RE::MagicSystem::Delivery::kTargetLocation) {
         // TODO we need recalculate origin, cast ray from head to crosshair
         auto rotation = pActor->Get3D2()->world.rotate.entry;
         auto viewDirection =
@@ -242,6 +244,18 @@ Napi::Value MagicApi::CastSpellImmediate(const Napi::CallbackInfo& info)
       launchData.castingSource = castingSource;
       launchData.desiredTarget = magicTarget;
       launchData.contactNormal = RE::NiPoint3{ 0.f, 0.f, 1.0f };
+      // The engine's own staff cast names the staff as the projectile's weapon
+      if (pSpell->GetFormType() == RE::FormType::Enchantment) {
+        for (const bool left : { false, true }) {
+          auto* equipped = pActor->GetEquippedObject(left);
+          auto* weapon =
+            equipped ? equipped->As<RE::TESObjectWEAP>() : nullptr;
+          if (weapon && weapon->formEnchanting == pSpell) {
+            launchData.weaponSource = weapon;
+            break;
+          }
+        }
+      }
 
       RE::Projectile::Launch(&pProjectile, launchData);
     });
