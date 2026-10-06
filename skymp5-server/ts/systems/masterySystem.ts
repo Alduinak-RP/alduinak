@@ -904,7 +904,10 @@ export class MasterySystem implements System {
       this.write(ctx, actorId, rec);
     }
     if (char && char.subs) this.settleSubs(ctx, actorId, char);
+    // A rank an hour paid now lifts gets its markers with the other login grants, after the client's spell wipe
+    this.settling.add(actorId);
     if (char) this.settleBank(ctx, actorId, char, now);
+    this.settling.delete(actorId);
     this.sendState(ctx, actorId, userId);
     // Grants, kits and the state again wait out the client's spawn-time spell wipe
     this.grantLater(ctx, actorId);
@@ -1234,6 +1237,7 @@ export class MasterySystem implements System {
 
   // The plugin's recipes condition on the exact rank they belong to, so a Master still needs the Novice marker.
   private applySpells(ctx: SystemContext, actorId: number, char: Character, slot: Slot): void {
+    if (this.settling.has(actorId)) return;
     const missing = this.missingSpells(slot);
     if (!missing.length) return;
     for (const spellId of missing) {
@@ -1851,6 +1855,8 @@ export class MasterySystem implements System {
   private clocks = new Map<number, OnlineClock>();
   // Online characters with banked hours, the only ones the bank check reads
   private banked = new Set<number>();
+  // Characters whose login settles the bank right now; their marker grants wait for grantAfterSpawn
+  private settling = new Set<number>();
   private hoe = 0;
   // Profession resets a player may use on one character; masteryResetsPerCharacter overrides
   private resetsPerCharacter = 1;

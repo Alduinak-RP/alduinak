@@ -67,7 +67,9 @@ another bow within a few minutes therefore count one woodworking hour at once, a
 second woodworking hour an hour after that, with no further crafting (the owner's example of 2026-10-05). The pay
 clock runs in real time (`masteryBankOffline`, default true since 2026-10-05): the hours that fell due while the
 character was logged out are counted at login, in queue order, each dated one interval after the last, so two hours
-banked before a night's sleep are both there in the morning and the hour clock is open; online, the bank is checked
+banked before a night's sleep are both there in the morning and the hour clock is open (a rank one of them reaches is
+announced at once and its marker handed over with the other login grants, after the client's spawn-time spell wipe,
+see "Login" under "Secondary and tertiary crafts"); online, the bank is checked
 once a minute, so a banked hour is counted within a minute of falling due. A craft right after a banked hour is paid
 refills the bank. The player sees "Extra work banked for your secondary craft: 2 hours will be counted, one per hour,
 online or not." and "Your banked work as a Blacksmith is counted: H hours at the craft, 1 hour still banked." The

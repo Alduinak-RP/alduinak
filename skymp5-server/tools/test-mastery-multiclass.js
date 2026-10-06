@@ -322,6 +322,27 @@ test('the hours that fell due while logged out are paid at login, an interval ap
   assert.deepEqual(u.last('professionState').bank, bankOf())
 })
 
+test('a rank reached by an hour paid at login gets its marker after the spawn-time spell wipe, with the other login grants', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.sys.grantPoints(t.ctx, ACTOR, 38, 0)
+  t.craft(NAILS)
+  t.craft(NAILS)
+  assert.deepEqual([t.primary().points, t.primary().queue, t.primary().rank], [39, ['blacksmith'], 1])
+  t.sys.disconnect(USER, t.ctx)
+  now += 2 * HOUR
+  const calls = t.mp.calls.length
+  t.login()
+  assert.deepEqual([t.primary().points, t.primary().rank, t.primary().granted], [40, 2, [SPELLS.blacksmith[0]]], 'Adept at login, the marker not yet handed over')
+  assert.ok(!t.mp.calls.slice(calls).some((c) => c.startsWith('AddSpell')), 'nothing granted into the spell wipe')
+  assert.ok(t.notices().includes('You are now Adept of the Blacksmith.'))
+  t.sys.grantAfterSpawn(t.ctx, ACTOR)
+  assert.deepEqual(t.primary().granted, SPELLS.blacksmith.slice(0, 2))
+  assert.ok(t.mp.spells.has(SPELLS.blacksmith[1]))
+  t.sys.grantPoints(t.ctx, ACTOR, 60, 0)
+  assert.ok(t.mp.spells.has(SPELLS.blacksmith[2]), 'a grant after the login is handed over at once')
+})
+
 test('without masteryBankOffline the pay clock is online time, so nothing falls due while logged out', () => {
   const t = setup()
   t.sys.bankOffline = false
