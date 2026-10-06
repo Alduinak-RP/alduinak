@@ -34,15 +34,16 @@ type Mp = any;
 // menu is accepted the client gets the new race's base health and stamina (racialBase); magicka stays MasterySystem's.
 //
 // Client -> Server: { customPacketType: "racialReport", reason, baseRace, engineRace, spells: [{ id, held, state }], stray: [id],
-//                     sharedEffects: [{ spell, effect }], leftovers: [{ id, held, dispelled, recast, active }],
+//                     sharedEffects: [{ spell, effect }], leftovers: [{ id, held, removed, dispelled, recast, active }],
 //                     base: { health, magicka, stamina }, masteryMagicka }
 //   reason: what ran the check (spawn, load, resurrect, race menu, resync); baseRace, engineRace: ActorBase.getRace() and
 //   Actor.getRace() form ids; spells: the base race's spell list as the client's plugin has it, state "on", "off" or "power";
 //   stray: other races' spells the client holds (a 1.0.1 client sends no sharedEffects and also lists a spell whose effect runs);
-//   sharedEffects: effects of other races' spells running while the spell is not held, so another spell with the same effect gives
-//   them; leftovers: the vanilla racial abilities the client's race syncs found this spawn and whether each was held, dispelled, cast
-//   and removed again, or still runs; base: base Health, Magicka and Stamina; masteryMagicka: the base Magicka the client's
-//   MasteryService last wrote, null when it wrote none
+//   sharedEffects: effects of other races' spells running while neither the spell nor another held spell gives them; leftovers: the
+//   vanilla racial abilities the client's race syncs found this spawn and whether each was held (and removed), dispelled, cast and
+//   removed again, or still runs as of this check (RaceNord is listed even when nothing of it was seen, a Nord's own ability gives its
+//   effect); base: base Health, Magicka and Stamina; masteryMagicka: the base Magicka the client's MasteryService last wrote, null when
+//   it wrote none
 // Server -> Client: { customPacketType: "racialResync", raceId, spells, problems }  spells: the race spells the server expects held
 //                   { customPacketType: "racialBase", raceId, health, stamina }  after an accepted race menu or a finished creation
 // Power gate: a player's cast of a power in racialPassives.powers is refused with a notice while its cooldown runs; the cooldown is
@@ -553,15 +554,18 @@ export class RacialSystem implements System, NeedsModifierSource {
     const detailed = Array.isArray(report.sharedEffects);
     fix(reportedList(report.stray).map((v) => toFormId(v)).filter((id) => id), "other races'", detailed ? " held" : " running or held");
     const shared = reportedList(report.sharedEffects).map(objectOf).map((s) => ({ spell: toFormId(s.spell), effect: toFormId(s.effect) })).filter((s) => s.effect);
-    if (shared.length) problems.push(`running without the spell: ${shared.map((s) => `${name(s.effect)} (${name(s.spell)}'s)`).join(", ")}, another spell gives the effect`);
+    if (shared.length) problems.push(`running without the spell: ${shared.map((s) => `${name(s.effect)} (${name(s.spell)}'s)`).join(", ")}, no held spell gives the effect`);
     const leftovers = reportedList(report.leftovers).map(objectOf)
-      .map((l) => ({ id: toFormId(l.id), held: l.held === true, dispelled: l.dispelled === true, recast: l.recast === true, active: l.active === true }))
+      .map((l) => ({ id: toFormId(l.id), held: l.held === true, removed: l.removed !== false, dispelled: l.dispelled === true, recast: l.recast === true, active: l.active === true }))
       .filter((l) => l.id);
     const stillRunning = leftovers.filter((l) => l.active).map((l) => name(l.id));
     if (stillRunning.length) problems.push(`leftover ${stillRunning.join(", ")} still running`);
-    const cleared = leftovers.filter((l) => !l.active)
-      .map((l) => `${name(l.id)} (${[l.held ? "held" : "", l.dispelled ? "dispelled" : "", l.recast ? "recast" : ""].filter((s) => s).join(", ") || "gone"})`);
-    const clearedText = cleared.length ? `; cleared ${cleared.join(", ")}` : "";
+    const how = (l: typeof leftovers[number]): string =>
+      [l.held ? (l.removed ? "held" : "held, not removed") : "", l.dispelled ? "dispelled" : "", l.recast ? "recast" : ""].filter((s) => s).join(", ");
+    const cleared = leftovers.filter((l) => !l.active && how(l)).map((l) => `${name(l.id)} (${how(l)})`);
+    // RaceNord is reported even when nothing of it was seen, since a Nord's own ability gives its effect; then only a failed dispel is known
+    const unseen = leftovers.filter((l) => !l.active && !how(l)).map((l) => name(l.id));
+    const clearedText = `${cleared.length ? `; cleared ${cleared.join(", ")}` : ""}${unseen.length ? `; ${unseen.join(", ")} not dispelled, its effect cannot be told from a held spell's` : ""}`;
     const base = objectOf(report.base);
     const got = [base.health, base.magicka, base.stamina].map((v) => (v === null || v === undefined ? NaN : Number(v)));
     const want = this.baseValues(raceId);

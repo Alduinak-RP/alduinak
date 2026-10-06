@@ -1079,7 +1079,7 @@ export class RemoteServer extends ClientListener {
               this.raceCheck.synced = true;
               this.noteLeftovers(this.raceCheck, leftovers);
             }
-            if (leftovers.length) logToPlatformLog(this, `spawn race sync cleared vanilla leftovers: ${leftovers.map(describeLeftover).join(", ")}`);
+            if (leftovers.length) logToPlatformLog(this, `spawn race sync, vanilla leftovers: ${leftovers.map(describeLeftover).join(", ")}`);
             logTrace(this,
               `player learnedSpells:`, JSON.stringify(learnedSpells),
             );
@@ -1639,12 +1639,16 @@ export class RemoteServer extends ClientListener {
     return Array.isArray(learned) ? learned : [];
   }
 
-  // A later sync's result for the same ability replaces the earlier one
+  // The spawn's syncs add up: what any of them did to an ability stays, the latest sync's reading of its effect replaces the earlier
   private noteLeftovers(check: RaceCheck | undefined, found: LeftoverAbility[]): void {
     if (!check || !found.length) {
       return;
     }
-    check.leftovers = [...check.leftovers.filter((l) => !found.some((f) => f.id === l.id)), ...found];
+    const merged = found.map((f) => {
+      const earlier = check.leftovers.find((l) => l.id === f.id);
+      return earlier ? { ...f, held: earlier.held || f.held, removed: earlier.removed || f.removed, dispelled: earlier.dispelled || f.dispelled, recast: earlier.recast || f.recast } : f;
+    });
+    check.leftovers = [...check.leftovers.filter((l) => !found.some((f) => f.id === l.id)), ...merged];
   }
 
   // After a spawn, load, resurrect or race menu the race abilities are applied again (the whole spawn sync if it never ran) and logged before and after

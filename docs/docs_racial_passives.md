@@ -214,10 +214,10 @@ appearance race, that race's spell list less the greater powers the server withh
 starting value plus the Player NPC_ offsets, within 0.5):
 
 - `[racial] <id> check ok <Race> after <reason>: N race spells held (<edids>), base H/M/S h/m/s[; cleared RaceNord
-  (dispelled)]`;
+  (dispelled)][; RaceNord not dispelled, its effect cannot be told from a held spell's]`;
 - `[racial] <id> MISMATCH <Race> after <reason>: <problems>; base H/M/S ...; <resync>`, where the problems are a wrong
   engine or base race, missing, not held or stopped race spells, other races' spells held, effects of other races'
-  spells `running without the spell` (another spell with the same effect gives them, named `AbResistFrost
+  spells `running without the spell` (no spell the client holds gives them, named `AbResistFrost
   (AldRacial_Nord's)`), a vanilla `leftover <edid> still running`, extra spells on the client's race record (another
   plugin on the client) or a base value off. The same problems are logged once per spawn; their first repeat logs
   `MISMATCH <Race> after <reason>: unchanged, not logged again this spawn` and later ones nothing, until a `check ok` or
@@ -233,12 +233,17 @@ it. Until 1.0.1 the client inferred a stray spell from any one running effect, s
 report `AldRacial_Nord` as running on every non-Nord ("other races' AldRacial_Nord running or held", about 1,200 lines a
 day on live, no non-Nord ever `check ok`) and the resync could not fix it because it dispelled `AldRacial_Nord`, which
 was not running. From 1.0.2 each race sync (`clearLeftoverRaceAbilities` in `skymp5-client/src/sync/spell.ts`) also
-dispels the ten vanilla racial abilities the patcher took off the race records (`RaceNord`, `RaceBreton`, `RaceDarkElf`,
-`RaceRedguard`, `RaceWoodElf`, `RaceImperial`, `AbHighElfMagicka`, `RaceArgonianResistDisease`, `RaceKhajiitClaws`,
-`RaceArgonianWaterbreathing`) unless the current race lists them, removes one that is held and casts and removes one
-again when the dispel left an effect of it running; the report carries what it found, and a stray is only a spell the
-client holds, a running effect without its spell being reported as that effect. The spawn's own sync runs about a second
-after the spawn, so the frost resistance is gone before the first check.
+dispels the ten vanilla racial abilities (`RaceNord`, `RaceBreton`, `RaceDarkElf`, `RaceRedguard`, `RaceWoodElf`,
+`RaceImperial`, `AbHighElfMagicka`, `RaceArgonianResistDisease`, `RaceKhajiitClaws`, `RaceArgonianWaterbreathing`)
+unless the current race's record lists them (the patcher left `RaceArgonianWaterbreathing` on the Argonian), removes one
+that is held and casts and removes one again when the dispel left an effect of it running; the report carries what the
+spawn's syncs did, whether the effect still runs being read again at each check (the sync's own reading is of its frame,
+before the engine drops a dispelled effect), and a stray is only a spell the client holds, a running effect that no held
+spell gives being reported as that effect. An effect a held spell gives is nobody's problem: a vampire's `AbVampire01`
+and the Alteration perks' `PerkMagicResistance` share `AbResistFrost` and `AbResistMagic` with the racial abilities.
+`RaceNord` is reported even when nothing of it could be seen, since a Nord's own `AldRacial_Nord` gives the same effect;
+with the dispel failed, its line reads `RaceNord not dispelled, its effect cannot be told from a held spell's`. The
+spawn's own sync runs about a second after the spawn, so the frost resistance is gone before the first check.
 
 `racialPassives.selfCheck` switches it: `"off"` (the code default, also without a block or with `enabled: false`)
 compares nothing, `"log"` writes the lines below and never resyncs, `"resync"` (the Test value) also sends one
@@ -295,7 +300,7 @@ Server, `C:\logs\test\gameserver.log`:
   its commandAnimal effect is not built yet`, `[racial] <id> <edid> refused: ready again in 13 h 20 min, last used
   <iso>`, `[racial] <id> <edid> used, ready again at <iso> (20 h, counting offline)`.
 
-Client, `skyrim-platform.log`: `RemoteServer: spawn race sync cleared vanilla leftovers: RaceNord dispelled`,
+Client, `skyrim-platform.log`: `RemoteServer: spawn race sync, vanilla leftovers: RaceNord dispelled`,
 `RemoteServer: race abilities after <reason>, ... other races' spells held: none; their effects running without the
 spell: none; vanilla leftovers: RaceNord dispelled; ... | racialReport sent, mastery magicka N|none`, `RemoteServer:
 racialResync from the server (...)`, `RemoteServer: racialBase for race <id>: health 100 -> 150, stamina 150 -> 100
@@ -313,10 +318,13 @@ With plugin r27a, the Test `racialPassives` block and the two magic entries:
    relog each, die and respawn each; every spawn logs `check ok`, and Active Effects shows the race's "<Race> Blood"
    ability.
    The template-save leftover (1.0.2): a non-Nord's first spawn of a game session logs `check ok <Race> after spawn:
-   ...; cleared RaceNord (dispelled)` on the server and `spawn race sync cleared vanilla leftovers: RaceNord dispelled`
-   in `skyrim-platform.log`, and Active Effects shows no Resist Frost; a Nord's line ends the same way and its Resist
-   Frost reads 75, not 85. `cleared RaceNord (recast)` means the dispel did nothing and the cast-and-remove did; a
-   `leftover RaceNord still running` MISMATCH means neither worked and the frost resistance is still on.
+   ...; cleared RaceNord (dispelled)` on the server and `spawn race sync, vanilla leftovers: RaceNord dispelled` in
+   `skyrim-platform.log`, and Active Effects shows no Resist Frost; a Nord's line ends the same way and Active Effects
+   shows the race's Resist Frost 75 and no second one of 50. `cleared RaceNord (recast)` means the dispel did nothing
+   and the cast-and-remove did; a `leftover RaceNord still running` MISMATCH means neither worked and the frost
+   resistance is still on (read 3 s after the sync, so a dispelled effect the engine had yet to drop does not count);
+   on a Nord, where the effect cannot be seen, `RaceNord not dispelled, its effect cannot be told from a held spell's`
+   on the spawn's line means the dispel failed and the second Resist Frost stays.
 3. Stats: the check lines read base H/M/S Breton 100/150/100, High Elf 100/200/100, Nord 100/100/150, Orc 150/100/100,
    Redguard 100/100/200; an Orc survives 100 points of damage. A new Orc reads 150 health and 100 stamina in its first
    session, before any relog (`[racial] <id> base values sent after race menu: OrcRace H/S 150/100` and its `check ok

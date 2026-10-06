@@ -117,10 +117,14 @@ test('a client that reports shared effects holds its strays; an effect running w
   const t2 = setup()
   t2.actor(1, 0xff000001, DARK)
   const line = t2.send(1, { ...r, sharedEffects: [{ spell: 0x200, effect: RESIST_FROST }], leftovers: [{ id: 0xaa020, held: false, dispelled: false, recast: true, active: true }] })
-  assert.equal(line, "[racial] ff000001 MISMATCH DarkElfRace after spawn: running without the spell: AbResistFrost (AldRacial_Nord's), another spell gives the effect; leftover RaceNord still running; base H/M/S 100/100/100; no resync, the race sync cannot fix a plugin difference, a base value or an effect another spell gives")
+  assert.equal(line, "[racial] ff000001 MISMATCH DarkElfRace after spawn: running without the spell: AbResistFrost (AldRacial_Nord's), no held spell gives the effect; leftover RaceNord still running; base H/M/S 100/100/100; no resync, the race sync cannot fix a plugin difference, a base value or an effect another spell gives")
   assert.equal(t2.packets.length, 0)
   const ok = t2.send(1, { ...r, sharedEffects: [], leftovers: [{ id: 0xaa020, held: false, dispelled: true, recast: false, active: false }, { id: 0x300, held: true, dispelled: false, recast: false, active: false }] })
   assert.equal(ok, '[racial] ff000001 check ok DarkElfRace after spawn: 2 race spells held (RaceDarkElf, AldRaceSpeed_DarkElf), base H/M/S 100/100/100; cleared RaceNord (dispelled), AldRacial_Breton (held)')
+  // A Nord's RaceNord with a failed dispel and nothing seen; a held spell removeSpell refused
+  const unseen = t2.send(1, { ...r, sharedEffects: [], leftovers: [{ id: 0xaa020, held: false, removed: false, dispelled: false, recast: false, active: false }, { id: 0x300, held: true, removed: false, dispelled: true, recast: false, active: false }] })
+  assert.equal(unseen, "[racial] ff000001 check ok DarkElfRace after spawn: 2 race spells held (RaceDarkElf, AldRaceSpeed_DarkElf), base H/M/S 100/100/100; cleared AldRacial_Breton (held, not removed, dispelled); RaceNord not dispelled, its effect cannot be told from a held spell's")
+  assert.equal(t2.packets.length, 0)
 })
 
 test('the same problems are logged once per spawn, their first repeat as unchanged; a check ok or a new spawn starts over', () => {
