@@ -196,8 +196,11 @@ callbacks (51149, 51870), none of them `ActorEquipManager::EquipObject`
 call at 0x8F2A05. A Take on the nailed reference itself would remove it from
 that client's world, for good on a plugin-placed book. So the press places a
 copy of the book only this client has (`placeAtMe` on the nailed reference,
-moved 4000 units straight down, out of sight and out of the crosshair's reach)
-and activates the copy. Close leaves the copy, which is deleted on the next
+moved 4000 units straight down, out of sight and out of the crosshair's reach),
+gives it the player as owner (a copy without one falls to the cell's owner, so
+in an inn, a shop or a claimed vanilla house the menu's button would read
+Steal and the Take would run as an engine theft with its alarm) and activates
+the copy. Close leaves the copy, which is deleted on the next
 update; Take picks the copy up, and the book it put in the pack is removed
 again with "It is nailed down." The nailed reference is never touched and the
 server sees neither the copy nor the pack change.

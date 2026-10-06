@@ -140,6 +140,8 @@ export class ItemService extends ClientListener {
       }
       reading.copyId = copy.getFormID();
       reading.held = player.getItemCount(book);
+      // Without an owner the copy falls to the cell's owner, so the Book Menu's button would read Steal and E would commit an engine theft
+      copy.setActorOwner(player.getLeveledActorBase());
       copy.setPosition(copy.getPositionX(), copy.getPositionY(), copy.getPositionZ() - COPY_DEPTH);
       copy.activate(player, true);
       this.controller.lookupListener(TimersService).setTimeoutOnUpdate(() => {
