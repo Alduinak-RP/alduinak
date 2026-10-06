@@ -643,6 +643,11 @@ export class FormView {
       }
       return false;
     }
+    // A copy in a paired scene (a killmove, the block) dies in the engine at the strike while the server's verdict comes at the scene's end, so its grace runs from the end
+    if (this.engineDeadSince && isCloneMovementSuspended(this.refrId)) {
+      this.engineDeadSince = Date.now();
+      return false;
+    }
     // The server's own verdict on the hit arrives within the grace; past it the engine's kill was its own and the copy follows the server
     if (this.engineDeadSince && Date.now() - this.engineDeadSince >= FormView.engineDeathGraceMs) {
       const killer = this.engineKillerId ? ` by ${this.engineKillerId.toString(16)}` : "";
