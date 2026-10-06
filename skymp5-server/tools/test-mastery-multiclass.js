@@ -1,7 +1,8 @@
 'use strict'
 
-// MasterySystem with multiclass slots over a stub mp: picks and their order, per-slot hours, clock and bank, recipe gates, caps,
-// markers, the widened rank readers, skills and magicka, resets, the login settle and the off switch: node tools/test-mastery-multiclass.js
+// MasterySystem with multiclass slots over a stub mp: picks and their order, per-slot hours, the character's hour clock and shared
+// bank (craft order, offline settlement, the fold of old per-slot banks), recipe gates, caps, markers, the widened rank readers,
+// skills and magicka, resets, the login settle and the off switch: node tools/test-mastery-multiclass.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -39,7 +40,13 @@ const HIDE = 0x1002     // tailor Novice, tanning rack
 const TEMPER = 0x1003   // blacksmith Novice, armor table
 const NAILS = 0x1004    // ungated, forge
 const SMELT = 0x1005    // miner or blacksmith Novice, smelter
+// The owner's bow, potion, bow example
+const WOODBENCH = 0x1a001
+const ALCHEMY = 0x1a002
+const BOW = 0x1006      // ungated, woodcraft bench
+const POTION = 0x1007   // ungated, alchemy lab
 const FLAMES = 0x12fcd
+const PROFESSION_IDS = ['alchemist', 'blacksmith', 'cook', 'farmer', 'hunter', 'mage', 'miner', 'tailor', 'warrior', 'woodworker']
 const markersOf = (base) => [1, 2, 3, 4, 5].map((i) => base + i)
 const SPELLS = { blacksmith: markersOf(0xb00), tailor: markersOf(0xc00), miner: markersOf(0xd00), mage: markersOf(0xe00), hunter: markersOf(0xf00) }
 
@@ -94,8 +101,10 @@ const setup = ({ slots = THREE, bonus = null } = {}) => {
     hunter: rulesOf([RACK]),
     miner: rulesOf([SMELTER]),
     mage: rulesOf([]),
+    woodworker: rulesOf([WOODBENCH]),
+    alchemist: rulesOf([ALCHEMY]),
   }
-  sys.kits = { blacksmith: [{ baseId: 0x5ace4, count: 5 }], tailor: [{ baseId: 0xdb5d2, count: 5 }], miner: [{ baseId: 0xe3c16, count: 1 }], mage: [], hunter: [] }
+  sys.kits = { blacksmith: [{ baseId: 0x5ace4, count: 5 }], tailor: [{ baseId: 0xdb5d2, count: 5 }], miner: [{ baseId: 0xe3c16, count: 1 }], mage: [], hunter: [], woodworker: [], alchemist: [] }
   const recipe = (id, bench, editorId, gates) => {
     sys.benchCache.set(id, bench)
     sys.baseCache.set(id, { id, type: 'COBJ', editorId })
@@ -106,6 +115,8 @@ const setup = ({ slots = THREE, bonus = null } = {}) => {
   recipe(TEMPER, ARMOR_TABLE, 'TemperIron', [{ profession: 'blacksmith', rank: 1 }])
   recipe(NAILS, FORGE, 'BYOHRecipeNails', [])
   recipe(SMELT, SMELTER, 'RecipeIngotSteel', [{ profession: 'miner', rank: 1 }, { profession: 'blacksmith', rank: 1 }])
+  recipe(BOW, WOODBENCH, 'AldRecipeWood_IronBow', [])
+  recipe(POTION, ALCHEMY, 'RecipePotionHealth', [])
   sys.baseCache.set(0, null)
   sys.benchInReach = () => true
   if (bonus !== null) sys.setRacial({ baseBonus: () => ({ magicka: bonus }) })
@@ -114,13 +125,17 @@ const setup = ({ slots = THREE, bonus = null } = {}) => {
   const reset = (profession) => { sys.lastChooseMs.clear(); sys.onResetRequest(ctx, USER, profession ? { profession } : {}) }
   const craft = (recipeId) => sys.creditActivity(ctx, { kind: 'craft', actorId: ACTOR, detail: { recipeId, held: 1 } })
   const cast = () => sys.creditActivity(ctx, { kind: 'cast', actorId: ACTOR, detail: { spellId: FLAMES } })
+  const work = (profession) => sys.creditActivity(ctx, { kind: 'work', actorId: ACTOR, detail: { profession: PROFESSION_IDS.indexOf(profession) } })
   const notices = () => mp.packets.filter((p) => p.customPacketType === 'masteryNotice').map((p) => p.text)
   const last = (type) => mp.packets.filter((p) => p.customPacketType === type).pop()
   const primary = () => mp.props.get(`${ACTOR}:private.mastery`)
   const subs = () => mp.props.get(`${ACTOR}:private.masterySlots`)
   login()
-  return { sys, mp, ctx, lines, login, choose, reset, craft, cast, notices, last, primary, subs }
+  return { sys, mp, ctx, lines, login, choose, reset, craft, cast, work, notices, last, primary, subs }
 }
+
+// A bank summary as the packets carry it, idle unless told otherwise
+const bankOf = (extra = {}) => ({ max: 2, intervalMs: HOUR, offline: true, countedMs: 0, counted: null, payMs: 0, queue: [], ...extra })
 
 const results = []
 function test(name, fn) {
@@ -190,22 +205,46 @@ test('a Free sub-slot counts only free work; a gated recipe counts only for its 
   assert.equal(t.primary().points, 2, 'an OR group counts for the blacksmith')
 })
 
-test('each slot has its own clock and bank, and banked hours are paid per slot', () => {
+test('one hour clock per character: a craft inside the counted hour banks an hour for its own craft, paid in craft order (bow, potion, bow)', () => {
+  const t = setup()
+  t.choose('woodworker', 0)
+  t.choose('alchemist', 1)
+  const start = now
+  t.craft(BOW)
+  assert.deepEqual([t.primary().points, t.primary().lastPointAt, t.primary().queue], [1, start, []])
+  assert.equal(t.notices().pop(), 'Your work as a Woodworker is counted: 1 hour at the craft.')
+  now += 5 * 60000
+  t.craft(POTION)
+  assert.deepEqual([t.subs().secondary.points, t.primary().queue], [0, ['alchemist']], 'the potion banks an alchemy hour instead of counting one')
+  assert.equal(t.notices().pop(), 'Extra work banked for your secondary craft: 1 hour will be counted, one per hour, online or not.')
+  now += 5 * 60000
+  t.craft(BOW)
+  assert.deepEqual(t.primary().queue, ['alchemist', 'woodworker'])
+  assert.ok(t.lines.some((l) => /woodworker hour banked \(2\/2: alchemist, woodworker\), next paid in 50 min/.test(l)))
+  t.craft(BOW)
+  t.work('woodworker')
+  assert.deepEqual([t.primary().points, t.primary().queue.length], [1, 2], 'a full bank and non-craft work inside the counted hour earn nothing')
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: 50 * 60000, counted: 'woodworker', payMs: 50 * 60000, queue: ['alchemist', 'woodworker'] }))
+  now += 50 * 60000
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.subs().secondary.points, t.subs().secondary.lastPointAt, t.primary().points, t.primary().queue], [1, start + HOUR, 1, ['woodworker']], 'the second hour is alchemy')
+  assert.ok(t.lines.some((l) => /secondary alchemist hour paid from the bank after 60 min: 1h, 1 of 20 hours toward Novice, 1 hour still banked/.test(l)))
+  now += HOUR
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().lastPointAt, t.primary().queue, t.sys.banked.size], [2, start + 2 * HOUR, [], 0], 'the third hour is woodworking')
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: HOUR, counted: 'woodworker' }))
+})
+
+test('one piece of work credits one slot, the first in slot order that qualifies', () => {
   const t = setup()
   t.choose('blacksmith', 0)
   t.choose('tailor', 1)
+  t.choose('hunter', 2)
   t.craft(STRIPS)
-  t.craft(NAILS)
-  assert.deepEqual([t.primary().points, t.subs().secondary.points], [1, 1])
-  assert.equal(t.notices().pop(), 'Your work as a Blacksmith is counted: 1 hour at the craft.')
-  now += 10 * 60000
+  assert.deepEqual([t.subs().secondary.points, t.subs().tertiary.points, t.primary().queue], [1, 0, []], 'the rack is tailor and hunter work, the tailor is the lower slot')
+  now += HOUR
   t.craft(STRIPS)
-  assert.deepEqual([t.subs().secondary.bank, t.primary().bank], [1, 0])
-  assert.equal(t.notices().pop(), 'Extra work banked for your secondary craft: 1 hour will be counted, one per hour you stay online.')
-  now += 51 * 60000
-  t.sys.payBanks(t.ctx)
-  assert.deepEqual([t.subs().secondary.points, t.subs().secondary.bank, t.primary().points], [2, 0, 1])
-  assert.ok(t.lines.some((l) => /secondary tailor hour paid from the bank after 60 online min: 2h, 2 of 20 hours toward Novice/.test(l)))
+  assert.deepEqual([t.subs().secondary.points, t.subs().tertiary.points], [2, 0])
 })
 
 test('the bank check reads only online characters with banked hours, saves their online time and lets them go once paid', () => {
@@ -221,10 +260,10 @@ test('the bank check reads only online characters with banked hours, saves their
   assert.deepEqual([...t.sys.banked], [ACTOR], 'a login with an hour in the bank joins the check')
   now += 6 * 60000
   t.sys.payBanks(t.ctx)
-  assert.deepEqual([t.primary().points, t.primary().bank, t.primary().onlineMs], [1, 1, 6 * 60000], 'not yet due, the online time is saved')
+  assert.deepEqual([t.primary().points, t.primary().queue, t.primary().onlineMs], [1, ['blacksmith'], 6 * 60000], 'not yet due, the online time is saved')
   now += 54 * 60000
   t.sys.payBanks(t.ctx)
-  assert.deepEqual([t.primary().points, t.primary().bank, t.sys.banked.size], [2, 0, 0], 'paid and out of the check')
+  assert.deepEqual([t.primary().points, t.primary().queue, t.sys.banked.size], [2, [], 0], 'paid and out of the check')
   let reads = 0
   const get = t.mp.get
   t.mp.get = (id, key) => { reads++; return get(id, key) }
@@ -233,61 +272,149 @@ test('the bank check reads only online characters with banked hours, saves their
   assert.equal(reads, 0, 'an empty check reads no record')
 })
 
-test('the menu and every state carry each held craft\'s hour clock and bank, read from the stored record after a relog', () => {
+test('the menu and every state carry the hour clock and the bank, read from the stored record after a relog', () => {
   const t = setup()
   t.choose('blacksmith', 0)
   t.choose('tailor', 1)
   const menuBank = () => { t.sys.sendMenu(t.ctx, USER); return t.last('masteryMenu').bank }
-  const idle = (slot) => ({ slot, countedMs: 0, banked: 0, payMs: 0, capped: false })
-  assert.deepEqual(menuBank(), { max: 2, intervalMs: HOUR, offline: false, slots: [idle(0), idle(1)] })
+  assert.deepEqual(menuBank(), bankOf())
   t.craft(NAILS)
   now += 10 * 60000
   const sent = t.mp.packets.length
-  t.craft(NAILS)
+  t.craft(STRIPS)
   assert.ok(t.mp.packets.slice(sent).some((p) => p.customPacketType === 'professionState'), 'a banked hour sends a new state')
-  assert.deepEqual(t.last('professionState').bank.slots, [{ slot: 0, countedMs: 50 * 60000, banked: 1, payMs: 50 * 60000, capped: false }, idle(1)])
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: 50 * 60000, counted: 'blacksmith', payMs: 50 * 60000, queue: ['tailor'] }))
   now += 20 * 60000
   t.sys.disconnect(USER, t.ctx)
-  now += 3 * HOUR
+  now += 20 * 60000
   t.login()
-  assert.deepEqual(menuBank().slots[0], { slot: 0, countedMs: 0, banked: 1, payMs: 30 * 60000, capped: false }, 'the counted hour ran out while away, the bank still wants 30 online minutes')
-  now += 30 * 60000
+  assert.deepEqual(menuBank(), bankOf({ countedMs: 10 * 60000, counted: 'blacksmith', payMs: 10 * 60000, queue: ['tailor'] }), 'read back from the record')
+  now += 10 * 60000
   t.sys.payBanks(t.ctx)
-  assert.equal(t.primary().points, 2)
-  assert.deepEqual(t.last('professionState').bank.slots[0], { slot: 0, countedMs: HOUR, banked: 0, payMs: 0, capped: false })
-  t.sys.grantPoints(t.ctx, ACTOR, 60, 1)
-  assert.deepEqual(menuBank().slots[1], { slot: 1, countedMs: 0, banked: 0, payMs: 0, capped: true }, 'a sub-slot at its cap')
+  assert.deepEqual([t.subs().secondary.points, t.primary().points], [1, 1])
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: HOUR, counted: 'tailor' }))
 })
 
-test('with masteryBankOffline the hours that fell due while logged out are counted at the next bank check, an interval apart', () => {
+test('the hours that fell due while logged out are paid at login, an interval apart, and the state sent at login already shows it', () => {
   const t = setup()
-  t.sys.bankOffline = true
   t.choose('blacksmith', 0)
   const start = now
   for (let i = 0; i < 3; i++) t.craft(NAILS)
-  assert.deepEqual([t.primary().points, t.primary().bank], [1, 2])
+  assert.deepEqual([t.primary().points, t.primary().queue], [1, ['blacksmith', 'blacksmith']])
   assert.equal(t.notices().pop(), 'Extra work banked: 2 hours will be counted, one per hour, online or not.')
   t.sys.disconnect(USER, t.ctx)
   now += 90 * 60000
   t.login()
-  t.sys.sendMenu(t.ctx, USER)
-  assert.deepEqual(t.last('masteryMenu').bank.slots, [{ slot: 0, countedMs: 0, banked: 2, payMs: 0, capped: false }])
-  t.sys.payBanks(t.ctx)
-  assert.deepEqual([t.primary().points, t.primary().bank, t.primary().lastPointAt], [2, 1, start + HOUR], 'one was due, counted when it fell due')
-  assert.deepEqual(t.last('professionState').bank, { max: 2, intervalMs: HOUR, offline: true, slots: [{ slot: 0, countedMs: 30 * 60000, banked: 1, payMs: 30 * 60000, capped: false }] })
+  assert.deepEqual([t.primary().points, t.primary().queue, t.primary().lastPointAt], [2, ['blacksmith'], start + HOUR], 'the one that fell due is counted at login, dated when it fell due')
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: 30 * 60000, counted: 'blacksmith', payMs: 30 * 60000, queue: ['blacksmith'] }))
   assert.ok(t.lines.some((l) => /blacksmith hour paid from the bank after 60 min: 2h, 1 hour still banked/.test(l)))
+  assert.ok(t.lines.some((l) => /online with 1 hour banked \(blacksmith\), next paid in 30 min/.test(l)))
   now += 30 * 60000
   t.sys.payBanks(t.ctx)
-  assert.deepEqual([t.primary().points, t.primary().bank], [3, 0], 'the other falls due online')
+  assert.deepEqual([t.primary().points, t.primary().queue, t.sys.banked.size], [3, [], 0], 'the other falls due online')
   const u = setup()
-  u.sys.bankOffline = true
   u.choose('blacksmith', 0)
   for (let i = 0; i < 3; i++) u.craft(NAILS)
   u.sys.disconnect(USER, u.ctx)
   now += 5 * HOUR
   u.login()
-  u.sys.payBanks(u.ctx)
-  assert.deepEqual([u.primary().points, u.primary().bank, u.sys.banked.size], [3, 0, 0], 'both in one check')
+  assert.deepEqual([u.primary().points, u.primary().queue, u.sys.banked.size], [3, [], 0], 'both at login')
+  assert.deepEqual(u.last('professionState').bank, bankOf())
+})
+
+test('without masteryBankOffline the pay clock is online time, so nothing falls due while logged out', () => {
+  const t = setup()
+  t.sys.bankOffline = false
+  t.choose('blacksmith', 0)
+  t.craft(NAILS)
+  t.craft(NAILS)
+  assert.equal(t.notices().pop(), 'Extra work banked: 1 hour will be counted, one per hour you stay online.')
+  now += 30 * 60000
+  t.sys.disconnect(USER, t.ctx)
+  assert.equal(t.primary().onlineMs, 30 * 60000)
+  now += 5 * HOUR
+  t.login()
+  assert.deepEqual([t.primary().points, t.primary().queue], [1, ['blacksmith']], 'nothing fell due while away')
+  t.sys.sendMenu(t.ctx, USER)
+  assert.deepEqual(t.last('masteryMenu').bank, bankOf({ offline: false, payMs: 30 * 60000, queue: ['blacksmith'] }))
+  now += 30 * 60000
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.primary().points, t.primary().queue, t.primary().onlineMs], [2, [], 0])
+  assert.ok(t.lines.some((l) => /blacksmith hour paid from the bank after 60 online min: 2h/.test(l)))
+})
+
+test('a record from before the shared bank folds its per-slot banks into the queue at login, oldest counted hour first, written once in the new shape', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.choose('tailor', 1)
+  t.choose('miner', 2)
+  const old = t.primary()
+  Object.assign(old, { bank: 1, onlineMs: 5 * 60000, lastPointAt: now - 10 * 60000 })
+  delete old.queue
+  const subs = t.subs()
+  Object.assign(subs.secondary, { bank: 2, onlineMs: 5 * 60000, lastPointAt: now - 30 * 60000 })
+  Object.assign(subs.tertiary, { bank: 1, onlineMs: 5 * 60000, lastPointAt: now - 20 * 60000 })
+  t.mp.props.set(`${ACTOR}:private.mastery`, old)
+  t.mp.props.set(`${ACTOR}:private.masterySlots`, subs)
+  t.login()
+  assert.deepEqual(t.primary().queue, ['tailor', 'tailor', 'miner', 'blacksmith'], 'every hour kept, the slot with the oldest counted hour first')
+  assert.ok(!('bank' in t.primary()) && !('bank' in t.subs().secondary) && !('onlineMs' in t.subs().secondary), 'the new shape')
+  assert.equal(t.primary().onlineMs, 5 * 60000, 'the primary keeps the character\'s online time')
+  assert.ok(t.lines.some((l) => /4 hours moved from the old per-craft banks into the shared bank: tailor, tailor, miner, blacksmith/.test(l)))
+  const lines = t.lines.length
+  t.login()
+  assert.deepEqual(t.primary().queue, ['tailor', 'tailor', 'miner', 'blacksmith'], 'a second login folds nothing twice')
+  assert.ok(!t.lines.slice(lines).some((l) => /moved from the old/.test(l)))
+  t.craft(NAILS)
+  assert.equal(t.primary().queue.length, 4, 'an over-full bank takes no more')
+  assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: 50 * 60000, counted: 'blacksmith', payMs: 50 * 60000, queue: ['tailor', 'tailor', 'miner', 'blacksmith'] }))
+  now += 50 * 60000
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.subs().secondary.points, t.primary().queue], [1, ['tailor', 'miner', 'blacksmith']])
+  now += 3 * HOUR
+  t.sys.payBanks(t.ctx)
+  assert.deepEqual([t.subs().secondary.points, t.subs().tertiary.points, t.primary().points, t.primary().queue, t.sys.banked.size], [2, 1, 1, [], 0], 'paid one per interval, in order')
+})
+
+test('a sub-slot out of force keeps its old per-slot bank until it is back in force', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.choose('tailor', 1)
+  const subs = t.subs()
+  Object.assign(subs.secondary, { bank: 2, lastPointAt: now - 30 * 60000 })
+  t.mp.props.set(`${ACTOR}:private.masterySlots`, subs)
+  t.sys.slots = parseSlots(undefined, RANK_HOURS).slots
+  t.login()
+  assert.deepEqual([t.primary().queue, t.subs().secondary.bank], [[], 2], 'not folded while out of force')
+  t.sys.slots = parseSlots(THREE, RANK_HOURS).slots
+  t.login()
+  assert.deepEqual([t.primary().queue, 'bank' in t.subs().secondary], [['tailor', 'tailor'], false])
+})
+
+test('a reset empties that craft\'s banked hours and a sub-slot reaching its cap loses its own; the others stay', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.choose('tailor', 1)
+  t.sys.grantPoints(t.ctx, ACTOR, 59, 1)
+  t.craft(NAILS)
+  now += 5 * 60000
+  t.craft(STRIPS)
+  t.craft(NAILS)
+  assert.deepEqual(t.primary().queue, ['tailor', 'blacksmith'])
+  t.sys.grantPoints(t.ctx, ACTOR, 1, 1)
+  assert.deepEqual([t.subs().secondary.rank, t.primary().queue], [2, ['blacksmith']], 'at its cap the tailor hour is dropped')
+  assert.ok(t.lines.some((l) => /1 hour dropped from the bank, the craft is set aside, out of force or at its cap: tailor/.test(l)))
+  const u = setup()
+  u.choose('blacksmith', 0)
+  u.choose('tailor', 1)
+  u.craft(NAILS)
+  now += 5 * 60000
+  u.craft(STRIPS)
+  u.craft(NAILS)
+  u.reset('tailor')
+  assert.deepEqual([u.subs().secondary, u.primary().queue], [null, ['blacksmith']])
+  u.sys.resetCharacter(u.ctx, ACTOR, 0)
+  assert.deepEqual([u.primary().profession, u.primary().queue], [null, []])
 })
 
 test('activity events are credited on the next turn, one drain for a burst', () => {

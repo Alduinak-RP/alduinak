@@ -232,7 +232,7 @@ test('rank readers take the best slot of the professions, and craft pricing foll
   assert.equal(slots.bestSlot(single, ['tailor'], []), null)
 })
 
-test('stored sub-slot records are clamped, and unknown professions are dropped', () => {
+test('stored sub-slot records are clamped, unknown professions are dropped, and an old per-slot bank is kept for the fold', () => {
   const known = id => PROFESSIONS.includes(id)
   assert.equal(slots.toSlotRecord(undefined, known), null)
   assert.equal(slots.toSlotRecord('tailor', known), null)
@@ -240,10 +240,12 @@ test('stored sub-slot records are clamped, and unknown professions are dropped',
   assert.equal(slots.toSlotRecord({ points: 5 }, known), null)
   assert.deepEqual(
     slots.toSlotRecord({ profession: 'tailor', points: '7', lastPointAt: -5, rank: 9, bank: 1.7, onlineMs: 'x' }, known),
-    { profession: 'tailor', points: 7, lastPointAt: 0, rank: LEGENDARY, bank: 1, onlineMs: 0 })
+    { profession: 'tailor', points: 7, lastPointAt: 0, rank: LEGENDARY, bank: 1 })
   assert.deepEqual(slots.toSlotRecord({ profession: 'miner', points: 25, lastPointAt: 1700000000000, rank: 1, bank: 2, onlineMs: 600000 }, known),
-    { profession: 'miner', points: 25, lastPointAt: 1700000000000, rank: NOVICE, bank: 2, onlineMs: 600000 })
-  assert.deepEqual(slots.emptySlotRecord('tailor'), { profession: 'tailor', points: 0, lastPointAt: 0, rank: FREE, bank: 0, onlineMs: 0 })
+    { profession: 'miner', points: 25, lastPointAt: 1700000000000, rank: NOVICE, bank: 2 })
+  assert.deepEqual(slots.toSlotRecord({ profession: 'miner', points: 25, lastPointAt: 1700000000000, rank: 1, bank: 0 }, known),
+    { profession: 'miner', points: 25, lastPointAt: 1700000000000, rank: NOVICE }, 'no bank field unless an old record banked something')
+  assert.deepEqual(slots.emptySlotRecord('tailor'), { profession: 'tailor', points: 0, lastPointAt: 0, rank: FREE })
 })
 
 let failed = 0

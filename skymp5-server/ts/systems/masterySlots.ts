@@ -25,9 +25,8 @@ export interface SlotRecord {
   // Epoch ms of the slot's last counted hour, 0 before any
   lastPointAt: number;
   rank: number;
-  // Hours banked by extra crafts, and online time since the slot's last counted hour
-  bank: number;
-  onlineMs: number;
+  // Hours a record from before the shared bank (2026-10-05) banked for this slot alone; folded into the character's queue at load
+  bank?: number;
 }
 
 // A slot as the rank readers see it; an empty slot has no profession
@@ -155,20 +154,21 @@ export function duplicateSlots(professions: Array<string | null>): number[] {
 }
 
 export const emptySlotRecord = (profession: string): SlotRecord =>
-  ({ profession, points: 0, lastPointAt: 0, rank: FREE, bank: 0, onlineMs: 0 });
+  ({ profession, points: 0, lastPointAt: 0, rank: FREE });
 
-// A stored sub-slot with every field clamped, null when it holds no known profession
+// A stored sub-slot with every field clamped, null when it holds no known profession; an old per-slot bank is kept for the fold, its onlineMs dropped
 export function toSlotRecord(raw: unknown, isProfession: (id: string) => boolean): SlotRecord | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const profession = r["profession"];
   if (typeof profession !== "string" || !isProfession(profession)) return null;
-  return {
+  const rec: SlotRecord = {
     profession,
     points: Math.max(0, Math.floor(Number(r["points"])) || 0),
     lastPointAt: Math.max(0, Number(r["lastPointAt"]) || 0),
     rank: Math.min(LEGENDARY, Math.max(FREE, Math.floor(Number(r["rank"])) || 0)),
-    bank: Math.max(0, Math.floor(Number(r["bank"])) || 0),
-    onlineMs: Math.max(0, Number(r["onlineMs"]) || 0),
   };
+  const bank = Math.max(0, Math.floor(Number(r["bank"])) || 0);
+  if (bank) rec.bank = bank;
+  return rec;
 }

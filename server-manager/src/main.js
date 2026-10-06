@@ -732,8 +732,12 @@ function applyMastery(cf, df, { profession, hours }) {
     const drop = new Set((rec.granted || []).map(Number))
     if (Array.isArray(cf.learnedSpells)) cf.learnedSpells = cf.learnedSpells.filter(id => !drop.has(Number(id)))
     rec.granted = []
-    // masterySystem.ts resetCharacter: banked hours and the hour clock belong to the old craft
-    if (rec.profession !== prof) Object.assign(rec, { lastPointAt: 0, bank: 0, onlineMs: 0 })
+    // masterySystem.ts resetCharacter: the hour clock and the banked hours belong to the old craft (bank is the per-slot count of a record from before the shared bank)
+    if (rec.profession !== prof) {
+      rec.lastPointAt = 0
+      rec.queue = (Array.isArray(rec.queue) ? rec.queue : []).filter(p => p !== rec.profession)
+      delete rec.bank
+    }
     rec.profession = prof
   }
   rec.v = MASTERY_VERSION

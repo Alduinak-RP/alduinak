@@ -27,13 +27,14 @@ type Mp = any;
 // onCraft/onActivate/onSpellCast/onDeath hooks on `mp`; other systems credit their own work (skinning) through creditWork. Each rank
 // grants a cumulative marker spell AldProf_<Label>_<Rank>; the plugin's recipes condition on it with HasSpell.
 // A mage cannot rise above Adept without having cast an Adept spell, above Expert without an Expert one, and so on.
-// Hour bank: each extra craft of the profession inside a counted hour banks one hour, up to masteryHourBank; a banked hour
-// is counted once the character has been online for a full interval since the last counted hour and no work counted one
-// (with masteryBankOffline the time logged out counts too). The Skills tab draws each held craft's hours from `bank`.
+// A character counts one hour per interval, whichever craft did the work. Hour bank: a craft inside the counted hour banks
+// one hour for its craft, the character's bank being a queue of up to masteryHourBank entries in craft order; the head is
+// paid one interval after the last counted hour (real time, or online time without masteryBankOffline) and dated then, so
+// the hours that fell due while logged out are paid at login. The Skills tab draws the clock and the queue from `bank`.
 // Multiclassing (masterySlots with more than one slot): a secondary and a tertiary craft, picked in order after the primary,
 // start at Free and earn Novice by the hours of their class's free work (an ungated recipe, or a gated one only through a
-// marker of the slot's own profession at a rank it holds), then climb to their cap on their own ladder. Every slot has its
-// own hour clock and bank; one event credits every slot it qualifies for. The rank readers take the best slot.
+// marker of the slot's own profession at a rank it holds), then climb to their cap on their own ladder. One event credits
+// the first slot in slot order it qualifies for. The rank readers take the best slot.
 //
 // Wire protocol - every message is a CustomPacket carrying JSON:
 //   Client -> Server:
@@ -48,20 +49,22 @@ type Mp = any;
 //     { customPacketType: "professionState", profession, rank, rankName, hours, skills, magicka, slots: [...], bank }
 //   profession, rank and hours stay the primary's; skills are the best of the slots; magicka is the mage slot's rank value
 //   plus the race's bonus, the race's base for anyone else, null while in creation.
-//   bank: { max, intervalMs, offline, slots: [{ slot, countedMs, banked, payMs, capped }] }, one entry per held craft, times as
-//   left at sending; professionState follows every counted or banked hour, so an open Skills tab needs no poll.
+//   bank: { max, intervalMs, offline, countedMs, counted, payMs, queue: [<professionId>...] }, the hour counting now and the
+//   banked hours in pay order, times as left at sending; professionState follows every counted or banked hour, so an open
+//   Skills tab needs no poll.
 //
-// Persistence on the actor: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets, bank,
-// onlineMs } (the primary) and `private.masterySlots` = { v: 1, secondary, tertiary, granted[], kits[] }, each sub-slot a
-// { profession, points, lastPointAt, rank, bank, onlineMs } or null, granted the markers held for either sub-slot.
+// Persistence on the actor: `private.mastery` = { v: 2, profession, points, lastPointAt, rank, granted[], spellTier, resets,
+// queue[], onlineMs } (the primary, queue and onlineMs being the character's) and `private.masterySlots` = { v: 1, secondary,
+// tertiary, granted[], kits[] }, each sub-slot a { profession, points, lastPointAt, rank } or null, granted the markers held for
+// either sub-slot. A record from before 2026-10-05 carries a per-slot `bank` count instead of the queue; load folds it in.
 //
 // server-settings.json keys (all optional):
 //   masteryRankHours             [adept, expert, master, legendary] thresholds, default [40, 100, 180, 6000]
 //   masterySlots                 [{ name, cap, rankHours }] in pick order, default one primary (multiclassing off), see masterySlots.ts
 //   masterySlotKits              a sub-slot pick hands over that craft's kit items, never gold, once per craft, default true
-//   masteryPointIntervalMinutes  minimum gap between two hours of one slot, default 60
-//   masteryHourBank              hours extra crafts may bank per slot, default 2; 0 turns the bank off
-//   masteryBankOffline           banked hours also fall due while the character is logged out, default false
+//   masteryPointIntervalMinutes  minimum gap between two counted hours of a character, default 60
+//   masteryHourBank              hours extra crafts may bank, shared by every slot, default 2; 0 turns the bank off
+//   masteryBankOffline           banked hours also fall due while the character is logged out, default true
 //   masterySpells                { "<professionId>": [novice, adept, expert, master, legendary] } marker form ids
 //                                overriding the plugin's AldProf_<Label>_<Rank> spells
 //   masteryActivities            { "<professionId>": { craftKeywords, craftStations, activatePrefixes, activateTypes,
@@ -336,10 +339,12 @@ interface MasteryRecord {
   spellTier: number;
   // Profession resets the player has used
   resets: number;
-  // Hours banked by extra crafts, waiting to be counted
-  bank: number;
-  // Online time since the last counted hour, up to the last save
+  // The shared hour bank: the profession each banked hour pays, in pay order
+  queue: string[];
+  // Online time since the character's last counted hour, up to the last save
   onlineMs: number;
+  // Hours a record from before the shared bank banked for the primary alone; folded into queue at load
+  bank?: number;
 }
 
 // private.masterySlots; the primary stays in private.mastery
@@ -356,13 +361,15 @@ interface SubSlots {
 type SubKey = "secondary" | "tertiary";
 const subKeyOf = (index: number): SubKey | null => (index === 1 ? "secondary" : index === 2 ? "tertiary" : null);
 
-// Hours, clock and bank of one slot; the primary's record carries the same fields
-type Progress = Pick<MasteryRecord, "profession" | "points" | "lastPointAt" | "rank" | "bank" | "onlineMs">;
+// Hours and last counted hour of one slot; the primary's record carries the same fields
+type Progress = Pick<MasteryRecord, "profession" | "points" | "lastPointAt" | "rank" | "bank">;
 
 // Both stored records of one character; subs is null until a sub-slot is taken, or while multiclassing is off and they were not read
 interface Character {
   primary: MasteryRecord;
   subs: SubSlots | null;
+  // Hours load moved from old per-slot banks into the queue, not yet written
+  folded?: number;
 }
 
 // One slot of a character; cfg is null for a sub-slot the settings no longer configure
@@ -396,25 +403,21 @@ export interface SlotSummary {
   rankHours: number[];
 }
 
-// One held craft's hour clock and bank as the Skills tab draws them; times are what is left at sending
-export interface BankSlot {
-  slot: number;
-  // Ms until work counts an hour again, 0 when it counts now
-  countedMs: number;
-  // Hours waiting in the bank
-  banked: number;
-  // Ms on the pay clock until the next banked hour is counted, 0 with none banked
-  payMs: number;
-  // A sub-slot at its cap earns no more hours
-  capped: boolean;
-}
-
+// The character's hour clock and shared bank as the Skills tab draws them; times are what is left at sending
 export interface BankSummary {
+  // Bank places, masteryHourBank
   max: number;
   intervalMs: number;
   // Whether the pay clock also runs while the character is logged out
   offline: boolean;
-  slots: BankSlot[];
+  // Ms until work counts an hour again, 0 when it counts now
+  countedMs: number;
+  // Profession of the hour counting now, null when none is
+  counted: string | null;
+  // Ms until the first banked hour is counted, 0 with none banked
+  payMs: number;
+  // The profession each banked hour pays, in pay order
+  queue: string[];
 }
 
 // What the admin panel shows for one character; the top-level fields are the primary's
@@ -443,10 +446,11 @@ interface Location {
   pos: number[];
 }
 
-const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0, bank: 0, onlineMs: 0 });
+const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0, queue: [], onlineMs: 0 });
 const emptySubs = (): SubSlots => ({ v: SLOTS_VERSION, secondary: null, tertiary: null, granted: [], kits: [] });
 const hoursText = (n: number): string => loc(n === 1 ? "mastery.hoursOne" : "mastery.hoursMany", { n });
 const idList = (v: unknown): number[] => (Array.isArray(v) ? v.map((x) => Number(x) >>> 0).filter((x) => x) : []);
+const professionList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && PROFESSION_IDS.indexOf(x) !== -1) : []);
 
 export const stringList = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x) : [];
 
@@ -506,9 +510,9 @@ export class MasterySystem implements System {
     }
 
     const configured = Object.keys(this.spells).length;
-    this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one hour per ${this.intervalMs / 60000} min, extra crafts bank up to ${hoursText(this.bankMax)} paid one per interval ${this.bankOffline ? "online or not" : "of online time"}, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
+    this.log(`[mastery] ready, ranks at ${this.rankHours.join("/")}h, one hour per ${this.intervalMs / 60000} min, extra crafts bank up to ${hoursText(this.bankMax)} paid in order one per interval ${this.bankOffline ? "online or not" : "of online time"}, ${configured}/${PROFESSION_IDS.length} professions have marker spells`);
     const multiclass = multiclassOn(this.slots);
-    this.log(`[mastery] slots: ${describeSlots(this.slots)}${multiclass ? `; each slot has its own ${this.intervalMs / 60000} min clock and ${hoursText(this.bankMax)} bank, ${this.resetsPerCharacter} reset(s) shared, sub-slot kits ${this.slotKits ? "on (items, no gold)" : "off"}, ${this.markers.size} rank markers read as recipe gates` : ""}`);
+    this.log(`[mastery] slots: ${describeSlots(this.slots)}${multiclass ? `; one ${this.intervalMs / 60000} min hour clock and a ${hoursText(this.bankMax)} bank shared by every slot, ${this.resetsPerCharacter} reset(s) shared, sub-slot kits ${this.slotKits ? "on (items, no gold)" : "off"}, ${this.markers.size} rank markers read as recipe gates` : ""}`);
     if (multiclass) {
       this.logFreeRecipes(ctx, s.dataDir, s.loadOrder).catch((e) => this.log(`[mastery] free recipe count failed: ${e}`));
     }
@@ -581,25 +585,25 @@ export class MasterySystem implements System {
 
   // ── Worked hours ────────────────────────────────────────────────────────────
 
-  // One hour per interval and slot; an extra craft inside a slot's counted hour goes to that slot's bank instead
+  // One hour per interval for the character, to the first slot in slot order that qualifies; inside the counted hour only a craft earns anything, a banked hour
   private creditActivity(ctx: SystemContext, ev: ActivityEvent): void {
     const char = this.load(ctx, ev.actorId);
     const slots = char ? this.activeSlots(char) : [];
     if (!char || !slots.length) return;
     if (ev.kind === "cast" && !this.noteCast(ctx, ev.actorId, char, slots, ev.detail["spellId"])) return;
+    const now = Date.now();
+    const counted = this.countedMs(char, now) > 0;
+    if (counted && (ev.kind !== "craft" || char.primary.queue.length >= this.bankMax)) return;
     const gates = ev.kind === "craft" ? this.recipeGates(ctx, ev.detail["recipeId"]) : [];
     for (const slot of slots) {
       const profession = slot.rec.profession || "";
       if (this.atCap(slot)) continue;
-      const now = Date.now();
-      const elapsed = now - slot.rec.lastPointAt;
-      const counted = elapsed >= 0 && elapsed < this.intervalMs;
-      if (counted && (ev.kind !== "craft" || slot.rec.bank >= this.bankMax)) continue;
       if (ev.kind === "craft" && !creditsCraft(profession, slot.rec.rank, gates)) continue;
       const rules = this.rules[profession];
       if (!rules || !this.matches(ctx, profession, rules, ev)) continue;
       if (counted) this.deposit(ctx, ev.actorId, char, slot, now);
       else this.countHour(ctx, ev.actorId, char, slot, now, false);
+      return;
     }
   }
 
@@ -608,10 +612,12 @@ export class MasterySystem implements System {
     const rec = slot.rec;
     rec.points += 1;
     rec.lastPointAt = at;
+    this.prune(actorId, char);
     this.settleClock(actorId, char, now);
-    rec.onlineMs = 0;
+    char.primary.onlineMs = 0;
     this.save(ctx, actorId, char);
-    const left = rec.bank ? loc("mastery.stillBanked", { hours: hoursText(rec.bank) }) : "";
+    const queued = char.primary.queue.length;
+    const left = queued ? loc("mastery.stillBanked", { hours: hoursText(queued) }) : "";
     const standing = this.standingText(slot);
     this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour ${banked ? `paid from the bank after ${this.intervalMs / 60000} ${this.payUnit()}` : "counted by work"}: ${rec.points}h${slot.index > 0 ? `, ${standing}` : ""}${left}`);
     const userId = this.userOf(ctx, actorId);
@@ -619,48 +625,61 @@ export class MasterySystem implements System {
     this.syncRank(ctx, actorId, char, slot, userId);
   }
 
+  // Queues one hour for the slot's craft, paid in its turn
   private deposit(ctx: SystemContext, actorId: number, char: Character, slot: Slot, now: number): void {
-    const rec = slot.rec;
-    rec.bank += 1;
+    const queue = char.primary.queue;
+    queue.push(slot.rec.profession || "");
     this.banked.add(actorId);
     this.settleClock(actorId, char, now);
     this.save(ctx, actorId, char);
-    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour banked (${rec.bank}/${this.bankMax}), next paid in ${this.payWaitMin(actorId, slot, now)} ${this.payUnit()}`);
+    this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour banked (${queue.length}/${this.bankMax}: ${queue.join(", ")}), next paid in ${this.payWaitMin(actorId, char, now)} ${this.payUnit()}`);
     const whose = slot.index > 0 ? loc("mastery.bankedFor", { slot: this.slotNameOf(slot.index) }) : "";
     const userId = this.userOf(ctx, actorId);
-    this.notice(ctx, userId, loc(this.bankOffline ? "mastery.extraBankedOffline" : "mastery.extraBankedOnline", { whose, hours: hoursText(rec.bank) }));
+    this.notice(ctx, userId, loc(this.bankOffline ? "mastery.extraBankedOffline" : "mastery.extraBankedOnline", { whose, hours: hoursText(queue.length) }));
     this.sendState(ctx, actorId, userId);
   }
 
-  // Pay clock of a slot since its last counted hour: online time, or with masteryBankOffline all the time that passed
-  private waited(actorId: number, slot: Slot, now: number): number {
-    if (this.bankOffline) return now - slot.rec.lastPointAt;
-    const clock = this.clocks.get(actorId);
-    return slot.rec.onlineMs + (clock ? Math.max(0, now - clock.since) : 0);
+  // Epoch ms of the character's last counted hour, the latest of its slots in force; 0 before any
+  private clockAt(char: Character): number {
+    return Math.max(0, ...this.activeSlots(char).map((s) => s.rec.lastPointAt));
   }
 
-  private payWaitMin(actorId: number, slot: Slot, now: number): number {
-    return Math.max(1, Math.ceil((this.intervalMs - this.waited(actorId, slot, now)) / 60000));
+  // Ms until work counts an hour again, 0 when it counts now
+  private countedMs(char: Character, now: number): number {
+    const since = now - this.clockAt(char);
+    return since >= 0 && since < this.intervalMs ? this.intervalMs - since : 0;
+  }
+
+  // Pay clock since the character's last counted hour: all the time that passed, or without masteryBankOffline its online time
+  private waited(actorId: number, char: Character, now: number): number {
+    if (this.bankOffline) return now - this.clockAt(char);
+    const clock = this.clocks.get(actorId);
+    return char.primary.onlineMs + (clock ? Math.max(0, now - clock.since) : 0);
+  }
+
+  // Ms until the first banked hour is paid: the counted hour must run out and the pay clock reach an interval
+  private payWait(actorId: number, char: Character, now: number): number {
+    return Math.max(0, this.countedMs(char, now), this.intervalMs - this.waited(actorId, char, now));
+  }
+
+  private payWaitMin(actorId: number, char: Character, now: number): number {
+    return Math.max(1, Math.ceil(this.payWait(actorId, char, now) / 60000));
   }
 
   private payUnit(): string {
     return this.bankOffline ? "min" : "online min";
   }
 
-  // Hour clock and bank of every slot in force, as left at now
+  // The hour clock and the queue as left at now
   private bankSummary(actorId: number, char: Character, now = Date.now()): BankSummary {
-    const slots = this.activeSlots(char).map((slot): BankSlot => {
-      const capped = this.atCap(slot);
-      const sinceHour = now - slot.rec.lastPointAt;
-      const countedMs = !capped && sinceHour >= 0 && sinceHour < this.intervalMs ? this.intervalMs - sinceHour : 0;
-      const banked = capped ? 0 : Math.min(slot.rec.bank, this.bankMax);
-      const payMs = banked ? Math.max(0, countedMs, this.intervalMs - this.waited(actorId, slot, now)) : 0;
-      return { slot: slot.index, countedMs, banked, payMs, capped };
-    });
-    return { max: this.bankMax, intervalMs: this.intervalMs, offline: this.bankOffline, slots };
+    const clockAt = this.clockAt(char);
+    const countedMs = this.countedMs(char, now);
+    const counted = countedMs ? this.activeSlots(char).find((s) => s.rec.lastPointAt === clockAt)?.rec.profession ?? null : null;
+    const queue = char.primary.queue.slice();
+    return { max: this.bankMax, intervalMs: this.intervalMs, offline: this.bankOffline, countedMs, counted, payMs: queue.length ? this.payWait(actorId, char, now) : 0, queue };
   }
 
-  // A banked hour is counted once a full interval of the pay clock has passed since the slot's last counted hour
+  // Once a minute: the online characters with banked hours are paid what fell due, and their online time is saved now and then
   private payBanks(ctx: SystemContext): void {
     if (!this.banked.size) return;
     const now = Date.now();
@@ -668,22 +687,12 @@ export class MasterySystem implements System {
       try {
         const clock = this.clocks.get(actorId);
         const char = clock ? this.load(ctx, actorId) : null;
-        const slots = char ? this.bankedSlots(char) : [];
-        if (!clock || !char || !slots.length) {
+        if (!clock || !char || !char.primary.queue.length) {
           this.banked.delete(actorId);
           continue;
         }
-        let paid = false;
-        for (const slot of slots) {
-          if (slot.rec.bank > this.bankMax) slot.rec.bank = this.bankMax;
-          // Online time pays one; with masteryBankOffline every hour that fell due while away, each an interval after the last
-          while (slot.rec.bank > 0 && !this.atCap(slot) && this.waited(actorId, slot, now) >= this.intervalMs && now - slot.rec.lastPointAt >= this.intervalMs) {
-            slot.rec.bank -= 1;
-            this.countHour(ctx, actorId, char, slot, now, true, this.bankOffline ? slot.rec.lastPointAt + this.intervalMs : now);
-            paid = true;
-          }
-        }
-        if (!this.bankedSlots(char).length) this.banked.delete(actorId);
+        const paid = this.payDue(ctx, actorId, char, now);
+        if (!char.primary.queue.length) this.banked.delete(actorId);
         if (paid || now - clock.savedAt < BANK_SAVE_MS) continue;
         this.settleClock(actorId, char, now);
         this.save(ctx, actorId, char);
@@ -693,9 +702,28 @@ export class MasterySystem implements System {
     }
   }
 
-  // Slots in force with an hour to pay; a sub-slot at its cap is never paid
-  private bankedSlots(char: Character): Slot[] {
-    return this.activeSlots(char).filter((s) => s.rec.bank > 0 && !this.atCap(s));
+  // Pays the queued hours that fell due, head first, one per interval of the pay clock, each dated when it fell due with masteryBankOffline; true when one was paid
+  private payDue(ctx: SystemContext, actorId: number, char: Character, now: number): boolean {
+    if (this.prune(actorId, char)) this.save(ctx, actorId, char);
+    let paid = false;
+    while (char.primary.queue.length && this.payWait(actorId, char, now) <= 0) {
+      const profession = char.primary.queue.shift();
+      const slot = this.activeSlots(char).find((s) => s.rec.profession === profession);
+      if (!slot) continue;
+      this.countHour(ctx, actorId, char, slot, now, true, this.bankOffline ? this.clockAt(char) + this.intervalMs : now);
+      paid = true;
+    }
+    return paid;
+  }
+
+  // Drops the queued hours no slot in force can take (its craft set aside, out of force or at its cap); the caller writes. The count dropped
+  private prune(actorId: number, char: Character): number {
+    const payable = new Set(this.activeSlots(char).filter((s) => !this.atCap(s)).map((s) => s.rec.profession || ""));
+    const dropped = char.primary.queue.filter((p) => !payable.has(p));
+    if (!dropped.length) return 0;
+    char.primary.queue = char.primary.queue.filter((p) => payable.has(p));
+    this.log(`[mastery] ${hex(actorId)} ${hoursText(dropped.length)} dropped from the bank, the craft is set aside, out of force or at its cap: ${dropped.join(", ")}`);
+    return dropped.length;
   }
 
   // A sub-slot at its cap earns no more hours
@@ -703,12 +731,11 @@ export class MasterySystem implements System {
     return slot.index > 0 && isCapped(slot.cfg!, slot.rec.points);
   }
 
-  // Moves the online time since the clock's mark into every slot in force; the caller writes them
+  // Moves the online time since the clock's mark into the record; the caller writes it
   private settleClock(actorId: number, char: Character, now: number): void {
     const clock = this.clocks.get(actorId);
     if (!clock) return;
-    const online = Math.max(0, now - clock.since);
-    for (const slot of this.activeSlots(char)) slot.rec.onlineMs += online;
+    char.primary.onlineMs += Math.max(0, now - clock.since);
     clock.since = now;
     clock.savedAt = now;
   }
@@ -813,7 +840,7 @@ export class MasterySystem implements System {
   }
 
   private settle(ctx: SystemContext, actorId: number, char: Character, slot: Slot): MasterySummary {
-    this.save(ctx, actorId, char, slot);
+    this.save(ctx, actorId, char, this.prune(actorId, char) ? undefined : slot);
     const userId = this.userOf(ctx, actorId);
     if (slot.rec.profession) this.notice(ctx, userId, loc(slot.index > 0 ? "mastery.hoursNowSlot" : "mastery.hoursNow", { label: this.labelOf(slot.rec.profession), slot: this.slotNameOf(slot.index), points: slot.rec.points }));
     this.syncRank(ctx, actorId, char, slot, userId);
@@ -829,11 +856,12 @@ export class MasterySystem implements System {
     const tag = this.tagOf(slot);
     const points = slot.rec.points;
     this.revokeSpells(ctx, actorId, char, slot);
-    // Hours belong to the craft, so a fresh choice starts from nothing.
+    // Hours belong to the craft, banked ones too, so a fresh choice starts from nothing.
     if (profession === "mage") char.primary.spellTier = 0;
+    char.primary.queue = char.primary.queue.filter((p) => p !== profession);
     const key = subKeyOf(slotIndex);
     if (key && char.subs) char.subs[key] = null;
-    else Object.assign(char.primary, { profession: null, points: 0, lastPointAt: 0, rank: FREE, bank: 0, onlineMs: 0 });
+    else Object.assign(char.primary, { profession: null, points: 0, lastPointAt: 0, rank: FREE });
     this.save(ctx, actorId, char);
     this.log(`[mastery] ${hex(actorId)} ${tag} set aside at ${points}h`);
     const userId = this.userOf(ctx, actorId);
@@ -867,13 +895,24 @@ export class MasterySystem implements System {
       if (corrected < rec.rank) this.revokeAbove(ctx, actorId, char, primary, corrected);
       rec.rank = corrected;
       this.write(ctx, actorId, rec);
-      if (rec.bank > 0) this.log(`[mastery] ${hex(actorId)} online with ${hoursText(rec.bank)} banked, next paid in ${this.payWaitMin(actorId, primary, now)} ${this.payUnit()}`);
     }
     if (char && char.subs) this.settleSubs(ctx, actorId, char);
-    if (char && this.bankedSlots(char).length) this.banked.add(actorId);
+    if (char) this.settleBank(ctx, actorId, char, now);
     this.sendState(ctx, actorId, userId);
     // Grants, kits and the state again wait out the client's spawn-time spell wipe
     this.grantLater(ctx, actorId);
+  }
+
+  // At login: an old record's fold is written, the hours no slot can take go, what fell due while away is paid, and the rest joins the bank check
+  private settleBank(ctx: SystemContext, actorId: number, char: Character, now: number): void {
+    if (char.folded) this.log(`[mastery] ${hex(actorId)} ${hoursText(char.folded)} moved from the old per-craft banks into the shared bank: ${char.primary.queue.join(", ")}`);
+    if (char.folded || this.prune(actorId, char)) this.save(ctx, actorId, char);
+    if (!char.primary.queue.length) return;
+    this.payDue(ctx, actorId, char, now);
+    const queue = char.primary.queue;
+    if (!queue.length) return;
+    this.banked.add(actorId);
+    this.log(`[mastery] ${hex(actorId)} online with ${hoursText(queue.length)} banked (${queue.join(", ")}), next paid in ${this.payWaitMin(actorId, char, now)} ${this.payUnit()}`);
   }
 
   // Markers of the old ladder that are not markers of the new one go; the ones still wanted are granted after the login delay
@@ -906,8 +945,7 @@ export class MasterySystem implements System {
     }
     if (JSON.stringify(subs) !== before) this.writeSubs(ctx, actorId, subs);
     const text = this.slotSummaries(char).map((s) => (s.profession ? `${s.name} ${s.profession} ${s.rankName} ${s.hours}h` : `${s.name} empty`)).join(", ");
-    const banked = inForce.filter((s) => s.rec.bank > 0).map((s) => `${this.tagOf(s)} ${hoursText(s.rec.bank)} banked`);
-    this.log(`[mastery] ${hex(actorId)} slots at login: ${text}${banked.length ? `; ${banked.join(", ")}` : ""}`);
+    this.log(`[mastery] ${hex(actorId)} slots at login: ${text}`);
   }
 
   private grantLater(ctx: SystemContext, actorId: number): void {
@@ -1621,7 +1659,7 @@ export class MasterySystem implements System {
       if (!raw || typeof raw !== "object") return null;
       const r = raw as Partial<MasteryRecord>;
       const profession = typeof r.profession === "string" && PROFESSION_IDS.indexOf(r.profession) !== -1 ? r.profession : null;
-      return {
+      const rec: MasteryRecord = {
         v: Number(r.v) || 0,
         profession,
         points: Math.max(0, Math.floor(Number(r.points)) || 0),
@@ -1630,9 +1668,13 @@ export class MasterySystem implements System {
         granted: idList(r.granted),
         spellTier: Math.max(0, Math.floor(Number(r.spellTier)) || 0),
         resets: Math.max(0, Math.floor(Number(r.resets)) || 0),
-        bank: Math.max(0, Math.floor(Number(r.bank)) || 0),
+        queue: professionList(r.queue),
         onlineMs: Math.max(0, Number(r.onlineMs) || 0),
       };
+      // The per-slot bank of a record from before the shared one, kept for the fold
+      const bank = Math.max(0, Math.floor(Number(r.bank)) || 0);
+      if (bank) rec.bank = bank;
+      return rec;
     } catch {
       return null;
     }
@@ -1679,11 +1721,30 @@ export class MasterySystem implements System {
   private load(ctx: SystemContext, actorId: number, forceSubs = false): Character | null {
     const primary = this.read(ctx, actorId);
     const subs = forceSubs || multiclassOn(this.slots) ? this.readSubs(ctx, actorId) : null;
-    return primary || subs ? { primary: primary || emptyRecord(), subs } : null;
+    if (!primary && !subs) return null;
+    const char: Character = { primary: primary || emptyRecord(), subs };
+    this.foldBanks(char);
+    return char;
   }
 
-  // Writes the record that holds the slot, or both
+  // The per-slot banks of an old record join the queue, oldest counted hour first then by slot; a slot out of force keeps its count, the next save writes the new shape
+  private foldBanks(char: Character): void {
+    const old = this.activeSlots(char).filter((s) => s.rec.bank);
+    if (!old.length) return;
+    old.sort((a, b) => a.rec.lastPointAt - b.rec.lastPointAt || a.index - b.index);
+    let folded = 0;
+    for (const slot of old) {
+      for (let i = 0; i < slot.rec.bank!; i++) char.primary.queue.push(slot.rec.profession || "");
+      folded += slot.rec.bank!;
+      delete slot.rec.bank;
+    }
+    char.folded = folded;
+  }
+
+  // Writes the record that holds the slot, or both; a fold is always written whole
   private save(ctx: SystemContext, actorId: number, char: Character, only?: Slot): void {
+    if (char.folded) only = undefined;
+    char.folded = undefined;
     if (!only || only.index === 0) this.write(ctx, actorId, char.primary);
     if (char.subs && (!only || only.index > 0)) this.writeSubs(ctx, actorId, char.subs);
   }
@@ -1773,8 +1834,8 @@ export class MasterySystem implements System {
   private kitGold = DEFAULT_KIT_GOLD;
   private intervalMs = DEFAULT_POINT_INTERVAL_MINUTES * 60000;
   private bankMax = DEFAULT_HOUR_BANK;
-  // masteryBankOffline: the pay clock is all the time since the last counted hour instead of online time
-  private bankOffline = false;
+  // masteryBankOffline: the pay clock is all the time since the last counted hour, false makes it online time
+  private bankOffline = true;
   private ctx: SystemContext | null = null;
   // Online player characters and the online time not yet in their record
   private clocks = new Map<number, OnlineClock>();
