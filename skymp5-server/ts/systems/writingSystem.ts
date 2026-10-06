@@ -463,7 +463,8 @@ export class WritingSystem implements System {
     const blank = this.base("bookBlank");
     if (this.plainCount(mp, actorId, blank) < 1) return this.notice(mp, userId, "Copying a book takes a Blank Book.");
     if (!this.roomToWrite(mp, userId, actorId)) return;
-    const copy = this.newDoc("book", doc.title, doc.pages, doc.signed, doc.author, this.person(mp, actorId));
+    // Pages after fixedPages are the author's unfinished writing
+    const copy = this.newDoc("book", doc.title, doc.pages.slice(0, doc.fixedPages), doc.signed, doc.author, this.person(mp, actorId));
     if (!copy) return this.notice(mp, userId, "The copy could not be kept.");
     copy.finished = true;
     copy.fixedPages = copy.pages.length;
@@ -634,7 +635,7 @@ export class WritingSystem implements System {
     });
   }
 
-  // A signature reads the same to every reader, a seal follows the introductions rule; staff see real names and profiles
+  // A book's signature reads the same to every reader; a letter's, a journal's and a seal follow the introductions rule; staff see real names and profiles
   private readerLines(mp: Mp, viewerId: number, doc: WritingDoc, staff: boolean) {
     const nameFor = (who: WritingPerson): string => {
       if (staff) return `${who.realName || "someone unrecorded"} (profile ${who.profileId})`;
@@ -645,7 +646,7 @@ export class WritingSystem implements System {
       const name = nameFor(seal);
       return name ? `the seal of ${name}` : "an unfamiliar seal";
     };
-    const signer = staff ? nameFor(doc.author) : doc.author.shownName ? titledName(doc.author.title, doc.author.shownName) : "";
+    const signer = staff || doc.kind !== "book" ? nameFor(doc.author) : doc.author.shownName ? titledName(doc.author.title, doc.author.shownName) : "";
     return {
       nameFor,
       sealName,

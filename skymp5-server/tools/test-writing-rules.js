@@ -57,7 +57,9 @@ const doc = (id, kind, over = {}) => Object.assign({
     WBOOK1: doc('WBOOK1', 'book'),
     WTITLE: doc('WTITLE', 'book', { author: person(AUTHOR, 'Sen Volun', 'Jarl') }),
     WPLAIN: doc('WPLAIN', 'book', { signed: false }),
-    WNONAM: doc('WNONAM', 'letter', { author: person(AUTHOR, '') }),
+    WNONAM: doc('WNONAM', 'book', { author: person(AUTHOR, '') }),
+    WLETTR: doc('WLETTR', 'letter', { author: person(AUTHOR, 'Sen Volun', 'Jarl') }),
+    WJOURN: doc('WJOURN', 'journal'),
     WSEAL1: doc('WSEAL1', 'letter', { seal: Object.assign(person(AUTHOR, 'Mivon'), { at: 1 }) }),
     WBROKE: doc('WBROKE', 'letter', { brokenSeals: [{ seal: Object.assign(person(AUTHOR, 'Mivon'), { at: 1 }), brokenAt: 2, brokenBy: person(READER, 'Ria') }] }),
     WLEDGR: doc('WLEDGR', 'book', { pages: ['one', 'two'] }),
@@ -87,22 +89,28 @@ const doc = (id, kind, over = {}) => Object.assign({
     return sent.find((p) => p.customPacketType === 'writingMenu').doc
   }
 
-  // A stranger reads the signature, with the title the signer showed
+  // A stranger reads a book's signature, with the title the signer showed
   assert.equal(read('book', 'WBOOK1').byline, 'Signed, Mivon')
   assert.equal(read('book', 'WTITLE').byline, 'Signed, Jarl Sen Volun')
   assert.equal(read('book', 'WPLAIN').byline, '')
-  assert.equal(read('letter', 'WNONAM').byline, 'Signed in an unfamiliar hand')
+  assert.equal(read('book', 'WNONAM').byline, 'Signed in an unfamiliar hand')
 
-  // A door note reads the same
-  assert.equal(sys.pinnedNoteView(mp, READER, 'WBROKE').byline, 'Signed, Mivon')
+  // A letter, a journal and a door note keep the introductions rule
+  assert.equal(read('letter', 'WLETTR').byline, 'Signed in an unfamiliar hand')
+  assert.equal(read('journal', 'WJOURN').byline, 'Signed in an unfamiliar hand')
+  assert.equal(sys.pinnedNoteView(mp, READER, 'WBROKE').byline, 'Signed in an unfamiliar hand')
 
-  // Seals still follow the introductions
+  // Seals follow the introductions too
   assert.equal(read('sealed', 'WSEAL1').sealText, 'Closed with an unfamiliar seal.')
   assert.deepEqual(read('letter', 'WBROKE').brokenSeals, ['An unfamiliar seal was broken.'])
   known = [AUTHOR]
   assert.equal(read('sealed', 'WSEAL1').sealText, 'Closed with the seal of Mivon.')
   assert.deepEqual(read('letter', 'WBROKE').brokenSeals, ['The seal of Mivon was broken.'])
   assert.equal(read('book', 'WBOOK1').byline, 'Signed, Mivon')
+  assert.equal(read('letter', 'WLETTR').byline, 'Signed, Jarl Sen Volun')
+  assert.equal(read('journal', 'WJOURN').byline, 'Signed, Mivon')
+  assert.equal(sys.pinnedNoteView(mp, READER, 'WBROKE').byline, 'Signed, Mivon')
+  known = []
 
   // An unfinished book is its author's to change, title and every page
   actor = AUTHOR
@@ -148,11 +156,13 @@ const doc = (id, kind, over = {}) => Object.assign({
   assert.equal(send('writingSave', { id: 'WLEDGR', title: 'Ledger', pages: ['one', 'two, amended', 'three'] }).text, 'You cannot change this writing.')
   sys.cfg.writingBookMaxPages = 100
 
-  // A copy is fixed whole and nobody's to continue
+  // A copy takes the finished pages, not the draft after them, and is nobody's to continue
+  send('writingSave', { id: 'WLEDGR', title: 'Ledger', pages: ['one', 'two, amended', 'three', 'draft'] })
   inventory.entries.push({ baseId: BASES.bookBlank, count: 1 })
   send('writingCopy', { id: 'WLEDGR' })
   const copyId = Object.keys(docs).find((id) => docs[id].copyOf === 'WLEDGR')
   assert.deepEqual([docs[copyId].finished, docs[copyId].fixedPages, docs[copyId].pages], [true, 3, ['one', 'two, amended', 'three']])
+  assert.deepEqual(ledger().pages, ['one', 'two, amended', 'three', 'draft'])
   view = read('book', copyId)
   assert.deepEqual([view.canEdit, view.canFinish], [false, false])
 
