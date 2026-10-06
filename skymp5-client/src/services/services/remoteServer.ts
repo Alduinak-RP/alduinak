@@ -1974,7 +1974,7 @@ export class RemoteServer extends ClientListener {
   }
 
   private applyPluginRefVisibility(refr: ObjectReference, rec: PluginRef): void {
-    ModelApplyUtils.applyModelVisibility(refr, !!rec.props.isHarvested, pluginRefHidden(rec));
+    ModelApplyUtils.applyModelVisibility(refr, !!rec.props.isHarvested, () => pluginRefHidden(rec));
   }
 
   private applyPluginRefProp(refr: ObjectReference, rec: PluginRef, prop: string): void {

@@ -402,7 +402,7 @@ export class FormView {
       o.harvested = harvested;
       o.disabled = disabled;
       // A disabled door that loads its 3D with no model change was enabled here (a Papyrus snippet) and is left alone
-      if (carriedAway || !disabled || changed) ModelApplyUtils.applyModelVisibility(refr, harvested, carriedAway || disabled);
+      if (carriedAway || !disabled || changed) ModelApplyUtils.applyModelVisibility(refr, harvested, () => !!(o.carriedAway || o.disabled));
     }
     const decor = (model as Record<string, unknown>)["ff_decor"];
     if (loadedNow || decor !== o.decor) {

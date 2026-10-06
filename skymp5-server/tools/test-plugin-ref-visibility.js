@@ -1,6 +1,6 @@
 'use strict'
 
-// The client's one hidden state for world refs (skymp5-client view/modelApplyUtils.ts applyModelVisibility) against a stub engine whose latent calls run in order on the next VM step: a taken item stays hidden through a disabled=false update, after a loaded game and when its carry ends, a carried item shows again when the carry ends, a hidden plant is left disabled after its harvested refresh: node tools/test-plugin-ref-visibility.js
+// The client's one hidden state for world refs (skymp5-client view/modelApplyUtils.ts applyModelVisibility) against a stub engine whose latent calls run in order on the next VM step: a taken item stays hidden through a disabled=false update, after a loaded game and when its carry ends, a carried item shows again when the carry ends, a hidden plant is left disabled after its harvested refresh, also when hidden while the refresh runs: node tools/test-plugin-ref-visibility.js
 
 const assert  = require('node:assert/strict')
 const path    = require('path')
@@ -75,7 +75,7 @@ async function main () {
   compiled.paths = Module._nodeModulePaths(path.dirname(source))
   compiled._compile(outputFiles[0].text, source)
   const { ModelApplyUtils } = compiled.exports
-  const show = (refr, harvested, hidden) => ModelApplyUtils.applyModelVisibility(refr, harvested, hidden)
+  const show = (refr, harvested, hidden) => ModelApplyUtils.applyModelVisibility(refr, harvested, () => hidden)
 
   await test('a taken item is hidden, and a disabled=false update does not show it again', async () => {
     const sword = new Refr(0x1001, TYPES.Misc)
@@ -145,6 +145,18 @@ async function main () {
     await settle()
     assert.equal(bush.harvested, false)
     assert.equal(bush.disabled, false)
+  })
+
+  await test('a plant hidden while its harvested refresh runs is left disabled', async () => {
+    const bush = new Refr(0x1009, TYPES.Flora)
+    let hidden = false
+    const live = () => hidden
+    ModelApplyUtils.applyModelVisibility(bush, true, live)
+    // The server hides it after the refresh's disable ran and before its enable
+    vm.push(() => { hidden = true; ModelApplyUtils.applyModelVisibility(bush, true, live) })
+    await settle()
+    assert.equal(bush.disabled, true)
+    assert.ok(!bush.log.includes('enable'), bush.log.join())
   })
 
   await test('a disabled activator hides and shows with the server flag alone', async () => {

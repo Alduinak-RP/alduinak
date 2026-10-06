@@ -321,7 +321,7 @@ export class ItemService extends ClientListener {
         ref.setPosition(pos[0], pos[1], pos[2]);
         ref.setAngle(rot[0], rot[1], rot[2]);
         // Shown again, unless the server still hides it, as it does a taken plugin item
-        if (plugin) ModelApplyUtils.applyModelVisibility(ref, !!plugin.props.isHarvested, pluginRefHidden(plugin));
+        if (plugin) ModelApplyUtils.applyModelVisibility(ref, !!plugin.props.isHarvested, () => pluginRefHidden(plugin));
         else ref.enable(false);
       });
     }

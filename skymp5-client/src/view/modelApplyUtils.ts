@@ -81,8 +81,8 @@ export class ModelApplyUtils {
     return t === FormType.Tree || t === FormType.Flora;
   }
 
-  // The harvested look of a plant, whose 3D refreshes through a disable; a hidden plant is left disabled
-  static applyModelIsHarvested(refr: ObjectReference, isHarvested: boolean, hidden = false) {
+  // The harvested look of a plant, whose 3D refreshes through a disable; hidden is read when the refresh ends, so a plant hidden meanwhile is left disabled
+  static applyModelIsHarvested(refr: ObjectReference, isHarvested: boolean, hidden: () => boolean = () => false) {
     if (!ModelApplyUtils.isFloraOrTree(refr)) return;
     if (isHarvested == refr.isHarvested()) return;
     let ac: Actor | null = null;
@@ -100,15 +100,15 @@ export class ModelApplyUtils {
     const id = refr.getFormID();
     refr.disable(false).then(() => {
       const restoredRefr = ObjectReference.from(Game.getFormEx(id));
-      if (restoredRefr && !hidden) restoredRefr.enable(false);
+      if (restoredRefr && !hidden()) restoredRefr.enable(false);
     });
   }
 
   // One enabled state from every server flag that hides a ref (disabled, carried by another player, an item taken); a plant shows its harvested look instead
-  static applyModelVisibility(refr: ObjectReference, harvested: boolean, hidden: boolean): void {
-    if (ModelApplyUtils.isFloraOrTree(refr)) ModelApplyUtils.applyModelIsHarvested(refr, harvested, hidden);
-    else hidden = hidden || harvested;
-    ModelApplyUtils.applyModelIsDisabled(refr, hidden);
+  static applyModelVisibility(refr: ObjectReference, harvested: boolean, hidden: () => boolean): void {
+    const plant = ModelApplyUtils.isFloraOrTree(refr);
+    if (plant) ModelApplyUtils.applyModelIsHarvested(refr, harvested, hidden);
+    ModelApplyUtils.applyModelIsDisabled(refr, hidden() || (harvested && !plant));
   }
 
   static applyModelNodeTextureSet(refr: ObjectReference, setNodeTextureSet?: SetNodeTextureSetEntry[]) {
