@@ -135,6 +135,9 @@ export const carriedByOther = (value: unknown): boolean => {
 // UpdateProperty's disabled replaces the isDisabled its CreateActor carried
 export const disabledByServer = (props: CreateActorMessageAdditionalProps): boolean => !!(props.disabled ?? props.isDisabled);
 
+// True while the server hides a plugin-placed ref from this client: disabled, or carried by another player
+export const pluginRefHidden = (rec: PluginRef): boolean => disabledByServer(rec.props) || carriedByOther(rec.custom["ff_carried"]);
+
 // A custom property of a server form, or of a plugin-placed ref without one (doors keep a FormModel)
 export const formProp = (remoteId: number, prop: string): unknown => {
   if (!remoteId) return undefined;

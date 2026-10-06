@@ -175,6 +175,19 @@ purses the plugins place are disabled in the plugin (`disableLooseItems`).
 The client logs every drop point and release: `drop point: hit ref ... layer
 ... at ...`; `missing` there means an old SkyrimPlatform in `Platform/`.
 
+A taken item is given once. A tap on a dropped item gives it and deletes the
+drop (`ProcessActivate - Deleting 0xff item`, DestroyActor removes every
+copy). A tap on a plugin-placed item gives it and marks it harvested; every
+item type is in `forbiddenReloot`, so it never respawns and a later press on
+it does nothing. Clients hide a harvested item by disabling it (a plant shows
+its harvested look instead) and compute one hidden state per ref from
+harvested, the server's disabled flag and `ff_carried`
+(`ModelApplyUtils.applyModelVisibility`): on the ref's first load, on every
+change of those three, when `itemMoved` ends a carry, and again after a
+loaded game (a spawn or respawn), which brings every plugin ref back as the
+plugin placed it. The server refuses a carry of a harvested or disabled item
+and does not re-show one when it clears stale carry flags at boot.
+
 ## Nailed books (2026-10-05)
 
 Activate on a nailed book or note opens it in the vanilla Book Menu and leaves

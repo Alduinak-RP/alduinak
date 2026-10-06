@@ -3,7 +3,8 @@ import * as sp from "skyrimPlatform";
 import { Book, ButtonEvent, DxScanCode, Menu, ObjectReference } from "skyrimPlatform";
 import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket } from "./customPacketUtil";
 import { buttonEventKeyCode } from "./widgetMenuUtil";
-import { formProp, localIdToRemoteId, pluginRefs, remoteIdToLocalId } from "../../view/worldViewMisc";
+import { formProp, localIdToRemoteId, pluginRefHidden, pluginRefs, remoteIdToLocalId } from "../../view/worldViewMisc";
+import { ModelApplyUtils } from "../../view/modelApplyUtils";
 import { FormTypeEx } from "../../extensions/formTypeEx";
 import { RemoteServer } from "./remoteServer";
 import { ActivationService } from "./activationService";
@@ -319,7 +320,9 @@ export class ItemService extends ClientListener {
         if (unghost) setAdminGhostShader(ref, false);
         ref.setPosition(pos[0], pos[1], pos[2]);
         ref.setAngle(rot[0], rot[1], rot[2]);
-        ref.enable(false);
+        // Shown again, unless the server still hides it, as it does a taken plugin item
+        if (plugin) ModelApplyUtils.applyModelVisibility(ref, !!plugin.props.isHarvested, pluginRefHidden(plugin));
+        else ref.enable(false);
       });
     }
   }

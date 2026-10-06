@@ -76,6 +76,7 @@ import {
   pluginRefs,
   PluginRef,
   carriedByOther,
+  pluginRefHidden,
 } from '../../view/worldViewMisc';
 import { TimeService } from './timeService';
 import { TimersService } from './timersService';
@@ -442,7 +443,7 @@ export class RemoteServer extends ClientListener {
 
     this.controller.on("update", reapplyPcInventory);
     this.controller.on("loadGame", () => requestPcInventoryApply());
-    this.controller.on("loadGame", () => this.queuePluginRefDecor());
+    this.controller.on("loadGame", () => this.requeuePluginRefs());
     this.controller.on("update", () => this.sweepCloneCasts());
     this.controller.on("update", () => this.checkPlayerTeleport());
     this.controller.on("update", () => this.checkRaceMenu());
@@ -1894,10 +1895,9 @@ export class RemoteServer extends ClientListener {
       ModelApplyUtils.applyModelInventory(refr, props.inventory);
     }
     ModelApplyUtils.applyModelIsOpen(refr, !!props.isOpen);
-    ModelApplyUtils.applyModelIsHarvested(refr, !!props.isHarvested);
     ModelApplyUtils.applyModelNodeScale(refr, props.setNodeScale);
     ModelApplyUtils.applyModelNodeTextureSet(refr, props.setNodeTextureSet);
-    ModelApplyUtils.applyModelIsDisabled(refr, !!(props.isDisabled || props.disabled) || carriedByOther(custom["ff_carried"]));
+    this.applyPluginRefVisibility(refr, rec);
 
     const animation = props.lastAnimation;
     if (typeof animation === "string") {
@@ -1932,6 +1932,7 @@ export class RemoteServer extends ClientListener {
     if (propName.startsWith("ff_")) rec.custom[propName] = value;
     else (rec.props as Record<string, unknown>)[propName] = value;
     if (!rec.applied || !PLUGIN_REF_PROPS_APPLIED.has(propName)) return;
+    // The end of a carry comes with itemMoved, which shows the item at its new spot
     if (propName === 'ff_carried' && !carriedByOther(value)) return;
     this.queuePluginRefProp(refrId, rec, propName);
   }
@@ -1943,11 +1944,17 @@ export class RemoteServer extends ClientListener {
     if (!this.pluginRefsWaiting.has(refrId)) this.pluginRefsDue.add(refrId);
   }
 
-  // A loaded game puts back the plugin's locks and names
-  private queuePluginRefDecor(): void {
+  // A loaded game puts back every plugin ref as the plugin placed it: shown, unharvested, with its own lock and name
+  private requeuePluginRefs(): void {
     pluginRefs.forEach((rec, refrId) => {
-      if (rec.applied && rec.custom["ff_decor"]) this.queuePluginRefProp(refrId, rec, 'ff_decor');
+      if (!rec.applied) return;
+      if (rec.custom["ff_decor"]) this.queuePluginRefProp(refrId, rec, 'ff_decor');
+      if (rec.props.isHarvested || pluginRefHidden(rec)) this.queuePluginRefProp(refrId, rec, 'isHarvested');
     });
+  }
+
+  private applyPluginRefVisibility(refr: ObjectReference, rec: PluginRef): void {
+    ModelApplyUtils.applyModelVisibility(refr, !!rec.props.isHarvested, pluginRefHidden(rec));
   }
 
   private applyPluginRefProp(refr: ObjectReference, rec: PluginRef, prop: string): void {
@@ -1956,15 +1963,10 @@ export class RemoteServer extends ClientListener {
       ModelApplyUtils.applyModelInventory(refr, props.inventory as Inventory);
     } else if (prop === 'isOpen') {
       ModelApplyUtils.applyModelIsOpen(refr, !!props.isOpen);
-    } else if (prop === 'isHarvested') {
-      ModelApplyUtils.applyModelIsHarvested(refr, !!props.isHarvested);
-    } else if (prop === 'disabled') {
-      ModelApplyUtils.applyModelIsDisabled(refr, !!props.disabled);
+    } else if (prop === 'isHarvested' || prop === 'disabled' || prop === 'ff_carried') {
+      this.applyPluginRefVisibility(refr, rec);
     } else if (prop === 'ff_decor') {
       ModelApplyUtils.applyModelDecor(refr, rec.custom["ff_decor"]);
-    } else if (prop === 'ff_carried' && carriedByOther(rec.custom["ff_carried"])) {
-      // The end of a carry comes with itemMoved, which shows the item at its new spot
-      ModelApplyUtils.applyModelIsDisabled(refr, true);
     }
   }
 

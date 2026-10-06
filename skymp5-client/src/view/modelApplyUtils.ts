@@ -76,58 +76,39 @@ export class ModelApplyUtils {
     }
   }
 
-  static applyModelIsHarvested(refr: ObjectReference, isHarvested: boolean) {
-    const base = refr.getBaseObject();
-    if (base) {
-      const t = base.getType();
-      if (t == FormType.Tree || t == FormType.Flora) {
-        const wasHarvested = refr.isHarvested();
-        if (isHarvested != wasHarvested) {
-          let ac: Actor | null = null;
-          if (isHarvested) {
-            for (let i = 0; i < 20; ++i) {
-              ac = Game.findRandomActor(
-                refr.getPositionX(),
-                refr.getPositionY(),
-                refr.getPositionZ(),
-                10000,
-              );
-              if (ac && ac.getFormID() !== 0x14) {
-                break;
-              }
-            }
-          }
-          if (isHarvested && ac && ac.getFormID() !== 0x14) {
-            refr.activate(ac, true);
-          } else {
-            refr.setHarvested(isHarvested);
-            const id = refr.getFormID();
-            refr.disable(false).then(() => {
-              const restoredRefr = ObjectReference.from(Game.getFormEx(id));
-              if (restoredRefr) {
-                restoredRefr.enable(false);
-              }
-            });
-          }
-        }
-      } else {
-        const wasHarvested = refr.isDisabled();
-        if (isHarvested != wasHarvested) {
-          if (isHarvested) {
-            const id = refr.getFormID();
-            refr.disable(false).then(() => {
-              const restoredRefr = ObjectReference.from(Game.getFormEx(id));
-              if (restoredRefr && !restoredRefr.isDisabled()) {
-                restoredRefr.delete();
-                // Deletion takes time, so in practice this would be called a lot of times
-              }
-            });
-          } else {
-            refr.enable(true);
-          }
-        }
+  static isFloraOrTree(refr: ObjectReference): boolean {
+    const t = refr.getBaseObject()?.getType();
+    return t === FormType.Tree || t === FormType.Flora;
+  }
+
+  // The harvested look of a plant, whose 3D refreshes through a disable; a hidden plant is left disabled
+  static applyModelIsHarvested(refr: ObjectReference, isHarvested: boolean, hidden = false) {
+    if (!ModelApplyUtils.isFloraOrTree(refr)) return;
+    if (isHarvested == refr.isHarvested()) return;
+    let ac: Actor | null = null;
+    if (isHarvested) {
+      for (let i = 0; i < 20; ++i) {
+        ac = Game.findRandomActor(refr.getPositionX(), refr.getPositionY(), refr.getPositionZ(), 10000);
+        if (ac && ac.getFormID() !== 0x14) break;
       }
     }
+    if (isHarvested && ac && ac.getFormID() !== 0x14) {
+      refr.activate(ac, true);
+      return;
+    }
+    refr.setHarvested(isHarvested);
+    const id = refr.getFormID();
+    refr.disable(false).then(() => {
+      const restoredRefr = ObjectReference.from(Game.getFormEx(id));
+      if (restoredRefr && !hidden) restoredRefr.enable(false);
+    });
+  }
+
+  // One enabled state from every server flag that hides a ref (disabled, carried by another player, an item taken); a plant shows its harvested look instead
+  static applyModelVisibility(refr: ObjectReference, harvested: boolean, hidden: boolean): void {
+    if (ModelApplyUtils.isFloraOrTree(refr)) ModelApplyUtils.applyModelIsHarvested(refr, harvested, hidden);
+    else hidden = hidden || harvested;
+    ModelApplyUtils.applyModelIsDisabled(refr, hidden);
   }
 
   static applyModelNodeTextureSet(refr: ObjectReference, setNodeTextureSet?: SetNodeTextureSetEntry[]) {
