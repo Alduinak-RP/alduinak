@@ -168,7 +168,7 @@ export class ClientIntegritySystem implements System {
   async checkLogin(userId: number, profileId: number, discordId: string | null, raw: unknown, ctx: SystemContext): Promise<boolean> {
     if (!this.enabled) return true;
     const guid = ctx.svr.getUserGuid(userId);
-    const check = await this.check(raw, "login");
+    const check = await this.check(raw, "login", false);
     if (!ctx.svr.isConnected(userId) || ctx.svr.getUserGuid(userId) !== guid) return false;
     return this.act(userId, profileId, discordId, check, "login", ctx);
   }
@@ -176,14 +176,14 @@ export class ClientIntegritySystem implements System {
   customPacket(userId: number, type: string, content: Content, ctx: SystemContext): void {
     if (type !== "integrityReport" || !this.enabled) return;
     const guid = ctx.svr.getUserGuid(userId);
-    this.check(content["integrity"], "recheck").then((check) => {
+    this.check(content["integrity"], "recheck", this.actorOf(userId, ctx) !== 0).then((check) => {
       if (!ctx.svr.isConnected(userId) || ctx.svr.getUserGuid(userId) !== guid) return;
       this.act(userId, null, null, check, "recheck", ctx);
     }).catch((err) => console.error("ClientIntegrity: recheck failed:", err));
   }
 
   // Client problems can kick; a source the server cannot read skips its check instead
-  private async check(raw: unknown, when: When): Promise<Check> {
+  private async check(raw: unknown, when: When, spawned: boolean): Promise<Check> {
     const out: Check = { problems: [], skipped: [] };
     const report = parseReport(raw);
     if (!report) {
@@ -198,8 +198,8 @@ export class ClientIntegritySystem implements System {
     this.trackOutage(dllCheck, list ? null : this.noModuleList());
     if (!manifest) {
       out.skipped.push({ check: pluginCheck, reason: loc("integrity.noServerManifest") });
-    } else if (when === "login" && report.plugins === null && report.modules !== null) {
-      // Clients up to 1.0.1 read their plugin list in game, so a main menu login carries none yet
+    } else if (!spawned && report.plugins === null && report.modules !== null) {
+      // Clients up to 1.0.1-b7 read their plugin list in game, so a slot still in the menus (login, queue, character select) carries none yet
       out.skipped.push({ check: pluginCheck, reason: loc("integrity.pluginsNotRead") });
     } else {
       out.problems.push(...pluginProblems(report.plugins, manifest.loadOrder, manifest.mods));
@@ -243,12 +243,14 @@ export class ClientIntegritySystem implements System {
     return loc("integrity.noModuleList", { detail: this.listDetail });
   }
 
+  // 0 while the slot has no character in the world yet
+  private actorOf(userId: number, ctx: SystemContext): number {
+    try { return ctx.svr.getUserActor(userId) >>> 0; } catch { return 0; }
+  }
+
   private describeUser(userId: number, ctx: SystemContext): string {
-    try {
-      const actorId = ctx.svr.getUserActor(userId);
-      if (actorId) return `actor ${actorId.toString(16)}`;
-    } catch { /* not mapped yet */ }
-    return `user ${userId}`;
+    const actorId = this.actorOf(userId, ctx);
+    return actorId ? `actor ${actorId.toString(16)}` : `user ${userId}`;
   }
 
   // Read on each check: the manifest is rewritten only at boot, and a missing file must not stop logins silently

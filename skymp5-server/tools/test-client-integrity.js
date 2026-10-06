@@ -118,8 +118,9 @@ const main = async () => {
   const packets = []
   const logs = []
   let guid = 'g1'
+  let actor = 0xff000d22
   const svr = {
-    getUserGuid: () => guid, isConnected: () => true, getUserActor: () => 0xff000d22,
+    getUserGuid: () => guid, isConnected: () => true, getUserActor: () => actor,
     sendCustomPacket: (userId, json) => packets.push([userId, JSON.parse(json)]), kick: (userId) => kicked.push(userId),
   }
   const ctx = { svr, gm: null }
@@ -203,15 +204,23 @@ const main = async () => {
   assert.equal(kicked[kicked.length - 1], 3)
   assert.match(lastAlert(), /actor ff000d22 \(slot 3\) failed the client check at recheck/)
 
-  // A main menu login carries dlls but no plugin list yet: skipped at login, a client problem at the recheck
+  // A main menu login carries dlls but no plugin list yet: skipped at login and while the slot waits in the menus, a client problem once spawned
   const menu = make('kick')
   menu.moduleList = { value: list, at: Date.now() }
   before = kicked.length
   assert.equal(await menu.checkLogin(3, 7, null, { plugins: null, modules: cleanModules() }, ctx), true)
   assert.equal(kicked.length, before)
-  assert.equal(lastLog(), 'ClientIntegrity: plugin check skipped at login for profile 7 (slot 3): the client has not read its plugin list yet (login from the main menu)')
+  assert.equal(lastLog(), 'ClientIntegrity: plugin check skipped at login for profile 7 (slot 3): the client has not read its plugin list yet (clients up to 1.0.1-b7 read it in game)')
+  actor = 0
   await recheck(menu, 3, { plugins: null, modules: cleanModules() })
-  assert.equal(kicked.length, before + 1)
+  assert.equal(kicked.length, before, 'a recheck from the queue or the character select is not kicked for the missing list')
+  assert.equal(lastLog(), 'ClientIntegrity: plugin check skipped at recheck for user 3 (slot 3): the client has not read its plugin list yet (clients up to 1.0.1-b7 read it in game)')
+  await recheck(menu, 3, { plugins: null, modules: [...cleanModules(), { path: '...\\SKSE\\Plugins\\SpeedHack.dll', size: 9, sha256: 'cd'.repeat(32) }] })
+  assert.equal(kicked.length, before + 1, 'the dll check still runs for an unspawned slot')
+  assert.match(lastAlert(), /user 3 \(slot 3\) failed the client check at recheck, kicked: extra dll/)
+  actor = 0xff000d22
+  await recheck(menu, 3, { plugins: null, modules: cleanModules() })
+  assert.equal(kicked.length, before + 2)
   assert.match(lastPacket().reason, /the client sent no plugin list/)
   // Neither list (an old SkyrimPlatform) stays a client problem at login
   assert.equal(await quiet(() => menu.checkLogin(3, 7, null, {}, ctx))(), false)

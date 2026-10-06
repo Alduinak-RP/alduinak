@@ -767,7 +767,7 @@
       "noModules": "the client cannot list its dlls (outdated SkyrimPlatform)",
       "noServerManifest": "the server cannot read its plugin manifest",
       "noModuleList": "the server cannot get the allowed dll list ({detail})",
-      "pluginsNotRead": "the client has not read its plugin list yet (login from the main menu)",
+      "pluginsNotRead": "the client has not read its plugin list yet (clients up to 1.0.1-b7 read it in game)",
       "pluginCheck": "plugin",
       "dllCheck": "dll",
       "skipped": "{check} check skipped at {when} for {who} (slot {slot}): {reason}",
