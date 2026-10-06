@@ -689,13 +689,13 @@ export class FormView {
     return false;
   }
 
-  // Where and when the engine's own kill happened: the cause is read from the height against the spawn point, the time since the spawn and the health the server last relayed
+  // Where and when the engine's own kill happened: the cause is read from the height against the spawn point and the time since the spawn; the health is the last report in the model, the host's own after its engine death
   private describeCorpse(actor: Actor, model: FormModel): string {
     const pos = ObjectReferenceEx.getPos(actor);
     const player = ObjectReferenceEx.getPos(Game.getPlayer() as Actor);
     const sinceSpawn = this.spawnMoment ? `${Date.now() - this.spawnMoment} ms after its spawn` : "before its spawn finished";
     const fromSpawn = this.spawnPoint ? `, ${Math.round(ObjectReferenceEx.getDistanceNoZ(pos, this.spawnPoint))} units from its first spawn point and ${Math.round(pos[2] - this.spawnPoint[2])} in height` : "";
-    const health = model.movement ? `, server health ${Math.round((model.movement.healthPercentage ?? 0) * 100)}%` : "";
+    const health = model.movement ? `, last reported health ${Math.round((model.movement.healthPercentage ?? 0) * 100)}%` : "";
     return `${sinceSpawn} at ${fmtPos(pos)}${fromSpawn}, ${Math.round(ObjectReferenceEx.getDistance(pos, player))} units from the player, 3D ${actor.is3DLoaded()}, hosted here ${isRemoteHostedByMe(this.remoteRefrId ?? 0)}${health}`;
   }
 

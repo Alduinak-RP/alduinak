@@ -190,7 +190,7 @@ export class SendInputsService extends ClientListener {
         }
         // A hosted copy just placed stands disabled at the player until its spawn moves it, so a report now would put the NPC at the player for everyone
         if (remoteId && owner.isDisabled()) {
-            this.logDisabledCopy(remoteId, owner.getFormID());
+            this.logDisabledCopy(remoteId, owner);
             return;
         }
         if (!state) {
@@ -229,8 +229,9 @@ export class SendInputsService extends ClientListener {
         setFormMovement(form, message.data);
     }
 
-    // Once per copy, the evidence that a hosted NPC's report was skipped while its spawn had not moved it yet
-    private logDisabledCopy(remoteId: number, localId: number) {
+    // Once per copy, the evidence that a hosted NPC's report was skipped while its spawn had not moved it yet; the health is what that report would have carried
+    private logDisabledCopy(remoteId: number, copy: Actor) {
+        const localId = copy.getFormID();
         if (this.disabledCopiesLogged.has(localId)) {
             return;
         }
@@ -238,7 +239,7 @@ export class SendInputsService extends ClientListener {
             this.disabledCopiesLogged.clear();
         }
         this.disabledCopiesLogged.add(localId);
-        logToPlatformLog(this, `hosted ${remoteId.toString(16)} copy ${localId.toString(16)} is still disabled at the player, its report waits for the spawn`);
+        logToPlatformLog(this, `hosted ${remoteId.toString(16)} copy ${localId.toString(16)} is still disabled at the player, its report waits for the spawn; health ${Math.round(copy.getActorValuePercentage("health") * 100)}%, 3D ${copy.is3DLoaded()}`);
     }
 
     // A held pose or a saddle owns the player's locomotion, observers must not replay it on the clone

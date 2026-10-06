@@ -201,8 +201,10 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   again 1.5 s later, after the server's own verdict on the hit had time to
   arrive, and logs `FormView: <id> copy <local id> died in the engine by <killer>
   while the server has it alive, <ms> ms after its spawn at x,y,z, <n> units
-  from its spawn point and <dz> in height, <n> units from the player, 3D, hosted
-  here, server health <n>%, spawned again`.
+  from its first spawn point and <dz> in height, <n> units from the player, 3D,
+  hosted here, last reported health <n>%, spawned again` (on the host that
+  health is its own report, 0 once its copy died, so it reads the cause only on
+  a viewer).
 - Every client creates an NPC copy at its own player (a disabled `PlaceAtMe`)
   and the spawn then moves, enables and resurrects it at the server's position.
   Each placement logs `FormView: <id> copy <local id> placed at the player x,y,z
@@ -219,7 +221,10 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   does not report its movement (it would put the NPC at the player for every
   other viewer until the next report); the first such skip per copy logs
   `SendInputsService: hosted <id> copy <local id> is still disabled at the
-  player, its report waits for the spawn`.
+  player, its report waits for the spawn; health <n>%, 3D <bool>`. That health
+  is what the skipped report would have carried: 0% on a never loaded copy
+  means the old client's report damaged every copy to 0 before its deferred
+  kill was in, the one trigger that explains both the jump and the death.
 - A player counts as inside once within `Size` of `POS` and stays inside until
   beyond `1.5 x Size` (hysteresis, so nobody flickers the zone at its edge).
   Only players in the zone's cell or worldspace count.
