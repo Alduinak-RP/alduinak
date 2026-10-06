@@ -218,8 +218,18 @@ ready -- placed --> alive -- killed --> cooldown (Respawn seconds) -- elapsed, a
   point` is that first placement's, kept for the view's life, so its height
   difference still reads a fall or a sink after any number of respawns.
   While the copy is still disabled at the player, the client hosting the NPC
-  does not report its movement (it would put the NPC at the player for every
-  other viewer until the next report); the first such skip per copy logs
+  does not report its movement. Without that skip (client 1.0.1) a probe in
+  the spawn's one or two latent frames reported the player's position, and the
+  host's own model took the report whether or not the server accepted it. On a
+  fresh spawn, where `HostingSystem` can assign the host within milliseconds
+  (its audit runs every 1.5 s), the server refused that first report (the
+  teleport flag `placeNpc` left) but the view's first apply, which runs once
+  per view and on the host too, then slid the host's own copy from the spawn
+  spot to the player; the next probes found it there and the server and every
+  viewer accepted them, so the NPC stood at the host until its AI walked off:
+  the owner's "appears at the player when the zone activates". On a respawn
+  the host's copy is no longer applied from the model, so viewers saw the jump
+  only until the next report 130 to 260 ms later. The first such skip per copy logs
   `SendInputsService: hosted <id> copy <local id> is still disabled at the
   player, its report waits for the spawn; health <n>%, 3D <bool>`. That health
   is what the skipped report would have carried: 0% on a never loaded copy
