@@ -158,7 +158,7 @@ type EffectMap = Map<number, { name: string; since: number }>;
 // Injected into the browser-side widget setter (module scope, not this.*)
 let panelData: any = { admin: false, debug: null as DebugData | null, players: [], locations: [], modes: [], npcZones: [], npcZonesAt: 0, caps: { ban: true }, tier: "", mastery: null, npcPos: null, skills: null, items: null, petBases: null, faction: null, jobs: null, weather: null, races: null, survival: null, events };
 
-function hex(id: number): string {
+export function hex(id: number): string {
   return id ? id.toString(16) : "";
 }
 
@@ -234,7 +234,7 @@ export class AdminMenuService extends ClientListener {
       "adminMenu", "masteryMenu", "professionState", "factionMenu", "adminItems", "adminRaces", "debugInfo", "npcZones",
       "petBases", "adminJobs", "adminWeather", "adminPos", "adminMode", "adminActionResult",
     ], (content) => this.onCustomPacketMessage(content));
-    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu("the interface was hidden"); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; this.activeTab = ""; this.clearAdminData(); });
     // Staff status arrives before the first X so a remembered Admin tab never waits on the roster fetch
     this.controller.emitter.on("createActorMessage", (e) => { if (e.message.isMe) sendCustomPacket(this.controller, { customPacketType: "adminMenuRequest" }); });
@@ -257,6 +257,7 @@ export class AdminMenuService extends ClientListener {
     sendCustomPacket(this.controller, { customPacketType: "masteryInfoRequest" });
     sendCustomPacket(this.controller, { customPacketType: "factionMenuRequest" });
     this.answers.clear();
+    this.openedAt = Date.now();
     const open = ++this.openSeq;
     this.controller.lookupListener(TimersService).setTimeout(() => this.reportUnanswered(open), MENU_ANSWER_WAIT_MS);
   }
@@ -264,13 +265,17 @@ export class AdminMenuService extends ClientListener {
   // The Skills tab stays on its loading text without masteryMenu, so a silent server side is named in the log
   private reportUnanswered(open: number): void {
     if (open !== this.openSeq || !this.menuOpen) return;
-    const missing = Object.keys(MENU_ANSWERS).filter((reply) => !this.answers.has(reply)).map((reply) => MENU_ANSWERS[reply]);
+    const missing = this.missingAnswers();
     if (missing.length) logToPlatformLog(this, `Personal Menu: ${missing.join(", ")} unanswered ${MENU_ANSWER_WAIT_MS} ms after the open`);
+  }
+
+  private missingAnswers(): string[] {
+    return Object.keys(MENU_ANSWERS).filter((reply) => !this.answers.has(reply)).map((reply) => MENU_ANSWERS[reply]);
   }
 
   private onButtonEvent(e: ButtonEvent) {
     if (e.isDown && this.menuOpen && buttonEventKeyCode(e) === DxScanCode.Escape) {
-      this.closeMenu();
+      this.closeMenu("Escape");
     }
   }
 
@@ -393,7 +398,7 @@ export class AdminMenuService extends ClientListener {
       this.pushData();
     } else if (content["customPacketType"] === "adminActionResult") {
       notifyNextUpdate(this.controller, this.sp, String(content["text"] ?? ""));
-      if (content["ok"] === true && this.menuOpen && SELF_ACTIONS.includes(String(content["action"] ?? ""))) this.closeMenu();
+      if (content["ok"] === true && this.menuOpen && SELF_ACTIONS.includes(String(content["action"] ?? ""))) this.closeMenu(`the ${content["action"]} action`);
       // The Add form keeps its values until the server accepted them
       if (content["action"] === "npcZoneAdd") {
         panelData.npcZoneResult = { ok: content["ok"] === true, at: Date.now() };
@@ -431,7 +436,12 @@ export class AdminMenuService extends ClientListener {
     if (this.menuOpen) refreshFormMenu(this.sp, this.browsersideWidgetSetter, { panelData, WIDGET_ID });
   }
 
-  closeMenu(): void {
+  // The reason and the age tell a menu that flashed from one that was used, and what its Skills tab was still waiting for
+  closeMenu(reason: string): void {
+    if (this.menuOpen) {
+      const missing = this.missingAnswers();
+      logToPlatformLog(this, `Personal Menu closed ${Date.now() - this.openedAt} ms after the open, ${reason}${missing.length ? `, ${missing.join(", ")} unanswered` : ""}`);
+    }
     closeFormMenu(this.sp, WIDGET_ID);
     this.menuOpen = false;
   }
@@ -615,7 +625,7 @@ export class AdminMenuService extends ClientListener {
   private onBrowserMessage(e: BrowserMessageEvent) {
     const kind = e.arguments[0];
     if (kind === events.close || (kind === "menu:escape" && this.menuOpen)) {
-      this.closeMenu();
+      this.closeMenu(kind === events.close ? "the page's close" : "Escape in the page");
       return;
     }
     if (kind === events.tab) {
@@ -861,6 +871,7 @@ export class AdminMenuService extends ClientListener {
   // The replies that came since the last open, and which open the unanswered report belongs to
   private answers = new Set<string>();
   private openSeq = 0;
+  private openedAt = 0;
   private lastDebugAt = 0;
   private lastTargetAt = 0;
   private crosshairMoved = false;

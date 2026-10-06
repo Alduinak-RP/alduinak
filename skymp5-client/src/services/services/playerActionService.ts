@@ -3,7 +3,7 @@ import { sendCustomPacket, notifyNextUpdate, CustomPacketContent, onCustomPacket
 import { openFormMenu, refreshFormMenu, closeFormMenu, isGameInputBlocked, isMenuHotkeyBlocked, isPlayerDowned, isUiHidden, isConsoleOpen, readMenuKeyCode, buttonEventKeyCode, onWidgetsCleared, armHeldMenu, claimHeldMenu, closeContainerMenu, keyLabel } from "./widgetMenuUtil";
 import { HousingService, isPropertyRef } from "./housingService";
 import { FactionService } from "./factionService";
-import { AdminMenuService } from "./adminMenuService";
+import { AdminMenuService, hex } from "./adminMenuService";
 import { isFreeCamera } from "./adminModeService";
 import { Actor, BrowserMessageEvent, ButtonEvent, DxScanCode, FormType, Menu, MenuOpenEvent, ObjectReference } from "skyrimPlatform";
 import { introducedName, localIdToRemoteId, remoteIdToLocalId } from "../../view/worldViewMisc";
@@ -30,8 +30,8 @@ const FIRST_DYNAMIC_REMOTE_ID = 0xff000000;
 const HUNTING_KNIFE_ID = 0x0001f25a;
 // The menu waits up to this long for the server's answer so no row moves under the cursor; an older server never answers
 const MENU_STATE_WAIT_MS = 500;
-
-const hex = (id: number): string => id.toString(16);
+// The close reason of a menu a held interact key let go of
+const HELD_RELEASE = "the held key was let go";
 
 // Server-spawned NPCs share the dynamic id space; only player characters carry an appearance
 export const isPlayerCharacterId = (controller: CombinedController, remoteId: number): boolean =>
@@ -137,7 +137,7 @@ export class PlayerActionService extends ClientListener {
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     onCustomPacket(this.controller, ["itemMenuState", "playerMenuState"], (content) => this.onCustomPacketMessage(content));
     this.controller.emitter.on("openContainerMessage", (e) => this.onOpenContainer(e.message.target));
-    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu(); });
+    this.controller.emitter.on("uiHiddenChanged", (e) => { if (e.hidden && this.menuOpen) this.closeMenu("the interface was hidden"); });
     onWidgetsCleared(this.controller, () => { this.menuOpen = false; });
     this.launcherInteractKeyCode = readMenuKeyCode(this.sp, "altInteractKeyCode", DxScanCode.X) || DxScanCode.X;
     this.interactKey = this.launcherInteractKeyCode;
@@ -147,7 +147,7 @@ export class PlayerActionService extends ClientListener {
     if (!e.isDown) return;
     const code = buttonEventKeyCode(e);
     if (code === DxScanCode.Escape && this.menuOpen) {
-      this.closeMenu();
+      this.closeMenu("Escape");
       return;
     }
     // When one key is both, the Activate rules win
@@ -155,8 +155,8 @@ export class PlayerActionService extends ClientListener {
     const isInteract = !isActivate && code === this.interactKey;
     if (!isActivate && !isInteract) return;
     const outcome = this.routePress(isActivate, isInteract);
-    // One line per interact press, so a key that seems dead reads from skyrim-platform.log
-    if (isInteract) logToPlatformLog(this, `${keyLabel(code)} press: ${outcome}`);
+    // One line per interact press, so a key that seems dead reads from skyrim-platform.log; in hold mode the release closes the menu
+    if (isInteract) logToPlatformLog(this, `${keyLabel(code)} press${this.holdMode ? " (hold mode)" : ""}: ${outcome}`);
   }
 
   // Returns what the press did, or why it was ignored
@@ -238,7 +238,7 @@ export class PlayerActionService extends ClientListener {
       this.openLoadMenu(load);
       return "load menu";
     }
-    if (!claimHeldMenu(() => personal.isOpen, () => personal.closeMenu())) return "ignored, the held key was already let go";
+    if (!claimHeldMenu(() => personal.isOpen, () => personal.closeMenu(HELD_RELEASE))) return "ignored, the held key was already let go";
     personal.open();
     return "Personal Menu opened";
   }
@@ -276,6 +276,7 @@ export class PlayerActionService extends ClientListener {
     this.itemTarget = 0;
     if (!this.claimHeld()) return;
     this.menuOpen = true;
+    this.openedAt = Date.now();
     openFormMenu(this.sp, this.playerWidgetSetter, { ACTIONS: LOAD_ACTIONS, targetName, hideTrade: true, events, WIDGET_ID }, this.controller);
   }
 
@@ -327,11 +328,6 @@ export class PlayerActionService extends ClientListener {
       if (wait) {
         this.menuAnswered = true;
         this.controller.once("update", () => this.openWaitingMenu(wait));
-      } else if (this.menuOpen) {
-        // A late answer corrects a menu opened without it; a nailed item nobody may pry closes it
-        const args = this.menuArgs();
-        if ((args.ACTIONS as PlayerAction[]).length) refreshFormMenu(this.sp, this.playerWidgetSetter, args);
-        else this.closeMenu();
       }
       return;
     }
@@ -358,11 +354,11 @@ export class PlayerActionService extends ClientListener {
   private openWaitingMenu(wait: number, timedOut = false): void {
     if (wait !== this.menuWait) return;
     this.menuWait = 0;
+    // A nailed item its viewer may not pry offers nothing, and an unanswered item request opens nothing
+    const offersNothing = !!this.itemTarget && !(this.menuArgs().ACTIONS as PlayerAction[]).length;
     // A body nobody may skin, or an older server's silence, is searched as before
     if (this.bodyTarget && !this.skin) this.requestSearch(this.playerTarget);
-    // A nailed item its viewer may not pry offers nothing
-    else if (this.itemTarget && !(this.menuArgs().ACTIONS as PlayerAction[]).length) return;
-    else if (!this.menuOpen && !isMenuHotkeyBlocked(this.sp, this.controller)) this.openMenu();
+    else if (!offersNothing && !this.menuOpen && !isMenuHotkeyBlocked(this.sp, this.controller)) this.openMenu();
     if (!timedOut || this.menuAnswered) return;
     // A silent server side is the usual reason a menu "does nothing", so the unanswered packet is named in the log
     const packet = this.itemTarget ? "itemMenuRequest" : "playerMenuRequest";
@@ -385,39 +381,39 @@ export class PlayerActionService extends ClientListener {
     const key = e.arguments[0];
     // Escape pressed inside the browser closes the menu on the first press.
     if (key === "menu:escape") {
-      if (this.menuOpen) this.closeMenu();
+      if (this.menuOpen) this.closeMenu("Escape in the page");
       return;
     }
     if (typeof key !== "string" || !key.startsWith("pa:") || !this.menuOpen) {
       return;
     }
     if (key === events.close) {
-      this.closeMenu();
+      this.closeMenu("the page's close");
       return;
     }
     if (key === events.trade) {
       if (this.playerTarget) {
         sendCustomPacket(this.controller, { customPacketType: "tradeRequest", recipient: this.playerTarget });
       }
-      this.closeMenu();
+      this.closeMenu("Trade");
       return;
     }
     if (key === events.action) {
       const actionId = typeof e.arguments[1] === "string" ? (e.arguments[1] as string) : "";
       if (actionId === PUT_DOWN.id) {
         this.controller.lookupListener(JobService).putDown();
-        this.closeMenu();
+        this.closeMenu(`the ${actionId} action`);
         return;
       }
       if (actionId === "personal") {
-        this.closeMenu();
+        this.closeMenu(`the ${actionId} action`);
         // The Personal Menu reads the game as it opens, which only the update context allows
         this.controller.once("update", () => this.controller.lookupListener(AdminMenuService).open());
         return;
       }
       if (this.itemTarget) {
         this.itemAction(actionId);
-        this.closeMenu();
+        this.closeMenu(`the ${actionId} action`);
         return;
       }
       const packetType = PACKET_ACTIONS[actionId];
@@ -430,7 +426,7 @@ export class PlayerActionService extends ClientListener {
       } else if (packetType) {
         notifyNextUpdate(this.controller, this.sp, loc("playerAction.lookAtPlayer"));
       }
-      this.closeMenu();
+      this.closeMenu(`the ${actionId} action`);
       return;
     }
   }
@@ -450,19 +446,19 @@ export class PlayerActionService extends ClientListener {
   private openMenu(): void {
     if (!this.claimHeld()) return;
     this.menuOpen = true;
+    this.openedAt = Date.now();
     openFormMenu(this.sp, this.playerWidgetSetter, this.menuArgs(), this.controller);
   }
 
   // A held interact key closes the menu on release, and one already let go keeps it shut
   private claimHeld(): boolean {
-    return claimHeldMenu(() => this.menuOpen, () => this.closeMenu());
+    return claimHeldMenu(() => this.menuOpen, () => this.closeMenu(HELD_RELEASE));
   }
 
   private menuArgs(): Record<string, unknown> {
     if (this.itemTarget) {
       const st = this.itemState;
-      // Without the server's answer the item is offered as loose; the server still refuses a nailed one with its notice
-      const actions = !st ? [ITEM_PICKUP, ITEM_MOVE, { ...ITEM_NAIL, disabled: true }] : st.nailed ? (st.canPry ? [ITEM_PRY] : []) : [ITEM_PICKUP, ITEM_MOVE, st.canNail ? ITEM_NAIL : { ...ITEM_NAIL, disabled: true }];
+      const actions = !st ? [] : st.nailed ? (st.canPry ? [ITEM_PRY] : []) : [ITEM_PICKUP, ITEM_MOVE, st.canNail ? ITEM_NAIL : { ...ITEM_NAIL, disabled: true }];
       return { ACTIONS: actions, targetName, hideTrade: true, events, WIDGET_ID };
     }
     if (this.bodyTarget) {
@@ -477,7 +473,9 @@ export class PlayerActionService extends ClientListener {
     return { ACTIONS: actions, targetName, hideTrade: false, events, WIDGET_ID };
   }
 
-  private closeMenu(): void {
+  // The reason and the age tell a menu that flashed from one that was used
+  private closeMenu(reason: string): void {
+    logToPlatformLog(this, `interaction menu closed ${Date.now() - this.openedAt} ms after the open, ${reason}`);
     this.menuOpen = false;
     closeFormMenu(this.sp, WIDGET_ID);
   }
@@ -497,6 +495,7 @@ export class PlayerActionService extends ClientListener {
   };
 
   private menuOpen = false;
+  private openedAt = 0;
   // Every menu the interact key opens is held open instead of toggled
   private holdMode = false;
   // The last press asked the server for a bounty board's strongbox or a search window
