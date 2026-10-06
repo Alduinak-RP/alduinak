@@ -5,6 +5,7 @@ import { Settings } from "../settings";
 import { System, SystemContext } from "./system";
 import { appendLog, describeActor, displayNameOf, logDirOf, whereOf } from "./playerText";
 import { hex, isPlayerActor } from "./actorUtil";
+import { loc } from "../loc";
 
 type Mp = any;
 
@@ -16,7 +17,7 @@ type Mp = any;
 export type AlertKind = "execute" | "admin" | "ticket" | "keyword" | "login";
 export interface AlertOptions { here?: boolean; discordIds?: string[] }
 
-const LABELS: Record<AlertKind, string> = { execute: "Execution", admin: "Admin", ticket: "Staff call", keyword: "Keyword", login: "Login" };
+const LABELS: Record<AlertKind, string> = { execute: loc("discord.label.execute"), admin: loc("discord.label.admin"), ticket: loc("discord.label.ticket"), keyword: loc("discord.label.keyword"), login: loc("discord.label.login") };
 const DEFAULT_ALERT_KINDS: AlertKind[] = ["admin", "execute", "ticket"];
 let allowedKinds = new Set<string>(DEFAULT_ALERT_KINDS);
 const ADMIN_TAB_KINDS = new Set<string>(["execute"]);
@@ -73,13 +74,13 @@ async function flush(): Promise<void> {
   flushTimer = null;
   const batch = pending.splice(0);
   if (skipped) {
-    batch.push({ line: `(${skipped} more alert(s) skipped in the burst, see the server logs)`, here: false, count: 1 });
+    batch.push({ line: loc("discord.skipped", { n: skipped }), here: false, count: 1 });
     skipped = 0;
   }
   const t = await targetOf();
   if (!t || !batch.length) return;
   const prefix = batch.some((b) => b.here) ? "@here\n" : "";
-  chunk(batch.map((b) => (b.count > 1 ? `${b.line} (x${b.count})` : b.line)), MAX_MESSAGE - prefix.length).forEach((text, i) => {
+  chunk(batch.map((b) => (b.count > 1 ? loc("discord.repeated", { line: b.line, count: b.count }) : b.line)), MAX_MESSAGE - prefix.length).forEach((text, i) => {
     const content = i === 0 ? prefix + text : text;
     const allowed_mentions = { parse: prefix && i === 0 ? ["everyone"] : [] };
     for (const id of t.channelIds) {
@@ -124,12 +125,12 @@ export function adminAudit(text: string, alert = true): void {
 const actorLabel = (mp: Mp, actorId: number): string =>
   isPlayerActor(mp, actorId) ? describeActor(mp, actorId) : `${JSON.stringify(displayNameOf(mp, actorId))} (${hex(actorId)})`;
 
-export function deathAlert(mp: Mp, actorId: number, killerId: number, how = "died"): void {
+export function deathAlert(mp: Mp, actorId: number, killerId: number, how = loc("discord.death.died")): void {
   if (!isPlayerActor(mp, actorId)) return;
-  const killer = killerId && killerId !== actorId ? `, killed by ${actorLabel(mp, killerId)}` : "";
-  const text = `${describeActor(mp, actorId)} ${how}${killer}, ${whereOf(mp, actorId)}`;
+  const killer = killerId && killerId !== actorId ? loc("discord.death.killedBy", { killer: actorLabel(mp, killerId) }) : "";
+  const text = loc("discord.death.line", { actor: describeActor(mp, actorId), how, killer, where: whereOf(mp, actorId) });
   console.log(`[death] ${text}`);
-  adminTabLine("Death", text);
+  adminTabLine(loc("discord.label.death"), text);
 }
 
 interface KeywordState { checkedAt: number; mtimeMs: number; words: { word: string; re: RegExp }[]; cooldownMs: number }
@@ -184,7 +185,7 @@ export function matchKeywords(speaker: string, text: string, now = Date.now()): 
 
 export function keywordAlert(mp: Mp, actorId: number, channel: string, text: string): void {
   const hits = matchKeywords(String(actorId >>> 0), text);
-  if (hits.length) discordAlert("keyword", `${describeActor(mp, actorId)} in ${channel}: ${JSON.stringify(text)} (matched ${hits.join(", ")})`);
+  if (hits.length) discordAlert("keyword", loc("discord.keyword", { actor: describeActor(mp, actorId), channel, text: JSON.stringify(text), words: hits.join(", ") }));
 }
 
 // Registers g.__alduinakKeywordAlert, which the gamemode calls from chat

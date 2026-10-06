@@ -5,6 +5,7 @@ import { loginsCounter, loginErrorsCounter } from "./metricsSystem";
 import { hasDiscordBanRole } from "./discordBanSystem";
 import { discordAlert } from "./discordAlerts";
 import { kickWithReason } from "./kickUtil";
+import { loc } from "../loc";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
@@ -63,7 +64,7 @@ export class Login implements System {
       } else if (response.status === 403) {
         const body = await response.json().catch(() => null);
         if (body && body.error === "staffOnly") {
-          kickWithReason(ctx.svr, userId, "This server is for staff only.");
+          kickWithReason(ctx.svr, userId, loc("login.staffOnly"));
         }
       }
       throw new Error(`getUserProfile: HTTP error ${response.status}`);
@@ -168,7 +169,7 @@ export class Login implements System {
         // Backend ban store check by discordId/hwid/ip; also records the connecting ip
         const connection = await this.checkConnectionAllowed(profile.id, ip);
         if (connection === "unavailable") {
-          kickWithReason(ctx.svr, userId, "The login service is unavailable, please try again in a minute.");
+          kickWithReason(ctx.svr, userId, loc("login.serviceUnavailable"));
           throw new Error("connection-check unavailable");
         }
         if (connection === "banned") {
@@ -249,10 +250,10 @@ export class Login implements System {
         }
 
         if (discordAuth && discordAuth.botToken && discordAuth.guilds) {
-          const ipToPrint = shouldHideIp ? "hidden" : ip;
+          const ipToPrint = shouldHideIp ? loc("login.ipHidden") : ip;
           const actorIds = ctx.svr.getActorsByProfileId(profile.id).map(id => id.toString(16));
 
-          const loginMessage = `Server Login: Server Slot ${userId}, IP ${ipToPrint}, Actor ID ${actorIds}, Master API ${profile.id}, Discord ID ${profile.discordId}`;
+          const loginMessage = loc("login.discordLine", { slot: userId, ip: ipToPrint, actorIds: String(actorIds), profileId: profile.id, discordId: String(profile.discordId) });
           console.log(`${loginMessage} <@${profile.discordId}>`);
           discordAlert("login", loginMessage, { discordIds: [String(profile.discordId)] });
         }

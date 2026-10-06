@@ -1,6 +1,7 @@
 import * as crypto from "crypto";
 import { Settings } from "../settings";
 import { System, Log, SystemContext, Content } from "./system";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -60,9 +61,9 @@ export class VoiceSystem implements System {
   private room = "alduinak";
   // Voice modes cycled in-game with Alt+V; units are game units (70 per meter): whisper 2m, talk 12m, shout 45m by default
   private modes: Array<{ key: string; label: string; units: number }> = [
-    { key: "whisper", label: "Whisper", units: 140 },
-    { key: "talk", label: "Talk", units: 840 },
-    { key: "shout", label: "Shout", units: 3150 },
+    { key: "whisper", label: loc("voice.mode.whisper"), units: 140 },
+    { key: "talk", label: loc("voice.mode.talk"), units: 840 },
+    { key: "shout", label: loc("voice.mode.shout"), units: 3150 },
   ];
 
   async initAsync(_ctx: SystemContext): Promise<void> {

@@ -10,6 +10,7 @@ import {
   isEnchanted, isSet, readInventory, sameBase, sameEffects, sameFloat, sameItem, withCount,
 } from "./inventoryExtras";
 import { conditionTagPattern, durabilityTags } from "./durabilityNative";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -156,9 +157,9 @@ interface Plan {
   notes: string[];
 }
 
-const REFUSED_NOTICE = "The server did not accept that change to your item, so it keeps its previous state.";
-const RANK_NOTICE = "Your rank in that craft cannot improve the item any further.";
-const TIRED_NOTICE = "You are too tired to improve that item. Rest a while.";
+const REFUSED_NOTICE = loc("crafted.refused");
+const RANK_NOTICE = loc("crafted.rankCap");
+const TIRED_NOTICE = loc("crafted.tired");
 
 const NO_STATION: Station = { enchanting: false, temperBenches: [] };
 const hex = (id: number): string => (id >>> 0).toString(16);
@@ -310,7 +311,7 @@ export class CraftedExtrasSystem implements System {
     const revert = new Set([...refused, ...capped.keys()]);
     if (!revert.size) return;
     this.send(ctx, userId, { customPacketType: REFUSED_PACKET, baseIds: Array.from(revert) });
-    if (!refused.size) this.notify(ctx, userId, `Your rank improves that item to ${qualityName(Math.max(...capped.values()))} at most.`);
+    if (!refused.size) this.notify(ctx, userId, loc("crafted.capped", { quality: qualityName(Math.max(...capped.values())) }));
     else this.notify(ctx, userId, reasons.has("tired") ? TIRED_NOTICE : reasons.has("rank") ? RANK_NOTICE : REFUSED_NOTICE);
   }
 

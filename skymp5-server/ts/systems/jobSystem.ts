@@ -11,6 +11,7 @@ import { ITEM_TYPES, descKey, itemNames } from "./itemCatalog";
 import { every } from "./timers";
 import { watchFileDebounced } from "./fileUtil";
 import { onlineSnapshot } from "./onlineSnapshot";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -187,7 +188,7 @@ type Reject = (msg: string) => void;
 
 const distance = (a: readonly number[], b: readonly number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-const article = (noun: string): string => (/^[aeiou]/i.test(noun) ? "an" : "a");
+const article = (noun: string): string => (/^[aeiou]/i.test(noun) ? loc("job.articleAn") : loc("job.articleA"));
 
 const capitalized = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -198,7 +199,7 @@ const listOf = (raw: unknown): string[] => {
   return list.map((v) => String(v ?? "").trim()).filter(Boolean);
 };
 
-const joinedList = (parts: string[]): string => (parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts.join(""));
+const joinedList = (parts: string[]): string => (parts.length > 1 ? loc("job.listAnd", { list: parts.slice(0, -1).join(", "), last: parts[parts.length - 1] }) : parts.join(""));
 
 export class JobSystem implements System {
   systemName = "JobSystem";
@@ -251,7 +252,7 @@ export class JobSystem implements System {
     guardMpHook(mp, "onActivate", (targetId: number, casterId: number) => {
       const trip = this.trips.get(casterId >>> 0);
       if (!trip || baseTypeOf(mp, targetId >>> 0) !== "FURN") return;
-      this.deny(trip.userId, `Put the ${trip.job.draft.item} down first.`);
+      this.deny(trip.userId, loc("job.putDownFirst", { item: trip.job.draft.item }));
       return false;
     });
   }
@@ -307,10 +308,10 @@ export class JobSystem implements System {
     for (const { draft, problem } of drafts) {
       const problems: string[] = problem ? [problem] : [];
       const reject: Reject = (msg) => problems.push(msg);
-      const pickup = this.buildEnd(draft.pickup, "Pickup", locators, reject);
-      const dropoff = this.buildEnd(draft.dropoff, "Dropoff", locators, reject);
+      const pickup = this.buildEnd(draft.pickup, loc("job.end.pickup"), locators, reject);
+      const dropoff = this.buildEnd(draft.dropoff, loc("job.end.dropoff"), locators, reject);
       const job = pickup && dropoff && !problems.length ? this.buildJob(draft, pickup, dropoff, globals, draft.enabled ? ids : null, reject) : null;
-      const status = [draft.enabled ? "" : "disabled", problems[0] ?? ""].filter(Boolean).join(", ");
+      const status = [draft.enabled ? "" : loc("job.status.disabled"), problems[0] ?? ""].filter(Boolean).join(", ");
       entries.push({ draft, status, pickup, dropoff });
       if (!draft.enabled) continue;
       if (job && !problems.length) jobs.push(job);
@@ -329,18 +330,18 @@ export class JobSystem implements System {
       text = fs.readFileSync(JOBS_FILE, "utf8");
     } catch (e: any) {
       if (e?.code === "ENOENT") return { list: [], root: null, key: "", missing: true };
-      return `${JOBS_FILE} unreadable: ${e}`;
+      return loc("job.file.unreadable", { file: JOBS_FILE, error: String(e) });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      return `${JOBS_FILE} is not valid JSON: ${e}`;
+      return loc("job.file.notJson", { file: JOBS_FILE, error: String(e) });
     }
     if (Array.isArray(parsed)) return { list: parsed, root: null, key: "", missing: false };
     const key = pickKey(parsed, "jobs");
     const list = key === undefined ? undefined : (parsed as Record<string, unknown>)[key];
-    if (key === undefined || !Array.isArray(list)) return `${JOBS_FILE} must be an array or { "Jobs": [...] }`;
+    if (key === undefined || !Array.isArray(list)) return loc("job.file.badShape", { file: JOBS_FILE });
     return { list, root: parsed as Record<string, unknown>, key, missing: false };
   }
 
@@ -376,42 +377,42 @@ export class JobSystem implements System {
   private parseDraft(raw: unknown, globals: Globals, reject: Reject): Draft | null {
     const name = String(pick(raw, "name") ?? "").trim();
     if (!name) {
-      reject("entry without a Name skipped");
+      reject(loc("job.error.noName"));
       return null;
     }
     if (name.length > MAX_NAME) {
-      reject(`'${name.slice(0, MAX_NAME)}...' skipped, Name longer than ${MAX_NAME} characters`);
+      reject(loc("job.error.nameTooLong", { name: name.slice(0, MAX_NAME), max: MAX_NAME }));
       return null;
     }
     const enabledRaw = pick(raw, "enabled");
-    const item = cleanDisplayName(pick(raw, "item"), MAX_TEXT) || "load";
+    const item = cleanDisplayName(pick(raw, "item"), MAX_TEXT) || loc("job.default.item");
     const payRaw = pick(raw, "pay");
     const pay = num(payRaw, globals.pay);
-    if (!Number.isInteger(pay) || pay < 1 || pay > MAX_PAY) reject(`Pay must be a whole number from 1 to ${MAX_PAY}`);
+    if (!Number.isInteger(pay) || pay < 1 || pay > MAX_PAY) reject(loc("job.error.pay", { max: MAX_PAY }));
     const anim = String(pick(raw, "carryanim") ?? "").trim() || DEFAULT_ANIM;
-    if (!/^Offset[A-Za-z0-9_]+$/i.test(anim)) reject(`CarryAnim '${anim}' is not an Offset pose`);
+    if (!/^Offset[A-Za-z0-9_]+$/i.test(anim)) reject(loc("job.error.anim", { anim }));
     const requires = listOf(pick(raw, "requires"));
-    if (requires.length > MAX_REQUIRES) reject(`more than ${MAX_REQUIRES} Requires entries`);
+    if (requires.length > MAX_REQUIRES) reject(loc("job.error.tooManyRequires", { max: MAX_REQUIRES }));
     const rewards = this.parseRewards(pick(raw, "rewards"), reject);
     return {
       name,
       enabled: enabledRaw !== false && String(enabledRaw).toLowerCase() !== "false",
       item,
-      prompt: cleanDisplayName(pick(raw, "prompt"), MAX_TEXT) || `Carry ${item}`,
+      prompt: cleanDisplayName(pick(raw, "prompt"), MAX_TEXT) || loc("job.default.prompt", { item }),
       pay,
       anim,
       requires,
-      requiresText: cleanDisplayName(pick(raw, "requirestext"), MAX_TEXT) || "the right tool",
+      requiresText: cleanDisplayName(pick(raw, "requirestext"), MAX_TEXT) || loc("job.default.requiresText"),
       rewards,
-      pickup: this.parseEnd(pick(raw, "pickup"), "the pickup"),
-      dropoff: this.parseEnd(pick(raw, "dropoff"), "the dropoff"),
+      pickup: this.parseEnd(pick(raw, "pickup"), loc("job.default.pickup")),
+      dropoff: this.parseEnd(pick(raw, "dropoff"), loc("job.default.dropoff")),
     };
   }
 
   // Entries are "id count", { ID, Count } or { OneOf: [ids], Count }
   private parseRewards(raw: unknown, reject: Reject): RewardDraft[] {
     const list = raw === undefined || raw === null ? [] : Array.isArray(raw) ? raw : [raw];
-    if (list.length > MAX_REWARDS) reject(`more than ${MAX_REWARDS} Rewards entries`);
+    if (list.length > MAX_REWARDS) reject(loc("job.error.tooManyRewards", { max: MAX_REWARDS }));
     const rewards: RewardDraft[] = [];
     for (const entry of list) {
       const oneOf = pick(entry, "oneof");
@@ -419,7 +420,7 @@ export class JobSystem implements System {
       const ids = single ? [single.id] : listOf(oneOf);
       const count = single ? single.count : num(pick(entry, "count"), 1);
       if (!ids.length || ids.length > MAX_REWARD_ITEMS || !Number.isInteger(count) || count < 1 || count > MAX_REWARD_COUNT) {
-        reject(`Rewards entry ${JSON.stringify(entry)} needs 1 to ${MAX_REWARD_ITEMS} items and a whole Count from 1 to ${MAX_REWARD_COUNT}`);
+        reject(loc("job.error.rewardEntry", { entry: JSON.stringify(entry), maxItems: MAX_REWARD_ITEMS, maxCount: MAX_REWARD_COUNT }));
         continue;
       }
       rewards.push({ ids, count });
@@ -470,7 +471,7 @@ export class JobSystem implements System {
 
   private buildEnd(end: EndDraft, which: string, locators: Map<string, string>, reject: Reject): End | null {
     if (!end.locator || end.pos.length !== 3) {
-      reject(`${which} needs ID and POS {x,y,z}`);
+      reject(loc("job.error.endIncomplete", { which }));
       return null;
     }
     let desc = "";
@@ -481,7 +482,7 @@ export class JobSystem implements System {
       desc = "";
     }
     if (!desc) {
-      reject(`${which} ID '${end.locator}' is not a known cell or worldspace`);
+      reject(loc("job.error.endUnknown", { which, id: end.locator }));
       return null;
     }
     return { desc, cellId, pos: end.pos, radius: end.radius, label: end.label };
@@ -490,7 +491,7 @@ export class JobSystem implements System {
   // Ids null skips the tools and rewards (a disabled entry); any entry that does not resolve refuses the job, so it fails closed
   private buildJob(draft: Draft, pickup: End, dropoff: End, globals: Globals, ids: ResolvedIds | null, reject: Reject): Job | null {
     if (pickup.cellId === dropoff.cellId && distance(pickup.pos, dropoff.pos) < globals.minDistance) {
-      reject(`pickup and dropoff are ${Math.round(distance(pickup.pos, dropoff.pos))} units apart, MinDistance is ${globals.minDistance}`);
+      reject(loc("job.error.tooClose", { distance: Math.round(distance(pickup.pos, dropoff.pos)), min: globals.minDistance }));
       return null;
     }
     const tools = new Set<number>();
@@ -501,7 +502,7 @@ export class JobSystem implements System {
       if (type === "FLST") {
         const listed = espmFieldFormIds(this.mp.lookupEspmRecordById(id), "LNAM");
         if (!listed.length) {
-          reject(`Requires '${req}' lists no items`);
+          reject(loc("job.error.requiresEmpty", { req }));
           return null;
         }
         listed.forEach((t) => tools.add(t));
@@ -510,7 +511,7 @@ export class JobSystem implements System {
       } else if (ITEM_TYPES.includes(type)) {
         tools.add(id);
       } else {
-        reject(type ? `Requires '${req}' is a ${type}, not an item, form list or keyword` : `Requires '${req}' is not in the load order`);
+        reject(type ? loc("job.error.requiresType", { req, type }) : loc("job.error.requiresMissing", { req }));
         return null;
       }
     }
@@ -520,7 +521,7 @@ export class JobSystem implements System {
       const bad = items.findIndex((id) => !ITEM_TYPES.includes(this.recordType(id)));
       if (bad >= 0) {
         const type = this.recordType(items[bad]);
-        reject(type ? `Rewards '${reward.ids[bad]}' is a ${type}, not an item` : `Rewards '${reward.ids[bad]}' is not in the load order`);
+        reject(type ? loc("job.error.rewardType", { id: reward.ids[bad], type }) : loc("job.error.rewardMissing", { id: reward.ids[bad] }));
         return null;
       }
       rewards.push({ items, names: [...reward.ids], count: reward.count });
@@ -561,7 +562,7 @@ export class JobSystem implements System {
     for (const [actorId, trip] of Array.from(this.trips)) {
       const same = next.get(trip.job.draft.name.toLowerCase());
       if (same && signature(same) === signature(trip.job)) trip.job = same;
-      else this.endTrip(actorId, "The work here has changed.");
+      else this.endTrip(actorId, loc("job.changed"));
     }
     for (const userId of Array.from(this.offers.keys())) this.setOffer(userId, null);
     this.jobs = jobs;
@@ -607,26 +608,26 @@ export class JobSystem implements System {
     } catch {
       return;
     }
-    if (!this.inside(cellId, pos, job.pickup, EDGE_SLACK)) return this.deny(userId, `Stand at ${job.pickup.label} to take this work.`);
+    if (!this.inside(cellId, pos, job.pickup, EDGE_SLACK)) return this.deny(userId, loc("job.standAt", { label: job.pickup.label }));
     const now = Date.now();
     const recent = this.recentTrips(actorId, now);
     if (recent.length >= this.globals.tripsPerWindow) return this.deny(userId, this.limitText(recent, now));
-    if (!this.holdsRequirement(actorId, job)) return this.deny(userId, `You need ${job.draft.requiresText} for this work.`);
-    if (isRestrained(mp, actorId) || this.capture.carriedOf(actorId)) return this.deny(userId, "Your hands are full.");
-    if (this.isMounted(actorId)) return this.deny(userId, `Dismount to pick up the ${item}.`);
-    if (this.isWeaponDrawn(actorId)) return this.deny(userId, `Put your weapon away to pick up the ${item}.`);
+    if (!this.holdsRequirement(actorId, job)) return this.deny(userId, loc("job.needTool", { tool: job.draft.requiresText }));
+    if (isRestrained(mp, actorId) || this.capture.carriedOf(actorId)) return this.deny(userId, loc("job.handsFull"));
+    if (this.isMounted(actorId)) return this.deny(userId, loc("job.dismount", { item }));
+    if (this.isWeaponDrawn(actorId)) return this.deny(userId, loc("job.sheathe", { item }));
     this.trips.set(actorId, { job, userId, startedAt: now, cellId, pos, polledAt: now, crossed: false });
     this.setOffer(userId, null);
     this.send(userId, { customPacketType: CARRY_PACKET, carrying: true, anim: job.draft.anim, target: 0 });
-    this.send(userId, { customPacketType: STATE_PACKET, carrying: true, title: `${capitalized(item)} for ${job.dropoff.label}` });
-    this.notice(userId, `You pick up ${article(item)} ${item}. Carry it to ${job.dropoff.label}.`);
+    this.send(userId, { customPacketType: STATE_PACKET, carrying: true, title: loc("job.title", { item: capitalized(item), label: job.dropoff.label }) });
+    this.notice(userId, loc("job.pickedUp", { article: article(item), item, label: job.dropoff.label }));
     this.log(`[jobs] ${this.actorLabel(actorId)} picked up ${job.draft.name}, ${recent.length}/${this.globals.tripsPerWindow} trips made`);
   }
 
   private onPutDown(userId: number): void {
     const actorId = this.actorOf(userId);
     const trip = this.trips.get(actorId);
-    if (trip) this.endTrip(actorId, `You put the ${trip.job.draft.item} down.`);
+    if (trip) this.endTrip(actorId, loc("job.putDown", { item: trip.job.draft.item }));
   }
 
   // The job carrier's load for CaptureSystem, "" when not on a trip
@@ -641,7 +642,7 @@ export class JobSystem implements System {
     const now = Date.now();
     for (const actorId of Array.from(this.struck)) {
       const trip = this.trips.get(actorId);
-      if (trip) this.endTrip(actorId, `You dropped the ${trip.job.draft.item} in the fight.`);
+      if (trip) this.endTrip(actorId, loc("job.droppedFight", { item: trip.job.draft.item }));
     }
     this.struck.clear();
     for (const [actorId, trip] of Array.from(this.trips)) {
@@ -661,19 +662,19 @@ export class JobSystem implements System {
     if (userOf(mp, actorId) !== trip.userId) return this.endTrip(actorId, "");
     // CaptureSystem posed the carrier meanwhile, so its pose must not be cleared
     if (this.capture.carriedOf(actorId)) return this.endTrip(actorId, "", false);
-    if (!isAlive(mp, actorId) || isRestrained(mp, actorId)) return this.endTrip(actorId, `You dropped the ${item}.`);
-    if (this.isMounted(actorId)) return this.endTrip(actorId, `You dropped the ${item} to mount.`);
-    if (now - trip.startedAt > this.globals.maxTripMs) return this.endTrip(actorId, `You took too long and dropped the ${item}.`);
-    if (now - trip.startedAt > WEAPON_GRACE_MS && this.isWeaponDrawn(actorId)) return this.endTrip(actorId, `You dropped the ${item} to draw your weapon.`);
+    if (!isAlive(mp, actorId) || isRestrained(mp, actorId)) return this.endTrip(actorId, loc("job.dropped", { item }));
+    if (this.isMounted(actorId)) return this.endTrip(actorId, loc("job.droppedMount", { item }));
+    if (now - trip.startedAt > this.globals.maxTripMs) return this.endTrip(actorId, loc("job.tooLong", { item }));
+    if (now - trip.startedAt > WEAPON_GRACE_MS && this.isWeaponDrawn(actorId)) return this.endTrip(actorId, loc("job.droppedWeapon", { item }));
     const cellId = mp.getActorCellOrWorld(actorId);
     const pos: number[] = mp.getActorPos(actorId);
     const { pickup, dropoff } = trip.job;
     if (cellId !== trip.cellId) {
       // One load door is allowed, into the dropoff's own cell or worldspace
-      if (trip.crossed || cellId !== dropoff.cellId || dropoff.cellId === pickup.cellId) return this.endTrip(actorId, `You dropped the ${item}.`);
+      if (trip.crossed || cellId !== dropoff.cellId || dropoff.cellId === pickup.cellId) return this.endTrip(actorId, loc("job.dropped", { item }));
       trip.crossed = true;
     } else if (distance(pos, trip.pos) > MAX_STEP_PER_SECOND * Math.max(1, (now - trip.polledAt) / 1000)) {
-      return this.endTrip(actorId, `You dropped the ${item}.`);
+      return this.endTrip(actorId, loc("job.dropped", { item }));
     }
     trip.cellId = cellId;
     trip.pos = pos;
@@ -690,7 +691,7 @@ export class JobSystem implements System {
     const who = this.actorLabel(actorId);
     if (elapsed < minMs) {
       this.log(`[jobs] ${who} delivered ${draft.name} in ${Math.round(elapsed / 1000)} s, under the ${Math.round(minMs / 1000)} s minimum, not paid`);
-      return this.endTrip(actorId, "That was too quick; nobody pays for that.");
+      return this.endTrip(actorId, loc("job.tooQuick"));
     }
     const limit = this.globals.tripsPerWindow;
     const recent = this.recentTrips(actorId, now);
@@ -699,9 +700,9 @@ export class JobSystem implements System {
       addItemTo(this.mp, actorId, GOLD_BASE_ID, draft.pay, true);
     } catch (e) {
       this.log(`[jobs] paying ${who} for ${draft.name} failed: ${e}`);
-      return this.endTrip(actorId, "Nobody could pay you just now.");
+      return this.endTrip(actorId, loc("job.noPay"));
     }
-    const paid = [`${draft.pay} gold`, ...this.grantRewards(actorId, trip.job, who)];
+    const paid = [loc("job.gold", { n: draft.pay }), ...this.grantRewards(actorId, trip.job, who)];
     recent.push(now);
     try {
       this.mp.set(actorId, JOBS_PROP, { trips: recent.slice(-MAX_KEPT_TRIPS) });
@@ -709,10 +710,10 @@ export class JobSystem implements System {
       this.log(`[jobs] recording the trip of ${who} failed: ${e}`);
     }
     const left = limit - recent.length;
-    const earned = `You deliver the ${draft.item} and earn ${joinedList(paid)}.`;
+    const earned = joinedList(paid);
     this.endTrip(actorId, left > 0
-      ? `${earned} ${left} of ${limit} trips left.`
-      : `${earned} That was your last trip; there is more work in ${formatWait(this.nextFreeAt(recent) - now)}.`);
+      ? loc("job.delivered", { item: draft.item, earned, left, limit })
+      : loc("job.deliveredLast", { item: draft.item, earned, wait: formatWait(this.nextFreeAt(recent) - now) }));
     this.log(`[jobs] ${who} delivered ${draft.name}, +${paid.join(", +")}, ${recent.length}/${limit}`);
   }
 
@@ -723,7 +724,7 @@ export class JobSystem implements System {
       const i = Math.floor(Math.random() * reward.items.length);
       try {
         addItemTo(this.mp, actorId, reward.items[i], reward.count, true);
-        granted.push(`${reward.count} ${reward.names[i]}`);
+        granted.push(loc("job.reward", { count: reward.count, name: reward.names[i] }));
       } catch (e) {
         this.log(`[jobs] reward ${reward.names[i]} for ${who} (${job.draft.name}) failed: ${e}`);
       }
@@ -765,7 +766,7 @@ export class JobSystem implements System {
   private setOffer(userId: number, job: Job | null): void {
     if (job) {
       this.offers.set(userId, job.draft.name);
-      this.send(userId, { customPacketType: PROMPT_PACKET, job: job.draft.name, verb: job.draft.prompt, label: `${job.draft.pay} gold` });
+      this.send(userId, { customPacketType: PROMPT_PACKET, job: job.draft.name, verb: job.draft.prompt, label: loc("job.gold", { n: job.draft.pay }) });
       return;
     }
     if (!this.offers.delete(userId)) return;
@@ -791,7 +792,7 @@ export class JobSystem implements System {
   }
 
   private limitText(recent: number[], now: number): string {
-    return `You have made ${this.globals.tripsPerWindow} trips. There is more work in ${formatWait(this.nextFreeAt(recent) - now)}.`;
+    return loc("job.limit", { n: this.globals.tripsPerWindow, wait: formatWait(this.nextFreeAt(recent) - now) });
   }
 
   private holdsRequirement(actorId: number, job: Job): boolean {
@@ -884,8 +885,8 @@ export class JobSystem implements System {
     const draft = this.parseDraft(this.withKeptRewards(raw), this.globals, reject);
     if (!draft || problems.length) return { error: problems[0], name: "", replaced: false };
     const { locators, ids } = await this.resolveIds([draft], draft.enabled ? [draft] : []);
-    const pickup = this.buildEnd(draft.pickup, "Pickup", locators, reject);
-    const dropoff = this.buildEnd(draft.dropoff, "Dropoff", locators, reject);
+    const pickup = this.buildEnd(draft.pickup, loc("job.end.pickup"), locators, reject);
+    const dropoff = this.buildEnd(draft.dropoff, loc("job.end.dropoff"), locators, reject);
     if (pickup && dropoff) this.buildJob(draft, pickup, dropoff, this.globals, draft.enabled ? ids : null, reject);
     if (problems.length) return { error: problems[0], name: draft.name, replaced: false };
     const file = this.readJobFile();
@@ -910,7 +911,7 @@ export class JobSystem implements System {
       this.writeJobFile(file, file.list);
     } catch (e) {
       this.log(`[jobs] ${JOBS_FILE} write failed: ${e}`);
-      return { error: `${JOBS_FILE} write failed, see server log`, name: draft.name, replaced: false };
+      return { error: loc("job.file.writeFailed", { file: JOBS_FILE }), name: draft.name, replaced: false };
     }
     this.log(`[jobs] '${draft.name}' ${at >= 0 ? "replaced in" : "appended to"} ${JOBS_FILE} by admin`);
     await this.queueLoad("admin save");

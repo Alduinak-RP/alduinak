@@ -15,6 +15,7 @@ import { AbilityGroup, LOAD_PACKETS, StageAbilityTracker } from "./stageAbilitie
 import { HEAT_INTERIORS, HEAT_SOURCE_INPUTS, HEAT_WORLDS } from "./heatSources";
 import { ARMOR_WARMTH } from "./armorWarmth";
 import { every } from "./timers";
+import { loc } from "../loc";
 import {
   AreaClass, COLD_MAX, COLD_STAGE_NAMES, ColdConfig, RATED_SLOTS, WeatherAdd, WornArmor, areaOf, areaRateOf, coldCapOf, coldLevelOf, coldRatePerSec, coldStageOf, freezingWaterDrain,
   gearWarmth, isFreezingWater, isNight, nearHeatPoint, parseColdSettings, stepCold, temperatureLevelOf, warmthReduction, weatherAddOf,
@@ -196,8 +197,8 @@ const FOOD_POISONING_SPELL = "Survival_DiseaseFoodPoisoning";
 const FOOD_POISONING_NAME = "Food poisoning";
 // Survival_AfflictionHungerChance and ...ColdChance; the need update intervals at our 1:1 clock
 const AFFLICTION_DEFS = [
-  { key: "weakened", spell: "Survival_AfflictionWeakened", name: "Weakened", worst: "starving", chance: 0.2, tickMinutes: 15, notice: "Starving has weakened you: your one-handed, two-handed and block skills suffer" },
-  { key: "frostbitten", spell: "Survival_AfflictionFrostbitten", name: "Frostbitten", worst: "numb", chance: 0.16, tickMinutes: 5, notice: "The cold has frostbitten you: your archery, lockpicking and pickpocketing suffer" },
+  { key: "weakened", spell: "Survival_AfflictionWeakened", name: "Weakened", worst: "starving", chance: 0.2, tickMinutes: 15, notice: "survival.affliction.weakened" },
+  { key: "frostbitten", spell: "Survival_AfflictionFrostbitten", name: "Frostbitten", worst: "numb", chance: 0.16, tickMinutes: 5, notice: "survival.affliction.frostbitten" },
 ];
 const DEFAULT_AFFLICTION_HOURS = 24;
 const WORST_STAGE = 5;
@@ -936,14 +937,14 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (until && now >= until) {
       this.clearFoodPoisoning(mp, actorId, entry);
       lines.push(`food poisoning ran out at ${clock(until)}`);
-      this.notice(mp, actorId, "Your stomach settles: the food poisoning has passed.");
+      this.notice(mp, actorId, loc("survival.food.settled"));
     }
     for (const a of this.afflictions) {
       const held = entry.rec.afflictions[a.key];
       if (!held || now < held.until) continue;
       this.dropAffliction(mp, entry, a);
       lines.push(`${a.key} ran out at ${clock(held.until)}`);
-      this.notice(mp, actorId, `You recover: you are no longer ${a.key}.`);
+      this.notice(mp, actorId, loc("survival.affliction.recovered", { key: a.key }));
     }
     this.progressDiseases(mp, entry, now, lines);
     if (!lines.length) return;
@@ -991,7 +992,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.save(mp, entry);
     const hours = Math.round(this.afflictionMs / HOUR_MS * 10) / 10;
     this.log(`${what}, ${key} for ${hours} h until ${clock(rec.afflictions[key].until)}`);
-    this.notice(mp, entry.actorId, `${a.notice} for ${hours} hours. ${this.cureHint()}`);
+    this.notice(mp, entry.actorId, loc(a.notice, { hours, cure: this.cureHint() }));
     this.sendState(mp, entry, false);
   }
 
@@ -1031,7 +1032,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.save(mp, entry);
     const hours = Math.round(this.poisonMs / HOUR_MS * 10) / 10;
     this.log(`[survival] ${what}: ${outcome}, poisoned for ${hours} h until ${clock(entry.rec.foodPoisonUntil)}`);
-    this.notice(mp, actorId, `You feel sick: food poisoning slows your magicka and stamina recovery for ${hours} hours. ${this.cureHint()}`);
+    this.notice(mp, actorId, loc("survival.food.poisoned", { hours, cure: this.cureHint() }));
     if (entry.coldAt) this.sendState(mp, entry, false);
   }
 
@@ -1045,7 +1046,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.save(mp, entry);
     const how = kind === "cureDisease" ? "Cure Disease" : `restores ${Math.round(potionHealing(mp, potionId))} health`;
     this.log(`[survival] ${hex(actorId)} cured by ${this.edidOf(mp, potionId)} (${how}): ${cured.join(", ") || "nothing survival tracks"}${kind === "cureDisease" ? ", the native cure took every Disease spell" : ""}`);
-    if (cured.length) this.notice(mp, actorId, "The potion cures your sickness.");
+    if (cured.length) this.notice(mp, actorId, loc("survival.potionCured"));
     if (entry.coldAt) this.sendState(mp, entry, false);
   }
 
@@ -1086,11 +1087,11 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     if (userId < 0 || now - (this.lastShrineAt.get(userId) || 0) < SHRINE_NOTICE_GAP_MS) return;
     this.lastShrineAt.set(userId, now);
     this.log(`[survival] ${hex(actorId)} prayed at ${this.edidOf(mp, baseIdOf(mp, shrineId))} ${hex(shrineId)}: no cure, notice sent`);
-    this.notice(mp, actorId, `The shrine offers comfort, but no cure. ${this.cureHint()}`);
+    this.notice(mp, actorId, loc("survival.shrine", { cure: this.cureHint() }));
   }
 
   private cureHint(): string {
-    return this.cureMode === "cureDiseaseOrHealth" ? "A Cure Disease potion or a healing potion cures it." : "A Cure Disease potion cures it.";
+    return this.cureMode === "cureDiseaseOrHealth" ? loc("survival.cureHint.anyPotion") : loc("survival.cureHint.cureDisease");
   }
 
   private resetBy(ctx: SystemContext, actorId: number, by: string): boolean {
@@ -1123,7 +1124,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const held = entry.rec.diseases.map((d) => d.id);
     const candidates = c.diseases.filter((id) => this.hasDisease(id) && held.indexOf(id) === -1);
     if (!candidates.length) return;
-    this.rollDisease(mp, entry, candidates, c.chance, `${hex(targetId)} hit by ${carrier.edid} ${hex(aggressorId)}: ${carrier.key}`, `${carrier.key} ${carrier.edid}`, "");
+    this.rollDisease(mp, entry, candidates, c.chance, `${hex(targetId)} hit by ${carrier.edid} ${hex(aggressorId)}: ${carrier.key}`, `${carrier.key} ${carrier.edid}`, false);
   }
 
   // The race's editor id and the carrier it matches, cached per race
@@ -1152,7 +1153,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   }
 
   // One roll at chance x (1 - disease resist); a success gives one of the candidates, unless the character already holds survivalMaxDiseases
-  private rollDisease(mp: Mp, entry: Online, candidates: string[], chance: number, what: string, from: string, how: string, logSpared = true): void {
+  private rollDisease(mp: Mp, entry: Online, candidates: string[], chance: number, what: string, from: string, near: boolean, logSpared = true): void {
     const resist = abilityResist(mp, entry.actorId, ActorValue.DiseaseResist);
     const odds = resistedChance(chance, resist);
     const roll = Math.random();
@@ -1171,7 +1172,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const d = this.infect(mp, entry, id, 1, from, Date.now());
     if (!d) return;
     this.log(`${line}, caught ${id} (${this.edidOf(mp, this.idOfDesc(mp, d.spell))}), stage 2 at ${when(d.nextAt)}`);
-    this.notice(mp, entry.actorId, `You have caught ${def.name}${how}: ${def.effect}. It worsens over the coming days. ${this.cureHint()}`);
+    this.notice(mp, entry.actorId, loc(near ? "disease.caughtNear" : "disease.caught", { name: def.name, effect: def.effect, cure: this.cureHint() }));
   }
 
   // Grants the disease at the stage and records it; null when its stage spell is missing
@@ -1210,7 +1211,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       if (next.stage === from || !this.setDiseaseStage(mp, entry, d, next.stage)) continue;
       d.nextAt = next.nextAt;
       lines.push(`${d.id} worsened ${from} -> ${d.stage} (${this.edidOf(mp, this.idOfDesc(mp, d.spell))}, due ${when(due)}), ${d.nextAt ? `stage ${d.stage + 1} at ${when(d.nextAt)}` : "stays until cured"}`);
-      this.notice(mp, entry.actorId, `Your ${def.name} has worsened to its ${d.stage === DISEASE_STAGES ? "severe" : "advanced"} stage. ${this.cureHint()}`);
+      this.notice(mp, entry.actorId, loc(d.stage === DISEASE_STAGES ? "disease.worsenedSevere" : "disease.worsenedAdvanced", { name: def.name, cure: this.cureHint() }));
     }
   }
 
@@ -1285,7 +1286,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       if (entry.rec.diseases.length >= this.dis.max) break;
       entry.exposureRolls.set(`${sourceId}:${id}`, now);
       const what = `contagion ${hex(entry.actorId)} from ${hex(sourceId)} ${describeActor(mp, sourceId)}: ${id}`;
-      this.rollDisease(mp, entry, [id], c.chance, what, `contagion ${hex(sourceId)}`, " from someone near you", false);
+      this.rollDisease(mp, entry, [id], c.chance, what, `contagion ${hex(sourceId)}`, true, false);
     }
   }
 
@@ -1319,48 +1320,48 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     const op = String(request?.op ?? "");
     if (op === "catalog") return { ok: true, text: "", catalog: this.catalog() };
     const entry = this.online.get(actorId);
-    if (!entry || !entry.coldAt) return { ok: false, text: "survival has not settled on this character yet (just logged in or still in creation)" };
+    if (!entry || !entry.coldAt) return { ok: false, text: loc("survival.admin.notSettled") };
     if (op === "summary") return { ok: true, text: this.readout(entry), summary: this.summaryOf(entry) };
     if (op === "setCold") return this.adminCold(mp, entry, by, request.cold);
     if (op === "giveDisease") return this.adminDisease(mp, entry, by, request.disease, request.stage);
     if (op === "cure") return this.adminCure(mp, entry, by, request.disease);
-    return { ok: false, text: `unknown survival request '${op}'` };
+    return { ok: false, text: loc("survival.admin.unknownOp", { op }) };
   }
 
   private adminCold(mp: Mp, entry: Online, by: string, raw: unknown): SurvivalAdminResult {
-    if (!this.cold.enabled) return { ok: false, text: "cold is switched off (survivalColdEnabled false)" };
+    if (!this.cold.enabled) return { ok: false, text: loc("survival.admin.coldOff") };
     const value = raw === "" || raw === null || raw === undefined ? NaN : Number(raw);
-    if (!Number.isFinite(value) || value < 0 || value > COLD_MAX) return { ok: false, text: `cold must be a number from 0 to ${COLD_MAX}` };
+    if (!Number.isFinite(value) || value < 0 || value > COLD_MAX) return { ok: false, text: loc("survival.admin.coldRange", { max: COLD_MAX }) };
     const before = entry.rec.cold;
     this.setCold(mp, entry.actorId, entry, value, `cold set by ${by}`);
     this.save(mp, entry);
     this.sendState(mp, entry, false);
-    return { ok: true, text: `cold ${Math.round(before)} -> ${Math.round(entry.rec.cold)} (${COLD_STAGE_NAMES[this.stageOf(entry)]})`, summary: this.summaryOf(entry) };
+    return { ok: true, text: loc("survival.admin.coldSet", { before: Math.round(before), after: Math.round(entry.rec.cold), stage: COLD_STAGE_NAMES[this.stageOf(entry)] }), summary: this.summaryOf(entry) };
   }
 
   // Gives the disease at the stage, or sets the stage of one held; survivalMaxDiseases does not bind an admin
   private adminDisease(mp: Mp, entry: Online, by: string, rawId: unknown, rawStage: unknown): SurvivalAdminResult {
-    if (!this.dis.enabled) return { ok: false, text: "diseases are switched off (survivalDiseasesEnabled false)" };
+    if (!this.dis.enabled) return { ok: false, text: loc("survival.admin.diseasesOff") };
     const id = this.diseaseIdOf(rawId);
     const def = this.dis.diseases[id];
-    if (!def) return { ok: false, text: `no disease called '${String(rawId ?? "")}'` };
-    if (!this.hasDisease(id)) return { ok: false, text: `${def.name} is not in the plugin yet` };
+    if (!def) return { ok: false, text: loc("survival.admin.noDisease", { id: String(rawId ?? "") }) };
+    if (!this.hasDisease(id)) return { ok: false, text: loc("survival.admin.notInPlugin", { name: def.name }) };
     const stage = rawStage === undefined || rawStage === null || rawStage === "" ? 1 : Number(rawStage);
-    if (!Number.isInteger(stage) || stage < 1 || stage > DISEASE_STAGES) return { ok: false, text: `the stage must be 1 to ${DISEASE_STAGES}` };
+    if (!Number.isInteger(stage) || stage < 1 || stage > DISEASE_STAGES) return { ok: false, text: loc("survival.admin.stageRange", { max: DISEASE_STAGES }) };
     const now = Date.now();
     const held = entry.rec.diseases.find((d) => d.id === id);
     if (held) {
-      if (!this.setDiseaseStage(mp, entry, held, stage)) return { ok: false, text: `${def.name} could not be set to stage ${stage}, see the server log` };
+      if (!this.setDiseaseStage(mp, entry, held, stage)) return { ok: false, text: loc("survival.admin.stageFailed", { name: def.name, stage }) };
       held.nextAt = nextStageAt(stage, now, def.stageHours);
       this.save(mp, entry);
       this.sendState(mp, entry, false);
     } else if (!this.infect(mp, entry, id, stage, `admin ${by}`, now)) {
-      return { ok: false, text: `${def.name} could not be given, see the server log` };
+      return { ok: false, text: loc("survival.admin.giveFailed", { name: def.name }) };
     }
     const d = entry.rec.diseases.find((x) => x.id === id)!;
     this.log(`[survival] ${hex(entry.actorId)} given ${id} stage ${stage} by ${by}${held ? " (held, stage set)" : ""}, ${d.nextAt ? `stage ${stage + 1} at ${when(d.nextAt)}` : "stays until cured"}`);
-    this.notice(mp, entry.actorId, held ? `Your ${def.name} is now ${stageName(def.name, stage)}. ${this.cureHint()}` : `You have caught ${stageName(def.name, stage)}: ${def.effect}. ${this.cureHint()}`);
-    return { ok: true, text: `now has ${stageName(def.name, stage)}`, summary: this.summaryOf(entry) };
+    this.notice(mp, entry.actorId, held ? loc("disease.nowStage", { name: def.name, stage: stageName(def.name, stage), cure: this.cureHint() }) : loc("disease.given", { name: stageName(def.name, stage), effect: def.effect, cure: this.cureHint() }));
+    return { ok: true, text: loc("survival.admin.nowHas", { name: stageName(def.name, stage) }), summary: this.summaryOf(entry) };
   }
 
   // One disease, or with none named every sickness as a healing potion would cure it
@@ -1368,7 +1369,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     let cured: string[];
     if (String(rawId ?? "").trim()) {
       const id = this.diseaseIdOf(rawId);
-      if (!entry.rec.diseases.some((d) => d.id === id)) return { ok: false, text: `does not have ${id ? this.diseaseName(id) : `'${String(rawId)}'`}` };
+      if (!entry.rec.diseases.some((d) => d.id === id)) return { ok: false, text: loc("survival.admin.doesNotHave", { name: id ? this.diseaseName(id) : `'${String(rawId)}'` }) };
       cured = this.dropDiseases(mp, entry, (d) => d.id === id);
     } else {
       cured = this.clearSickness(mp, entry, true);
@@ -1376,8 +1377,8 @@ export class SurvivalSystem implements System, NeedsModifierSource {
     this.save(mp, entry);
     this.sendState(mp, entry, false);
     this.log(`[survival] ${hex(entry.actorId)} cured by ${by} (admin): ${cured.join(", ") || "nothing"}`);
-    if (cured.length) this.notice(mp, entry.actorId, "You are cured of your sickness.");
-    return { ok: true, text: cured.length ? `cured ${cured.map((c) => this.sicknessLabel(c)).join(", ")}` : "had no sickness", summary: this.summaryOf(entry) };
+    if (cured.length) this.notice(mp, entry.actorId, loc("survival.adminCured"));
+    return { ok: true, text: cured.length ? loc("survival.admin.cured", { list: cured.map((c) => this.sicknessLabel(c)).join(", ") }) : loc("survival.admin.hadNoSickness"), summary: this.summaryOf(entry) };
   }
 
   // "Rockjoint (severe)" for AldDisease_Rockjoint3 and an affliction's name for its spell; anything else as it came
@@ -1413,14 +1414,14 @@ export class SurvivalSystem implements System, NeedsModifierSource {
   // The admin panel's readout: cold, the place and what the character is sick with
   private readout(entry: Online): string {
     const rec = entry.rec;
-    const cold = this.cold.enabled ? `cold ${Math.round(rec.cold)} (${COLD_STAGE_NAMES[this.stageOf(entry)]})` : "cold off";
-    const place = entry.area ? `area ${entry.area}, ${this.climateNote(entry)}, freezing water area ${entry.freezingArea ? "yes" : "no"}` : "area not known yet";
+    const cold = this.cold.enabled ? loc("survival.readout.cold", { cold: Math.round(rec.cold), stage: COLD_STAGE_NAMES[this.stageOf(entry)] }) : loc("survival.readout.coldOff");
+    const place = entry.area ? loc(entry.freezingArea ? "survival.readout.placeFreezing" : "survival.readout.place", { area: entry.area, climate: this.climateNote(entry) }) : loc("survival.readout.placeUnknown");
     const sick = [
-      ...rec.diseases.map((d) => `${stageName(this.diseaseName(d.id), d.stage)}${d.nextAt ? ` (worse at ${when(d.nextAt)})` : ""}`),
-      ...this.afflictions.filter((a) => rec.afflictions[a.key]).map((a) => `${a.name} until ${when(rec.afflictions[a.key].until)}`),
-      ...(rec.foodPoisonUntil ? [`food poisoning until ${when(rec.foodPoisonUntil)}`] : []),
+      ...rec.diseases.map((d) => d.nextAt ? loc("survival.readout.diseaseWorse", { name: stageName(this.diseaseName(d.id), d.stage), when: when(d.nextAt) }) : stageName(this.diseaseName(d.id), d.stage)),
+      ...this.afflictions.filter((a) => rec.afflictions[a.key]).map((a) => loc("survival.readout.until", { name: a.name, when: when(rec.afflictions[a.key].until) })),
+      ...(rec.foodPoisonUntil ? [loc("survival.readout.foodPoisoning", { when: when(rec.foodPoisonUntil) })] : []),
     ];
-    return `${cold}; ${place}; ${sick.join(", ") || "no sickness"}`;
+    return loc("survival.readout.line", { cold, place, sick: sick.join(", ") || loc("survival.readout.noSickness") });
   }
 
   // ── Cold ───────────────────────────────────────────────────────────────────
@@ -1500,7 +1501,7 @@ export class SurvivalSystem implements System, NeedsModifierSource {
         `${inWater ? `, health -${drain} a second x (1 - frost resist ${this.frostResistOf(mp, entry)}%, client ${entry.frostResist}%)` : health >= 0 ? `, health ${pct(health)}` : ""}`);
       if (inWater && drain > 0 && now - entry.waterNoticeAt >= WATER_NOTICE_GAP_MS && this.exposed(mp, actorId)) {
         entry.waterNoticeAt = now;
-        this.notice(mp, actorId, "The water is freezing: it drains your health while you swim in it.");
+        this.notice(mp, actorId, loc("survival.freezingWater"));
       }
     }
     Object.assign(entry, { area, areaWhy: why, freezingArea, inFreezingWater: inWater, level, levelParts: parts });
@@ -1727,10 +1728,10 @@ export class SurvivalSystem implements System, NeedsModifierSource {
       this.save(mp, entry);
       this.log(`[survival] ${hex(actorId)} cold ${Math.round(before)} -> ${Math.round(rec.cold)} (${COLD_STAGE_NAMES[stage]}), ${this.climateNote(entry)}`);
       if (stage > stageBefore && stage >= 2) {
-        const penalty = this.cold.healthPenalty ? " Your maximum health is reduced." : "";
-        this.notice(mp, actorId, `You are ${stage === 5 ? "numb with cold" : COLD_STAGE_NAMES[stage].toLowerCase()}:${penalty} Find warmth or a fire.`);
+        const feel = stage === 5 ? loc("survival.cold.numb") : COLD_STAGE_NAMES[stage].toLowerCase();
+        this.notice(mp, actorId, loc(this.cold.healthPenalty ? "survival.cold.stagePenalty" : "survival.cold.stage", { stage: feel }));
       } else if (stage === 0) {
-        this.notice(mp, actorId, "You are warm.");
+        this.notice(mp, actorId, loc("survival.cold.warm"));
       }
     }
     if (this.cold.kills && rec.cold >= COLD_MAX && !entry.killed && isAlive(mp, actorId)) {

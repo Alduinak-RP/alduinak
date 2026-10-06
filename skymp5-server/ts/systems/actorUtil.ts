@@ -1,4 +1,5 @@
 import { sendJson } from "./playerText";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -121,10 +122,10 @@ export const countItem = (mp: Mp, actorId: number, baseId: number): number => {
 // "45 min" or "3 h 12 min", rounded up to the minute
 export const formatWait = (ms: number): string => {
   const minutes = Math.ceil(ms / 60000);
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return loc("wait.minutes", { minutes });
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+  return rest ? loc("wait.hoursMinutes", { hours, minutes: rest }) : loc("wait.hours", { hours });
 };
 
 // Player characters use the Player NPC_ (0x7) base and keep a profile id while logged out
@@ -308,7 +309,7 @@ export const isIntroduced = (mp: Mp, viewerActorId: number, subjectActorId: numb
 
 // The subject's name as the viewer may see it: real once introduced, otherwise the anonymity placeholder
 export const nameShownTo = (mp: Mp, viewerActorId: number, subjectActorId: number): string => {
-  if (!isIntroduced(mp, viewerActorId, subjectActorId)) return "A stranger";
+  if (!isIntroduced(mp, viewerActorId, subjectActorId)) return loc("actor.stranger");
   try {
     const n = mp.getActorName(subjectActorId);
     if (typeof n === "string" && n.trim()) return n.trim();

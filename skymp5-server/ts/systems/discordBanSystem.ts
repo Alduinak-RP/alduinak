@@ -2,10 +2,9 @@ import { DiscordGuildConfig, Settings } from "../settings";
 import { System, SystemContext } from "./system";
 import { Client, GatewayIntentBits, GuildMember, PartialGuildMember } from "discord.js";
 import { kickWithReason } from "./kickUtil";
+import { loc } from "../loc";
 
 type Mp = any; // TODO
-
-const BAN_KICK_REASON = "You were banned from the Discord server.";
 
 export const hasDiscordBanRole = (guildConfig: DiscordGuildConfig, roleIds: string[]): boolean =>
     !!guildConfig.banRoleId && roleIds.includes(guildConfig.banRoleId);
@@ -99,7 +98,7 @@ export class DiscordBanSystem implements System {
 
         userIds.forEach(userId => {
             if (!ctx.svr.isConnected(userId)) return;
-            try { kickWithReason(mp, userId, BAN_KICK_REASON); } catch { }
+            try { kickWithReason(mp, userId, loc("discord.banKick")); } catch { }
         });
         actorIds.forEach(actorId => {
             try { ctx.svr.setEnabled(actorId, false); } catch { }

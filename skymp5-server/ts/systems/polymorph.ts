@@ -2,6 +2,7 @@ import { RaceEntry, RACE_GROUPS, buildRaceCatalog } from "./raceCatalog";
 import { LogFn } from "./espmEditorIds";
 import { userOf } from "./actorUtil";
 import { sendJson } from "./playerText";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -106,20 +107,20 @@ export class Polymorph {
   transform(mp: Mp, actorId: number, desc: string, byProfile: number): Transformed | string {
     if (!this.races) {
       this.ensureCatalog();
-      return "The race list is still loading, try again shortly";
+      return loc("polymorph.loading");
     }
     const entry = this.byDesc.get(desc.toLowerCase());
-    if (!entry) return "Unknown race";
-    if (!entry.male.usable && !entry.female.usable) return `${entry.edid} has no skeleton or behaviour graph, refused`;
-    if (entry.risk) return `${entry.name} (${entry.edid}) is marked as a crash risk (${entry.risk}), refused`;
+    if (!entry) return loc("polymorph.unknownRace");
+    if (!entry.male.usable && !entry.female.usable) return loc("polymorph.noSkeleton", { edid: entry.edid });
+    if (entry.risk) return loc("polymorph.crashRisk", { name: entry.name, edid: entry.edid, risk: entry.risk });
     const raceId = this.idOf(mp, entry.desc);
-    if (!raceId) return `${entry.desc} is not in the server load order`;
+    if (!raceId) return loc("polymorph.notLoaded", { desc: entry.desc });
     let current: Look | null = null;
     try { current = mp.get(actorId, "appearance") ?? null; } catch { }
-    if (!current || typeof current !== "object") return "That character has no appearance to transform";
+    if (!current || typeof current !== "object") return loc("polymorph.noAppearance");
     const prev = this.recordOf(mp, actorId);
     const original = prev ? prev.appearance : current;
-    if (raceId === (original.raceId >>> 0)) return prev ? "That is the character's own race, use Revert" : "The character already is that race";
+    if (raceId === (original.raceId >>> 0)) return prev ? loc("polymorph.ownRace") : loc("polymorph.alreadyRace");
     const female = !!original.isFemale;
     const swapped = !(female ? entry.female : entry.male).usable;
     const { look, face } = this.lookFor(mp, entry, original, raceId, swapped ? !female : female);
@@ -186,13 +187,13 @@ export class Polymorph {
     const originalId = original.raceId >>> 0;
     const vampireBaseOf = (e: RaceEntry | undefined): number => (e && e.group === "vampire" ? this.idOf(mp, e.morph) : 0);
     if (female === !!original.isFemale && (vampireBaseOf(entry) === originalId || vampireBaseOf(this.entryById(mp, originalId)) === raceId)) {
-      return { look: { ...original, raceId }, face: "own face kept" };
+      return { look: { ...original, raceId }, face: loc("polymorph.face.own") };
     }
     const base: Look = { ...original, raceId, isFemale: female, headpartIds: [], headTextureSetId: 0, options: zeros(MORPH_COUNT), presets: zeros(PRESET_COUNT), tints: [] };
-    if (!entry.faceGen) return { look: { ...base, skinColor: 0, hairColor: 0 }, face: "no FaceGen head" };
+    if (!entry.faceGen) return { look: { ...base, skinColor: 0, hairColor: 0 }, face: loc("polymorph.face.none") };
     const sex = female ? entry.female : entry.male;
     const headpartIds = sex.head.map((d) => this.idOf(mp, d)).filter((id) => id !== 0);
-    return { look: { ...base, headpartIds, headTextureSetId: this.idOf(mp, sex.faceTexture) }, face: `race default head (${headpartIds.length} part(s))` };
+    return { look: { ...base, headpartIds, headTextureSetId: this.idOf(mp, sex.faceTexture) }, face: loc("polymorph.face.default", { parts: headpartIds.length }) };
   }
 
   // Worn entries of the stored equipment whose item the character still carries
@@ -215,6 +216,6 @@ export class Polymorph {
 
   private nameOfId(mp: Mp, id: number): string {
     const entry = this.entryById(mp, id);
-    return entry ? `${entry.name} (${entry.edid})` : `race ${id.toString(16)}`;
+    return entry ? `${entry.name} (${entry.edid})` : loc("polymorph.unknownRaceId", { id: id.toString(16) });
   }
 }

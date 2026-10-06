@@ -3,6 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { kickWithReason } from "./kickUtil";
 import { isCreationPending, chainMpHook, userOf, hex, baseTypeOf } from "./actorUtil";
 import { every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -158,15 +159,15 @@ export class AfkSystem implements System {
         continue;
       }
 
-      const loc = this.readLocation(mp, actorId);
-      if (loc) {
-        const moved = this.movement(state, loc);
+      const here = this.readLocation(mp, actorId);
+      if (here) {
+        const moved = this.movement(state, here);
         if (moved) {
-          state.last = loc;
+          state.last = here;
           this.touch(userId, moved);
           continue;
         }
-        if (!state.last) state.last = loc;
+        if (!state.last) state.last = here;
       }
 
       if (!this.kickMs) continue;
@@ -174,7 +175,7 @@ export class AfkSystem implements System {
       if (idleMs >= this.kickMs) {
         this.log(`AfkSystem: kicking user ${userId} (actor ${hex(actorId)}) after ${Math.round(idleMs / 60000)} min idle, last activity ${state.lastChannel} at ${new Date(state.lastActivity).toTimeString().slice(0, 8)}${state.seat ? `, seated at ${hex(state.seat.furniture)}` : ""}`);
         try {
-          kickWithReason(mp, userId, `You were disconnected after ${Math.round(this.kickMs / 60000)} minutes of inactivity.`);
+          kickWithReason(mp, userId, loc("afk.kicked", { minutes: Math.round(this.kickMs / 60000) }));
         } catch (e) { this.log(`AfkSystem: kick failed: ${e}`); }
       } else if (!state.warned && idleMs >= this.kickMs - this.warnMs) {
         state.warned = true;
@@ -182,7 +183,7 @@ export class AfkSystem implements System {
         try {
           mp.sendCustomPacket(userId, JSON.stringify({
             customPacketType: "notification",
-            text: `You will be kicked for inactivity in ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"}. Move or chat to stay connected.`,
+            text: minutesLeft === 1 ? loc("afk.warnOne", { minutes: minutesLeft }) : loc("afk.warnMany", { minutes: minutesLeft }),
           }));
         } catch { }
       }

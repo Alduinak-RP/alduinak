@@ -7,6 +7,7 @@ import { Locational, loadWorldBorders, outsideBorderAt, noteInside, insideSpot }
 import { every } from "./timers";
 import { onlineSnapshot } from "./onlineSnapshot";
 import { formIdFromConfig } from "./formIdUtil";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -76,17 +77,17 @@ export class WorldFloorSystem implements System {
   }
 
   // A single poll at the wall is ignored, so pressing into the vanilla border never pulls anyone back
-  private checkBorder(mp: Mp, actorId: number, loc: Locational): void {
+  private checkBorder(mp: Mp, actorId: number, where: Locational): void {
     if (this.exempt?.(mp, actorId)) return;
     if (!this.outside.has(actorId)) {
       this.outside.add(actorId);
       return;
     }
-    const spot = insideSpot(mp, actorId, loc, this.starts);
+    const spot = insideSpot(mp, actorId, where, this.starts);
     if (!spot) return;
-    this.log(`[border] ${hex(actorId)} outside the border at ${Math.round(loc.pos[0])},${Math.round(loc.pos[1])} in ${loc.cellOrWorldDesc}, back to ${spot.pos.map(Math.round).join(",")}`);
+    this.log(`[border] ${hex(actorId)} outside the border at ${Math.round(where.pos[0])},${Math.round(where.pos[1])} in ${where.cellOrWorldDesc}, back to ${spot.pos.map(Math.round).join(",")}`);
     mp.set(actorId, "locationalData", spot);
-    notifyActor(mp, actorId, "You cannot go that way.");
+    notifyActor(mp, actorId, loc("border.cannotGo"));
     this.outside.delete(actorId);
   }
 

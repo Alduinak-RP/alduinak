@@ -12,6 +12,7 @@ import { GOLD_BASE_ID, STARTER_GOLD_PROP, chainMpHook, guardMpHook, hex, isAlive
 import { isRestrained } from "./captureSystem";
 import { packSummary } from "./goldWatchSystem";
 import { isOutsideBorder, insideSpot } from "./worldBorder";
+import { loc } from "../loc";
 
 type Mp = any;
 
@@ -358,9 +359,9 @@ export class Spawn implements System {
   // Runs before setUserActor, so the client's loadGame already gets the spot inside
   private bringInsideBorder(mp: Mp, actorId: number): void {
     try {
-      const loc = mp.get(actorId, "locationalData");
-      if (!loc || !isOutsideBorder(mp, loc) || this.exempt?.(mp, actorId)) return;
-      const spot = insideSpot(mp, actorId, loc, this.startLocations.length ? this.startLocations : DEFAULT_START_LOCATIONS);
+      const where = mp.get(actorId, "locationalData");
+      if (!where || !isOutsideBorder(mp, where) || this.exempt?.(mp, actorId)) return;
+      const spot = insideSpot(mp, actorId, where, this.startLocations.length ? this.startLocations : DEFAULT_START_LOCATIONS);
       if (!spot) return;
       mp.set(actorId, "locationalData", spot);
       this.log(`[spawn] ${hex(actorId)} was saved outside the border, placed at ${spot.pos.map(Math.round).join(",")}`);
@@ -554,41 +555,41 @@ export class Spawn implements System {
     // Permanently dead characters are locked: the body remains in the world but can never be played again
     if (!isNew && actorId !== undefined && this.isPermaDead(mp, actorId)) {
       this.log("Refusing to play permanently dead character", actorId.toString(16), "in slot", slot);
-      this.sendCharacterList(ctx, userId, auth.profileId, "That character is dead.");
+      this.sendCharacterList(ctx, userId, auth.profileId, loc("spawn.characterDead"));
       return;
     }
 
     if (isNew && !this.canCreate(mp, slots, max)) {
       this.log(`Refusing character creation in slot ${slot} for profile ${auth.profileId}: living limit reached`);
-      this.sendCharacterList(ctx, userId, auth.profileId, "You already have the maximum number of living characters.");
+      this.sendCharacterList(ctx, userId, auth.profileId, loc("spawn.livingLimit"));
       return;
     }
 
     if (isNew) {
       // The intro's choice is the only way in while start locations are configured; coordinates never come from the client
-      let loc: StartLocation | undefined;
+      let startLoc: StartLocation | undefined;
       if (this.startLocations.length) {
-        loc = this.startLocations.find((l) => l.id === start);
-        if (!loc) {
+        startLoc = this.startLocations.find((l) => l.id === start);
+        if (!startLoc) {
           // A client that never showed the intro sends none, and would sit on this refusal forever
           if (start === undefined) {
             this.log("Kicking user", userId, "on character creation: the client sent no start location, its files are out of date");
-            kickWithReason(mp, userId, "Your game files are out of date, so this server cannot create your character. Open the Alduinak launcher, run Repair SkyMP Client in Settings, then play again.");
+            kickWithReason(mp, userId, loc("spawn.filesOutOfDate"));
             return;
           }
           this.log("Refusing character creation in slot", slot, "with unknown start location", String(start).slice(0, 64));
-          this.sendCharacterList(ctx, userId, auth.profileId, "Unknown start location, try again.");
+          this.sendCharacterList(ctx, userId, auth.profileId, loc("spawn.unknownStart"));
           return;
         }
       }
-      const point = loc ? { pos: arrivalPos(loc), angleZ: loc.angleZ, worldOrCell: loc.worldOrCell } : this.randomStartPoint();
+      const point = startLoc ? { pos: arrivalPos(startLoc), angleZ: startLoc.angleZ, worldOrCell: startLoc.worldOrCell } : this.randomStartPoint();
       actorId = ctx.svr.createActor(0, point.pos, point.angleZ, point.worldOrCell, auth.profileId);
       mp.set(actorId, "private.charSlot", slot);
       this.giveStartingItems(mp, actorId, auth.profileId, slot);
       mp.set(actorId, "private.kitPending", true);
       mp.set(actorId, "private.creationPending", true);
-      if (loc) mp.set(actorId, "private.startLocation", { id: loc.id, at: Date.now() });
-      this.log("Creating character", actorId.toString(16), "in slot", slot, loc ? `at ${loc.id}` : "at a start point");
+      if (startLoc) mp.set(actorId, "private.startLocation", { id: startLoc.id, at: Date.now() });
+      this.log("Creating character", actorId.toString(16), "in slot", slot, startLoc ? `at ${startLoc.id}` : "at a start point");
     } else {
       this.log("Loading character", actorId.toString(16), "from slot", slot);
       this.logInventory(mp, actorId, "logs in");
@@ -897,7 +898,7 @@ export class Spawn implements System {
     }
     if (this.lockedRacesFor(profileId).includes(res.clean.race)) {
       this.log(`[spawn] charCreator refused for ${actorId.toString(16)}: race ${res.clean.race} is locked for profile ${profileId}`);
-      this.sendCharCreatorError(ctx, userId, "This race is locked for your account");
+      this.sendCharCreatorError(ctx, userId, loc("spawn.raceLocked"));
       return;
     }
 

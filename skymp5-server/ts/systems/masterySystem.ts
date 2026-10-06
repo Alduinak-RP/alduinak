@@ -9,6 +9,7 @@ import { setIntroProfessions } from "./startLocations";
 import { BLANK_BOOK_EDID } from "./writingSystem";
 import { effectiveRaceId, npcChainOf } from "./npcTemplate";
 import { KeyedTimers, every, soon } from "./timers";
+import { loc } from "../loc";
 import {
   ADEPT, ChooseRefusal, FREE, HeldSlot, LEGENDARY, NOVICE, RANK_NAMES, RecipeGate, SLOT_NAMES, SlotConfig, SlotRecord, bestSlot, chooseRefusal,
   creditsCraft, defaultSlots, describeSlots, duplicateSlots, emptySlotRecord, hoursToNext, isCapped, multiclassOn, nextEmptySlot, parseSlots,
@@ -444,7 +445,7 @@ interface Location {
 
 const emptyRecord = (): MasteryRecord => ({ v: RECORD_VERSION, profession: null, points: 0, lastPointAt: 0, rank: FREE, granted: [], spellTier: 0, resets: 0, bank: 0, onlineMs: 0 });
 const emptySubs = (): SubSlots => ({ v: SLOTS_VERSION, secondary: null, tertiary: null, granted: [], kits: [] });
-const hoursText = (n: number): string => `${n} ${n === 1 ? "hour" : "hours"}`;
+const hoursText = (n: number): string => loc(n === 1 ? "mastery.hoursOne" : "mastery.hoursMany", { n });
 const idList = (v: unknown): number[] => (Array.isArray(v) ? v.map((x) => Number(x) >>> 0).filter((x) => x) : []);
 
 export const stringList = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === "string" && x) : [];
@@ -610,11 +611,11 @@ export class MasterySystem implements System {
     this.settleClock(actorId, char, now);
     rec.onlineMs = 0;
     this.save(ctx, actorId, char);
-    const left = rec.bank ? `, ${hoursText(rec.bank)} still banked` : "";
+    const left = rec.bank ? loc("mastery.stillBanked", { hours: hoursText(rec.bank) }) : "";
     const standing = this.standingText(slot);
     this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour ${banked ? `paid from the bank after ${this.intervalMs / 60000} ${this.payUnit()}` : "counted by work"}: ${rec.points}h${slot.index > 0 ? `, ${standing}` : ""}${left}`);
     const userId = this.userOf(ctx, actorId);
-    this.notice(ctx, userId, `Your ${banked ? "banked " : ""}work as a ${this.labelOf(rec.profession || "")} is counted: ${standing}${left}.`);
+    this.notice(ctx, userId, loc(banked ? "mastery.bankedWorkCounted" : "mastery.workCounted", { label: this.labelOf(rec.profession || ""), standing, left }));
     this.syncRank(ctx, actorId, char, slot, userId);
   }
 
@@ -625,9 +626,9 @@ export class MasterySystem implements System {
     this.settleClock(actorId, char, now);
     this.save(ctx, actorId, char);
     this.log(`[mastery] ${hex(actorId)} ${this.tagOf(slot)} hour banked (${rec.bank}/${this.bankMax}), next paid in ${this.payWaitMin(actorId, slot, now)} ${this.payUnit()}`);
-    const whose = slot.index > 0 ? ` for your ${this.slotNameOf(slot.index)} craft` : "";
+    const whose = slot.index > 0 ? loc("mastery.bankedFor", { slot: this.slotNameOf(slot.index) }) : "";
     const userId = this.userOf(ctx, actorId);
-    this.notice(ctx, userId, `Extra work banked${whose}: ${hoursText(rec.bank)} will be counted, ${this.bankOffline ? "one per hour, online or not" : "one per hour you stay online"}.`);
+    this.notice(ctx, userId, loc(this.bankOffline ? "mastery.extraBankedOffline" : "mastery.extraBankedOnline", { whose, hours: hoursText(rec.bank) }));
     this.sendState(ctx, actorId, userId);
   }
 
@@ -814,7 +815,7 @@ export class MasterySystem implements System {
   private settle(ctx: SystemContext, actorId: number, char: Character, slot: Slot): MasterySummary {
     this.save(ctx, actorId, char, slot);
     const userId = this.userOf(ctx, actorId);
-    if (slot.rec.profession) this.notice(ctx, userId, `Your hours as a ${this.labelOf(slot.rec.profession)}${slot.index > 0 ? `, your ${this.slotNameOf(slot.index)} craft,` : ""} now stand at ${slot.rec.points}.`);
+    if (slot.rec.profession) this.notice(ctx, userId, loc(slot.index > 0 ? "mastery.hoursNowSlot" : "mastery.hoursNow", { label: this.labelOf(slot.rec.profession), slot: this.slotNameOf(slot.index), points: slot.rec.points }));
     this.syncRank(ctx, actorId, char, slot, userId);
     return this.summaryOf(ctx, actorId);
   }
@@ -837,8 +838,8 @@ export class MasterySystem implements System {
     this.log(`[mastery] ${hex(actorId)} ${tag} set aside at ${points}h`);
     const userId = this.userOf(ctx, actorId);
     this.notice(ctx, userId, key
-      ? `Your ${this.slotNameOf(slotIndex)} craft, the ${this.labelOf(profession)}, has been set aside. You may choose again.`
-      : "Your profession has been set aside. You may choose again.");
+      ? loc("mastery.setAsideSlot", { slot: this.slotNameOf(slotIndex), label: this.labelOf(profession) })
+      : loc("mastery.setAside"));
     this.sendState(ctx, actorId, userId);
     this.sendMenu(ctx, userId);
     return true;
@@ -940,7 +941,7 @@ export class MasterySystem implements System {
     const slot = !char ? null : named ? this.activeSlots(char).find((s) => s.rec.profession === named) : this.slotAt(char, 0);
     if (!char || !slot || !slot.rec.profession) return;
     if (char.primary.resets >= this.resetsPerCharacter) {
-      this.notice(ctx, userId, "You have no profession resets left.");
+      this.notice(ctx, userId, loc("mastery.noResets"));
       return;
     }
     char.primary.resets += 1;
@@ -970,7 +971,7 @@ export class MasterySystem implements System {
     }
     // Finishing creation cuts the inventory back to the starter clothes, which would take the kit with it
     if (isCreationPending(ctx.svr as Mp, actorId)) {
-      this.notice(ctx, userId, "Finish creating your character before you choose a craft.");
+      this.notice(ctx, userId, loc("mastery.finishCreation"));
       return;
     }
     const key = subKeyOf(slotIndex);
@@ -984,11 +985,11 @@ export class MasterySystem implements System {
     this.log(`[mastery] ${hex(actorId)} took up ${professionId} as ${this.slotNameOf(slotIndex)} craft (up to ${RANK_NAMES[cfg.cap]}), ${RANK_NAMES[slot.rec.rank]} at ${slot.rec.points}h`);
     const label = this.labelOf(professionId);
     if (key) {
-      const gate = slot.rec.rank === FREE ? ` It starts at Free: ${hoursText(cfg.rankHours[0])} of its free work make you a Novice.` : "";
-      this.notice(ctx, userId, `You take up the craft of the ${label} as your ${this.slotNameOf(slotIndex)} craft, rising no higher than ${RANK_NAMES[cfg.cap]}.${gate}`);
+      const gate = slot.rec.rank === FREE ? loc("mastery.startsFree", { hours: hoursText(cfg.rankHours[0]) }) : "";
+      this.notice(ctx, userId, loc("mastery.takeUpSlot", { label, slot: this.slotNameOf(slotIndex), cap: RANK_NAMES[cfg.cap], gate }));
       this.giveSlotKit(ctx, actorId, userId, char, slot);
     } else {
-      this.notice(ctx, userId, `You take up the craft of the ${label}.`);
+      this.notice(ctx, userId, loc("mastery.takeUp", { label }));
       this.giveKit(ctx, actorId, userId, professionId);
     }
     this.sendState(ctx, actorId, userId);
@@ -999,18 +1000,18 @@ export class MasterySystem implements System {
     switch (refusal) {
       case "taken": {
         const held = this.labelOf(this.slotAt(char, slotIndex)?.rec.profession || "");
-        return slotIndex === 0 ? `You have already given yourself to the ${held}.` : `Your ${this.slotNameOf(slotIndex)} craft is already the ${held}.`;
+        return slotIndex === 0 ? loc("mastery.refusal.taken", { held }) : loc("mastery.refusal.slotTaken", { slot: this.slotNameOf(slotIndex), held });
       }
       case "held": {
         const holder = this.professionsOf(char).indexOf(professionId);
-        if (holder < this.slots.length) return `You already follow the ${this.labelOf(professionId)}.`;
+        if (holder < this.slots.length) return loc("mastery.refusal.held", { label: this.labelOf(professionId) });
         const name = this.slotNameOf(holder);
-        return `Your ${name} craft, the ${this.labelOf(professionId)}, is kept for when this server offers a ${name} craft again, so you cannot take it up now.`;
+        return loc("mastery.refusal.heldOffSlot", { slot: name, label: this.labelOf(professionId) });
       }
       case "out-of-order":
-        return `Choose your ${this.slotNameOf(nextEmptySlot(this.professionsOf(char), this.slots.length))} craft first.`;
+        return loc("mastery.refusal.outOfOrder", { slot: this.slotNameOf(nextEmptySlot(this.professionsOf(char), this.slots.length)) });
       default:
-        return "This server offers no such craft slot.";
+        return loc("mastery.refusal.noSlot");
     }
   }
 
@@ -1033,7 +1034,7 @@ export class MasterySystem implements System {
     const kit = (this.kits[professionId] || []).concat(gold > 0 ? [{ baseId: GOLD_BASE_ID, count: gold }] : []);
     this.handOver(ctx, actorId, kit);
     this.log(`[mastery] ${hex(actorId)} starting kit for ${professionId}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || "none"}`);
-    if (kit.length) this.notice(ctx, userId, `The ${this.labelOf(professionId)}'s starting kit is in your pack.`);
+    if (kit.length) this.notice(ctx, userId, loc("mastery.startingKit", { label: this.labelOf(professionId) }));
   }
 
   // A sub-slot's kit items, never gold, once per craft per character; none for the craft whose kit the primary pick already gave
@@ -1047,7 +1048,7 @@ export class MasterySystem implements System {
     const kit = primaryKit === profession ? [] : this.kits[profession] || [];
     this.handOver(ctx, actorId, kit);
     this.log(`[mastery] ${hex(actorId)} ${this.slotNameOf(slot.index)} kit for ${profession}: ${kit.map((i) => `${hex(i.baseId)}x${i.count}`).join(", ") || (primaryKit === profession ? "none, the primary kit was this craft's" : "none")}`);
-    if (kit.length) this.notice(ctx, userId, `The ${this.labelOf(profession)}'s kit is in your pack.`);
+    if (kit.length) this.notice(ctx, userId, loc("mastery.slotKit", { label: this.labelOf(profession) }));
   }
 
   private handOver(ctx: SystemContext, actorId: number, kit: KitItem[]): void {
@@ -1170,12 +1171,12 @@ export class MasterySystem implements System {
     const name = this.slotNameOf(slot.index);
     if (slot.index === 0) {
       this.notice(ctx, userId, newRank > oldRank
-        ? `You are now ${RANK_NAMES[newRank]} of the ${label}.`
-        : `Your standing has fallen to ${RANK_NAMES[newRank]} of the ${label}.`);
+        ? loc("mastery.rank.up", { rank: RANK_NAMES[newRank], label })
+        : loc("mastery.rank.down", { rank: RANK_NAMES[newRank], label }));
     } else {
       this.notice(ctx, userId, newRank > oldRank
-        ? `You are now a ${RANK_NAMES[newRank]} of the ${label}, your ${name} craft.`
-        : `Your ${name} craft has fallen to ${RANK_NAMES[newRank]} of the ${label}.`);
+        ? loc("mastery.rank.slotUp", { rank: RANK_NAMES[newRank], label, slot: name })
+        : loc("mastery.rank.slotDown", { rank: RANK_NAMES[newRank], label, slot: name }));
     }
   }
 
@@ -1722,7 +1723,7 @@ export class MasterySystem implements System {
 
   // "secondary", as the texts and log lines name a slot
   private slotNameOf(index: number): string {
-    return (this.slots[index]?.name || SLOT_NAMES[index] || `slot ${index + 1}`).toLowerCase();
+    return (this.slots[index]?.name || SLOT_NAMES[index] || loc("mastery.slotFallback", { n: index + 1 })).toLowerCase();
   }
 
   // Log tag: the profession for the primary, "secondary tailor" for a sub-slot
@@ -1733,7 +1734,7 @@ export class MasterySystem implements System {
   // "7 of 20 hours toward Novice" below a sub-slot's cap, "52 hours at the craft" otherwise
   private standingText(slot: Slot): string {
     const next = slot.index > 0 && slot.cfg ? hoursToNext(slot.cfg, slot.rec.points) : null;
-    return next ? `${slot.rec.points} of ${hoursText(next.at)} toward ${RANK_NAMES[next.rank]}` : `${hoursText(slot.rec.points)} at the craft`;
+    return next ? loc("mastery.standing.toward", { points: slot.rec.points, hours: hoursText(next.at), rank: RANK_NAMES[next.rank] }) : loc("mastery.standing.atCraft", { hours: hoursText(slot.rec.points) });
   }
 
   private actorOf(ctx: SystemContext, userId: number): number {

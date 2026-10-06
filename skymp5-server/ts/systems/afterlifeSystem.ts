@@ -6,6 +6,7 @@ import { readInventory, sameExtras, withoutCondition } from "./inventoryExtras";
 import { SettleWear, wearSettler } from "./durabilityNative";
 import { AdminRoleConfig, AdminTier, adminTierOf, readAdminRoleConfig } from "./adminRoles";
 import { every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -159,7 +160,7 @@ export const fallenOf = (mp: Mp, profileId: number): number[] =>
 // "Sovngarde", "the Soul Cairn" or "perma-dead"
 export const fallenLabel = (mp: Mp, actorId: number): string => {
   const realm = afterlifeOf(mp, actorId);
-  return realm ? REALMS[realm].label : "perma-dead";
+  return realm ? REALMS[realm].label : loc("afterlife.permaDead");
 };
 
 export class AfterlifeSystem implements System {
@@ -274,14 +275,14 @@ export class AfterlifeSystem implements System {
   // Returns the living: "" on success, else the refusal. Faction ranks released at death are not restored
   revive(actorId: number, by: string): string {
     const ctx = this.ctx;
-    if (!ctx) return "Server not ready";
+    if (!ctx) return loc("afterlife.notReady");
     const mp = ctx.svr as Mp;
-    if (!isPlayerActor(mp, actorId)) return "Not a player character";
-    if (!isFallen(mp, actorId)) return "They are not fallen";
-    if (!isAlive(mp, actorId)) return "They are dead right now, wait for the respawn";
+    if (!isPlayerActor(mp, actorId)) return loc("afterlife.notPlayer");
+    if (!isFallen(mp, actorId)) return loc("afterlife.notFallen");
+    if (!isAlive(mp, actorId)) return loc("afterlife.deadNow");
     let profileId = -1;
-    try { profileId = Number(mp.get(actorId, "profileId")); } catch { return "Character not found"; }
-    if (livingCount(mp, profileId) >= profileMaxCharacters(mp, this.limits, profileId)) return "The extra slot is in use: delete the character created in it first";
+    try { profileId = Number(mp.get(actorId, "profileId")); } catch { return loc("afterlife.notFound"); }
+    if (livingCount(mp, profileId) >= profileMaxCharacters(mp, this.limits, profileId)) return loc("afterlife.slotInUse");
     try {
       mp.set(actorId, AFTERLIFE_PROP, null);
       mp.set(actorId, "private.permaDead", null);
@@ -289,12 +290,12 @@ export class AfterlifeSystem implements System {
       mp.set(actorId, "locationalData", REVIVE_ARRIVAL);
     } catch (e) {
       this.log(`[afterlife] reviving ${hex(actorId)} failed: ${e}`);
-      return "Revive failed, see server log";
+      return loc("afterlife.reviveFailed");
     }
     this.onlineFallen.delete(actorId);
     this.clearLook(mp, actorId);
     this.undress(mp, actorId);
-    notifyActor(mp, actorId, "You have been returned to the living.");
+    notifyActor(mp, actorId, loc("afterlife.revived"));
     ctx.gm.emit(AFTERLIFE_REVIVED_EVENT, actorId);
     this.log(`[afterlife] ${hex(actorId)} of profile ${profileId} revived by ${by}`);
     return "";
@@ -319,7 +320,7 @@ export class AfterlifeSystem implements System {
     this.onlineFallen.add(actorId);
     this.syncLook(mp, actorId);
     if (alive) this.dress(mp, actorId, realm);
-    notifyActor(mp, actorId, `Your soul passes to ${label}.`);
+    notifyActor(mp, actorId, loc("afterlife.soulPasses", { realm: label }));
     let profileId = -1;
     let slot: unknown;
     try {
@@ -479,7 +480,7 @@ export class AfterlifeSystem implements System {
       this.log(`[afterlife] returning ${hex(actorId)} to ${label} failed: ${e}`);
       return;
     }
-    notifyActor(mp, actorId, `The dead cannot leave ${label}.`);
+    notifyActor(mp, actorId, loc("afterlife.cannotLeave", { realm: label }));
     this.log(`[afterlife] ${hex(actorId)} returned to ${label}`);
   }
 

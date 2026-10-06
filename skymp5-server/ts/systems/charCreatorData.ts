@@ -1,6 +1,8 @@
 // Server-side mirror of skymp5-front/src/features/charCreator/data/races.js.
 // Slugs and form ids MUST stay in sync with that file; change them together.
 
+import { loc } from "../loc";
+
 const NORD = 0x13746;
 const IMPERIAL = 0x13744;
 const REDGUARD = 0x13748;
@@ -166,70 +168,70 @@ export type ValidateOutcome = { ok: true; clean: CleanResult } | { ok: false; er
 const fail = (error: string): ValidateOutcome => ({ ok: false, error });
 
 export function validateResult(data: unknown, config: CharCreatorConfig): ValidateOutcome {
-  if (!data || typeof data !== "object") return fail("Malformed result");
+  if (!data || typeof data !== "object") return fail(loc("charCreator.malformed"));
   const d = data as Record<string, unknown>;
 
   const race = typeof d.race === "string" ? d.race : "";
   const entry = RACES[race];
-  if (!entry) return fail("Unknown race");
-  if (config.disabledRaces.includes(race)) return fail("This race is disabled on this server");
+  if (!entry) return fail(loc("charCreator.unknownRace"));
+  if (config.disabledRaces.includes(race)) return fail(loc("charCreator.raceDisabled"));
 
   const age = typeof d.age === "string" ? d.age : "";
-  if (!AGE_IDS.includes(age)) return fail("Invalid age");
-  if (age === "child" && !config.allowChildren) return fail("Child characters are not allowed on this server");
+  if (!AGE_IDS.includes(age)) return fail(loc("charCreator.invalidAge"));
+  if (age === "child" && !config.allowChildren) return fail(loc("charCreator.noChildren"));
 
   const sex = d.sex;
-  if (sex !== "male" && sex !== "female") return fail("Invalid sex");
+  if (sex !== "male" && sex !== "female") return fail(loc("charCreator.invalidSex"));
 
   const app = d.appearance;
-  if (!app || typeof app !== "object") return fail("Missing appearance");
+  if (!app || typeof app !== "object") return fail(loc("charCreator.missingAppearance"));
   const a = app as Record<string, unknown>;
 
-  if (a.raceId !== raceIdFor(entry, age)) return fail("Appearance race does not match the chosen race");
-  if (a.isFemale !== (sex === "female")) return fail("Appearance sex does not match the chosen sex");
+  if (a.raceId !== raceIdFor(entry, age)) return fail(loc("charCreator.raceMismatch"));
+  if (a.isFemale !== (sex === "female")) return fail(loc("charCreator.sexMismatch"));
 
   const weight = a.weight;
   if (typeof weight !== "number" || !Number.isFinite(weight) || weight < 0 || weight > 100) {
-    return fail("Invalid weight");
+    return fail(loc("charCreator.invalidWeight"));
   }
 
   const options = a.options;
   if (!Array.isArray(options) || options.length !== MORPH_COUNT ||
     !options.every(v => typeof v === "number" && Number.isFinite(v) && v >= -1 && v <= 1)) {
-    return fail("Invalid face morphs");
+    return fail(loc("charCreator.invalidFaceMorphs"));
   }
 
   const presets = a.presets;
   if (!Array.isArray(presets) || presets.length !== PRESET_COUNT ||
     !presets.every(v => isIntIn(v, 0, 255))) {
-    return fail("Invalid face presets");
+    return fail(loc("charCreator.invalidFacePresets"));
   }
 
   const headpartIds = a.headpartIds;
   if (!Array.isArray(headpartIds) || headpartIds.length > MAX_HEADPARTS ||
     !headpartIds.every(isUint32)) {
-    return fail("Invalid headparts");
+    return fail(loc("charCreator.invalidHeadparts"));
   }
 
-  if (!isUint32(a.headTextureSetId)) return fail("Invalid head texture set");
+  if (!isUint32(a.headTextureSetId)) return fail(loc("charCreator.invalidHeadTexture"));
 
   const tints = a.tints;
-  if (!Array.isArray(tints) || tints.length > MAX_TINTS) return fail("Invalid tints");
+  if (!Array.isArray(tints) || tints.length > MAX_TINTS) return fail(loc("charCreator.invalidTints"));
   const cleanTints: CleanTint[] = [];
   for (const t of tints) {
-    if (!t || typeof t !== "object") return fail("Invalid tint entry");
+    if (!t || typeof t !== "object") return fail(loc("charCreator.invalidTintEntry"));
     const tt = t as Record<string, unknown>;
     if (typeof tt.texturePath !== "string" || tt.texturePath.length > MAX_TEXTURE_PATH) {
-      return fail("Invalid tint texture path");
+      return fail(loc("charCreator.invalidTintTexture"));
     }
     const argb = toInt32(tt.argb);
-    if (argb === null) return fail("Invalid tint color");
-    if (!isIntIn(tt.type, 0, MAX_TINT_TYPE)) return fail("Invalid tint type");
+    if (argb === null) return fail(loc("charCreator.invalidTintColor"));
+    if (!isIntIn(tt.type, 0, MAX_TINT_TYPE)) return fail(loc("charCreator.invalidTintType"));
     cleanTints.push({ texturePath: stripControl(tt.texturePath), argb, type: tt.type });
   }
 
   if (!entry.faceGen && (headpartIds.length > 0 || cleanTints.length > 0)) {
-    return fail("This race does not support face customization");
+    return fail(loc("charCreator.noFaceCustomization"));
   }
 
   const skinColor = toInt32(a.skinColor) ?? 0;
@@ -237,45 +239,45 @@ export function validateResult(data: unknown, config: CharCreatorConfig): Valida
 
   const rawName = typeof d.name === "string" ? d.name : "";
   if (rawName.length > MAX_RAW_NAME) {
-    return fail("Names are 2-30 characters: letters, spaces, apostrophes, and hyphens");
+    return fail(loc("charCreator.invalidName"));
   }
   const name = stripControl(rawName).trim();
   if (name.length < NAME_MIN || name.length > NAME_MAX || !NAME_RE.test(name)) {
-    return fail("Names are 2-30 characters: letters, spaces, apostrophes, and hyphens");
+    return fail(loc("charCreator.invalidName"));
   }
 
   const rawBackstory = typeof d.backstory === "string" ? d.backstory : "";
-  if (rawBackstory.length > MAX_BACKSTORY) return fail("Backstory is too long");
+  if (rawBackstory.length > MAX_BACKSTORY) return fail(loc("charCreator.backstoryTooLong"));
   const rawDescription = typeof d.description === "string" ? d.description : "";
-  if (rawDescription.length > MAX_DESCRIPTION) return fail("Description is too long");
+  if (rawDescription.length > MAX_DESCRIPTION) return fail(loc("charCreator.descriptionTooLong"));
   const backstory = stripControlKeepBreaks(rawBackstory).trim();
   const description = stripControlKeepBreaks(rawDescription).trim();
 
   const rawStats = d.stats;
   if (!rawStats || typeof rawStats !== "object" || Array.isArray(rawStats)) {
-    return fail("Invalid stats");
+    return fail(loc("charCreator.invalidStats"));
   }
   const statsObj = rawStats as Record<string, unknown>;
   const statKeys = Object.keys(statsObj);
   if (statKeys.length !== ATTRIBUTE_KEYS.length || !ATTRIBUTE_KEYS.every(k => statKeys.includes(k))) {
-    return fail("Invalid stats");
+    return fail(loc("charCreator.invalidStats"));
   }
   const stats: Record<string, number> = {};
   let spent = 0;
   for (const k of ATTRIBUTE_KEYS) {
     const v = statsObj[k];
-    if (!isIntIn(v, STAT_MIN, STAT_MAX)) return fail("Invalid stats");
+    if (!isIntIn(v, STAT_MIN, STAT_MAX)) return fail(loc("charCreator.invalidStats"));
     stats[k] = v;
     spent += v - STAT_START;
   }
-  if (spent > config.statPool) return fail("Too many stat points spent");
+  if (spent > config.statPool) return fail(loc("charCreator.tooManyStatPoints"));
 
   const rawExtras = d.bodyExtras;
-  if (!rawExtras || typeof rawExtras !== "object") return fail("Invalid body sliders");
+  if (!rawExtras || typeof rawExtras !== "object") return fail(loc("charCreator.invalidBodySliders"));
   const extras = rawExtras as Record<string, unknown>;
   const muscle = extras.muscle;
   const fat = extras.fat;
-  if (!isIntIn(muscle, 0, 100) || !isIntIn(fat, 0, 100)) return fail("Invalid body sliders");
+  if (!isIntIn(muscle, 0, 100) || !isIntIn(fat, 0, 100)) return fail(loc("charCreator.invalidBodySliders"));
 
   const appearance: CleanAppearance = {
     isFemale: sex === "female",

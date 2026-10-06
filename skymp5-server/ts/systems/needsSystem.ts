@@ -7,6 +7,7 @@ import { formatWait, hex, chainMpHook, guardMpHook, isAlive, isBleedingOut, isCr
 import { FREE, LEGENDARY, MasterySystem } from "./masterySystem";
 import { LOAD_PACKETS, StageAbilityTracker } from "./stageAbilities";
 import { every, soon } from "./timers";
+import { loc } from "../loc";
 import { armorWeightOf, combatStats, hasCombatStats } from "./combatStats";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
@@ -605,13 +606,13 @@ export class NeedsSystem implements System {
     const now = Date.now();
     const fresh = entry.rec.drinkUntil < now;
     entry.rec.drinkUntil = now + this.alcoholMs;
-    const label = labels.join(" and ");
+    const label = labels.join(loc("needs.and"));
     const minutes = Math.round(this.alcoholMs / 60000);
     this.log(`[needs] ${hex(actorId)} drinks ${this.edidOf(ctx.svr as Mp, baseId)}: ${label} crafts -${pct(this.alcoholDiscount)}% until ${new Date(entry.rec.drinkUntil).toTimeString().slice(0, 5)}`);
     // Inside the native eat hook: the packet goes out once it has returned
     setImmediate(() => this.notice(ctx, entry.userId, fresh
-      ? `The drink steadies your hands: your ${label} work costs ${pct(this.alcoholDiscount)}% less fatigue for ${minutes} minutes.`
-      : `The drink keeps your hands steady for another ${minutes} minutes.`));
+      ? loc("needs.drink.steadied", { label, pct: pct(this.alcoholDiscount), minutes })
+      : loc("needs.drink.again", { minutes })));
     return true;
   }
 
@@ -866,7 +867,7 @@ export class NeedsSystem implements System {
     if (now - (this.lastNoticeAt.get(entry.userId) || 0) < NOTICE_GAP_MS) return;
     this.lastNoticeAt.set(entry.userId, now);
     const minutes = Math.max(1, Math.ceil((q.cost - entry.rec.fatigue) / (REGEN_PER_MS * this.modifier(q.actorId, "fatigueRegenMult").mult * 60000)));
-    this.notice(ctx, entry.userId, `You are too tired to ${q.kind === "tiredCast" ? "cast" : "craft"}: fatigue ${pct(entry.rec.fatigue)}%, this work needs ${pct(q.cost)}%. Rest about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`);
+    this.notice(ctx, entry.userId, loc(q.kind === "tiredCast" ? (minutes === 1 ? "needs.tired.castOne" : "needs.tired.castMany") : (minutes === 1 ? "needs.tired.craftOne" : "needs.tired.craftMany"), { fatigue: pct(entry.rec.fatigue), cost: pct(q.cost), minutes }));
   }
 
   // ── Rules ──────────────────────────────────────────────────────────────────
@@ -961,11 +962,11 @@ export class NeedsSystem implements System {
     const fatigueBefore = this.fatigueSpells.indexOf(entry.rec.fatigueSpell);
     if (this.swapAbility(ctx, actorId, entry, "stageSpell", this.stageAbilities ? this.hungerSpells[stage] || 0 : 0)
       && hungerBefore >= 0 && stage > hungerBefore && stage >= 2) {
-      this.notice(ctx, entry.userId, `You are ${HUNGER_STAGE_NAMES[stage].toLowerCase()}: your stamina is reduced. Find something to eat.`);
+      this.notice(ctx, entry.userId, loc("needs.hungerStage", { stage: HUNGER_STAGE_NAMES[stage].toLowerCase() }));
     }
     if (this.swapAbility(ctx, actorId, entry, "fatigueSpell", this.fatigueAbilities ? this.fatigueSpells[fatigueStage] || 0 : 0)
       && fatigueBefore >= 0 && fatigueStage > fatigueBefore && fatigueStage >= 2) {
-      this.notice(ctx, entry.userId, `You feel ${FATIGUE_STAGE_NAMES[fatigueStage].toLowerCase()}: your magicka is reduced until you rest from crafting.`);
+      this.notice(ctx, entry.userId, loc("needs.fatigueStage", { stage: FATIGUE_STAGE_NAMES[fatigueStage].toLowerCase() }));
     }
   }
 

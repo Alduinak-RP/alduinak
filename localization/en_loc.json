@@ -125,7 +125,683 @@
       "commandError": "command error: {error}"
     }
   },
-  "server": {},
+  "server": {
+    "admin": {
+      "mode": {
+        "god": "God",
+        "noclip": "NoClip",
+        "invis": "Invisible",
+        "ghost": "Ghost",
+        "freecam": "Freecam",
+        "smite": "Smite",
+        "healhit": "Heal on Hit",
+        "speed": "Speed",
+        "names": "Show account name"
+      },
+      "noName": "(no name)",
+      "tagProfile": "profile {profile}",
+      "unknownAction": "Unknown action '{action}'",
+      "unknownMode": "Unknown mode '{mode}'",
+      "rankCannotUse": "Your rank cannot use {cap}",
+      "notReady": "Server not ready",
+      "actionFailed": "Action failed, see server log",
+      "unknownLocation": "Unknown location",
+      "unknownCharacter": "Unknown character",
+      "teleportedTo": "Teleported to {name}",
+      "teleportFailed": "Teleport failed, see server log",
+      "targetOffline": "Target is no longer online",
+      "targetLine": "{name}: {text}",
+      "summoned": "Summoned {name}",
+      "revived": "Revived {name}",
+      "kick": {
+        "self": "You cannot kick yourself",
+        "reason": "You were kicked from the server by an admin.",
+        "done": "Kicked {name}"
+      },
+      "ban": {
+        "self": "You cannot ban yourself",
+        "rankCannot": "Your rank cannot ban players",
+        "noMaster": "Ban unavailable: master api not configured",
+        "noProfile": "Ban unavailable: target has no profile id",
+        "backendReason": "in-game admin ban",
+        "reason": "You were banned from the server.",
+        "done": "Banned {name}",
+        "failedStatus": "Ban failed (backend {status})",
+        "unreachable": "Ban failed: backend unreachable"
+      },
+      "pk": {
+        "self": "You cannot PK yourself",
+        "how": "PK'd",
+        "done": "PK'd {name}"
+      },
+      "mastery": {
+        "noSuchSlot": "this server has no such craft slot",
+        "slotNotChosen": "no {slot} craft chosen",
+        "hoursRange": "Hours must be a whole number between -{max} and {max}",
+        "slotStanding": "{name}: {craft} {hours}h, {rank}",
+        "noCraftChosen": "no craft chosen",
+        "standing": "{name}: {hours}h, {standing}",
+        "noCraft": "{name} has no craft",
+        "slotCraft": "{slot} craft",
+        "craft": "craft",
+        "reset": "Reset the {craft} and hours of {name}",
+        "nothingToReset": "{name} has no {craft} to reset"
+      },
+      "attr": {
+        "range": "Each attribute must be a whole number between -{max} and {max}",
+        "health": "health",
+        "magicka": "magicka",
+        "stamina": "stamina"
+      },
+      "needs": {
+        "reset": "Reset the hunger and fatigue of {name}",
+        "off": "Needs are switched off on this server",
+        "nothing": "{name} has no needs to reset yet"
+      },
+      "survival": {
+        "off": "Survival is switched off on this server",
+        "reset": "Reset the survival state of {name}",
+        "notFollowed": "{name} is not followed by survival yet"
+      },
+      "item": {
+        "loading": "The item list is still loading, try again shortly",
+        "unknown": "Unknown item",
+        "countRange": "Count must be a whole number between 1 and {max}",
+        "notSpawnable": "That is not a spawnable item",
+        "gave": "Gave {count} x {item} to {name}",
+        "gaveSelf": "Gave {count} x {item} to you"
+      },
+      "polymorph": {
+        "who": "{name} (profile {profile}, actor {actor})",
+        "by": "profile {profile} ({tier})",
+        "revertedSelf": "You are back in your own form",
+        "reverted": "{name} is back in their own form",
+        "notTransformedSelf": "You are not transformed",
+        "notTransformed": "{name} is not transformed",
+        "failed": "Polymorph failed, see server log",
+        "nowSelf": "You are now {race} ({edid}){note}",
+        "now": "{name} is now {race} ({edid}){note}",
+        "cannotDraw": ", a form that cannot draw weapons",
+        "audit": {
+          "female": "female",
+          "male": "male",
+          "swapped": " (the only skeleton the race has)",
+          "gearOff": "gear taken off",
+          "gearKept": "gear kept",
+          "noDraw": ", weapons stay sheathed (no shield biped object){attacks}",
+          "attacks": ", {n} attack event(s) on the attack key"
+        }
+      },
+      "pet": {
+        "disabled": "Pets are not enabled",
+        "granted": "A {kind} was added to your pets"
+      },
+      "zone": {
+        "badData": "Bad zone data",
+        "saved": "Saved zone {name}",
+        "added": "Added zone {name}",
+        "deleted": "Deleted zone {name}",
+        "unknown": "Unknown zone",
+        "reset": "Reset zone {name}",
+        "deactivated": "Deactivated zone {name}, respawn timer started",
+        "activated": "Activated zone {name}, {placed} NPC(s) placed",
+        "nothingPlaced": "Nothing placed in {name}: every NPC is alive or the spawn failed (server log)",
+        "posUnavailable": "Position unavailable, see server log"
+      },
+      "job": {
+        "disabled": "Jobs are not enabled",
+        "badData": "Bad job data",
+        "replaced": "Replaced job {name}",
+        "added": "Added job {name}",
+        "deleted": "Deleted job {name}",
+        "unknown": "Unknown job",
+        "pickup": "pickup",
+        "dropoff": "dropoff",
+        "noLocation": "The {end} of that job has no known location",
+        "teleported": "Teleported to the {end} of {name}"
+      },
+      "weather": {
+        "disabled": "Weather sync is not enabled",
+        "noRegion": "You are not in a weather region",
+        "forMinutes": "for {minutes} min",
+        "untilCleared": "until cleared",
+        "set": "{weather} on {region} {hold}",
+        "cleared": "{region} rolls its own weather again"
+      },
+      "audit": {
+        "capRefused": "profile {profile} ({tier}) was refused {action}: no {cap} permission",
+        "teleportLoc": "profile {profile} teleported to location '{name}'",
+        "teleportTo": "profile {profile} teleported to {name} (profile {targetProfile})",
+        "summon": "profile {profile} summoned {name} (profile {targetProfile})",
+        "kick": "profile {profile} kicked {name} (profile {targetProfile})",
+        "banRefused": "profile {profile} ({tier}) was refused a ban on {name} (profile {targetProfile})",
+        "pkRefused": "profile {profile} was refused a PK of {name} (profile {targetProfile}): {refusal}",
+        "pk": "profile {profile} PK'd {name} (profile {targetProfile}), their soul goes to Sovngarde",
+        "masteryGrantSlot": "profile {profile} granted {amount} mastery hour(s) to {name}'s {craft} (profile {targetProfile}), now {hours}h, {rank}",
+        "masteryGrant": "profile {profile} granted {amount} mastery hour(s) to {name} (profile {targetProfile}), now {hours}h, {standing}",
+        "attrSet": "profile {profile} set the max attributes of {name} (profile {targetProfile}) to {text}",
+        "masteryLegendary": "profile {profile} made {name} (profile {targetProfile}) Legendary {profession}, now {hours}h",
+        "masteryResetSlot": "profile {profile} reset the {craft} ({profession}) and hours of {name} (profile {targetProfile})",
+        "masteryReset": "profile {profile} reset the {craft} and hours of {name} (profile {targetProfile})",
+        "needsReset": "profile {profile} reset the hunger and fatigue of {name} (profile {targetProfile})",
+        "survivalReset": "profile {profile} reset the survival state of {name} (profile {targetProfile})",
+        "survivalCold": "profile {profile} set the cold of {name} (profile {targetProfile}): {text}",
+        "survivalDisease": "profile {profile} gave a disease to {name} (profile {targetProfile}): {text}",
+        "survivalCure": "profile {profile} cured {name} (profile {targetProfile}): {text}",
+        "reviveRefused": "profile {profile} was refused a revive of {name} (profile {targetProfile}): {refusal}",
+        "revive": "profile {profile} revived {name} (profile {targetProfile}), they wake at the Temple of Kynareth",
+        "itemSpawn": "profile {profile} ({tier}) spawned {count}x {item} [{desc} {type}] for {name} (profile {targetProfile})",
+        "polymorphRevert": "{by} reverted the polymorph of {who}",
+        "polymorph": "{by} polymorphed {who} from {from} into {race} ({edid}) [{desc} {group}], {sex}{swapped}, {face}, {gear}{draw}",
+        "petGrant": "profile {profile} granted themselves a {kind} pet ({base})",
+        "zoneAdd": "profile {profile} added npc zone '{name}'",
+        "zoneEdit": "profile {profile} edited npc zone '{name}'",
+        "zoneEditRenamed": "profile {profile} edited npc zone '{name}' -> '{newName}'",
+        "zoneDelete": "profile {profile} deleted npc zone '{name}'",
+        "zoneReset": "profile {profile} reset npc zone '{name}'",
+        "zoneDeactivate": "profile {profile} deactivated npc zone '{name}'",
+        "zoneActivate": "profile {profile} activated npc zone '{name}', {placed} npc(s) placed",
+        "zoneTp": "profile {profile} teleported to npc zone '{name}'",
+        "jobReplace": "profile {profile} replaced job '{name}'",
+        "jobAdd": "profile {profile} added job '{name}'",
+        "jobDelete": "profile {profile} deleted job '{name}'",
+        "jobTp": "profile {profile} teleported to the {end} of job '{name}'",
+        "weatherSet": "profile {profile} ({tier}) forced weather {weather} on region {region} {hold}",
+        "weatherClear": "profile {profile} ({tier}) cleared the weather on region {region}",
+        "modeOn": "profile {profile} turned mode {mode} on",
+        "modeOff": "profile {profile} turned mode {mode} off",
+        "modeOnReport": "profile {profile} turned mode {mode} on (client report)",
+        "modeOffReport": "profile {profile} turned mode {mode} off (client report)",
+        "ban": "profile {profile} ({tier}) banned {name} (profile {targetProfile})"
+      }
+    },
+    "discord": {
+      "label": {
+        "execute": "Execution",
+        "admin": "Admin",
+        "ticket": "Staff call",
+        "keyword": "Keyword",
+        "login": "Login",
+        "death": "Death"
+      },
+      "skipped": "({n} more alert(s) skipped in the burst, see the server logs)",
+      "repeated": "{line} (x{count})",
+      "death": {
+        "died": "died",
+        "killedBy": ", killed by {killer}",
+        "line": "{actor} {how}{killer}, {where}"
+      },
+      "keyword": "{actor} in {channel}: {text} (matched {words})",
+      "banKick": "You were banned from the Discord server."
+    },
+    "polymorph": {
+      "loading": "The race list is still loading, try again shortly",
+      "unknownRace": "Unknown race",
+      "noSkeleton": "{edid} has no skeleton or behaviour graph, refused",
+      "crashRisk": "{name} ({edid}) is marked as a crash risk ({risk}), refused",
+      "notLoaded": "{desc} is not in the server load order",
+      "noAppearance": "That character has no appearance to transform",
+      "ownRace": "That is the character's own race, use Revert",
+      "alreadyRace": "The character already is that race",
+      "face": {
+        "own": "own face kept",
+        "none": "no FaceGen head",
+        "default": "race default head ({parts} part(s))"
+      },
+      "unknownRaceId": "race {id}"
+    },
+    "mastery": {
+      "hoursOne": "{n} hour",
+      "hoursMany": "{n} hours",
+      "stillBanked": ", {hours} still banked",
+      "workCounted": "Your work as a {label} is counted: {standing}{left}.",
+      "bankedWorkCounted": "Your banked work as a {label} is counted: {standing}{left}.",
+      "bankedFor": " for your {slot} craft",
+      "extraBankedOffline": "Extra work banked{whose}: {hours} will be counted, one per hour, online or not.",
+      "extraBankedOnline": "Extra work banked{whose}: {hours} will be counted, one per hour you stay online.",
+      "hoursNow": "Your hours as a {label} now stand at {points}.",
+      "hoursNowSlot": "Your hours as a {label}, your {slot} craft, now stand at {points}.",
+      "setAsideSlot": "Your {slot} craft, the {label}, has been set aside. You may choose again.",
+      "setAside": "Your profession has been set aside. You may choose again.",
+      "noResets": "You have no profession resets left.",
+      "finishCreation": "Finish creating your character before you choose a craft.",
+      "startsFree": " It starts at Free: {hours} of its free work make you a Novice.",
+      "takeUpSlot": "You take up the craft of the {label} as your {slot} craft, rising no higher than {cap}.{gate}",
+      "takeUp": "You take up the craft of the {label}.",
+      "refusal": {
+        "taken": "You have already given yourself to the {held}.",
+        "slotTaken": "Your {slot} craft is already the {held}.",
+        "held": "You already follow the {label}.",
+        "heldOffSlot": "Your {slot} craft, the {label}, is kept for when this server offers a {slot} craft again, so you cannot take it up now.",
+        "outOfOrder": "Choose your {slot} craft first.",
+        "noSlot": "This server offers no such craft slot."
+      },
+      "startingKit": "The {label}'s starting kit is in your pack.",
+      "slotKit": "The {label}'s kit is in your pack.",
+      "rank": {
+        "up": "You are now {rank} of the {label}.",
+        "down": "Your standing has fallen to {rank} of the {label}.",
+        "slotUp": "You are now a {rank} of the {label}, your {slot} craft.",
+        "slotDown": "Your {slot} craft has fallen to {rank} of the {label}."
+      },
+      "slotFallback": "slot {n}",
+      "standing": {
+        "toward": "{points} of {hours} toward {rank}",
+        "atCraft": "{hours} at the craft"
+      }
+    },
+    "survival": {
+      "food": {
+        "settled": "Your stomach settles: the food poisoning has passed.",
+        "poisoned": "You feel sick: food poisoning slows your magicka and stamina recovery for {hours} hours. {cure}"
+      },
+      "affliction": {
+        "recovered": "You recover: you are no longer {key}.",
+        "weakened": "Starving has weakened you: your one-handed, two-handed and block skills suffer for {hours} hours. {cure}",
+        "frostbitten": "The cold has frostbitten you: your archery, lockpicking and pickpocketing suffer for {hours} hours. {cure}"
+      },
+      "potionCured": "The potion cures your sickness.",
+      "shrine": "The shrine offers comfort, but no cure. {cure}",
+      "cureHint": {
+        "anyPotion": "A Cure Disease potion or a healing potion cures it.",
+        "cureDisease": "A Cure Disease potion cures it."
+      },
+      "admin": {
+        "notSettled": "survival has not settled on this character yet (just logged in or still in creation)",
+        "unknownOp": "unknown survival request '{op}'",
+        "coldOff": "cold is switched off (survivalColdEnabled false)",
+        "coldRange": "cold must be a number from 0 to {max}",
+        "coldSet": "cold {before} -> {after} ({stage})",
+        "diseasesOff": "diseases are switched off (survivalDiseasesEnabled false)",
+        "noDisease": "no disease called '{id}'",
+        "notInPlugin": "{name} is not in the plugin yet",
+        "stageRange": "the stage must be 1 to {max}",
+        "stageFailed": "{name} could not be set to stage {stage}, see the server log",
+        "giveFailed": "{name} could not be given, see the server log",
+        "nowHas": "now has {name}",
+        "doesNotHave": "does not have {name}",
+        "cured": "cured {list}",
+        "hadNoSickness": "had no sickness"
+      },
+      "adminCured": "You are cured of your sickness.",
+      "readout": {
+        "cold": "cold {cold} ({stage})",
+        "coldOff": "cold off",
+        "place": "area {area}, {climate}, freezing water area no",
+        "placeFreezing": "area {area}, {climate}, freezing water area yes",
+        "placeUnknown": "area not known yet",
+        "diseaseWorse": "{name} (worse at {when})",
+        "until": "{name} until {when}",
+        "foodPoisoning": "food poisoning until {when}",
+        "noSickness": "no sickness",
+        "line": "{cold}; {place}; {sick}"
+      },
+      "freezingWater": "The water is freezing: it drains your health while you swim in it.",
+      "cold": {
+        "numb": "numb with cold",
+        "stage": "You are {stage}: Find warmth or a fire.",
+        "stagePenalty": "You are {stage}: Your maximum health is reduced. Find warmth or a fire.",
+        "warm": "You are warm."
+      }
+    },
+    "disease": {
+      "caught": "You have caught {name}: {effect}. It worsens over the coming days. {cure}",
+      "caughtNear": "You have caught {name} from someone near you: {effect}. It worsens over the coming days. {cure}",
+      "worsenedAdvanced": "Your {name} has worsened to its advanced stage. {cure}",
+      "worsenedSevere": "Your {name} has worsened to its severe stage. {cure}",
+      "nowStage": "Your {name} is now {stage}. {cure}",
+      "given": "You have caught {name}: {effect}. {cure}"
+    },
+    "needs": {
+      "and": " and ",
+      "drink": {
+        "steadied": "The drink steadies your hands: your {label} work costs {pct}% less fatigue for {minutes} minutes.",
+        "again": "The drink keeps your hands steady for another {minutes} minutes."
+      },
+      "tired": {
+        "castOne": "You are too tired to cast: fatigue {fatigue}%, this work needs {cost}%. Rest about {minutes} minute.",
+        "castMany": "You are too tired to cast: fatigue {fatigue}%, this work needs {cost}%. Rest about {minutes} minutes.",
+        "craftOne": "You are too tired to craft: fatigue {fatigue}%, this work needs {cost}%. Rest about {minutes} minute.",
+        "craftMany": "You are too tired to craft: fatigue {fatigue}%, this work needs {cost}%. Rest about {minutes} minutes."
+      },
+      "hungerStage": "You are {stage}: your stamina is reduced. Find something to eat.",
+      "fatigueStage": "You feel {stage}: your magicka is reduced until you rest from crafting."
+    },
+    "durability": {
+      "badlyWorn": "Your {name} is badly worn ({percent}%).",
+      "broken": "Your {name} has broken.",
+      "brokenLabel": "Broken",
+      "cannotNow": "You cannot repair anything right now.",
+      "noBench": "There is no workbench or grindstone within reach.",
+      "nothingToRepair": "Nothing you carry needs repair at this bench.",
+      "itemFallback": "item {id}",
+      "bench": {
+        "armor": "Workbench",
+        "weapon": "Grindstone"
+      },
+      "menu": {
+        "title": "{bench}: repair {what}",
+        "gear": "gear",
+        "armor": "armor",
+        "weapons": "weapons"
+      },
+      "tooFar": "You are too far from the bench.",
+      "and": " and ",
+      "refuse": {
+        "materials": "You lack {materials} to repair {name}.",
+        "rank": "You lack the profession rank to repair {name}.",
+        "tired": "You are too tired to repair {name}.",
+        "changed": "That item is no longer in the condition shown."
+      },
+      "failed": "The repair failed, nothing was taken.",
+      "repaired": {
+        "one": "Repaired {name}.",
+        "onePaid": "Repaired {name} for {paid}.",
+        "many": "Repaired {n} items."
+      },
+      "leftOver": "{n} items were left: {first}"
+    },
+    "torch": {
+      "burnedOut": "Your torch burns out."
+    },
+    "execution": {
+      "axeFalling": "The axe is already falling.",
+      "cannotAssassinate": "They cannot be assassinated.",
+      "noRight": "You do not have the right to execute.",
+      "cannotNow": "You cannot do that now.",
+      "alreadyAssassinated": "They are already being assassinated.",
+      "mustSneak": "You must be sneaking.",
+      "mustBeBehind": "You must be behind them.",
+      "dismount": "Dismount first.",
+      "cannotAssassinateNow": "They cannot be assassinated now.",
+      "outOfReach": "They are out of reach.",
+      "needMeleeAssassinate": "You need a melee weapon in hand to assassinate them.",
+      "drawWeapon": "Draw your weapon first.",
+      "assassinationFailed": "Your assassination of {name} failed.",
+      "assassinationFailedYou": "{name} failed to assassinate you.",
+      "notBleedingOut": "They are not bleeding out.",
+      "needMeleeFinish": "You need a melee weapon in hand to finish them off.",
+      "finishingYou": "{name} is finishing you off.",
+      "onlyCuffed": "Only a prisoner in cuffs can be led to the block.",
+      "alreadyAtBlock": "They are already at the block.",
+      "cannotLeadNow": "They cannot be led to the block now.",
+      "noBlock": "There is no execution block here.",
+      "notAtBlock": "They are not at the block.",
+      "standAtBlock": "Stand at the block to execute them.",
+      "sheathe": "Sheathe your weapon first.",
+      "standUp": "Stand up first.",
+      "putAwayTorch": "Put away your torch first.",
+      "forceDown": "You force {name} down onto the block.",
+      "forcedDown": "{name} forces you down onto the block.",
+      "needTwoHanded": "You need a two-handed weapon equipped to execute them, such as a battleaxe, greatsword or warhammer.",
+      "raisesAxe": "{name} raises the axe.",
+      "notPlayer": "They are not a player character",
+      "alreadyDead": "They are already dead",
+      "alreadyFallen": "They are already fallen",
+      "pkLine": "{killer} {how} {victim}, {where} ({rights})",
+      "pkRights": "execute right of {factions}",
+      "pkStaff": "staff",
+      "slain": "You {how} {name}."
+    },
+    "bleedout": {
+      "beingFinished": "They are being finished off.",
+      "cannotEat": "You cannot eat or drink while bleeding out.",
+      "alreadyTended": "Someone is already tending to them.",
+      "busy": "You are already busy.",
+      "tendingStopped": "Nobody is tending to your wounds any more.",
+      "noPotion": "You have no healing potion.",
+      "potionReceived": "{name} gave you a healing potion.",
+      "potionGiven": "You gave {name} a healing potion.",
+      "downed": "You are bleeding out. Without help you die in {seconds} seconds.",
+      "downedOther": "{name} is bleeding out.",
+      "noLongerNeeded": "{name} no longer needs your help.",
+      "healed": "Your wounds close and you get back up."
+    },
+    "afterlife": {
+      "permaDead": "perma-dead",
+      "notReady": "Server not ready",
+      "notPlayer": "Not a player character",
+      "notFallen": "They are not fallen",
+      "deadNow": "They are dead right now, wait for the respawn",
+      "notFound": "Character not found",
+      "slotInUse": "The extra slot is in use: delete the character created in it first",
+      "reviveFailed": "Revive failed, see server log",
+      "revived": "You have been returned to the living.",
+      "soulPasses": "Your soul passes to {realm}.",
+      "cannotLeave": "The dead cannot leave {realm}."
+    },
+    "combat": {
+      "readout": {
+        "broken": "Broken",
+        "percent": "{percent}%",
+        "conditionHp": "{label} ({now}/{max})",
+        "notCounted": "not counted (a better piece covers its slots)",
+        "partlyCounted": "{dt} counted (a better piece covers some of its slots)",
+        "line": "{name}: {details}",
+        "noArmor": "No armor worn: DT 0, every weapon hit lands in full.",
+        "armor": "Armor: DT {dt} (taken off each weapon hit)",
+        "armorWeight": "Armor: DT {dt} (taken off each weapon hit), weight {weight}",
+        "dt": "DT {dt}",
+        "noDt": "no DT",
+        "noWeaponDamage": "no weapon damage",
+        "damage": "damage {damage}",
+        "inHand": "in hand",
+        "nothing": "Nothing worn or held wears down.",
+        "itemFallback": "item {id}"
+      }
+    },
+    "soulTrap": {
+      "captured": "Soul captured!"
+    },
+    "racial": {
+      "notAvailable": "{power} is not available yet.",
+      "readyIn": "{power} is ready again in {wait}."
+    },
+    "job": {
+      "articleA": "a",
+      "articleAn": "an",
+      "listAnd": "{list} and {last}",
+      "putDownFirst": "Put the {item} down first.",
+      "file": {
+        "unreadable": "{file} unreadable: {error}",
+        "notJson": "{file} is not valid JSON: {error}",
+        "badShape": "{file} must be an array or { \"Jobs\": [...] }",
+        "writeFailed": "{file} write failed, see server log"
+      },
+      "end": {
+        "pickup": "Pickup",
+        "dropoff": "Dropoff"
+      },
+      "status": {
+        "disabled": "disabled"
+      },
+      "default": {
+        "item": "load",
+        "prompt": "Carry {item}",
+        "requiresText": "the right tool",
+        "pickup": "the pickup",
+        "dropoff": "the dropoff"
+      },
+      "error": {
+        "noName": "entry without a Name skipped",
+        "nameTooLong": "'{name}...' skipped, Name longer than {max} characters",
+        "pay": "Pay must be a whole number from 1 to {max}",
+        "anim": "CarryAnim '{anim}' is not an Offset pose",
+        "tooManyRequires": "more than {max} Requires entries",
+        "tooManyRewards": "more than {max} Rewards entries",
+        "rewardEntry": "Rewards entry {entry} needs 1 to {maxItems} items and a whole Count from 1 to {maxCount}",
+        "endIncomplete": "{which} needs ID and POS {x,y,z}",
+        "endUnknown": "{which} ID '{id}' is not a known cell or worldspace",
+        "tooClose": "pickup and dropoff are {distance} units apart, MinDistance is {min}",
+        "requiresEmpty": "Requires '{req}' lists no items",
+        "requiresType": "Requires '{req}' is a {type}, not an item, form list or keyword",
+        "requiresMissing": "Requires '{req}' is not in the load order",
+        "rewardType": "Rewards '{id}' is a {type}, not an item",
+        "rewardMissing": "Rewards '{id}' is not in the load order"
+      },
+      "changed": "The work here has changed.",
+      "standAt": "Stand at {label} to take this work.",
+      "needTool": "You need {tool} for this work.",
+      "handsFull": "Your hands are full.",
+      "dismount": "Dismount to pick up the {item}.",
+      "sheathe": "Put your weapon away to pick up the {item}.",
+      "title": "{item} for {label}",
+      "pickedUp": "You pick up {article} {item}. Carry it to {label}.",
+      "putDown": "You put the {item} down.",
+      "droppedFight": "You dropped the {item} in the fight.",
+      "dropped": "You dropped the {item}.",
+      "droppedMount": "You dropped the {item} to mount.",
+      "tooLong": "You took too long and dropped the {item}.",
+      "droppedWeapon": "You dropped the {item} to draw your weapon.",
+      "tooQuick": "That was too quick; nobody pays for that.",
+      "noPay": "Nobody could pay you just now.",
+      "gold": "{n} gold",
+      "delivered": "You deliver the {item} and earn {earned}. {left} of {limit} trips left.",
+      "deliveredLast": "You deliver the {item} and earn {earned}. That was your last trip; there is more work in {wait}.",
+      "reward": "{count} {name}",
+      "limit": "You have made {n} trips. There is more work in {wait}."
+    },
+    "gathering": {
+      "noOre": "You can't identify any useful ore.",
+      "chopTired": "You are too tired to swing an axe. Rest a while.",
+      "nothingYet": "There is nothing to gather here yet.",
+      "needHoe": "You need a hoe to harvest this crop.",
+      "gatherTired": "You are too tired to gather. Rest a while.",
+      "needAxe": "You need a woodcutter's axe to chop wood.",
+      "seatTaken": "Someone is already using this.",
+      "veinTaken": "Someone is already mining here.",
+      "needPickaxe": "You need a pickaxe to mine this vein.",
+      "pickaxeTired": "You are too tired to swing a pickaxe. Rest a while.",
+      "mineTired": "You are too tired to keep mining. Rest a while."
+    },
+    "hunting": {
+      "beingSkinned": "A hunter is skinning this body.",
+      "skinned": "This body has been skinned. Nothing can be taken from it.",
+      "butcherEye": "Your butcher's eye finds an extra cut of meat."
+    },
+    "crafted": {
+      "refused": "The server did not accept that change to your item, so it keeps its previous state.",
+      "rankCap": "Your rank in that craft cannot improve the item any further.",
+      "tired": "You are too tired to improve that item. Rest a while.",
+      "capped": "Your rank improves that item to {quality} at most."
+    },
+    "temper": {
+      "quality": {
+        "fine": "Fine",
+        "superior": "Superior",
+        "exquisite": "Exquisite",
+        "flawless": "Flawless",
+        "epic": "Epic",
+        "legendary": "Legendary"
+      }
+    },
+    "intro": {
+      "lore": "In 4E 210, nearly a decade after the Dragon Crisis, Skyrim stands transformed. To combat the Aldmeri Dominion, former enemies united alongside Hammerfell to sign The Treaty of The Nine Holds, successfully expelling the Thalmor in the brutal Second Great War. Today, the victorious but scarred province is split into three political zones: the Western Imperial Legion, the Eastern Stormcloaks, and the neutral central hub of Whiterun. As this new era begins, Skyrim's ultimate fate remains undecided.",
+      "welcomeCaption": "Welcome to Alduinak",
+      "menuKeyLine": "Use [get alt interaction button] to open your personal menu",
+      "professionOne": "{menuKeyLine} to pick a profession.",
+      "professionMany": "{menuKeyLine} to pick your professions: {first} craft, then {subs}.",
+      "subCraft": "{craft} (up to {cap})",
+      "and": " and ",
+      "articleA": "a {word}",
+      "articleAn": "an {word}",
+      "welcome": {
+        "voice": "Use [get voice key button] to speak to others. Alt + [get voice key button] changes your voice range.",
+        "emoteWheel": "Use [get emote wheel button] to open the emote wheel.",
+        "releaseMouse": "Use [get release mouse button] to hide/reveal the mouse",
+        "hideInterface": "Use [get hide interface button] to hide the UI for screenshots.",
+        "chat": "Use [get activate chat button] to use the text chat, where you will also find additional settings."
+      },
+      "question": "Where will your journey begin?"
+    },
+    "charCreator": {
+      "malformed": "Malformed result",
+      "unknownRace": "Unknown race",
+      "raceDisabled": "This race is disabled on this server",
+      "invalidAge": "Invalid age",
+      "noChildren": "Child characters are not allowed on this server",
+      "invalidSex": "Invalid sex",
+      "missingAppearance": "Missing appearance",
+      "raceMismatch": "Appearance race does not match the chosen race",
+      "sexMismatch": "Appearance sex does not match the chosen sex",
+      "invalidWeight": "Invalid weight",
+      "invalidFaceMorphs": "Invalid face morphs",
+      "invalidFacePresets": "Invalid face presets",
+      "invalidHeadparts": "Invalid headparts",
+      "invalidHeadTexture": "Invalid head texture set",
+      "invalidTints": "Invalid tints",
+      "invalidTintEntry": "Invalid tint entry",
+      "invalidTintTexture": "Invalid tint texture path",
+      "invalidTintColor": "Invalid tint color",
+      "invalidTintType": "Invalid tint type",
+      "noFaceCustomization": "This race does not support face customization",
+      "invalidName": "Names are 2-30 characters: letters, spaces, apostrophes, and hyphens",
+      "backstoryTooLong": "Backstory is too long",
+      "descriptionTooLong": "Description is too long",
+      "invalidStats": "Invalid stats",
+      "tooManyStatPoints": "Too many stat points spent",
+      "invalidBodySliders": "Invalid body sliders"
+    },
+    "spawn": {
+      "characterDead": "That character is dead.",
+      "livingLimit": "You already have the maximum number of living characters.",
+      "filesOutOfDate": "Your game files are out of date, so this server cannot create your character. Open the Alduinak launcher, run Repair SkyMP Client in Settings, then play again.",
+      "unknownStart": "Unknown start location, try again.",
+      "raceLocked": "This race is locked for your account"
+    },
+    "login": {
+      "staffOnly": "This server is for staff only.",
+      "serviceUnavailable": "The login service is unavailable, please try again in a minute.",
+      "ipHidden": "hidden",
+      "discordLine": "Server Login: Server Slot {slot}, IP {ip}, Actor ID {actorIds}, Master API {profileId}, Discord ID {discordId}"
+    },
+    "afk": {
+      "kicked": "You were disconnected after {minutes} minutes of inactivity.",
+      "warnOne": "You will be kicked for inactivity in {minutes} minute. Move or chat to stay connected.",
+      "warnMany": "You will be kicked for inactivity in {minutes} minutes. Move or chat to stay connected."
+    },
+    "border": {
+      "cannotGo": "You cannot go that way."
+    },
+    "weather": {
+      "unknownRegion": "Unknown region",
+      "unknownWeather": "Unknown weather",
+      "badMinutes": "Minutes must be a whole number between 1 and {max}, or blank"
+    },
+    "body": {
+      "ownFallen": "You cannot loot the body of your own fallen character."
+    },
+    "actor": {
+      "stranger": "A stranger"
+    },
+    "voice": {
+      "mode": {
+        "whisper": "Whisper",
+        "talk": "Talk",
+        "shout": "Shout"
+      }
+    },
+    "npcZone": {
+      "unreadable": "{file} unreadable: {error}",
+      "invalidJson": "{file} is not valid JSON: {error}",
+      "badShape": "{file} must be an array or { \"zones\": [...] }",
+      "noName": "entry without a Name skipped",
+      "nameTooLong": "'{name}...' skipped, Name longer than {max} characters",
+      "incomplete": "'{name}' skipped, needs ID, POS {x,y,z}, a positive Size and at least one NPC",
+      "tooMany": "'{name}' skipped, more than {max} NPCs",
+      "unknownCell": "'{name}' skipped, ID '{id}' is not a known cell or worldspace",
+      "notNpc": "'{name}' NPC '{id}' is not an NPC_ record, skipped",
+      "noValidNpc": "'{name}' skipped, no valid NPC",
+      "editGone": "'{name}' is no longer in {file}",
+      "exists": "'{name}' already exists",
+      "writeFailed": "{file} write failed, see server log"
+    },
+    "wait": {
+      "minutes": "{minutes} min",
+      "hoursMinutes": "{hours} h {minutes} min",
+      "hours": "{hours} h"
+    }
+  },
   "client": {},
   "front": {},
   "backend": {},

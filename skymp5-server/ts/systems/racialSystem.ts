@@ -7,6 +7,7 @@ import { ActorValue, SpellType, actorRaceId, fieldData, raceAbilityResist, spell
 import { GOLD_BASE_ID, addGold, addItemTo, chainMpHook, cleanDisplayName, formatWait, hex, isCreationPending, isPlayerActor, userOf } from "./actorUtil";
 import { claimStarterGrant, parseStartingItems } from "./spawn";
 import { sendJson } from "./playerText";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -622,13 +623,13 @@ export class RacialSystem implements System, NeedsModifierSource {
     const entry = this.powerById.get(spellId);
     if (!entry || !this.config.enabled || !isPlayerActor(this.mp, casterId)) return true;
     if (!this.effectReady(entry)) {
-      this.refuse(casterId, entry, `${entry.name} is not available yet.`, `its ${entry.power.effect} effect is not built yet`);
+      this.refuse(casterId, entry, loc("racial.notAvailable", { power: entry.name }), `its ${entry.power.effect} effect is not built yet`);
       return false;
     }
     const readyIn = this.readyInMs(casterId, entry);
     if (readyIn <= 0) return true;
     const wait = formatWait(readyIn);
-    this.refuse(casterId, entry, `${entry.name} is ready again in ${wait}.`, `ready again in ${wait}, last used ${new Date(this.lastUse(casterId, entry)).toISOString()}`);
+    this.refuse(casterId, entry, loc("racial.readyIn", { power: entry.name, wait }), `ready again in ${wait}, last used ${new Date(this.lastUse(casterId, entry)).toISOString()}`);
     return false;
   }
 

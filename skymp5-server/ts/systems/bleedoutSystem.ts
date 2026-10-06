@@ -9,6 +9,7 @@ import { appendLog, describeActor, logDirOf, profileIdOf, sendJson } from "./pla
 import { deathAlert } from "./discordAlerts";
 import { NEVER_RESPAWN } from "./npcPlacement";
 import { every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -83,7 +84,7 @@ export class BleedoutSystem implements System {
     chainMpHook(mp, "onDeath", (actorId: number, killerId: number) => this.onDeath(actorId >>> 0, killerId >>> 0));
 
     this.capture.rescueDowned = (actorId) => this.end(actorId, "rescued");
-    this.capture.rescueRefusal = (actorId) => this.downed.get(actorId)?.hold?.fatal ? "They are being finished off." : "";
+    this.capture.rescueRefusal = (actorId) => this.downed.get(actorId)?.hold?.fatal ? loc("bleedout.beingFinished") : "";
     this.capture.menuFlagProviders.push((requesterId, targetId) => ({
       givePotion: this.downed.has(targetId) && targetId !== requesterId,
       hasPotion: !!this.smallestPotion(requesterId),
@@ -146,7 +147,7 @@ export class BleedoutSystem implements System {
         this.log(`[bleedout] returning ${hex(baseId)} to ${hex(actorId)} failed: ${e}`);
       }
     }, 0);
-    notifyActor(this.mp, actorId, "You cannot eat or drink while bleeding out.");
+    notifyActor(this.mp, actorId, loc("bleedout.cannotEat"));
     return false;
   }
 
@@ -232,9 +233,9 @@ export class BleedoutSystem implements System {
 
   private holdRefusal(victimId: number, actorId: number): string {
     const state = this.downed.get(victimId);
-    if (!state || victimId === actorId) return "They are not bleeding out.";
-    if (state.hold) return "Someone is already tending to them.";
-    if (Array.from(this.downed.values()).some((s) => s.hold?.actorId === actorId)) return "You are already busy.";
+    if (!state || victimId === actorId) return loc("execution.notBleedingOut");
+    if (state.hold) return loc("bleedout.alreadyTended");
+    if (Array.from(this.downed.values()).some((s) => s.hold?.actorId === actorId)) return loc("bleedout.busy");
     return "";
   }
 
@@ -245,7 +246,7 @@ export class BleedoutSystem implements System {
     if (userOf(mp, hold.actorId) < 0 || !isAlive(mp, hold.actorId) || this.downed.has(hold.actorId) ||
       !isNear(mp, hold.actorId, victimId, this.capture.interactRange * 2)) {
       this.resume(state, now);
-      notifyActor(mp, victimId, "Nobody is tending to your wounds any more.");
+      notifyActor(mp, victimId, loc("bleedout.tendingStopped"));
       this.log(`[bleedout] ${hex(hold.actorId)} stopped tending to ${hex(victimId)}`);
       return;
     }
@@ -268,12 +269,12 @@ export class BleedoutSystem implements System {
   // Why the giver may not give the target a potion, "" when they may
   private givePotionRefusal(giverId: number, targetId: number): string {
     const mp = this.mp;
-    if (!this.downed.has(targetId) || targetId === giverId) return "They are not bleeding out.";
+    if (!this.downed.has(targetId) || targetId === giverId) return loc("execution.notBleedingOut");
     if (!isAlive(mp, giverId) || this.downed.has(giverId) || isRestrained(mp, giverId) || this.capture.carriedOf(giverId)) {
-      return "You cannot do that now.";
+      return loc("execution.cannotNow");
     }
-    if (!isNear(mp, giverId, targetId, this.capture.interactRange)) return "They are out of reach.";
-    if (this.downed.get(targetId)!.hold) return "Someone is already tending to them.";
+    if (!isNear(mp, giverId, targetId, this.capture.interactRange)) return loc("execution.outOfReach");
+    if (this.downed.get(targetId)!.hold) return loc("bleedout.alreadyTended");
     return "";
   }
 
@@ -300,7 +301,7 @@ export class BleedoutSystem implements System {
     try { giverId = mp.getUserActor(userId) >>> 0; } catch { return; }
     if (!giverId) return;
     const potion = this.smallestPotion(giverId);
-    const refusal = this.givePotionRefusal(giverId, targetId) || (potion ? "" : "You have no healing potion.");
+    const refusal = this.givePotionRefusal(giverId, targetId) || (potion ? "" : loc("bleedout.noPotion"));
     if (refusal) {
       notifyActor(mp, giverId, refusal);
       return;
@@ -316,8 +317,8 @@ export class BleedoutSystem implements System {
       return;
     }
     this.standUp(targetId, "healed", this.healedHealth);
-    notifyActor(mp, targetId, `${nameShownTo(mp, targetId, giverId)} gave you a healing potion.`);
-    notifyActor(mp, giverId, `You gave ${nameShownTo(mp, giverId, targetId)} a healing potion.`);
+    notifyActor(mp, targetId, loc("bleedout.potionReceived", { name: nameShownTo(mp, targetId, giverId) }));
+    notifyActor(mp, giverId, loc("bleedout.potionGiven", { name: nameShownTo(mp, giverId, targetId) }));
     this.log(`[bleedout] ${hex(giverId)} gave potion ${hex(potion)} to ${hex(targetId)}`);
   }
 
@@ -329,9 +330,9 @@ export class BleedoutSystem implements System {
     } catch { /* form gone */ }
     const seconds = Math.round(this.bleedoutMs / 1000);
     this.send(actorId, { downed: true, seconds });
-    notifyActor(mp, actorId, `You are bleeding out. Without help you die in ${seconds} seconds.`);
+    notifyActor(mp, actorId, loc("bleedout.downed", { seconds }));
     if (downerId && downerId !== actorId && isPlayerActor(mp, downerId)) {
-      notifyActor(mp, downerId, `${nameShownTo(mp, downerId, actorId)} is bleeding out.`);
+      notifyActor(mp, downerId, loc("bleedout.downedOther", { name: nameShownTo(mp, downerId, actorId) }));
     }
     this.log(`[bleedout] ${hex(actorId)} downed by ${hex(downerId)}`);
   }
@@ -340,9 +341,9 @@ export class BleedoutSystem implements System {
   private end(actorId: number, reason: "healed" | "rescued"): void {
     const state = this.downed.get(actorId);
     if (!state) return;
-    if (state.hold) notifyActor(this.mp, state.hold.actorId, `${nameShownTo(this.mp, state.hold.actorId, actorId)} no longer needs your help.`);
+    if (state.hold) notifyActor(this.mp, state.hold.actorId, loc("bleedout.noLongerNeeded", { name: nameShownTo(this.mp, state.hold.actorId, actorId) }));
     this.finish(actorId, false);
-    if (reason === "healed") notifyActor(this.mp, actorId, "Your wounds close and you get back up.");
+    if (reason === "healed") notifyActor(this.mp, actorId, loc("bleedout.healed"));
     this.log(`[bleedout] ${hex(actorId)} ${reason}`);
   }
 

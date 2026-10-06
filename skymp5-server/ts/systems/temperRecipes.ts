@@ -1,5 +1,6 @@
 import { Log } from "./system";
 import { espmContainerEntries, espmFieldFormIds } from "./formIdUtil";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -13,7 +14,7 @@ export const TEMPER_BENCHES = [ARMOR_TABLE, SHARPENING_WHEEL];
 // Health steps in tenths: Fine, the cap of a Free character, up to Legendary; each profession rank adds one
 export const FINE_STEP = 11;
 export const LEGENDARY_STEP = 16;
-export const QUALITY_NAMES = ["Fine", "Superior", "Exquisite", "Flawless", "Epic", "Legendary"];
+export const QUALITY_NAMES = [loc("temper.quality.fine"), loc("temper.quality.superior"), loc("temper.quality.exquisite"), loc("temper.quality.flawless"), loc("temper.quality.epic"), loc("temper.quality.legendary")];
 
 export interface RecipeInput {
   id: number;

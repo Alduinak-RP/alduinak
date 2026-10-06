@@ -1,4 +1,5 @@
 import { toFormId } from "./formIdUtil";
+import { loc } from "../loc";
 
 export interface StartLocation {
   id: string;
@@ -32,42 +33,42 @@ export const DEFAULT_START_LOCATIONS: StartLocation[] = [
 const START_SPREAD_UNITS = 100;
 const START_LIFT_Z = 64;
 
-const MENU_KEY_LINE = "Use [get alt interaction button] to open your personal menu";
-const WELCOME_LINES = [
-  "Use [get voice key button] to speak to others. Alt + [get voice key button] changes your voice range.",
-  "Use [get emote wheel button] to open the emote wheel.",
-  "Use [get release mouse button] to hide/reveal the mouse",
-  "Use [get hide interface button] to hide the UI for screenshots.",
-  "Use [get activate chat button] to use the text chat, where you will also find additional settings.",
+const welcomeLines = (): string[] => [
+  loc("intro.welcome.voice"),
+  loc("intro.welcome.emoteWheel"),
+  loc("intro.welcome.releaseMouse"),
+  loc("intro.welcome.hideInterface"),
+  loc("intro.welcome.chat"),
 ];
 
-const withArticle = (word: string): string => `${/^[aeiou]/i.test(word) ? "an" : "a"} ${word.toLowerCase()}`;
+const withArticle = (word: string): string => (/^[aeiou]/i.test(word) ? loc("intro.articleAn", { word: word.toLowerCase() }) : loc("intro.articleA", { word: word.toLowerCase() }));
 
 // The profession line for the configured craft slots, for example "... a primary craft, then a secondary (up to Adept) and a tertiary (up to Novice)."
 export function professionIntroLine(slots: Array<{ name: string; capName: string }>): string {
-  if (slots.length < 2) return `${MENU_KEY_LINE} to pick a profession.`;
-  const subs = slots.slice(1).map((s) => `${withArticle(s.name)} (up to ${s.capName})`);
-  return `${MENU_KEY_LINE} to pick your professions: ${withArticle(slots[0].name)} craft, then ${subs.join(" and ")}.`;
+  const menuKeyLine = loc("intro.menuKeyLine");
+  if (slots.length < 2) return loc("intro.professionOne", { menuKeyLine });
+  const subs = slots.slice(1).map((s) => loc("intro.subCraft", { craft: withArticle(s.name), cap: s.capName }));
+  return loc("intro.professionMany", { menuKeyLine, first: withArticle(slots[0].name), subs: subs.join(loc("intro.and")) });
 }
 
 // The client swaps each bracketed placeholder for the player's key binding and drops a line whose key is unbound
 export const INTRO_PAGES: IntroPage[] = [
   {
-    text: "In 4E 210, nearly a decade after the Dragon Crisis, Skyrim stands transformed. To combat the Aldmeri Dominion, former enemies united alongside Hammerfell to sign The Treaty of The Nine Holds, successfully expelling the Thalmor in the brutal Second Great War. Today, the victorious but scarred province is split into three political zones: the Western Imperial Legion, the Eastern Stormcloaks, and the neutral central hub of Whiterun. As this new era begins, Skyrim's ultimate fate remains undecided.",
+    text: loc("intro.lore"),
   },
   {
-    caption: "Welcome to Alduinak",
+    caption: loc("intro.welcomeCaption"),
     align: "left",
-    text: [professionIntroLine([])].concat(WELCOME_LINES).join("\n"),
+    text: [professionIntroLine([])].concat(welcomeLines()).join("\n"),
   },
 ];
 
 // MasterySystem states its craft slots at boot; Spawn reads the pages at each intro
 export function setIntroProfessions(slots: Array<{ name: string; capName: string }>): void {
-  INTRO_PAGES[1].text = [professionIntroLine(slots)].concat(WELCOME_LINES).join("\n");
+  INTRO_PAGES[1].text = [professionIntroLine(slots)].concat(welcomeLines()).join("\n");
 }
 
-export const INTRO_QUESTION = "Where will your journey begin?";
+export const INTRO_QUESTION = loc("intro.question");
 
 // Validates a "startLocations" setting; null when absent or malformed so the defaults apply
 export function parseStartLocations(raw: unknown): StartLocation[] | null {

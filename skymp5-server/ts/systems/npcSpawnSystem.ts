@@ -10,6 +10,7 @@ import { loadNavmeshSpots, randomPointOn, NavmeshTarget, SpotKind, Spots } from 
 import { watchFileDebounced, writeFileAtomic } from "./fileUtil";
 import { every } from "./timers";
 import { onlineSnapshot, OnlinePlayer } from "./onlineSnapshot";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -355,18 +356,18 @@ export class NpcSpawnSystem implements System {
       text = fs.readFileSync(ZONES_FILE, "utf8");
     } catch (e: any) {
       if (e?.code === "ENOENT") return { list: [], root: null, key: "", missing: true };
-      return `${ZONES_FILE} unreadable: ${e}`;
+      return loc("npcZone.unreadable", { file: ZONES_FILE, error: String(e) });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      return `${ZONES_FILE} is not valid JSON: ${e}`;
+      return loc("npcZone.invalidJson", { file: ZONES_FILE, error: String(e) });
     }
     if (Array.isArray(parsed)) return { list: parsed, root: null, key: "", missing: false };
     const key = pickKey(parsed, "zones");
     const list = key === undefined ? undefined : (parsed as Record<string, unknown>)[key];
-    if (key === undefined || !Array.isArray(list)) return `${ZONES_FILE} must be an array or { "zones": [...] }`;
+    if (key === undefined || !Array.isArray(list)) return loc("npcZone.badShape", { file: ZONES_FILE });
     return { list, root: parsed as Record<string, unknown>, key, missing: false };
   }
 
@@ -400,11 +401,11 @@ export class NpcSpawnSystem implements System {
   private parseDraft(raw: unknown, reject: Reject = (msg) => this.log(`NpcSpawnSystem: ${msg}`)): Draft | null {
     const name = String(pick(raw, "name") ?? "").trim();
     if (!name) {
-      reject("entry without a Name skipped");
+      reject(loc("npcZone.noName"));
       return null;
     }
     if (name.length > MAX_NAME) {
-      reject(`'${name.slice(0, MAX_NAME)}...' skipped, Name longer than ${MAX_NAME} characters`);
+      reject(loc("npcZone.nameTooLong", { name: name.slice(0, MAX_NAME), max: MAX_NAME }));
       return null;
     }
     const locator = String(pick(raw, "id") ?? "").trim();
@@ -412,11 +413,11 @@ export class NpcSpawnSystem implements System {
     const radius = num(pick(raw, "size"), DEFAULT_SIZE);
     const npcs = this.parseNpcs(pick(raw, "npc"));
     if (!locator || !pos || !(radius > 0) || !npcs.length) {
-      reject(`'${name}' skipped, needs ID, POS {x,y,z}, a positive Size and at least one NPC`);
+      reject(loc("npcZone.incomplete", { name }));
       return null;
     }
     if (npcs.reduce((sum, n) => sum + n.count, 0) > MAX_TOTAL) {
-      reject(`'${name}' skipped, more than ${MAX_TOTAL} NPCs`);
+      reject(loc("npcZone.tooMany", { name, max: MAX_TOTAL }));
       return null;
     }
     // Blank scatters over the whole Size, 0 keeps the rings
@@ -502,20 +503,20 @@ export class NpcSpawnSystem implements System {
       cellOrWorldDesc = "";
     }
     if (!cellOrWorldDesc) {
-      reject(`'${draft.name}' skipped, ID '${draft.locator}' is not a known cell or worldspace`);
+      reject(loc("npcZone.unknownCell", { name: draft.name, id: draft.locator }));
       return null;
     }
     const npcs: ZoneNpc[] = [];
     for (const n of draft.npcs) {
       const baseDesc = this.toNpcDesc(mp, n.id);
       if (!baseDesc) {
-        reject(`'${draft.name}' NPC '${n.id}' is not an NPC_ record, skipped`);
+        reject(loc("npcZone.notNpc", { name: draft.name, id: n.id }));
         continue;
       }
       npcs.push({ baseDesc, count: n.count });
     }
     if (!npcs.length) {
-      reject(`'${draft.name}' skipped, no valid NPC`);
+      reject(loc("npcZone.noValidNpc", { name: draft.name }));
       return null;
     }
     const slots = npcs.flatMap((n) => Array<ZoneNpc>(n.count).fill(n));
@@ -1030,15 +1031,15 @@ export class NpcSpawnSystem implements System {
     if (typeof file === "string") return file;
     const edit = String(pick(raw, "edit") ?? "").trim();
     const at = edit ? file.list.findIndex((e) => entryName(e) === edit.toLowerCase()) : -1;
-    if (edit && at < 0) return `'${edit}' is no longer in ${ZONES_FILE}`;
-    if (file.list.some((e, i) => i !== at && entryName(e) === draft.name.toLowerCase())) return `'${draft.name}' already exists`;
+    if (edit && at < 0) return loc("npcZone.editGone", { name: edit, file: ZONES_FILE });
+    if (file.list.some((e, i) => i !== at && entryName(e) === draft.name.toLowerCase())) return loc("npcZone.exists", { name: draft.name });
     if (at < 0) file.list.push(toEntry(draft, zone.type));
     else file.list[at] = toEntry(draft, zone.type);
     try {
       this.writeZoneFile(file, file.list);
     } catch (e) {
       this.log(`NpcSpawnSystem: ${ZONES_FILE} write failed: ${e}`);
-      return `${ZONES_FILE} write failed, see server log`;
+      return loc("npcZone.writeFailed", { file: ZONES_FILE });
     }
     this.log(`NpcSpawnSystem: '${draft.name}' ${at < 0 ? "appended to" : `replaced '${edit}' in`} ${ZONES_FILE} by admin`);
     await this.queueLoad(at < 0 ? "admin add" : "admin edit");

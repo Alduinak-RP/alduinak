@@ -4,6 +4,7 @@ import { chainMpHook, guardMpHook, hex, notifyActor } from "./actorUtil";
 import { AfterlifeSystem, isFallen } from "./afterlifeSystem";
 import { BodySystem } from "./bodySystem";
 import { soon } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -130,7 +131,7 @@ export class SoulTrapSystem implements System {
       this.log(`[soultrap] ${hex(targetId)} died soul trapped by ${hex(casterId)}, no empty gem holds its ${kind} soul`);
       return;
     }
-    notifyActor(mp, casterId, "Soul captured!");
+    notifyActor(mp, casterId, loc("soulTrap.captured"));
     // The victim is dead here, so it is only marked and its respawn takes it to the Soul Cairn
     const outside = player ? this.factions?.borderRefusal(casterId, "execute", "soul trap") ?? "" : "";
     if (outside) notifyActor(mp, casterId, outside);

@@ -10,6 +10,7 @@ import { FurnitureSeatSystem } from "./furnitureSeatSystem";
 import { baseIdOf, hex, isAlive, isBehind, isMounted, isNear, isPlayerActor, isSneaking, isStreamedTo, isWeaponDrawn, nameShownTo, notifyActor, recordTypeOf, userOf, weaponAnimType } from "./actorUtil";
 import { appendLog, describeActor, logDirOf, sendJson, whereOf } from "./playerText";
 import { every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -101,7 +102,7 @@ const CHOP_PACKET = "executionChop";
 const STEP_PACKET = "executionStep";
 const STEP_MAX_CHARS = 300;
 // The chop beheads the prisoner on every client once it is sent, so nothing takes them off the block after that
-const AXE_FALLING = "The axe is already falling.";
+const AXE_FALLING = (): string => loc("execution.axeFalling");
 // { blockId, since } while a prisoner kneels at a block
 const ON_BLOCK_PROP = "private.onBlock";
 const PRISONER_CHECK_MS = 1000;
@@ -200,7 +201,7 @@ export class ExecutionSystem implements System {
       assassinate: !this.assassinateRefusal(requesterId, targetId),
     }));
     this.capture.onBlock = (actorId) => this.prisoners.has(actorId);
-    this.capture.blockRefusal = (actorId) => this.prisoners.get(actorId)?.executorId ? AXE_FALLING : "";
+    this.capture.blockRefusal = (actorId) => this.prisoners.get(actorId)?.executorId ? AXE_FALLING() : "";
     this.capture.releaseFromBlock = (actorId) => this.leaveBlock(actorId);
     // The block state does not outlive a restart, so a leftover mirror is cleared
     ctx.gm.on("userAssignActor", (_userId: number, actorId: number) => {
@@ -250,25 +251,25 @@ export class ExecutionSystem implements System {
   // Why the killer may not assassinate the victim, "" when they may; the weapon is checked on the request
   private assassinateRefusal(killerId: number, victimId: number): string {
     const mp = this.mp;
-    if (killerId === victimId || !isPlayerActor(mp, victimId)) return "They cannot be assassinated.";
-    if (!this.factions.canExecute(killerId)) return "You do not have the right to execute.";
-    if (this.isKilling(killerId)) return "You cannot do that now.";
-    if (this.assassinations.has(victimId)) return "They are already being assassinated.";
+    if (killerId === victimId || !isPlayerActor(mp, victimId)) return loc("execution.cannotAssassinate");
+    if (!this.factions.canExecute(killerId)) return loc("execution.noRight");
+    if (this.isKilling(killerId)) return loc("execution.cannotNow");
+    if (this.assassinations.has(victimId)) return loc("execution.alreadyAssassinated");
     const refusal = this.strikeRefusal(killerId, victimId);
     if (refusal) return refusal;
-    if (!isSneaking(mp, killerId)) return "You must be sneaking.";
-    if (!isBehind(mp, killerId, victimId)) return "You must be behind them.";
+    if (!isSneaking(mp, killerId)) return loc("execution.mustSneak");
+    if (!isBehind(mp, killerId, victimId)) return loc("execution.mustBeBehind");
     return "";
   }
 
   // What must still hold when the kill lands, checked on the request and again at the strike
   private strikeRefusal(killerId: number, victimId: number): string {
     const mp = this.mp;
-    if (!this.isAble(killerId)) return "You cannot do that now.";
-    if (isMounted(mp, killerId)) return "Dismount first.";
+    if (!this.isAble(killerId)) return loc("execution.cannotNow");
+    if (isMounted(mp, killerId)) return loc("execution.dismount");
     if (!isAlive(mp, victimId) || isFallen(mp, victimId) || this.bleedout.isDowned(victimId) || isRestrained(mp, victimId) ||
-      isMounted(mp, victimId) || this.seats.seatOf(userOf(mp, victimId))) return "They cannot be assassinated now.";
-    if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return "They are out of reach.";
+      isMounted(mp, victimId) || this.seats.seatOf(userOf(mp, victimId))) return loc("execution.cannotAssassinateNow");
+    if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return loc("execution.outOfReach");
     return "";
   }
 
@@ -281,8 +282,8 @@ export class ExecutionSystem implements System {
     const idle = held ? this.pickFrom(this.sneakFinishers, held, null) : 0;
     const refusal = this.assassinateRefusal(killerId, victimId) ||
       this.factions.borderRefusal(killerId, "execute", "assassination") ||
-      (idle ? "" : "You need a melee weapon in hand to assassinate them.") ||
-      (isWeaponDrawn(mp, killerId) ? "" : "Draw your weapon first.");
+      (idle ? "" : loc("execution.needMeleeAssassinate")) ||
+      (isWeaponDrawn(mp, killerId) ? "" : loc("execution.drawWeapon"));
     if (refusal) {
       notifyActor(mp, killerId, refusal);
       return;
@@ -303,17 +304,17 @@ export class ExecutionSystem implements System {
     const refusal = this.strikeRefusal(killerId, victimId) || this.pk(victimId, killerId, "assassinated");
     if (!refusal) return;
     this.log(`[execution] the assassination of ${hex(victimId)} by ${hex(killerId)} came to nothing: ${refusal}`);
-    notifyActor(mp, killerId, `Your assassination of ${nameShownTo(mp, killerId, victimId)} failed.`);
-    if (isAlive(mp, victimId)) notifyActor(mp, victimId, `${nameShownTo(mp, victimId, killerId)} failed to assassinate you.`);
+    notifyActor(mp, killerId, loc("execution.assassinationFailed", { name: nameShownTo(mp, killerId, victimId) }));
+    if (isAlive(mp, victimId)) notifyActor(mp, victimId, loc("execution.assassinationFailedYou", { name: nameShownTo(mp, victimId, killerId) }));
   }
 
   // Why the killer may not finish the victim off, "" when they may; the weapon is checked on the request
   private finishOffRefusal(killerId: number, victimId: number): string {
     const mp = this.mp;
-    if (!this.bleedout.isDowned(victimId) || killerId === victimId) return "They are not bleeding out.";
-    if (!this.factions.canExecute(killerId)) return "You do not have the right to execute.";
-    if (!this.isAble(killerId)) return "You cannot do that now.";
-    if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return "They are out of reach.";
+    if (!this.bleedout.isDowned(victimId) || killerId === victimId) return loc("execution.notBleedingOut");
+    if (!this.factions.canExecute(killerId)) return loc("execution.noRight");
+    if (!this.isAble(killerId)) return loc("execution.cannotNow");
+    if (!isNear(mp, killerId, victimId, this.capture.interactRange)) return loc("execution.outOfReach");
     return "";
   }
 
@@ -325,49 +326,49 @@ export class ExecutionSystem implements System {
     const idle = this.pickFinisher(held);
     const refusal = this.finishOffRefusal(killerId, victimId) ||
       this.factions.borderRefusal(killerId, "execute", "finish off") ||
-      (idle ? "" : "You need a melee weapon in hand to finish them off.") ||
-      (isWeaponDrawn(mp, killerId) ? "" : "Draw your weapon first.") ||
+      (idle ? "" : loc("execution.needMeleeFinish")) ||
+      (isWeaponDrawn(mp, killerId) ? "" : loc("execution.drawWeapon")) ||
       this.bleedout.hold(victimId, killerId, this.pairMaxMs, () => this.slay(victimId, killerId, "finished off"), true);
     if (refusal) {
       notifyActor(mp, killerId, refusal);
       return;
     }
     this.playPair(killerId, victimId, idle, this.standUp, () => this.bleedout.completeHold(victimId, killerId));
-    notifyActor(mp, victimId, `${nameShownTo(mp, victimId, killerId)} is finishing you off.`);
+    notifyActor(mp, victimId, loc("execution.finishingYou", { name: nameShownTo(mp, victimId, killerId) }));
     this.log(`[execution] ${hex(killerId)} finishes off ${hex(victimId)} with ${held} idle ${hex(idle)}`);
   }
 
   // Why the executor may not lead the prisoner to a block, "" when they may
   private prepareRefusal(executorId: number, prisonerId: number): string {
     const mp = this.mp;
-    if (!isBound(mp, prisonerId) || prisonerId === executorId) return "Only a prisoner in cuffs can be led to the block.";
-    if (!this.factions.canExecute(executorId)) return "You do not have the right to execute.";
-    if (!this.isAble(executorId)) return "You cannot do that now.";
-    if (this.prisoners.has(prisonerId)) return "They are already at the block.";
-    if (isCarried(mp, prisonerId) || this.bleedout.isDowned(prisonerId)) return "They cannot be led to the block now.";
-    if (!isNear(mp, executorId, prisonerId, this.capture.interactRange)) return "They are out of reach.";
-    if (!this.blockNear(executorId)) return "There is no execution block here.";
+    if (!isBound(mp, prisonerId) || prisonerId === executorId) return loc("execution.onlyCuffed");
+    if (!this.factions.canExecute(executorId)) return loc("execution.noRight");
+    if (!this.isAble(executorId)) return loc("execution.cannotNow");
+    if (this.prisoners.has(prisonerId)) return loc("execution.alreadyAtBlock");
+    if (isCarried(mp, prisonerId) || this.bleedout.isDowned(prisonerId)) return loc("execution.cannotLeadNow");
+    if (!isNear(mp, executorId, prisonerId, this.capture.interactRange)) return loc("execution.outOfReach");
+    if (!this.blockNear(executorId)) return loc("execution.noBlock");
     return "";
   }
 
   // Why the executor may not behead the prisoner, "" when they may; the weapon and the stance are checked on the request
   private executeRefusal(executorId: number, prisonerId: number): string {
     const prisoner = this.prisoners.get(prisonerId);
-    if (!prisoner) return "They are not at the block.";
-    if (!this.factions.canExecute(executorId)) return "You do not have the right to execute.";
-    if (!this.isAble(executorId) || prisonerId === executorId || this.headsmen.has(executorId)) return "You cannot do that now.";
-    if (prisoner.executorId) return AXE_FALLING;
-    if (this.distanceTo(executorId, prisoner.blockId) > BLOCK_REACH) return "Stand at the block to execute them.";
+    if (!prisoner) return loc("execution.notAtBlock");
+    if (!this.factions.canExecute(executorId)) return loc("execution.noRight");
+    if (!this.isAble(executorId) || prisonerId === executorId || this.headsmen.has(executorId)) return loc("execution.cannotNow");
+    if (prisoner.executorId) return AXE_FALLING();
+    if (this.distanceTo(executorId, prisoner.blockId) > BLOCK_REACH) return loc("execution.standAtBlock");
     return "";
   }
 
   // The MT behaviour that holds the block states runs only on foot, upright and with empty hands, so the headsman's graph refuses the stance otherwise
   private stanceRefusal(executorId: number): string {
     const mp = this.mp;
-    if (isMounted(mp, executorId)) return "Dismount first.";
-    if (isWeaponDrawn(mp, executorId)) return "Sheathe your weapon first.";
-    if (isSneaking(mp, executorId)) return "Stand up first.";
-    if (this.wornEntriesOf(executorId).some((e) => recordTypeOf(mp, Number(e.baseId)) === "LIGH")) return "Put away your torch first.";
+    if (isMounted(mp, executorId)) return loc("execution.dismount");
+    if (isWeaponDrawn(mp, executorId)) return loc("execution.sheathe");
+    if (isSneaking(mp, executorId)) return loc("execution.standUp");
+    if (this.wornEntriesOf(executorId).some((e) => recordTypeOf(mp, Number(e.baseId)) === "LIGH")) return loc("execution.putAwayTorch");
     return "";
   }
 
@@ -379,7 +380,7 @@ export class ExecutionSystem implements System {
     const blockId = refusal ? 0 : this.blockNear(executorId);
     const spot = blockId ? this.spotBy(blockId, this.prisonerOffset) : null;
     if (!spot) {
-      notifyActor(mp, executorId, refusal || "There is no execution block here.");
+      notifyActor(mp, executorId, refusal || loc("execution.noBlock"));
       return;
     }
     try {
@@ -392,8 +393,8 @@ export class ExecutionSystem implements System {
     this.prisoners.set(prisonerId, { blockId, pose: PRISONER_KNEEL, killAt: 0, killDelayed: false, timers: [] });
     this.sendPose(prisonerId, PRISONER_KNEEL);
     this.mirrorPose(prisonerId, PRISONER_KNEEL);
-    notifyActor(mp, executorId, `You force ${nameShownTo(mp, executorId, prisonerId)} down onto the block.`);
-    notifyActor(mp, prisonerId, `${nameShownTo(mp, prisonerId, executorId)} forces you down onto the block.`);
+    notifyActor(mp, executorId, loc("execution.forceDown", { name: nameShownTo(mp, executorId, prisonerId) }));
+    notifyActor(mp, prisonerId, loc("execution.forcedDown", { name: nameShownTo(mp, prisonerId, executorId) }));
     this.log(`[execution] ${hex(executorId)} puts ${hex(prisonerId)} on block ${hex(blockId)} at the prisoner's mark ${describeSpot(spot)}, ${PRISONER_KNEEL}`);
   }
 
@@ -405,12 +406,12 @@ export class ExecutionSystem implements System {
     const held = this.weaponTypeOf(executorId);
     const refusal = this.executeRefusal(executorId, prisonerId) ||
       this.factions.borderRefusal(executorId, "execute", "execution") ||
-      (TWO_HANDED.has(held) ? "" : "You need a two-handed weapon equipped to execute them, such as a battleaxe, greatsword or warhammer.") ||
+      (TWO_HANDED.has(held) ? "" : loc("execution.needTwoHanded")) ||
       this.stanceRefusal(executorId);
     const prisoner = this.prisoners.get(prisonerId);
     const spot = !refusal && prisoner ? this.spotBy(prisoner.blockId, HEADSMAN_MARK) : null;
     if (refusal || !prisoner || !spot) {
-      notifyActor(mp, executorId, refusal || "There is no execution block here.");
+      notifyActor(mp, executorId, refusal || loc("execution.noBlock"));
       return;
     }
     try {
@@ -431,7 +432,7 @@ export class ExecutionSystem implements System {
     prisoner.killAt = Date.now() + CHOP_LEAD_MS + CHOP_KILL_MS;
     prisoner.timers.push(setTimeout(() => this.chop(prisonerId, executorId), CHOP_LEAD_MS + CHOP_KILL_MS));
     setTimeout(() => this.releaseHeadsman(executorId, prisonerId), CHOP_LEAD_MS + CHOP_DONE_MS);
-    notifyActor(mp, prisonerId, `${nameShownTo(mp, prisonerId, executorId)} raises the axe.`);
+    notifyActor(mp, prisonerId, loc("execution.raisesAxe", { name: nameShownTo(mp, prisonerId, executorId) }));
     this.log(`[execution] ${hex(executorId)} executes ${hex(prisonerId)} at block ${hex(prisoner.blockId)} with the ${held} equipped: headsman moved to his mark ${describeSpot(spot)}, ` +
       `${HEADSMAN_STANCE}; chop ${seq} on every client in ${CHOP_LEAD_MS} ms (prisoner in ${prisoner.pose}), the kill at +${CHOP_LEAD_MS + CHOP_KILL_MS} ms, ${KILL_AFTER_HEAD_MS} ms after the head comes off, ` +
       `${HEADSMAN_EXIT} at +${CHOP_LEAD_MS + CHOP_DONE_MS} ms`);
@@ -582,9 +583,9 @@ export class ExecutionSystem implements System {
   // The PK of a living player character without a killmove of its own (the staff PK, the end of an assassination); the refusal, "" once they are slain
   pk(victimId: number, killerId: number, how = "executed"): string {
     const mp = this.mp;
-    if (!isPlayerActor(mp, victimId)) return "They are not a player character";
-    if (!isAlive(mp, victimId)) return "They are already dead";
-    if (isFallen(mp, victimId)) return "They are already fallen";
+    if (!isPlayerActor(mp, victimId)) return loc("execution.notPlayer");
+    if (!isAlive(mp, victimId)) return loc("execution.alreadyDead");
+    if (isFallen(mp, victimId)) return loc("execution.alreadyFallen");
     this.slay(victimId, killerId, how);
     return "";
   }
@@ -593,8 +594,10 @@ export class ExecutionSystem implements System {
   private slay(victimId: number, killerId: number, how: string): void {
     const mp = this.mp;
     const rights = this.factions.factionsWith(killerId, "execute", true);
-    const line = `${describeActor(mp, killerId)} ${how} ${describeActor(mp, victimId)}, ${whereOf(mp, victimId)}` +
-      ` (${rights.length ? `execute right of ${rights.join(", ")}` : "staff"})`;
+    const line = loc("execution.pkLine", {
+      killer: describeActor(mp, killerId), how, victim: describeActor(mp, victimId), where: whereOf(mp, victimId),
+      rights: rights.length ? loc("execution.pkRights", { factions: rights.join(", ") }) : loc("execution.pkStaff"),
+    });
     // The execute alert below is its staff line, so no [Death] line
     this.bleedout.die(victimId, how, killerId, false);
     // A fallen victim keeps the realm outfit
@@ -604,7 +607,7 @@ export class ExecutionSystem implements System {
     this.afterlife.sendToSovngarde(victimId, `${how} by ${hex(killerId)}`);
     appendLog(this.logDir, "pk.log", line);
     (globalThis as any).__alduinakDiscordAlert?.("execute", line);
-    notifyActor(mp, killerId, `You ${how} ${nameShownTo(mp, killerId, victimId)}.`);
+    notifyActor(mp, killerId, loc("execution.slain", { how, name: nameShownTo(mp, killerId, victimId) }));
     this.log(`[execution] ${line}`);
   }
 

@@ -1,4 +1,5 @@
 import { Log } from "./system";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -7,7 +8,7 @@ type Mp = any;
 // The repairs name the native functions and the settings keys here only, so a rename is changed in this file.
 const SETTINGS_BLOCK = "alduinakDamageFormulaSettings";
 const NATIVE_SETTLE = "settleWear";
-const DEFAULT_BROKEN_LABEL = "Broken";
+const DEFAULT_BROKEN_LABEL = loc("durability.brokenLabel");
 
 // How a copy's condition shows in its name: "Steel Sword (97%)", "(Broken)" at 0
 export interface DurabilityTags {

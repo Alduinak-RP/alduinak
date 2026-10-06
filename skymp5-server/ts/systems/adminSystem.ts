@@ -19,6 +19,7 @@ import { adminAudit } from "./discordAlerts";
 import { gameTimeNow } from "./timeSystem";
 import { CatalogItem, ITEM_TYPES, ARMO_NON_PLAYABLE, buildItemCatalog, searchItems, normaliseQuery, normaliseKind } from "./itemCatalog";
 import { Polymorph } from "./polymorph";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -94,18 +95,17 @@ const MAX_ATTR_BONUS = 1000;
 const MAX_ITEM_SPAWN = 10000;
 const ITEM_PAGE_SIZE = 50;
 const SPAWN_COOLDOWN_MS = 250;
-const SURVIVAL_OFF = "Survival is switched off on this server";
 
 const ADMIN_MODES: Array<{ id: string; label: string }> = [
-  { id: "god", label: "God" },
-  { id: "noclip", label: "NoClip" },
-  { id: "invis", label: "Invisible" },
-  { id: "ghost", label: "Ghost" },
-  { id: "freecam", label: "Freecam" },
-  { id: "smite", label: "Smite" },
-  { id: "healhit", label: "Heal on Hit" },
-  { id: "speed", label: "Speed" }, // the client raises SpeedMult
-  { id: "names", label: "Show account name" }, // everyone near sees this admin's account name on their floating tag
+  { id: "god", label: loc("admin.mode.god") },
+  { id: "noclip", label: loc("admin.mode.noclip") },
+  { id: "invis", label: loc("admin.mode.invis") },
+  { id: "ghost", label: loc("admin.mode.ghost") },
+  { id: "freecam", label: loc("admin.mode.freecam") },
+  { id: "smite", label: loc("admin.mode.smite") },
+  { id: "healhit", label: loc("admin.mode.healhit") },
+  { id: "speed", label: loc("admin.mode.speed") }, // the client raises SpeedMult
+  { id: "names", label: loc("admin.mode.names") }, // everyone near sees this admin's account name on their floating tag
 ];
 
 // The mode written to the neighbour-visible ff_adminTag actor property (registered in gamemode.js) as { n: account name, t: tier }, null while off
@@ -154,6 +154,8 @@ interface OnlinePlayer {
 }
 
 type AttrBonus = Record<typeof ATTR_KEYS[number], number>;
+
+const attrNames = (): Record<typeof ATTR_KEYS[number], string> => ({ health: loc("admin.attr.health"), magicka: loc("admin.attr.magicka"), stamina: loc("admin.attr.stamina") });
 
 export class AdminSystem implements System {
   systemName = "AdminSystem";
@@ -407,7 +409,7 @@ export class AdminSystem implements System {
       const row = {
         a: p.actorId.toString(16),
         p: p.profileId,
-        n: p.name || "(no name)",
+        n: p.name || loc("admin.noName"),
         d: discordId || (base ? base.d : ""),
         dn: base ? base.dn : "",
         ip: this.maskIp(ip) || (base ? base.ip : ""),
@@ -439,7 +441,7 @@ export class AdminSystem implements System {
       try { s = mp.get(a, "private.charSlot"); } catch { }
       let n = "";
       try { n = String(ctx.svr.getActorName(a) ?? "").trim(); } catch { }
-      return { a: a.toString(16), n: n || "(no name)", s: Number.isInteger(s) ? s : null, r: fallenLabel(mp, a) };
+      return { a: a.toString(16), n: n || loc("admin.noName"), s: Number.isInteger(s) ? s : null, r: fallenLabel(mp, a) };
     });
     return { f, ok: livingCount(mp, profileId) < profileMaxCharacters(mp, this.limits, profileId) };
   }
@@ -450,8 +452,8 @@ export class AdminSystem implements System {
     const slot = raw === undefined || raw === null || raw === "" ? 0 : Number(raw);
     if (slot === 0) return 0;
     const held = Number.isInteger(slot) && slot > 0 ? this.mastery.summaryOf(ctx, actorId).slots[slot] : undefined;
-    if (!held) return "this server has no such craft slot";
-    return held.profession ? slot : `no ${held.name.toLowerCase()} craft chosen`;
+    if (!held) return loc("admin.mastery.noSuchSlot");
+    return held.profession ? slot : loc("admin.mastery.slotNotChosen", { slot: held.name.toLowerCase() });
   }
 
   // Permanent max attribute change of one character, stored on the actor so it outlives the session
@@ -546,7 +548,7 @@ export class AdminSystem implements System {
     }
     let n = "";
     try { n = String(mp.get(actorId, "private.accountName") ?? ""); } catch { }
-    this.setAdminTag(mp, actorId, { n: n || `profile ${profileId}`, t: tier });
+    this.setAdminTag(mp, actorId, { n: n || loc("admin.tagProfile", { profile: profileId }), t: tier });
     this.taggedActorByProfile.set(profileId, actorId);
   }
 
@@ -588,14 +590,14 @@ export class AdminSystem implements System {
     const key = type === "adminAction" ? String(content["action"] ?? "") : type;
     const need = capForRequest(key);
     if (need === undefined) {
-      this.reply(mp, userId, false, `Unknown action '${key}'`);
+      this.reply(mp, userId, false, loc("admin.unknownAction", { action: key }));
       return;
     }
     const missing = missingCap(need, caps);
     if (missing) {
       this.log(`AdminSystem: profile ${adminProfile} (${tier}) refused '${key}': no ${missing} permission`);
-      this.adminLog(`profile ${adminProfile} (${tier}) was refused ${key}: no ${missing} permission`);
-      this.reply(mp, userId, false, `Your rank cannot use ${missing}`);
+      this.adminLog(loc("admin.audit.capRefused", { profile: adminProfile, tier, action: key, cap: missing }));
+      this.reply(mp, userId, false, loc("admin.rankCannotUse", { cap: missing }));
       return;
     }
 
@@ -665,18 +667,18 @@ export class AdminSystem implements System {
     }
     if (action === "teleportLoc") {
       const name = String(content["target"] ?? "");
-      const loc = this.locations.find(l => l.name === name);
-      if (!loc) {
-        this.reply(mp, userId, false, "Unknown location");
+      const place = this.locations.find(l => l.name === name);
+      if (!place) {
+        this.reply(mp, userId, false, loc("admin.unknownLocation"));
         return;
       }
       try {
-        mp.set(myActorId, "locationalData", { cellOrWorldDesc: loc.cellOrWorldDesc, pos: loc.pos, rot: loc.rot });
-        this.adminLog(`profile ${adminProfile} teleported to location '${loc.name}'`);
-        this.reply(mp, userId, true, `Teleported to ${loc.name}`, action);
+        mp.set(myActorId, "locationalData", { cellOrWorldDesc: place.cellOrWorldDesc, pos: place.pos, rot: place.rot });
+        this.adminLog(loc("admin.audit.teleportLoc", { profile: adminProfile, name: place.name }));
+        this.reply(mp, userId, true, loc("admin.teleportedTo", { name: place.name }), action);
       } catch (e) {
         this.log(`AdminSystem: teleportLoc '${name}' by profile ${adminProfile} failed: ${e}`);
-        this.reply(mp, userId, false, "Teleport failed, see server log");
+        this.reply(mp, userId, false, loc("admin.teleportFailed"));
       }
       return;
     }
@@ -685,99 +687,102 @@ export class AdminSystem implements System {
     // Only currently-online player actors are valid targets; the roster carries the admin's own row too, so self is allowed for everything but kick, PK and ban
     const target = this.onlinePlayers(mp).find(p => p.actorId === targetId);
     if (!target) {
-      this.reply(mp, userId, false, "Target is no longer online");
+      this.reply(mp, userId, false, loc("admin.targetOffline"));
       return;
     }
 
     try {
       if (action === "teleportTo") {
         mp.set(myActorId, "locationalData", mp.get(target.actorId, "locationalData"));
-        this.adminLog(`profile ${adminProfile} teleported to ${target.name} (profile ${target.profileId})`);
-        this.reply(mp, userId, true, `Teleported to ${target.name}`, action);
+        this.adminLog(loc("admin.audit.teleportTo", { profile: adminProfile, name: target.name, targetProfile: target.profileId }));
+        this.reply(mp, userId, true, loc("admin.teleportedTo", { name: target.name }), action);
       } else if (action === "summon") {
         mp.set(target.actorId, "locationalData", mp.get(myActorId, "locationalData"));
-        this.adminLog(`profile ${adminProfile} summoned ${target.name} (profile ${target.profileId})`);
-        this.reply(mp, userId, true, `Summoned ${target.name}`);
+        this.adminLog(loc("admin.audit.summon", { profile: adminProfile, name: target.name, targetProfile: target.profileId }));
+        this.reply(mp, userId, true, loc("admin.summoned", { name: target.name }));
       } else if (action === "kick") {
-        if (target.actorId === myActorId) return this.reply(mp, userId, false, "You cannot kick yourself");
+        if (target.actorId === myActorId) return this.reply(mp, userId, false, loc("admin.kick.self"));
         // Disable boots to the menu; kick drops the connection so they can't re-enter from character select
         ctx.svr.setEnabled(target.actorId, false);
-        try { kickWithReason(mp, target.userId, "You were kicked from the server by an admin."); } catch { }
+        try { kickWithReason(mp, target.userId, loc("admin.kick.reason")); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} kicked profile ${target.profileId} (${target.name})`);
-        this.adminLog(`profile ${adminProfile} kicked ${target.name} (profile ${target.profileId})`);
-        this.reply(mp, userId, true, `Kicked ${target.name}`);
+        this.adminLog(loc("admin.audit.kick", { profile: adminProfile, name: target.name, targetProfile: target.profileId }));
+        this.reply(mp, userId, true, loc("admin.kick.done", { name: target.name }));
       } else if (action === "ban") {
-        if (target.actorId === myActorId) return this.reply(mp, userId, false, "You cannot ban yourself");
+        if (target.actorId === myActorId) return this.reply(mp, userId, false, loc("admin.ban.self"));
         if (!caps.ban) {
           this.log(`AdminSystem: profile ${adminProfile} (${tier}) refused a ban on profile ${target.profileId} (${target.name})`);
-          this.adminLog(`profile ${adminProfile} (${tier}) was refused a ban on ${target.name} (profile ${target.profileId})`);
-          this.reply(mp, userId, false, "Your rank cannot ban players");
+          this.adminLog(loc("admin.audit.banRefused", { profile: adminProfile, tier, name: target.name, targetProfile: target.profileId }));
+          this.reply(mp, userId, false, loc("admin.ban.rankCannot"));
         } else {
           this.banViaBackend(mp, ctx, userId, myActorId, target, adminProfile, tier);
         }
       } else if (action === "pk") {
-        if (target.actorId === myActorId) return this.reply(mp, userId, false, "You cannot PK yourself");
-        const refusal = this.execution ? this.execution.pk(target.actorId, myActorId, "PK'd") : "Server not ready";
+        if (target.actorId === myActorId) return this.reply(mp, userId, false, loc("admin.pk.self"));
+        const refusal = this.execution ? this.execution.pk(target.actorId, myActorId, loc("admin.pk.how")) : loc("admin.notReady");
         if (refusal) {
-          this.adminLog(`profile ${adminProfile} was refused a PK of ${target.name} (profile ${target.profileId}): ${refusal}`, false);
+          this.adminLog(loc("admin.audit.pkRefused", { profile: adminProfile, name: target.name, targetProfile: target.profileId, refusal }), false);
           return this.reply(mp, userId, false, refusal);
         }
-        this.adminLog(`profile ${adminProfile} PK'd ${target.name} (profile ${target.profileId}), their soul goes to Sovngarde`, false);
-        this.reply(mp, userId, true, `PK'd ${target.name}`);
+        this.adminLog(loc("admin.audit.pk", { profile: adminProfile, name: target.name, targetProfile: target.profileId }), false);
+        this.reply(mp, userId, true, loc("admin.pk.done", { name: target.name }));
       } else if (action === "masteryGrant") {
         const amount = Number(content["amount"]);
         const slot = this.masterySlotOf(ctx, target.actorId, content);
-        if (typeof slot === "string") return this.reply(mp, userId, false, `${target.name}: ${slot}`);
+        if (typeof slot === "string") return this.reply(mp, userId, false, loc("admin.targetLine", { name: target.name, text: slot }));
         const summary = this.mastery.grantPoints(ctx, target.actorId, amount, slot);
         if (!summary) {
-          this.reply(mp, userId, false, `Hours must be a whole number between -${MAX_GRANT} and ${MAX_GRANT}`);
+          this.reply(mp, userId, false, loc("admin.mastery.hoursRange", { max: MAX_GRANT }));
         } else if (slot > 0) {
           const s = summary.slots[slot];
           const craft = `${s.name.toLowerCase()} ${s.label}`;
-          this.adminLog(`profile ${adminProfile} granted ${amount} mastery hour(s) to ${target.name}'s ${craft} (profile ${target.profileId}), now ${s.hours}h, ${s.rankName}`);
-          this.reply(mp, userId, true, `${target.name}: ${craft} ${s.hours}h, ${s.rankName}`);
+          this.adminLog(loc("admin.audit.masteryGrantSlot", { profile: adminProfile, amount, name: target.name, craft, targetProfile: target.profileId, hours: s.hours, rank: s.rankName }));
+          this.reply(mp, userId, true, loc("admin.mastery.slotStanding", { name: target.name, craft, hours: s.hours, rank: s.rankName }));
         } else {
-          const standing = summary.label ? `${summary.rankName} ${summary.label}` : "no craft chosen";
-          this.adminLog(`profile ${adminProfile} granted ${amount} mastery hour(s) to ${target.name} (profile ${target.profileId}), now ${summary.hours}h, ${standing}`);
-          this.reply(mp, userId, true, `${target.name}: ${summary.hours}h, ${standing}`);
+          const standing = summary.label ? `${summary.rankName} ${summary.label}` : loc("admin.mastery.noCraftChosen");
+          this.adminLog(loc("admin.audit.masteryGrant", { profile: adminProfile, amount, name: target.name, targetProfile: target.profileId, hours: summary.hours, standing }));
+          this.reply(mp, userId, true, loc("admin.mastery.standing", { name: target.name, hours: summary.hours, standing }));
         }
       } else if (action === "attrSet") {
         const next = this.setAttrBonus(mp, target, content);
         if (!next) {
-          this.reply(mp, userId, false, `Each attribute must be a whole number between -${MAX_ATTR_BONUS} and ${MAX_ATTR_BONUS}`);
+          this.reply(mp, userId, false, loc("admin.attr.range", { max: MAX_ATTR_BONUS }));
         } else {
-          const text = ATTR_KEYS.map(k => `${k} ${next[k] >= 0 ? "+" : ""}${next[k]}`).join(", ");
-          this.adminLog(`profile ${adminProfile} set the max attributes of ${target.name} (profile ${target.profileId}) to ${text}`);
-          this.reply(mp, userId, true, `${target.name}: ${text}`);
+          const names = attrNames();
+          const text = ATTR_KEYS.map(k => `${names[k]} ${next[k] >= 0 ? "+" : ""}${next[k]}`).join(", ");
+          this.adminLog(loc("admin.audit.attrSet", { profile: adminProfile, name: target.name, targetProfile: target.profileId, text }));
+          this.reply(mp, userId, true, loc("admin.targetLine", { name: target.name, text }));
         }
       } else if (action === "masteryLegendary") {
         const summary = this.mastery.grantLegendary(ctx, target.actorId);
-        if (summary) this.adminLog(`profile ${adminProfile} made ${target.name} (profile ${target.profileId}) Legendary ${summary.label}, now ${summary.hours}h`);
-        this.reply(mp, userId, !!summary, summary ? `${target.name}: ${summary.hours}h, ${summary.rankName} ${summary.label}` : `${target.name} has no craft`);
+        if (summary) this.adminLog(loc("admin.audit.masteryLegendary", { profile: adminProfile, name: target.name, targetProfile: target.profileId, profession: summary.label, hours: summary.hours }));
+        this.reply(mp, userId, !!summary, summary ? loc("admin.mastery.standing", { name: target.name, hours: summary.hours, standing: `${summary.rankName} ${summary.label}` }) : loc("admin.mastery.noCraft", { name: target.name }));
       } else if (action === "masteryReset") {
         const slot = this.masterySlotOf(ctx, target.actorId, content);
-        if (typeof slot === "string") return this.reply(mp, userId, false, `${target.name}: ${slot}`);
+        if (typeof slot === "string") return this.reply(mp, userId, false, loc("admin.targetLine", { name: target.name, text: slot }));
         const held = slot > 0 ? this.mastery.summaryOf(ctx, target.actorId).slots[slot] : null;
-        const craft = held ? `${held.name.toLowerCase()} craft` : "craft";
+        const craft = held ? loc("admin.mastery.slotCraft", { slot: held.name.toLowerCase() }) : loc("admin.mastery.craft");
         const ok = this.mastery.resetCharacter(ctx, target.actorId, slot);
-        if (ok) this.adminLog(`profile ${adminProfile} reset the ${craft}${held ? ` (${held.label})` : ""} and hours of ${target.name} (profile ${target.profileId})`);
-        this.reply(mp, userId, ok, ok ? `Reset the ${craft} and hours of ${target.name}` : `${target.name} has no ${craft} to reset`);
+        if (ok) this.adminLog(held
+          ? loc("admin.audit.masteryResetSlot", { profile: adminProfile, craft, profession: held.label, name: target.name, targetProfile: target.profileId })
+          : loc("admin.audit.masteryReset", { profile: adminProfile, craft, name: target.name, targetProfile: target.profileId }));
+        this.reply(mp, userId, ok, ok ? loc("admin.mastery.reset", { craft, name: target.name }) : loc("admin.mastery.nothingToReset", { name: target.name, craft }));
       } else if (action === "needsReset") {
         // NeedsSystem answers synchronously; no answer means needs are switched off
         const result: { ok: boolean | null } = { ok: null };
         ctx.gm.emit(NEEDS_RESET_EVENT, target.actorId, `profile ${adminProfile}`, (done: boolean) => { result.ok = done; });
-        if (result.ok) this.adminLog(`profile ${adminProfile} reset the hunger and fatigue of ${target.name} (profile ${target.profileId})`);
-        this.reply(mp, userId, !!result.ok, result.ok ? `Reset the hunger and fatigue of ${target.name}` : result.ok === null ? "Needs are switched off on this server" : `${target.name} has no needs to reset yet`);
+        if (result.ok) this.adminLog(loc("admin.audit.needsReset", { profile: adminProfile, name: target.name, targetProfile: target.profileId }));
+        this.reply(mp, userId, !!result.ok, result.ok ? loc("admin.needs.reset", { name: target.name }) : result.ok === null ? loc("admin.needs.off") : loc("admin.needs.nothing", { name: target.name }));
       } else if (action.startsWith("survival")) {
         this.survivalAction(ctx, userId, adminProfile, target, action, content);
       } else if (action === "itemSpawn") {
         this.spawnItem(mp, userId, myActorId, adminProfile, tier, target, content);
       } else {
-        this.reply(mp, userId, false, `Unknown action '${action}'`);
+        this.reply(mp, userId, false, loc("admin.unknownAction", { action }));
       }
     } catch (e) {
       this.log(`AdminSystem: action '${action}' by profile ${adminProfile} failed: ${e}`);
-      this.reply(mp, userId, false, "Action failed, see server log");
+      this.reply(mp, userId, false, loc("admin.actionFailed"));
     }
   }
 
@@ -785,25 +790,25 @@ export class AdminSystem implements System {
   private survivalAction(ctx: SystemContext, userId: number, adminProfile: number, target: OnlinePlayer, action: string, content: Content): void {
     const mp = ctx.svr as Mp;
     const by = `profile ${adminProfile}`;
-    const who = `${target.name} (profile ${target.profileId})`;
+    const who = { profile: adminProfile, name: target.name, targetProfile: target.profileId };
     if (action === "survivalReset") {
       const result: { ok: boolean | null } = { ok: null };
       ctx.gm.emit(SURVIVAL_RESET_EVENT, target.actorId, by, (done: boolean) => { result.ok = done; });
-      if (result.ok) this.adminLog(`profile ${adminProfile} reset the survival state of ${who}`);
-      return this.reply(mp, userId, !!result.ok, result.ok ? `Reset the survival state of ${target.name}` : result.ok === null ? SURVIVAL_OFF : `${target.name} is not followed by survival yet`);
+      if (result.ok) this.adminLog(loc("admin.audit.survivalReset", who));
+      return this.reply(mp, userId, !!result.ok, result.ok ? loc("admin.survival.reset", { name: target.name }) : result.ok === null ? loc("admin.survival.off") : loc("admin.survival.notFollowed", { name: target.name }));
     }
-    const requests: Record<string, { request: SurvivalAdminRequest; verb: string }> = {
-      survivalInfo: { request: { op: "summary" }, verb: "" },
-      survivalCold: { request: { op: "setCold", cold: content["cold"] }, verb: "set the cold of" },
-      survivalDisease: { request: { op: "giveDisease", disease: content["disease"], stage: content["stage"] }, verb: "gave a disease to" },
-      survivalCure: { request: { op: "cure", disease: content["disease"] }, verb: "cured" },
+    const requests: Record<string, { request: SurvivalAdminRequest; audit: ((text: string) => string) | null }> = {
+      survivalInfo: { request: { op: "summary" }, audit: null },
+      survivalCold: { request: { op: "setCold", cold: content["cold"] }, audit: (text) => loc("admin.audit.survivalCold", { ...who, text }) },
+      survivalDisease: { request: { op: "giveDisease", disease: content["disease"], stage: content["stage"] }, audit: (text) => loc("admin.audit.survivalDisease", { ...who, text }) },
+      survivalCure: { request: { op: "cure", disease: content["disease"] }, audit: (text) => loc("admin.audit.survivalCure", { ...who, text }) },
     };
     const known = requests[action];
-    if (!known) return this.reply(mp, userId, false, `Unknown action '${action}'`);
+    if (!known) return this.reply(mp, userId, false, loc("admin.unknownAction", { action }));
     const result = this.survival(ctx, target.actorId, by, known.request);
-    if (!result) return this.reply(mp, userId, false, SURVIVAL_OFF);
-    if (result.ok && known.verb) this.adminLog(`profile ${adminProfile} ${known.verb} ${who}: ${result.text}`);
-    this.reply(mp, userId, result.ok, `${target.name}: ${result.text}`);
+    if (!result) return this.reply(mp, userId, false, loc("admin.survival.off"));
+    if (result.ok && known.audit) this.adminLog(known.audit(result.text));
+    this.reply(mp, userId, result.ok, loc("admin.targetLine", { name: target.name, text: result.text }));
   }
 
   private survival(ctx: SystemContext, actorId: number, by: string, request: SurvivalAdminRequest): SurvivalAdminResult | null {
@@ -822,20 +827,20 @@ export class AdminSystem implements System {
   private revive(ctx: SystemContext, userId: number, adminProfile: number, targetHex: string): void {
     const mp = ctx.svr as Mp;
     const actorId = parseInt(targetHex, 16) >>> 0;
-    if (!this.afterlife || !actorId) return this.reply(mp, userId, false, "Unknown character");
+    if (!this.afterlife || !actorId) return this.reply(mp, userId, false, loc("admin.unknownCharacter"));
     let name = "";
     let profileId = 0;
     try {
       name = String(ctx.svr.getActorName(actorId) ?? "").trim();
       profileId = Number(mp.get(actorId, "profileId")) || 0;
-    } catch { return this.reply(mp, userId, false, "Unknown character"); }
+    } catch { return this.reply(mp, userId, false, loc("admin.unknownCharacter")); }
     const refusal = this.afterlife.revive(actorId, `profile ${adminProfile}`);
     if (refusal) {
-      this.adminLog(`profile ${adminProfile} was refused a revive of ${name} (profile ${profileId}): ${refusal}`, false);
+      this.adminLog(loc("admin.audit.reviveRefused", { profile: adminProfile, name, targetProfile: profileId, refusal }), false);
       return this.reply(mp, userId, false, refusal);
     }
-    this.adminLog(`profile ${adminProfile} revived ${name} (profile ${profileId}), they wake at the Temple of Kynareth`);
-    this.reply(mp, userId, true, `Revived ${name}`);
+    this.adminLog(loc("admin.audit.revive", { profile: adminProfile, name, targetProfile: profileId }));
+    this.reply(mp, userId, true, loc("admin.revived", { name }));
   }
 
   // Built once in the background on first use; a failed build is retried on the next call
@@ -884,17 +889,17 @@ export class AdminSystem implements System {
     this.spawnAt.set(userId, now);
     if (!this.catalog) {
       this.ensureCatalog();
-      this.reply(mp, userId, false, "The item list is still loading, try again shortly");
+      this.reply(mp, userId, false, loc("admin.item.loading"));
       return;
     }
     const entry = this.catalogByDesc.get(String(content["item"] ?? "").toLowerCase());
     if (!entry) {
-      this.reply(mp, userId, false, "Unknown item");
+      this.reply(mp, userId, false, loc("admin.item.unknown"));
       return;
     }
     const count = Number(content["count"]);
     if (!Number.isInteger(count) || count < 1 || count > MAX_ITEM_SPAWN) {
-      this.reply(mp, userId, false, `Count must be a whole number between 1 and ${MAX_ITEM_SPAWN}`);
+      this.reply(mp, userId, false, loc("admin.item.countRange", { max: MAX_ITEM_SPAWN }));
       return;
     }
     let itemId = 0;
@@ -904,14 +909,14 @@ export class AdminSystem implements System {
       record = mp.lookupEspmRecordById(itemId)?.record;
     } catch { }
     if (!record || !ITEM_TYPES.includes(record.type) || (record.type === "ARMO" && (record.flags & ARMO_NON_PLAYABLE))) {
-      this.reply(mp, userId, false, "That is not a spawnable item");
+      this.reply(mp, userId, false, loc("admin.item.notSpawnable"));
       return;
     }
     addItemTo(mp, target.actorId, itemId, count);
-    const text = `profile ${adminProfile} (${tier}) spawned ${count}x ${JSON.stringify(entry.name)} [${entry.desc} ${entry.type}] for ${JSON.stringify(target.name)} (profile ${target.profileId})`;
+    const text = loc("admin.audit.itemSpawn", { profile: adminProfile, tier, count, item: JSON.stringify(entry.name), desc: entry.desc, type: entry.type, name: JSON.stringify(target.name), targetProfile: target.profileId });
     this.log(`AdminSystem: ${text}`);
     this.adminLog(text);
-    this.reply(mp, userId, true, `Gave ${count} x ${entry.name} to ${target.actorId === myActorId ? "you" : target.name}`);
+    this.reply(mp, userId, true, target.actorId === myActorId ? loc("admin.item.gaveSelf", { count, item: entry.name }) : loc("admin.item.gave", { count, item: entry.name, name: target.name }));
   }
 
   private autoRevert(mp: Mp, actorId: number, reason: string, notify = true): void {
@@ -925,7 +930,7 @@ export class AdminSystem implements System {
       if (!pm || mp.getUserActor(userId) !== adminActorId) return;
       const active = this.onlinePlayers(mp).flatMap((p) => {
         const rec = pm.recordOf(mp, p.actorId);
-        return rec ? [{ a: p.actorId.toString(16), n: p.name || "(no name)", race: pm.raceName(rec.race), since: rec.since, by: rec.by }] : [];
+        return rec ? [{ a: p.actorId.toString(16), n: p.name || loc("admin.noName"), race: pm.raceName(rec.race), since: rec.since, by: rec.by }] : [];
       });
       mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminRaces", ready: pm.ready, races: pm.rows(), active }));
     } catch (e) {
@@ -937,7 +942,7 @@ export class AdminSystem implements System {
   private polymorphAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, tier: AdminTier, action: string, content: Content): void {
     const pm = this.polymorph;
     if (!pm) {
-      this.reply(mp, userId, false, "Server not ready");
+      this.reply(mp, userId, false, loc("admin.notReady"));
       return;
     }
     if (action === "raceList") {
@@ -949,22 +954,24 @@ export class AdminSystem implements System {
     const targetId = hexId ? parseInt(hexId, 16) >>> 0 : myActorId;
     const target = this.onlinePlayers(mp).find(p => p.actorId === targetId);
     if (!target) {
-      this.reply(mp, userId, false, "Target is no longer online");
+      this.reply(mp, userId, false, loc("admin.targetOffline"));
       return;
     }
     const self = target.actorId === myActorId;
-    const who = `${JSON.stringify(target.name)} (profile ${target.profileId}, actor ${target.actorId.toString(16)})`;
-    const by = `profile ${adminProfile} (${tier})`;
-    const subject = self ? "You are" : `${target.name} is`;
+    const who = loc("admin.polymorph.who", { name: JSON.stringify(target.name), profile: target.profileId, actor: target.actorId.toString(16) });
+    const by = loc("admin.polymorph.by", { profile: adminProfile, tier });
     if (action === "polymorphRevert") {
       const rec = pm.revert(mp, target.actorId, `by ${by}`);
-      if (rec) this.adminLog(`${by} reverted the polymorph of ${who}`);
-      this.reply(mp, userId, !!rec, rec ? `${subject} back in ${self ? "your" : "their"} own form` : `${subject} not transformed`, rec && self ? action : undefined);
+      if (rec) this.adminLog(loc("admin.audit.polymorphRevert", { by, who }));
+      const revertText = rec
+        ? (self ? loc("admin.polymorph.revertedSelf") : loc("admin.polymorph.reverted", { name: target.name }))
+        : (self ? loc("admin.polymorph.notTransformedSelf") : loc("admin.polymorph.notTransformed", { name: target.name }));
+      this.reply(mp, userId, !!rec, revertText, rec && self ? action : undefined);
       this.sendRaces(mp, userId, myActorId);
       return;
     }
     if (action !== "polymorph") {
-      this.reply(mp, userId, false, `Unknown action '${action}'`);
+      this.reply(mp, userId, false, loc("admin.unknownAction", { action }));
       return;
     }
     let result: ReturnType<Polymorph["transform"]>;
@@ -972,7 +979,7 @@ export class AdminSystem implements System {
       result = pm.transform(mp, target.actorId, String(content["race"] ?? ""), adminProfile);
     } catch (e) {
       this.log(`AdminSystem: polymorph of ${who} by ${by} failed: ${e}`);
-      this.reply(mp, userId, false, "Polymorph failed, see server log");
+      this.reply(mp, userId, false, loc("admin.polymorph.failed"));
       return;
     }
     if (typeof result === "string") {
@@ -981,17 +988,26 @@ export class AdminSystem implements System {
       return;
     }
     const e = result.entry;
-    const text = `${by} polymorphed ${who} from ${result.from} into ${e.name} (${e.edid}) [${e.desc} ${e.group}], ${result.female ? "female" : "male"}${result.swapped ? " (the only skeleton the race has)" : ""}, ${result.face}, ${result.gearOff ? "gear taken off" : "gear kept"}${result.noDraw ? `, weapons stay sheathed (no shield biped object)${result.gearOff ? `, ${result.attacks} attack event(s) on the attack key` : ""}` : ""}`;
+    const draw = result.noDraw ? loc("admin.polymorph.audit.noDraw", { attacks: result.gearOff ? loc("admin.polymorph.audit.attacks", { n: result.attacks }) : "" }) : "";
+    const text = loc("admin.audit.polymorph", {
+      by, who, from: result.from, race: e.name, edid: e.edid, desc: e.desc, group: e.group,
+      sex: result.female ? loc("admin.polymorph.audit.female") : loc("admin.polymorph.audit.male"),
+      swapped: result.swapped ? loc("admin.polymorph.audit.swapped") : "",
+      face: result.face,
+      gear: result.gearOff ? loc("admin.polymorph.audit.gearOff") : loc("admin.polymorph.audit.gearKept"),
+      draw,
+    });
     this.log(`AdminSystem: ${text}`);
     this.adminLog(text);
-    this.reply(mp, userId, true, `${subject} now ${e.name} (${e.edid})${result.noDraw && !result.gearOff ? ", a form that cannot draw weapons" : ""}`, self ? action : undefined);
+    const note = result.noDraw && !result.gearOff ? loc("admin.polymorph.cannotDraw") : "";
+    this.reply(mp, userId, true, self ? loc("admin.polymorph.nowSelf", { race: e.name, edid: e.edid, note }) : loc("admin.polymorph.now", { name: target.name, race: e.name, edid: e.edid, note }), self ? action : undefined);
     this.sendRaces(mp, userId, myActorId);
   }
 
   // Pets: the grantable bases, and a stored pet for the admin's own character to hand to a stablemaster
   private petAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, action: string, content: Content): void {
     if (!this.pets) {
-      this.reply(mp, userId, false, "Pets are not enabled");
+      this.reply(mp, userId, false, loc("admin.pet.disabled"));
       return;
     }
     if (action === "petBases") {
@@ -1004,8 +1020,8 @@ export class AdminSystem implements System {
     }
     const kind = String(content["kind"] ?? "") as PetKind;
     const refusal = this.pets.grant(myActorId, kind, String(content["base"] ?? ""), String(content["name"] ?? ""));
-    if (!refusal) this.adminLog(`profile ${adminProfile} granted themselves a ${kind} pet (${String(content["base"] ?? "")})`);
-    this.reply(mp, userId, !refusal, refusal || `A ${kind} was added to your pets`);
+    if (!refusal) this.adminLog(loc("admin.audit.petGrant", { profile: adminProfile, kind, base: String(content["base"] ?? "") }));
+    this.reply(mp, userId, !refusal, refusal || loc("admin.pet.granted", { kind }));
   }
 
   // Every tier may manage NPC zones; the slot must still belong to the admin because add/delete finish asynchronously
@@ -1024,51 +1040,53 @@ export class AdminSystem implements System {
       let raw: unknown;
       try { raw = JSON.parse(String(content["zone"] ?? "")); } catch { raw = null; }
       if (!raw || typeof raw !== "object") {
-        this.reply(mp, userId, false, "Bad zone data", action);
+        this.reply(mp, userId, false, loc("admin.zone.badData"), action);
         return;
       }
       const zoneName = String(pick(raw, "name") ?? "").trim();
       // Save names the zone it replaces in Edit
       const edited = String(pick(raw, "edit") ?? "").trim();
       this.npcSpawns.addZone(raw).then(err => {
-        if (!err) this.adminLog(edited
-          ? `profile ${adminProfile} edited npc zone '${edited}'${edited === zoneName ? "" : ` -> '${zoneName}'`}`
-          : `profile ${adminProfile} added npc zone '${zoneName}'`);
-        this.replyIfSameAdmin(mp, userId, myActorId, !err, err ?? `${edited ? "Saved" : "Added"} zone ${zoneName}`, action);
+        if (!err) this.adminLog(!edited
+          ? loc("admin.audit.zoneAdd", { profile: adminProfile, name: zoneName })
+          : edited === zoneName
+            ? loc("admin.audit.zoneEdit", { profile: adminProfile, name: edited })
+            : loc("admin.audit.zoneEditRenamed", { profile: adminProfile, name: edited, newName: zoneName }));
+        this.replyIfSameAdmin(mp, userId, myActorId, !err, err ?? (edited ? loc("admin.zone.saved", { name: zoneName }) : loc("admin.zone.added", { name: zoneName })), action);
         if (!err) this.sendZones(mp, userId, myActorId);
       }).catch(e => {
         this.log(`AdminSystem: npcZoneAdd by profile ${adminProfile} failed: ${e}`);
-        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log", action);
+        this.replyIfSameAdmin(mp, userId, myActorId, false, loc("admin.actionFailed"), action);
       });
       return;
     }
     if (action === "npcZoneDelete") {
       this.npcSpawns.deleteZone(name).then(ok => {
-        if (ok) this.adminLog(`profile ${adminProfile} deleted npc zone '${name}'`);
-        this.replyIfSameAdmin(mp, userId, myActorId, ok, ok ? `Deleted zone ${name}` : "Unknown zone");
+        if (ok) this.adminLog(loc("admin.audit.zoneDelete", { profile: adminProfile, name }));
+        this.replyIfSameAdmin(mp, userId, myActorId, ok, ok ? loc("admin.zone.deleted", { name }) : loc("admin.zone.unknown"));
         if (ok) this.sendZones(mp, userId, myActorId);
       }).catch(e => {
         this.log(`AdminSystem: npcZoneDelete '${name}' by profile ${adminProfile} failed: ${e}`);
-        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log");
+        this.replyIfSameAdmin(mp, userId, myActorId, false, loc("admin.actionFailed"));
       });
       return;
     }
     if (action === "npcZoneReset" || action === "npcZoneDeactivate") {
       const reset = action === "npcZoneReset";
       const ok = reset ? this.npcSpawns.resetZone(name) : this.npcSpawns.deactivateZone(name);
-      if (ok) this.adminLog(`profile ${adminProfile} ${reset ? "reset" : "deactivated"} npc zone '${name}'`);
-      this.reply(mp, userId, ok, !ok ? "Unknown zone" : reset ? `Reset zone ${name}` : `Deactivated zone ${name}, respawn timer started`);
+      if (ok) this.adminLog(reset ? loc("admin.audit.zoneReset", { profile: adminProfile, name }) : loc("admin.audit.zoneDeactivate", { profile: adminProfile, name }));
+      this.reply(mp, userId, ok, !ok ? loc("admin.zone.unknown") : reset ? loc("admin.zone.reset", { name }) : loc("admin.zone.deactivated", { name }));
       if (ok) this.sendZones(mp, userId, myActorId);
       return;
     }
     if (action === "npcZoneActivate") {
       const placed = this.npcSpawns.activateZone(name, myActorId);
       if (placed === null) {
-        this.reply(mp, userId, false, "Unknown zone");
+        this.reply(mp, userId, false, loc("admin.zone.unknown"));
         return;
       }
-      this.adminLog(`profile ${adminProfile} activated npc zone '${name}', ${placed} npc(s) placed`);
-      this.reply(mp, userId, placed > 0, placed ? `Activated zone ${name}, ${placed} NPC(s) placed` : `Nothing placed in ${name}: every NPC is alive or the spawn failed (server log)`);
+      this.adminLog(loc("admin.audit.zoneActivate", { profile: adminProfile, name, placed }));
+      this.reply(mp, userId, placed > 0, placed ? loc("admin.zone.activated", { name, placed }) : loc("admin.zone.nothingPlaced", { name }));
       this.sendZones(mp, userId, myActorId);
       return;
     }
@@ -1079,27 +1097,27 @@ export class AdminSystem implements System {
         mp.sendCustomPacket(userId, JSON.stringify({ customPacketType: "adminPos", cellOrWorldDesc: loc.cellOrWorldDesc, pos }));
       } catch (e) {
         this.log(`AdminSystem: npcZonePos by profile ${adminProfile} failed: ${e}`);
-        this.reply(mp, userId, false, "Position unavailable, see server log");
+        this.reply(mp, userId, false, loc("admin.zone.posUnavailable"));
       }
       return;
     }
     if (action === "npcZoneTp") {
       const target = this.npcSpawns.teleportTarget(name);
       if (!target) {
-        this.reply(mp, userId, false, "Unknown zone");
+        this.reply(mp, userId, false, loc("admin.zone.unknown"));
         return;
       }
       try {
         mp.set(myActorId, "locationalData", { cellOrWorldDesc: target.cellOrWorldDesc, pos: target.pos, rot: [0, 0, 0] });
-        this.adminLog(`profile ${adminProfile} teleported to npc zone '${name}'`);
-        this.reply(mp, userId, true, `Teleported to ${name}`, action);
+        this.adminLog(loc("admin.audit.zoneTp", { profile: adminProfile, name }));
+        this.reply(mp, userId, true, loc("admin.teleportedTo", { name }), action);
       } catch (e) {
         this.log(`AdminSystem: npcZoneTp '${name}' by profile ${adminProfile} failed: ${e}`);
-        this.reply(mp, userId, false, "Teleport failed, see server log");
+        this.reply(mp, userId, false, loc("admin.teleportFailed"));
       }
       return;
     }
-    this.reply(mp, userId, false, `Unknown action '${action}'`);
+    this.reply(mp, userId, false, loc("admin.unknownAction", { action }));
   }
 
   // The slot must still belong to the admin because save and delete finish asynchronously
@@ -1115,7 +1133,7 @@ export class AdminSystem implements System {
   private jobAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, action: string, content: Content): void {
     const jobs = this.jobs;
     if (!jobs) {
-      this.reply(mp, userId, false, "Jobs are not enabled");
+      this.reply(mp, userId, false, loc("admin.job.disabled"));
       return;
     }
     const name = String(content["target"] ?? "");
@@ -1127,48 +1145,49 @@ export class AdminSystem implements System {
       let raw: unknown;
       try { raw = JSON.parse(String(content["job"] ?? "")); } catch { raw = null; }
       if (!raw || typeof raw !== "object") {
-        this.reply(mp, userId, false, "Bad job data");
+        this.reply(mp, userId, false, loc("admin.job.badData"));
         return;
       }
       jobs.saveJob(raw).then(({ error, name: saved, replaced }) => {
-        if (!error) this.adminLog(`profile ${adminProfile} ${replaced ? "replaced" : "added"} job '${saved}'`);
-        this.replyIfSameAdmin(mp, userId, myActorId, !error, error ?? `${replaced ? "Replaced" : "Added"} job ${saved}`);
+        if (!error) this.adminLog(replaced ? loc("admin.audit.jobReplace", { profile: adminProfile, name: saved }) : loc("admin.audit.jobAdd", { profile: adminProfile, name: saved }));
+        this.replyIfSameAdmin(mp, userId, myActorId, !error, error ?? (replaced ? loc("admin.job.replaced", { name: saved }) : loc("admin.job.added", { name: saved })));
         if (!error) this.sendJobs(mp, userId, myActorId);
       }).catch(e => {
         this.log(`AdminSystem: jobAdd by profile ${adminProfile} failed: ${e}`);
-        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log");
+        this.replyIfSameAdmin(mp, userId, myActorId, false, loc("admin.actionFailed"));
       });
       return;
     }
     if (action === "jobDelete") {
       jobs.deleteJob(name).then(ok => {
-        if (ok) this.adminLog(`profile ${adminProfile} deleted job '${name}'`);
-        this.replyIfSameAdmin(mp, userId, myActorId, ok, ok ? `Deleted job ${name}` : "Unknown job");
+        if (ok) this.adminLog(loc("admin.audit.jobDelete", { profile: adminProfile, name }));
+        this.replyIfSameAdmin(mp, userId, myActorId, ok, ok ? loc("admin.job.deleted", { name }) : loc("admin.job.unknown"));
         if (ok) this.sendJobs(mp, userId, myActorId);
       }).catch(e => {
         this.log(`AdminSystem: jobDelete '${name}' by profile ${adminProfile} failed: ${e}`);
-        this.replyIfSameAdmin(mp, userId, myActorId, false, "Action failed, see server log");
+        this.replyIfSameAdmin(mp, userId, myActorId, false, loc("admin.actionFailed"));
       });
       return;
     }
     if (action === "jobTp") {
       const end = content["end"] === "dropoff" ? "dropoff" : "pickup";
+      const endName = end === "dropoff" ? loc("admin.job.dropoff") : loc("admin.job.pickup");
       const target = jobs.teleportTarget(name, end);
       if (!target) {
-        this.reply(mp, userId, false, `The ${end} of that job has no known location`);
+        this.reply(mp, userId, false, loc("admin.job.noLocation", { end: endName }));
         return;
       }
       try {
         mp.set(myActorId, "locationalData", { cellOrWorldDesc: target.cellOrWorldDesc, pos: target.pos, rot: [0, 0, 0] });
-        this.adminLog(`profile ${adminProfile} teleported to the ${end} of job '${name}'`);
-        this.reply(mp, userId, true, `Teleported to the ${end} of ${name}`, action);
+        this.adminLog(loc("admin.audit.jobTp", { profile: adminProfile, end: endName, name }));
+        this.reply(mp, userId, true, loc("admin.job.teleported", { end: endName, name }), action);
       } catch (e) {
         this.log(`AdminSystem: jobTp '${name}' by profile ${adminProfile} failed: ${e}`);
-        this.reply(mp, userId, false, "Teleport failed, see server log");
+        this.reply(mp, userId, false, loc("admin.teleportFailed"));
       }
       return;
     }
-    this.reply(mp, userId, false, `Unknown action '${action}'`);
+    this.reply(mp, userId, false, loc("admin.unknownAction", { action }));
   }
 
   private sendWeather(mp: Mp, userId: number, adminActorId: number, withCatalog: boolean): void {
@@ -1186,7 +1205,7 @@ export class AdminSystem implements System {
   private weatherAction(mp: Mp, userId: number, myActorId: number, adminProfile: number, tier: AdminTier, action: string, content: Content): void {
     const ws = this.weather;
     if (!ws) {
-      this.reply(mp, userId, false, "Weather sync is not enabled");
+      this.reply(mp, userId, false, loc("admin.weather.disabled"));
       return;
     }
     if (action === "weatherList") {
@@ -1196,7 +1215,7 @@ export class AdminSystem implements System {
     let region = String(content["region"] ?? "");
     if (!region) region = ws.regionOf(mp, myActorId) ?? "";
     if (!region) {
-      this.reply(mp, userId, false, "You are not in a weather region");
+      this.reply(mp, userId, false, loc("admin.weather.noRegion"));
       return;
     }
     if (action === "weatherSet") {
@@ -1208,9 +1227,9 @@ export class AdminSystem implements System {
         return;
       }
       const weather = ws.weatherName(String(content["weather"] ?? ""));
-      const hold = minutes ? `for ${minutes} min` : "until cleared";
-      this.adminLog(`profile ${adminProfile} (${tier}) forced weather ${weather} on region ${region} ${hold}`);
-      this.reply(mp, userId, true, `${weather} on ${ws.regionName(region)} ${hold}`);
+      const hold = minutes ? loc("admin.weather.forMinutes", { minutes }) : loc("admin.weather.untilCleared");
+      this.adminLog(loc("admin.audit.weatherSet", { profile: adminProfile, tier, weather, region, hold }));
+      this.reply(mp, userId, true, loc("admin.weather.set", { weather, region: ws.regionName(region), hold }));
       this.sendWeather(mp, userId, myActorId, false);
       return;
     }
@@ -1220,17 +1239,17 @@ export class AdminSystem implements System {
         this.reply(mp, userId, false, error);
         return;
       }
-      this.adminLog(`profile ${adminProfile} (${tier}) cleared the weather on region ${region}`);
-      this.reply(mp, userId, true, `${ws.regionName(region)} rolls its own weather again`);
+      this.adminLog(loc("admin.audit.weatherClear", { profile: adminProfile, tier, region }));
+      this.reply(mp, userId, true, loc("admin.weather.cleared", { region: ws.regionName(region) }));
       this.sendWeather(mp, userId, myActorId, false);
       return;
     }
-    this.reply(mp, userId, false, `Unknown action '${action}'`);
+    this.reply(mp, userId, false, loc("admin.unknownAction", { action }));
   }
 
   private toggleMode(mp: Mp, userId: number, actorId: number, adminProfile: number, mode: string, reported: unknown): void {
     if (!ADMIN_MODES.some(m => m.id === mode)) {
-      this.reply(mp, userId, false, `Unknown mode '${mode}'`);
+      this.reply(mp, userId, false, loc("admin.unknownMode", { mode }));
       return;
     }
     const state = this.modesByProfile.get(adminProfile) ?? {};
@@ -1242,7 +1261,11 @@ export class AdminSystem implements System {
     if (mode === NAMES_MODE) this.writeAdminTag(mp, adminProfile, actorId, on);
     // Only freecam falling off on its own is reported by the client, and that repeats a toggle already alerted
     const freecamReport = typeof reported === "boolean" && mode === "freecam" && !on;
-    this.adminLog(`profile ${adminProfile} turned mode ${mode} ${on ? "on" : "off"}${typeof reported === "boolean" ? " (client report)" : ""}`, !freecamReport);
+    const vars = { profile: adminProfile, mode };
+    const text = typeof reported === "boolean"
+      ? (on ? loc("admin.audit.modeOnReport", vars) : loc("admin.audit.modeOffReport", vars))
+      : (on ? loc("admin.audit.modeOn", vars) : loc("admin.audit.modeOff", vars));
+    this.adminLog(text, !freecamReport);
   }
 
   // Registration lives in gamemode.js; a missing property must not break the toggle
@@ -1348,11 +1371,11 @@ export class AdminSystem implements System {
     tier: AdminTier
   ): void {
     if (!this.masterUrl || !this.masterKey || !this.authToken) {
-      this.reply(mp, userId, false, "Ban unavailable: master api not configured");
+      this.reply(mp, userId, false, loc("admin.ban.noMaster"));
       return;
     }
     if (!target.profileId) {
-      this.reply(mp, userId, false, "Ban unavailable: target has no profile id");
+      this.reply(mp, userId, false, loc("admin.ban.noProfile"));
       return;
     }
     fetch(`${this.masterUrl}/api/servers/${this.masterKey}/ban`, {
@@ -1360,24 +1383,24 @@ export class AdminSystem implements System {
       headers: { "Content-Type": "application/json", "X-Auth-Token": this.authToken },
       body: JSON.stringify({
         profileId: target.profileId,
-        reason: "in-game admin ban",
+        reason: loc("admin.ban.backendReason"),
         bannedBy: `profile ${adminProfile} (${tier})`,
       }),
     }).then(res => {
       if (res.ok) {
         // Boot AND drop the connection; connection-check refuses the reconnect
         try { ctx.svr.setEnabled(target.actorId, false); } catch { }
-        try { kickWithReason(mp, target.userId, "You were banned from the server."); } catch { }
+        try { kickWithReason(mp, target.userId, loc("admin.ban.reason")); } catch { }
         this.log(`AdminSystem: profile ${adminProfile} (${tier}) banned profile ${target.profileId} (${target.name})`);
-        this.adminLog(`profile ${adminProfile} (${tier}) banned ${target.name} (profile ${target.profileId})`);
-        this.replyIfSameAdmin(mp, userId, adminActorId, true, `Banned ${target.name}`);
+        this.adminLog(loc("admin.audit.ban", { profile: adminProfile, tier, name: target.name, targetProfile: target.profileId }));
+        this.replyIfSameAdmin(mp, userId, adminActorId, true, loc("admin.ban.done", { name: target.name }));
       } else {
         this.log(`AdminSystem: backend ban failed with status ${res.status}`);
-        this.replyIfSameAdmin(mp, userId, adminActorId, false, `Ban failed (backend ${res.status})`);
+        this.replyIfSameAdmin(mp, userId, adminActorId, false, loc("admin.ban.failedStatus", { status: res.status }));
       }
     }).catch(e => {
       this.log(`AdminSystem: backend ban request failed: ${e}`);
-      this.replyIfSameAdmin(mp, userId, adminActorId, false, "Ban failed: backend unreachable");
+      this.replyIfSameAdmin(mp, userId, adminActorId, false, loc("admin.ban.unreachable"));
     });
   }
 

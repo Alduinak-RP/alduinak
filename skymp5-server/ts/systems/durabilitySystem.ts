@@ -1,4 +1,5 @@
 import { Settings } from "../settings";
+import { loc } from "../loc";
 import { chainMpHook, guardMpHook, hex, isAlive, isBleedingOut, recordTypeOf, userOf, weaponAnimType } from "./actorUtil";
 import {
   DurabilityTags, DurableCopy, RepairSettings, SettleWear, conditionTagPattern, durabilityTags, durableCopies, hasDurableCopies, hasSettleWear,
@@ -65,8 +66,6 @@ const CROSSBOW_ANIM_TYPE = 9;
 // The native's kinds by the bench that repairs them
 const KIND_BENCH: Record<string, BenchKind> = { weapon: "weapon", bow: "weapon", crossbow: "weapon", armor: "armor", shield: "armor" };
 const BENCH_KEYWORD: Record<BenchKind, number> = { armor: ARMOR_TABLE, weapon: SHARPENING_WHEEL };
-const BENCH_NAME: Record<BenchKind, string> = { armor: "Workbench", weapon: "Grindstone" };
-const NO_BENCH_LINE = "There is no workbench or grindstone within reach.";
 
 // Material sets a repair costs: one per perUnit of the durability missing, counted on the percent the player sees
 export const repairUnits = (percent: number, perUnit: number): number => {
@@ -229,7 +228,7 @@ export class DurabilitySystem implements System {
       if (!Array.isArray(copy)) continue;
       const [baseId, before, after, worn] = copy.map(Number);
       if (!worn || !(after > 0) || !(before >= low && after < low)) continue;
-      this.notice(mp, userId, `Your ${this.baseName(baseId >>> 0)} is badly worn (${conditionPercent(after)}%).`);
+      this.notice(mp, userId, loc("durability.badlyWorn", { name: this.baseName(baseId >>> 0), percent: conditionPercent(after) }));
     }
   }
 
@@ -244,7 +243,7 @@ export class DurabilitySystem implements System {
     if (now - (this.brokenNoticedMs.get(slot) || 0) < BROKEN_NOTICE_GAP_MS) return;
     if (this.brokenNoticedMs.size > 4096) this.brokenNoticedMs.clear();
     this.brokenNoticedMs.set(slot, now);
-    this.notice(mp, userOf(mp, actorId), `Your ${this.baseName(baseId)} has broken.`);
+    this.notice(mp, userOf(mp, actorId), loc("durability.broken", { name: this.baseName(baseId) }));
   }
 
   private notice(mp: Mp, userId: number, text: string): void {
@@ -304,13 +303,13 @@ export class DurabilitySystem implements System {
     const now = Date.now();
     if (now - (this.lastOpenMs.get(userId) || 0) < OPEN_COOLDOWN_MS) return "";
     this.lastOpenMs.set(userId, now);
-    if (!isAlive(mp, actorId) || isBleedingOut(mp, actorId)) return "You cannot repair anything right now.";
+    if (!isAlive(mp, actorId) || isBleedingOut(mp, actorId)) return loc("durability.cannotNow");
     const benches = this.benchesInReach(ctx, actorId);
-    if (!benches.length) return NO_BENCH_LINE;
+    if (!benches.length) return loc("durability.noBench");
     for (const session of benches) {
       if (this.open(ctx, userId, actorId, session)) return "";
     }
-    return "Nothing you carry needs repair at this bench.";
+    return loc("durability.nothingToRepair");
   }
 
   private benchesInReach(ctx: SystemContext, actorId: number): Session[] {
@@ -442,7 +441,7 @@ export class DurabilitySystem implements System {
   }
 
   private baseName(baseId: number): string {
-    return String((globalThis as any).__alduinakItemName?.(baseId) || "") || `item ${hex(baseId)}`;
+    return String((globalThis as any).__alduinakItemName?.(baseId) || "") || loc("durability.itemFallback", { id: hex(baseId) });
   }
 
   // "Steel Sword (Superior)", "Steel Sword x2": the copy's own name without its condition tag, the temper quality after it
@@ -457,12 +456,12 @@ export class DurabilitySystem implements System {
 
   private sendMenu(ctx: SystemContext, userId: number, session: Session, rows: RepairRow[], inv: Inventory, reason: "open" | "refresh"): void {
     const held = materialsHeld(inv);
-    const what = session.kinds.length > 1 ? "gear" : session.kinds[0] === "armor" ? "armor" : "weapons";
+    const what = loc(session.kinds.length > 1 ? "durability.menu.gear" : session.kinds[0] === "armor" ? "durability.menu.armor" : "durability.menu.weapons");
     sendJson(ctx.svr, userId, {
       customPacketType: "repairMenu",
       bench: session.bench,
       kind: session.kind,
-      title: `${BENCH_NAME[session.kind]}: repair ${what}`,
+      title: loc("durability.menu.title", { bench: loc(session.kind === "armor" ? "durability.bench.armor" : "durability.bench.weapon"), what }),
       reason,
       rows: rows.map((r) => ({
         key: r.key,
@@ -484,7 +483,7 @@ export class DurabilitySystem implements System {
     const session = this.sessions.get(userId);
     if (!session || toFormId(content["bench"]) !== session.bench) return null;
     if (this.distanceTo(ctx.svr, actorId, session.bench) <= BENCH_REACH) return session;
-    this.notice(ctx.svr, userId, "You are too far from the bench.");
+    this.notice(ctx.svr, userId, loc("durability.tooFar"));
     return null;
   }
 
@@ -513,11 +512,11 @@ export class DurabilitySystem implements System {
       const option = optionFor(row, held);
       const short = option.cost.filter((m) => (held.get(m.baseId) || 0) < m.need);
       if (short.length) {
-        refusals.push(`You lack ${short.map((m) => `${m.need - (held.get(m.baseId) || 0)} ${this.baseName(m.baseId)}`).join(" and ")} to repair ${row.name}.`);
+        refusals.push(loc("durability.refuse.materials", { materials: short.map((m) => `${m.need - (held.get(m.baseId) || 0)} ${this.baseName(m.baseId)}`).join(loc("durability.and")), name: row.name }));
       } else if (this.config.requireProfessionRank && option.recipe && !this.mastery.temperCap(ctx, actorId, option.recipe.id)) {
-        refusals.push(`You lack the profession rank to repair ${row.name}.`);
+        refusals.push(loc("durability.refuse.rank", { name: row.name }));
       } else if (this.config.fatigue > 0 && !this.needs.canPay(actorId, "craft", slot.rank, half, this.config.fatigue * (done.length + 1))) {
-        refusals.push(`You are too tired to repair ${row.name}.`);
+        refusals.push(loc("durability.refuse.tired", { name: row.name }));
       } else {
         for (const m of option.cost) {
           held.set(m.baseId, (held.get(m.baseId) || 0) - m.need);
@@ -526,7 +525,7 @@ export class DurabilitySystem implements System {
         done.push({ row, cost: option.cost });
       }
     }
-    if (asked.length > wanted.length && !all) refusals.push("That item is no longer in the condition shown.");
+    if (asked.length > wanted.length && !all) refusals.push(loc("durability.refuse.changed"));
 
     const repaired = done.length ? applyRepairs(inv, done.map((d) => d.row.index), spent) : null;
     if (repaired) {
@@ -534,7 +533,7 @@ export class DurabilitySystem implements System {
         mp.set(actorId, "inventory", repaired);
       } catch (e) {
         this.log(`[durability] repair of ${hex(actorId)} failed, nothing was taken: ${e}`);
-        return this.notice(mp, userId, "The repair failed, nothing was taken.");
+        return this.notice(mp, userId, loc("durability.failed"));
       }
       // After the write, so the native can take the repaired condition for the worn entries at once
       this.settle(actorId);
@@ -543,9 +542,9 @@ export class DurabilitySystem implements System {
         this.log(`[durability] ${hex(actorId)} repaired ${hex(d.row.entry.baseId)} (${d.row.name}) ${d.row.percent}% -> 100% for ${this.costText(d.cost, "x", ", ") || "nothing"}`);
       }
     }
-    const paid = done.length === 1 ? this.costText(done[0].cost, "", " and ") : "";
-    const fixed = !repaired ? "" : done.length === 1 ? `Repaired ${done[0].row.name}${paid ? ` for ${paid}` : ""}.` : `Repaired ${done.length} items.`;
-    const refused = refusals.length > 1 && all ? `${refusals.length} items were left: ${refusals[0]}` : refusals[0] || "";
+    const paid = done.length === 1 ? this.costText(done[0].cost, "", loc("durability.and")) : "";
+    const fixed = !repaired ? "" : done.length > 1 ? loc("durability.repaired.many", { n: done.length }) : loc(paid ? "durability.repaired.onePaid" : "durability.repaired.one", { name: done[0].row.name, paid });
+    const refused = refusals.length > 1 && all ? loc("durability.leftOver", { n: refusals.length, first: refusals[0] }) : refusals[0] || "";
     const text = [fixed, refused].filter(Boolean).join(" ");
     if (text) this.notice(mp, userId, text);
     const after = this.rowsOf(ctx, actorId, session);
@@ -577,8 +576,8 @@ export class DurabilitySystem implements System {
 
   private on = false;
   private nativeOffLogged = false;
-  private tags: DurabilityTags = { enabled: false, showAtFull: true, brokenLabel: "Broken" };
-  private tagPattern = conditionTagPattern("Broken");
+  private tags: DurabilityTags = { enabled: false, showAtFull: true, brokenLabel: loc("durability.brokenLabel") };
+  private tagPattern = conditionTagPattern(loc("durability.brokenLabel"));
   private config: RepairSettings = repairSettings(null);
   private settle: SettleWear = () => { };
   private fallbackMaterials = new Map<string, number>();

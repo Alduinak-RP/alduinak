@@ -9,6 +9,7 @@ import { NeedsSystem } from "./needsSystem";
 import { FurnitureSeatSystem } from "./furnitureSeatSystem";
 import { writeFileAtomic } from "./fileUtil";
 import { KeyedTimers, soon } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -88,7 +89,7 @@ const PICKAXES = 0x0010acc4;
 // Skyrim.esm LItemGems
 const GEM_LIST = 0x0010e992;
 const GEM_CHANCE = 0.02;
-const NO_ORE = "You can't identify any useful ore.";
+const NO_ORE = loc("gathering.noOre");
 const HARVEST_ANIM = "IdleKneelingEnter";
 // Crops: the looping farming idle with its hoe prop; a prop idle must exit through IdleStop, IdleForceDefaultState leaves the hoe in hand
 const CROP_ANIM = "IdleHoe";
@@ -104,7 +105,7 @@ const DENY_NOTICE_MS = 1000;
 const PICKERS = ["farmer", "alchemist"];
 // Flora is priced by either picker's rank, a crop by the farmer's alone
 const CROP_PRICERS = ["farmer"];
-const CHOP_TIRED = "You are too tired to swing an axe. Rest a while.";
+const CHOP_TIRED = loc("gathering.chopTired");
 // getUserByActor reports failure with Networking::InvalidUserId, not -1.
 const INVALID_USER_ID = 65535;
 
@@ -344,7 +345,7 @@ export class GatheringSystem implements System {
     const regrow = this.produceMs.get(props["base"]) || 0;
     // The engine never asks where an activator stands, so a forged packet from afar gathers nothing
     if (!this.withinReach(ctx, actorId, containerId)) return false;
-    if (this.veinState(ctx, containerId, 1, regrow).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
+    if (this.veinState(ctx, containerId, 1, regrow).left <= 0) return this.deny(ctx, actorId, loc("gathering.nothingYet"));
     const items = this.produceYield.get(props["base"])
       || espmContainerEntries(this.lookup(ctx, props["base"])).filter((e) => e.count > 0 && String(this.lookup(ctx, e.baseId)?.record.type || "") !== "LVLI");
     if (!items.length) return undefined;
@@ -360,7 +361,7 @@ export class GatheringSystem implements System {
     const item = props["item"];
     if (!item) return undefined;
     if (!this.withinReach(ctx, actorId, refrId)) return false;
-    if (this.veinState(ctx, refrId, 1, this.pickMs).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
+    if (this.veinState(ctx, refrId, 1, this.pickMs).left <= 0) return this.deny(ctx, actorId, loc("gathering.nothingYet"));
     const grant = (count: number) => {
       this.addItem(ctx, actorId, item, count);
       this.hidePicked(ctx, refrId, Date.now() + this.pickMs);
@@ -378,7 +379,7 @@ export class GatheringSystem implements System {
     const item = props["potionharvested"] || props["ingredientharvested"];
     if (!item) return undefined;
     if (!this.withinReach(ctx, actorId, refrId)) return false;
-    if (this.veinState(ctx, refrId, 1, FAKE_HARVEST_MS).left <= 0) return this.deny(ctx, actorId, "There is nothing to gather here yet.");
+    if (this.veinState(ctx, refrId, 1, FAKE_HARVEST_MS).left <= 0) return this.deny(ctx, actorId, loc("gathering.nothingYet"));
     return () => {
       this.addItem(ctx, actorId, item, 1);
       this.writeVein(ctx, refrId, { left: 0, regenAt: Date.now() + FAKE_HARVEST_MS });
@@ -399,13 +400,13 @@ export class GatheringSystem implements System {
     if ((this.harvestUntil.get(actorId) || 0) > Date.now()) return false;
     const mp = ctx.svr as Mp;
     const hoe = this.mastery.hoeFormId();
-    if (props["crop"] && hoe && !holdsItem(mp, actorId, (baseId) => baseId === hoe)) return this.deny(ctx, actorId, "You need a hoe to harvest this crop.");
+    if (props["crop"] && hoe && !holdsItem(mp, actorId, (baseId) => baseId === hoe)) return this.deny(ctx, actorId, loc("gathering.needHoe"));
     const rank = this.mastery.rankIn(ctx, actorId, PICKERS);
     const flora = !props["crop"];
     const priceRank = flora ? rank : this.mastery.rankIn(ctx, actorId, CROP_PRICERS);
     const alchemist = flora && !!props["ingredient"] && this.alchemistFloraDiscount > 0 && this.mastery.rankOf(ctx, actorId, "alchemist") > FREE;
     const multiplier = alchemist ? 1 - this.alchemistFloraDiscount : 1;
-    if (!props["free"] && !this.needs.canPay(actorId, "gather", priceRank, flora, multiplier)) return this.deny(ctx, actorId, "You are too tired to gather. Rest a while.");
+    if (!props["free"] && !this.needs.canPay(actorId, "gather", priceRank, flora, multiplier)) return this.deny(ctx, actorId, loc("gathering.gatherTired"));
     const kneelMs = props["instant"] ? 0 : flora ? FLORA_MS : CROP_MS;
     const settle = () => {
       const extra = alchemist ? `, alchemist -${Math.round(this.alchemistFloraDiscount * 100)}%` : priceRank !== rank ? `, alchemist r${rank} pays the Free crop price` : "";
@@ -464,12 +465,12 @@ export class GatheringSystem implements System {
 
   private onChoppingBlock(ctx: SystemContext, blockId: number, actorId: number, props: Record<string, number>): Verdict {
     if (!this.holdsTool(ctx, actorId, props["requireditemlist"])) {
-      return this.deny(ctx, actorId, "You need a woodcutter's axe to chop wood.");
+      return this.deny(ctx, actorId, loc("gathering.needAxe"));
     }
     if (!this.needs.canPay(actorId, "gather", this.mastery.rankOf(ctx, actorId, "woodworker"))) {
       return this.deny(ctx, actorId, CHOP_TIRED);
     }
-    if (!this.seatFree(ctx, blockId, actorId)) return this.deny(ctx, actorId, "Someone is already using this.");
+    if (!this.seatFree(ctx, blockId, actorId)) return this.deny(ctx, actorId, loc("gathering.seatTaken"));
     const resource = props["resource"] || 0;
     if (!resource || this.sessions.get(actorId)?.furnitureId === blockId) return undefined;
     return () => this.startSession(ctx, {
@@ -499,7 +500,7 @@ export class GatheringSystem implements System {
     if (!vein || vein.kind !== "vein") return undefined;
     const refused = this.veinRefusal(ctx, veinId, actorId, vein.props);
     if (refused !== undefined) return refused;
-    if (!this.seatFree(ctx, markerId, actorId)) return this.deny(ctx, actorId, "Someone is already mining here.");
+    if (!this.seatFree(ctx, markerId, actorId)) return this.deny(ctx, actorId, loc("gathering.veinTaken"));
     const ore = vein.props["ore"] || 0;
     if (!ore || this.sessions.get(actorId)?.furnitureId === markerId) return undefined;
     const strikes = Math.max(1, vein.props["strikesbeforecollection"] || VEIN_DEFAULT_STRIKES);
@@ -514,10 +515,10 @@ export class GatheringSystem implements System {
 
   private veinRefusal(ctx: SystemContext, veinId: number, actorId: number, props: Record<string, number>): false | undefined {
     if (!this.holdsTool(ctx, actorId, PICKAXES)) {
-      return this.deny(ctx, actorId, "You need a pickaxe to mine this vein.");
+      return this.deny(ctx, actorId, loc("gathering.needPickaxe"));
     }
     if (!this.needs.canPay(actorId, "gather", this.mastery.rankOf(ctx, actorId, "miner"))) {
-      return this.deny(ctx, actorId, "You are too tired to swing a pickaxe. Rest a while.");
+      return this.deny(ctx, actorId, loc("gathering.pickaxeTired"));
     }
     const tier = this.veinTiers.get((props["ore"] || 0) >>> 0) ?? FREE;
     if (this.mastery.rankOf(ctx, actorId, "miner") < tier || this.veinState(ctx, veinId, this.veinTotal(props)).left <= 0) {
@@ -619,7 +620,7 @@ export class GatheringSystem implements System {
     s.strikesLeft = s.strikesPer;
     const rank = this.mastery.rankOf(ctx, s.actorId, "miner");
     // A sitting ends where an activation would be refused, rather than mining the bar into the ground
-    if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, "You are too tired to keep mining. Rest a while.");
+    if (!this.needs.canPay(s.actorId, "gather", rank)) return this.finish(ctx, s, loc("gathering.mineTired"));
     this.addItem(ctx, s.actorId, s.resource, s.perStrike * YIELD_BY_RANK[rank]);
     this.needs.pay(ctx, s.actorId, "gather", rank, "ore");
     if (Math.random() < GEM_CHANCE) {

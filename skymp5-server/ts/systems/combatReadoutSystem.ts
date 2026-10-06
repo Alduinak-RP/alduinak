@@ -4,6 +4,7 @@ import { GearStats, NO_ATTACK_KIND, armorWeightOf, combatStats, hasCombatStats, 
 import { durableCopies, hasDurableCopies } from "./durabilityNative";
 import { Log, System, SystemContext } from "./system";
 import { FINE_STEP, qualityName } from "./temperRecipes";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -18,7 +19,7 @@ type Mp = any;
 //   alduinakDamageFormulaSettings.durability.enabled   true gives the condition, read from the native getDurability
 //   alduinakDamageFormulaSettings.durability.nameTag.brokenLabel   the word for a copy at 0, default "Broken"
 
-const DEFAULT_BROKEN_LABEL = "Broken";
+const DEFAULT_BROKEN_LABEL = loc("combat.readout.broken");
 
 // One durable copy as /armor reads it
 export interface ReadoutCopy {
@@ -43,11 +44,11 @@ export const conditionPercent = (condition: number): number =>
 
 // "97% (340/350)", "Broken (0/350)" or "97%" without the HP
 export const conditionText = (condition: number, maxHp: number | null, brokenLabel: string): string => {
-  const label = condition <= 0 ? brokenLabel : `${conditionPercent(condition)}%`;
+  const label = condition <= 0 ? brokenLabel : loc("combat.readout.percent", { percent: conditionPercent(condition) });
   if (maxHp === null) return label;
   const max = Math.round(maxHp);
   const now = condition <= 0 ? 0 : Math.min(max, Math.max(1, Math.round(condition * maxHp)));
-  return `${label} (${now}/${max})`;
+  return loc("combat.readout.conditionHp", { label, now, max });
 };
 
 // At most two decimals, "8.1" and "13"
@@ -106,29 +107,29 @@ export const armorReport = (mp: Mp, actorId: number, o: ReadoutSources): string[
   // A hit meets the best piece of a slot group, so a second piece on the same slots adds less than its DT or nothing
   const uncounted = (p: GearStats): string =>
     p.dt === null || p.countedDt === null || p.countedDt > p.dt - 0.005 ? ""
-      : p.countedDt < 0.005 ? "not counted (a better piece covers its slots)"
-        : `${num(p.countedDt)} counted (a better piece covers some of its slots)`;
-  const line = (baseId: number, parts: string[], fallback: string): string => `${o.nameOf(baseId)}: ${parts.filter(Boolean).join(", ") || fallback}`;
+      : p.countedDt < 0.005 ? loc("combat.readout.notCounted")
+        : loc("combat.readout.partlyCounted", { dt: num(p.countedDt) });
+  const line = (baseId: number, parts: string[], fallback: string): string => loc("combat.readout.line", { name: o.nameOf(baseId), details: parts.filter(Boolean).join(", ") || fallback });
 
   const lines: string[] = [];
   if (stats) {
     const pieces = wornPiecesOf(stats);
     const total = totalDtOf(stats);
     const weight = armorWeightOf(stats);
-    if (!pieces.length) lines.push("No armor worn: DT 0, every weapon hit lands in full.");
-    else lines.push(`Armor: DT ${num(total ?? 0)} (taken off each weapon hit)${weight !== null ? `, weight ${num(weight)}` : ""}`);
+    if (!pieces.length) lines.push(loc("combat.readout.noArmor"));
+    else lines.push(weight !== null ? loc("combat.readout.armorWeight", { dt: num(total ?? 0), weight: num(weight) }) : loc("combat.readout.armor", { dt: num(total ?? 0) }));
     for (const p of pieces) {
-      const dt = p.dt === null ? "" : `DT ${num(p.dt)}`;
-      lines.push(line(p.baseId, [dt, uncounted(p), ...tail(p)], "no DT"));
+      const dt = p.dt === null ? "" : loc("combat.readout.dt", { dt: num(p.dt) });
+      lines.push(line(p.baseId, [dt, uncounted(p), ...tail(p)], loc("combat.readout.noDt")));
     }
     for (const w of weaponsOf(stats)) {
-      const damage = w.kind === NO_ATTACK_KIND ? "no weapon damage" : w.damage === null ? "" : `damage ${num(w.damage)}`;
-      lines.push(line(w.baseId, [damage, ...tail(w, w.left)], "in hand"));
+      const damage = w.kind === NO_ATTACK_KIND ? loc("combat.readout.noWeaponDamage") : w.damage === null ? "" : loc("combat.readout.damage", { damage: num(w.damage) });
+      lines.push(line(w.baseId, [damage, ...tail(w, w.left)], loc("combat.readout.inHand")));
     }
   }
   // What the stats did not name: everything worn when only durability is on
-  for (const c of free.splice(0)) lines.push(`${o.nameOf(c.baseId)}: ${conditionText(c.condition, c.maxHp, o.brokenLabel)}`);
-  if (!lines.length) lines.push("Nothing worn or held wears down.");
+  for (const c of free.splice(0)) lines.push(loc("combat.readout.line", { name: o.nameOf(c.baseId), details: conditionText(c.condition, c.maxHp, o.brokenLabel) }));
+  if (!lines.length) lines.push(loc("combat.readout.nothing"));
   return lines;
 };
 
@@ -147,7 +148,7 @@ export class CombatReadoutSystem implements System {
     if (missing.length) this.log(`[combat] this scam_native.node has no ${missing.join(" and no ")}${stats || wear ? "" : ", /armor is off"}`);
     if (!stats && !wear) return;
     const g = globalThis as any;
-    const nameOf = (baseId: number): string => String(g.__alduinakItemName?.(baseId) || "") || `item ${hex(baseId)}`;
+    const nameOf = (baseId: number): string => String(g.__alduinakItemName?.(baseId) || "") || loc("combat.readout.itemFallback", { id: hex(baseId) });
     g.__alduinakArmorReport = (actorId: number): string[] | null =>
       armorReport(mp, Number(actorId) >>> 0, { stats, wear, brokenLabel: config.brokenLabel, nameOf });
     this.log(`[combat] /armor shows ${[stats ? "DT and temper per worn piece" : "", wear ? "condition" : ""].filter(Boolean).join(" and ")}`);

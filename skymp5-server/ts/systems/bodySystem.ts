@@ -7,6 +7,7 @@ import { SettleWear, wearSettler } from "./durabilityNative";
 import { destroyRef, hex, isAlive, neighborUsers } from "./actorUtil";
 import { sendJson } from "./playerText";
 import { every } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -209,7 +210,7 @@ export class BodySystem implements System {
     if (!(profileId >= 0)) return "";
     let own = false;
     try { own = Number(this.mp.get(searcherId, "profileId")) === profileId; } catch { }
-    return own ? "You cannot loot the body of your own fallen character." : "";
+    return own ? loc("body.ownFallen") : "";
   }
 
   // null when the form is gone

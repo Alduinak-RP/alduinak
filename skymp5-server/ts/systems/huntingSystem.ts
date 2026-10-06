@@ -7,6 +7,7 @@ import { MasterySystem } from "./masterySystem";
 import { NeedsSystem } from "./needsSystem";
 import { isRestrained } from "./captureSystem";
 import { addEntries, conditionOf, readInventory, withCount } from "./inventoryExtras";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -342,8 +343,8 @@ export class HuntingSystem implements System {
 
   // Why a dead player's body may not be searched now, "" when it may
   searchRefusal(bodyId: number): string {
-    return this.playerSkins.has(bodyId) ? "A hunter is skinning this body."
-      : this.skinnedPlayers.has(bodyId) ? "This body has been skinned. Nothing can be taken from it." : "";
+    return this.playerSkins.has(bodyId) ? loc("hunting.beingSkinned")
+      : this.skinnedPlayers.has(bodyId) ? loc("hunting.skinned") : "";
   }
 
   // Why the skinner can no longer finish, "" while they can
@@ -369,7 +370,7 @@ export class HuntingSystem implements System {
       if (meat) {
         const butcher = this.mastery.rankOf(ctx, actorId, "hunter") >= BUTCHER_RANK && Math.random() < this.butcherChance;
         addItemTo(mp, actorId, meat.meatId, meat.count + (butcher ? 1 : 0));
-        if (butcher) this.notice(ctx, this.userOf(ctx, actorId), "Your butcher's eye finds an extra cut of meat.");
+        if (butcher) this.notice(ctx, this.userOf(ctx, actorId), loc("hunting.butcherEye"));
       }
       this.needs.pay(ctx, actorId, "fight", this.mastery.rankOf(ctx, actorId, "hunter"), "skin", true);
       this.mastery.creditWork(actorId, "hunter");

@@ -6,6 +6,7 @@ import { writeFileAtomic } from "./fileUtil";
 import { every } from "./timers";
 import { onlineSnapshot } from "./onlineSnapshot";
 import { espmFieldFormIds } from "./formIdUtil";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -479,11 +480,11 @@ export class WeatherSystem implements System {
   // Holds the weather on the region until cleared, or for minutes (1..1440); a refusal comes back as text
   force(regionId: string, weather: string, minutes: number | null): string | null {
     const region = this.regions.get(regionId);
-    if (!region) return "Unknown region";
+    if (!region) return loc("weather.unknownRegion");
     const key = String(weather).toLowerCase();
     const entry = this.byDesc.get(key) ?? [...this.byDesc.values()].find(w => w.edid.toLowerCase() === key);
-    if (!entry) return "Unknown weather";
-    if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_MINUTES)) return `Minutes must be a whole number between 1 and ${MAX_MINUTES}, or blank`;
+    if (!entry) return loc("weather.unknownWeather");
+    if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_MINUTES)) return loc("weather.badMinutes", { max: MAX_MINUTES });
     const now = Date.now();
     region.state = { weatherDesc: entry.desc, weatherId: entry.id, startedAt: now, endsAt: minutes ? now + minutes * 60000 : 0, forced: true };
     this.saveState();
@@ -493,7 +494,7 @@ export class WeatherSystem implements System {
 
   clear(regionId: string): string | null {
     const region = this.regions.get(regionId);
-    if (!region) return "Unknown region";
+    if (!region) return loc("weather.unknownRegion");
     region.state = this.roll(region, Date.now());
     this.saveState();
     this.pushNow(regionId);

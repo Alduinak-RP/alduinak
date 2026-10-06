@@ -3,6 +3,7 @@ import { System, Log, SystemContext, Content } from "./system";
 import { chainMpHook, countItem, hex, notifyActor, recordTypeOf, takeItemFrom, unequipItemOf, userOf } from "./actorUtil";
 import { describeActor } from "./playerText";
 import { KeyedTimers, soon } from "./timers";
+import { loc } from "../loc";
 
 // The ScampServer / `mp` API is untyped here, same convention as spawn.ts.
 type Mp = any;
@@ -155,7 +156,7 @@ export class TorchSystem implements System {
       this.log(`[torch] unequip ${hex(lit.baseId)} of ${hex(actorId)} failed: ${e}`);
     }
     const taken = takeItemFrom(mp, actorId, lit.baseId, 1);
-    notifyActor(mp, actorId, "Your torch burns out.");
+    notifyActor(mp, actorId, loc("torch.burnedOut"));
     this.log(`[torch] ${hex(actorId)} ${describeActor(mp, actorId)}: torch ${hex(lit.baseId)} burned out after ${this.limitMs / 60000} min of use, ${taken ? `${held - 1} left` : "none in the inventory to take"}`);
     this.save(mp);
   }
