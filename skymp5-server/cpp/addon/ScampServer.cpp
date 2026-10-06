@@ -424,16 +424,11 @@ ScampServer::ScampServer(const Napi::CallbackInfo& info)
             "from {} damage before DT), written when a shown percent moves "
             "and {} s passed since the last write, after {} s without a "
             "hit, and on equipment change, drop, put, death, disconnect and "
-            "settleWear; below {} of its condition a copy keeps {} to 1 of "
-            "its damage or DT, a broken weapon deals x{}, broken armor "
-            "gives x{} of its DT, a block with a broken shield or weapon "
-            "lets {} through ('({})' tag)",
+            "settleWear; the condition is roleplay only and changes no hit "
+            "(durability.effect is read but not applied) ('({})' tag)",
             durability.npcGearWears ? "players and NPCs" : "players",
             durability.wear.armorMinPreDT, durability.flushMinSeconds,
-            durability.flushCalmSeconds, durability.effect.kneeCondition,
-            durability.effect.effectAtZero, durability.effect.brokenWeaponMult,
-            durability.effect.brokenArmorDT, durability.effect.brokenBlockPass,
-            durability.nameTagBrokenLabel);
+            durability.flushCalmSeconds, durability.nameTagBrokenLabel);
         } else {
           logger->info("alduinakDamageFormulaSettings: durability.enabled is "
                        "false, nothing wears and a stored condition changes "
