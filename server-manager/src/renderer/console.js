@@ -9,12 +9,12 @@ const STATUS_MS = 10000
 // services: the container's services, the first is its own (dot, state and command log); log: false means no log view;
 // group: the Start/Stop all target; profile: the relay behind the command input; collapse: the side the container folds to
 const COLUMNS = [
-  { key: 'backend', label: 'Backend', services: [{ key: 'backend', label: 'Backend' }, { key: 'nginx', label: 'Nginx' }], collapse: 'left' },
-  { key: 'mongo', label: 'MongoDB', services: [{ key: 'mongo', label: 'MongoDB' }], collapse: 'left' },
-  { key: 'main', label: 'Main Server', group: 'main', profile: 'live', input: true, collapse: 'right',
-    services: [{ key: 'game', label: 'Game' }, { key: 'livekit', label: 'LiveKit', log: false }] },
-  { key: 'test', label: 'Test Server', group: 'test', profile: 'test', input: true, collapse: 'right',
-    services: [{ key: 'test-game', label: 'Game' }, { key: 'test-livekit', label: 'LiveKit', log: false }] },
+  { key: 'backend', label: loc('services.backend'), services: [{ key: 'backend', label: loc('services.backend') }, { key: 'nginx', label: loc('services.nginx') }], collapse: 'left' },
+  { key: 'mongo', label: loc('services.mongo'), services: [{ key: 'mongo', label: loc('services.mongo') }], collapse: 'left' },
+  { key: 'main', label: loc('servers.main'), group: 'main', profile: 'live', input: true, collapse: 'right',
+    services: [{ key: 'game', label: loc('services.game') }, { key: 'livekit', label: loc('services.livekit'), log: false }] },
+  { key: 'test', label: loc('servers.test'), group: 'test', profile: 'test', input: true, collapse: 'right',
+    services: [{ key: 'test-game', label: loc('services.game') }, { key: 'test-livekit', label: loc('services.livekit'), log: false }] },
 ]
 const columnOfProfile = Object.fromEntries(COLUMNS.filter(c => c.profile).map(c => [c.profile, c]))
 let serviceStatus = {}
@@ -39,11 +39,11 @@ function renderColumns() {
     head.appendChild(el('span', { className: 'ccol-name' }, esc(col.label)))
     head.appendChild(el('span', { className: 'ccol-state', id: `cstate-${col.key}` }))
     if (col.group) {
-      const all = el('button', { className: 'action small ccol-group', id: `ctoggle-${col.key}` }, 'Start all')
+      const all = el('button', { className: 'action small ccol-group', id: `ctoggle-${col.key}` }, esc(loc('console.startAll')))
       all.addEventListener('click', () => groupAction(col, serviceStatus[col.services[0].key] === 'SERVICE_RUNNING' ? 'stop' : 'start'))
       head.appendChild(all)
     }
-    const fold = el('button', { className: 'ccol-fold', title: 'Collapse or expand' }, col.collapse === 'left' ? '&#9664;' : '&#9654;')
+    const fold = el('button', { className: 'ccol-fold', title: loc('console.collapse') }, col.collapse === 'left' ? '&#9664;' : '&#9654;')
     fold.addEventListener('click', () => {
       const next = readCollapsed()
       next[col.key] = !next[col.key]
@@ -63,9 +63,9 @@ function renderColumns() {
         line.appendChild(el('span', { className: 'dot', id: `sdot-${svc.key}` }))
         line.appendChild(el('span', { className: 'csvc-name' }, esc(svc.label)))
       }
-      const toggle = el('button', { className: 'action small', id: `stoggle-${svc.key}` }, 'START')
+      const toggle = el('button', { className: 'action small', id: `stoggle-${svc.key}` }, esc(loc('console.start')))
       toggle.addEventListener('click', () => serviceAction(col, svc, serviceStatus[svc.key] === 'SERVICE_RUNNING' ? 'stop' : 'start'))
-      const restart = el('button', { className: 'action small' }, 'RESTART')
+      const restart = el('button', { className: 'action small' }, esc(loc('console.restart')))
       restart.addEventListener('click', () => serviceAction(col, svc, 'restart'))
       line.appendChild(toggle)
       line.appendChild(restart)
@@ -95,9 +95,9 @@ function renderColumns() {
     })
     if (col.input) {
       const form = el('form', { className: 'row cinput' })
-      const input = el('input', { type: 'text', placeholder: "Command, 'help' lists them", autocomplete: 'off' })
+      const input = el('input', { type: 'text', placeholder: loc('console.inputPlaceholder'), autocomplete: 'off' })
       form.appendChild(input)
-      form.appendChild(el('button', { className: 'action', type: 'submit' }, 'Send'))
+      form.appendChild(el('button', { className: 'action', type: 'submit' }, esc(loc('console.send'))))
       form.addEventListener('submit', async e => {
         e.preventDefault()
         const text = input.value.trim()
@@ -106,7 +106,7 @@ function renderColumns() {
         appendLog(log, `> ${text}\n`)
         input.value = ''
         const r = await window.mgr.consoleCommand(text, col.profile)
-        if (!r.ok) appendLog(log, `[command not delivered] ${r.error}\n`)
+        if (!r.ok) appendLog(log, loc('console.notDelivered', { error: r.error }) + '\n')
       })
       body.appendChild(form)
     }
@@ -122,7 +122,7 @@ async function runAction(log, title, run) {
   try {
     const r = await run()
     if (r.steps) r.steps.forEach(x => appendLog(log, x + '\n'))
-    if (r.error) appendLog(log, 'error: ' + r.error + '\n')
+    if (r.error) appendLog(log, loc('console.error', { error: r.error }) + '\n')
     if (r.status) paintConsoleStatus(r.status)
   } finally {
     $$('#console-columns button.action').forEach(b => { b.disabled = false })
@@ -131,11 +131,11 @@ async function runAction(log, title, run) {
 
 // A service without a log view (LiveKit) reports into its container's first log
 function serviceAction(col, svc, action) {
-  return runAction(logOf(svc.key) || logOf(col.services[0].key), `${action} ${svc.label}`, () => window.mgr.serviceAction(svc.key, action))
+  return runAction(logOf(svc.key) || logOf(col.services[0].key), loc('console.actionTitle', { action, service: svc.label }), () => window.mgr.serviceAction(svc.key, action))
 }
 
 function groupAction(col, action) {
-  return runAction(logOf(col.services[0].key), `${action} all: ${col.label}`, () => window.mgr.servicesAction(action, col.group))
+  return runAction(logOf(col.services[0].key), loc('console.groupTitle', { action, group: col.label }), () => window.mgr.servicesAction(action, col.group))
 }
 
 function paintConsoleStatus(st) {
@@ -144,13 +144,13 @@ function paintConsoleStatus(st) {
   for (const col of COLUMNS) {
     const own = col.services[0].key
     $(`#cdot-${col.key}`).className = 'dot ' + (up(own) ? 'ok' : 'bad')
-    $(`#cstate-${col.key}`).textContent = up(own) ? 'Online' : 'Offline'
+    $(`#cstate-${col.key}`).textContent = up(own) ? loc('console.online') : loc('console.offline')
     const all = $(`#ctoggle-${col.key}`)
-    if (all) all.textContent = up(own) ? 'Stop all' : 'Start all'
+    if (all) all.textContent = up(own) ? loc('console.stopAll') : loc('console.startAll')
     for (const svc of col.services) {
       const dot = $(`#sdot-${svc.key}`)
       if (dot) dot.className = 'dot ' + (up(svc.key) ? 'ok' : 'bad')
-      $(`#stoggle-${svc.key}`).textContent = up(svc.key) ? 'STOP' : 'START'
+      $(`#stoggle-${svc.key}`).textContent = up(svc.key) ? loc('console.stop') : loc('console.start')
     }
   }
   document.dispatchEvent(new CustomEvent('services-status', { detail: serviceStatus }))
@@ -166,8 +166,8 @@ async function refreshStats() {
   for (const col of COLUMNS) {
     for (const svc of col.services) {
       const s = stats[svc.key]
-      const parts = s ? [`CPU ${s.cpu}%`, `RAM ${s.memMb} MB`] : ['not running']
-      if (s && s.requestsPerMin !== undefined && s.requestsPerMin !== null) parts.push(`${s.requestsPerMin} req/min`)
+      const parts = s ? [loc('console.cpu', { cpu: s.cpu }), loc('console.ram', { mb: s.memMb })] : [loc('console.notRunning')]
+      if (s && s.requestsPerMin !== undefined && s.requestsPerMin !== null) parts.push(loc('console.requests', { n: s.requestsPerMin }))
       $(`#sstats-${svc.key}`).textContent = parts.join('  ·  ')
     }
   }
@@ -187,5 +187,5 @@ setInterval(refreshConsoleStatus, STATUS_MS)
 setInterval(refreshStats, STATS_MS)
 document.addEventListener('tab-shown', e => { if (e.detail === 'console') refreshStats() })
 for (const col of COLUMNS.filter(c => c.input)) {
-  appendLog(consoleLog(col.profile), `Type 'help' for manager commands (services, builds); anything else goes to the ${col.label} game console.\n`)
+  appendLog(consoleLog(col.profile), loc('console.welcome', { server: col.label }) + '\n')
 }

@@ -4,6 +4,7 @@
 
 const fs   = require('fs')
 const path = require('path')
+const { loc } = require('./loc')
 
 const WARN_MINUTES = [60, 30, 10, 5, 4, 3, 2, 1]
 const TICK_MS = 20000
@@ -26,8 +27,8 @@ const heartbeatFile = dir => path.join(dir, 'schedule-runner.json')
 const pad2 = n => String(n).padStart(2, '0')
 
 function warningText(lead) {
-  const when = lead === 60 ? '1 hour' : `${lead} minute${lead === 1 ? '' : 's'}`
-  return `Server restart in ${when}. Please find a safe spot and log out.`
+  const when = lead === 60 ? loc('schedule.warn.hour') : loc(lead === 1 ? 'schedule.warn.minute' : 'schedule.warn.minutes', { n: lead })
+  return loc('schedule.warn.text', { when })
 }
 
 // 'HH:MM' to { h, m }; empty or malformed gives null
@@ -92,31 +93,31 @@ function formatAt(t, timeZone) {
 
 // A schedule checked field by field; throws with the first problem
 function normalizeSchedule(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('the schedule must be a JSON object')
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error(loc('schedule.err.notObject'))
   const timeZone = raw.timeZone === undefined || raw.timeZone === '' ? DEFAULT_TIME_ZONE : raw.timeZone
-  if (!validTimeZone(timeZone)) throw new Error(`unknown time zone "${timeZone}", use an IANA name like America/New_York`)
-  if (!Array.isArray(raw.tasks) || raw.tasks.length > MAX_TASKS) throw new Error(`tasks must be a list of at most ${MAX_TASKS}`)
+  if (!validTimeZone(timeZone)) throw new Error(loc('schedule.err.timeZone', { zone: timeZone }))
+  if (!Array.isArray(raw.tasks) || raw.tasks.length > MAX_TASKS) throw new Error(loc('schedule.err.tasks', { n: MAX_TASKS }))
   const ids = new Set()
   const tasks = raw.tasks.map((t, i) => {
-    const where = `task ${i + 1}`
-    if (!t || typeof t !== 'object') throw new Error(`${where} is not an object`)
-    if (!ID_RE.test(String(t.id || '')) || ids.has(t.id)) throw new Error(`${where} needs a unique id of letters, digits, - or _`)
+    const where = loc('schedule.err.where', { n: i + 1 })
+    if (!t || typeof t !== 'object') throw new Error(loc('schedule.err.taskNotObject', { where }))
+    if (!ID_RE.test(String(t.id || '')) || ids.has(t.id)) throw new Error(loc('schedule.err.id', { where }))
     ids.add(t.id)
-    if (!KINDS.includes(t.kind)) throw new Error(`${where}: kind must be one of ${KINDS.join(', ')}`)
-    if (!TARGETS.includes(t.target)) throw new Error(`${where}: target must be live or test`)
+    if (!KINDS.includes(t.kind)) throw new Error(loc('schedule.err.kind', { where, kinds: KINDS.join(', ') }))
+    if (!TARGETS.includes(t.target)) throw new Error(loc('schedule.err.target', { where }))
     const at = parseAt(t.time)
-    if (!at) throw new Error(`${where}: time must be HH:MM (24 hour)`)
+    if (!at) throw new Error(loc('schedule.err.time', { where }))
     const days = t.days === undefined ? [] : t.days
-    if (!Array.isArray(days) || days.some(d => !Number.isInteger(d) || d < 0 || d > 6)) throw new Error(`${where}: days are 0 (Sunday) to 6 (Saturday)`)
+    if (!Array.isArray(days) || days.some(d => !Number.isInteger(d) || d < 0 || d > 6)) throw new Error(loc('schedule.err.days', { where }))
     const text = key => {
       const v = String(t[key] ?? '').trim()
-      if (v.length > TEXT_MAX || /[\r\n]/.test(v)) throw new Error(`${where}: ${key} must be one line of at most ${TEXT_MAX} characters`)
+      if (v.length > TEXT_MAX || /[\r\n]/.test(v)) throw new Error(loc('schedule.err.text', { where, key, n: TEXT_MAX }))
       return v
     }
     const message = text('message')
     const command = text('command')
-    if (t.kind === 'say' && !message) throw new Error(`${where}: a say task needs a message`)
-    if (t.kind === 'command' && !command) throw new Error(`${where}: a command task needs a command`)
+    if (t.kind === 'say' && !message) throw new Error(loc('schedule.err.sayMessage', { where }))
+    if (t.kind === 'command' && !command) throw new Error(loc('schedule.err.commandText', { where }))
     return { id: t.id, enabled: t.enabled !== false, kind: t.kind, target: t.target, time: `${pad2(at.h)}:${pad2(at.m)}`, days: [...new Set(days)].sort((a, b) => a - b), message, command }
   })
   return { timeZone, tasks }
@@ -128,10 +129,10 @@ function readSchedule(file) {
   let text
   try { text = fs.readFileSync(file, 'utf8') } catch (err) {
     if (err.code === 'ENOENT') return { schedule: seedSchedule(), exists: false, error: null }
-    return { schedule: none, exists: true, error: `cannot read ${file}: ${err.message}` }
+    return { schedule: none, exists: true, error: loc('modlist.settings.unreadable', { file, error: err.message }) }
   }
   try { return { schedule: normalizeSchedule(JSON.parse(text.replace(/^﻿/, ''))), exists: true, error: null } }
-  catch (err) { return { schedule: none, exists: true, error: `${file} is not valid, no task runs: ${err.message}` } }
+  catch (err) { return { schedule: none, exists: true, error: loc('schedule.err.invalidFile', { file, error: err.message }) } }
 }
 
 function writeJsonAtomic(file, value) {
@@ -180,8 +181,8 @@ function claimRun(dir, id, at) {
 }
 
 function describe(task) {
-  const what = task.kind === 'say' ? `say "${task.message}"` : task.kind === 'command' ? `command "${task.command}"` : task.kind
-  return `${what} on ${task.target} (${task.id})`
+  const what = task.kind === 'say' ? loc('schedule.log.say', { text: task.message }) : task.kind === 'command' ? loc('schedule.log.command', { text: task.command }) : task.kind
+  return loc('schedule.log.task', { what, target: task.target, id: task.id })
 }
 
 // act: say(target, text) and command(target, text) -> { ok, error }, service(target, verb) -> Promise<{ ok, busy, error, detail }>, gameRunning(target) -> Promise<bool>; lastBeat() -> ms or null
@@ -212,21 +213,21 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
   async function run(task, c, t) {
     if (task.kind === 'say' || task.kind === 'command') {
       const r = task.kind === 'say' ? act.say(task.target, task.message) : act.command(task.target, task.command)
-      note(`${describe(task)}${r && r.ok === false ? ` not sent: ${r.error}` : ' sent'}`)
+      note(r && r.ok === false ? loc('schedule.log.notSent', { task: describe(task), error: r.error }) : loc('schedule.log.sent', { task: describe(task) }))
       return true
     }
     if (task.kind === 'restart' && !(await act.gameRunning(task.target))) {
-      note(`${describe(task)} skipped: the game server is not running`)
+      note(loc('schedule.log.skippedStopped', { task: describe(task) }))
       return true
     }
     const r = await act.service(task.target, task.kind)
-    if (r.ok) { note(`${describe(task)} done${r.detail ? ` (${r.detail})` : ''}`); return true }
+    if (r.ok) { note(r.detail ? loc('schedule.log.doneDetail', { task: describe(task), detail: r.detail }) : loc('schedule.log.done', { task: describe(task) })); return true }
     if (r.busy && t < c.target + BUSY_RETRY_MINUTES * MINUTE) {
       c.retryAt = t + MINUTE
-      note(`${describe(task)} waiting: ${r.error}`)
+      note(loc('schedule.log.waiting', { task: describe(task), error: r.error }))
       return false
     }
-    note(`${describe(task)} not run: ${r.error}`)
+    note(loc('schedule.log.notRun', { task: describe(task), error: r.error }))
     return true
   }
 
@@ -240,7 +241,7 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
       if (!c) { cycles.delete(task.id); return }
       cycles.set(task.id, c)
       const late = c.target <= t
-      note(`${late ? 'catching up' : 'next'} ${describe(task)} ${late ? 'due at' : 'at'} ${formatAt(c.target, timeZone)}`)
+      note(loc(late ? 'schedule.log.catchingUp' : 'schedule.log.next', { task: describe(task), at: formatAt(c.target, timeZone) }))
     }
     if (task.kind === 'restart') {
       const due = WARN_MINUTES.filter(lead => !c.sent.has(lead) && t >= c.target - lead * MINUTE)
@@ -250,14 +251,14 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
         // Claimed like the run, so a second runner never repeats a warning
         if (claim(`${task.id}.warn${lead}`, c.target)) {
           const r = act.say(task.target, warningText(lead))
-          note(`restart warning (${lead} min) on ${task.target}${r && r.ok === false ? ` not sent: ${r.error}` : ''}`)
+          note(r && r.ok === false ? loc('schedule.log.warningNotSent', { n: lead, target: task.target, error: r.error }) : loc('schedule.log.warning', { n: lead, target: task.target }))
         }
       }
     }
     if (t < c.target || (c.retryAt && t < c.retryAt)) return
     let done = true
     if (c.claimed) done = await run(task, c, t)
-    else if (t > c.target + LATE_MINUTES * MINUTE) note(`${describe(task)} skipped: its time passed more than ${LATE_MINUTES} minutes ago`)
+    else if (t > c.target + LATE_MINUTES * MINUTE) note(loc('schedule.log.skippedLate', { task: describe(task), n: LATE_MINUTES }))
     else if (claim(task.id, c.target)) { c.claimed = true; done = await run(task, c, t) }
     if (done) cycles.delete(task.id)
   }
@@ -276,11 +277,11 @@ function createScheduler({ read, act, log, active = () => true, claim = () => tr
       const enabled = schedule.tasks.filter(task => task.enabled)
       for (const id of cycles.keys()) if (!enabled.some(task => task.id === id)) cycles.delete(id)
       for (const task of enabled) {
-        try { await step(task, schedule.timeZone, t, resumeFrom) } catch (err) { note(`${describe(task)} error: ${err.message}`); cycles.delete(task.id) }
+        try { await step(task, schedule.timeZone, t, resumeFrom) } catch (err) { note(loc('schedule.log.taskError', { task: describe(task), error: err.message })); cycles.delete(task.id) }
       }
       beat(recent.slice())
     } catch (err) {
-      note(`schedule error: ${err.message}`)
+      note(loc('schedule.log.error', { error: err.message }))
     } finally {
       ticking = false
     }

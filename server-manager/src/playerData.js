@@ -4,6 +4,7 @@
 
 const formIds = require('./formIds')
 const { readPluginFlags } = require('./modsync')
+const { loc } = require('./loc')
 
 const RACES = {
   0x13740: 'Argonian', 0x13741: 'Breton', 0x13742: 'Dunmer', 0x13743: 'Altmer', 0x13744: 'Imperial',
@@ -39,7 +40,7 @@ const MATERIALS = [
   ['Charcoal', ['33760:Skyrim.esm']],
 ]
 
-const raceOf = raceId => RACES[Number(raceId) >>> 0] || 'Other'
+const raceOf = raceId => RACES[Number(raceId) >>> 0] || loc('players.stats.raceOther')
 const countIn = (inventory, ids) => (inventory || []).reduce((n, e) => n + (ids.has(Number(e.baseId) >>> 0) ? Number(e.count) || 0 : 0), 0)
 const goldOf = inventory => countIn(inventory, GOLD_IDS)
 
@@ -95,7 +96,7 @@ function buildRows(backend, charsByProfile, whitelistRoleId) {
       return {
         ...c,
         // A character whose creator was never finished has no appearance yet
-        race: c.appearance ? raceOf(a.raceId) : 'Unfinished',
+        race: c.appearance ? raceOf(a.raceId) : loc('players.stats.raceUnfinished'),
         female: !!a.isFemale,
         gold: goldOf(c.inventory),
         seconds: t.seconds || 0,
@@ -107,7 +108,7 @@ function buildRows(backend, charsByProfile, whitelistRoleId) {
     rows.push({
       profileId,
       discordId,
-      name: p.displayName || p.username || `Player ${profileId}`,
+      name: p.displayName || p.username || loc('players.defaultName', { id: profileId }),
       username: p.username || '',
       createdAt: p.createdAt || null,
       lastSeenAt: p.lastSeenAt || (time.lastSeenAt ? new Date(time.lastSeenAt).toISOString() : null),
@@ -149,8 +150,8 @@ function factionChoices(whitelist) {
   })).sort((a, b) => a.province.localeCompare(b.province) || a.name.localeCompare(b.name))
 }
 
-const HOUR_BRACKETS = [[0, 1, 'Under 1 hour'], [1, 4, '1 to 3 hours'], [4, 12, '4 to 11'], [12, 24, '12 to 23'], [24, 48, '24 to 47'], [48, 128, '48 to 127'], [128, 400, '128 to 399'], [400, 1200, '400 to 1199'], [1200, Infinity, '1200+']]
-const GOLD_BRACKETS = [[0, 50, 'Under 50 gold'], [50, 500, '50 to 499'], [500, 5000, '500 to 4999'], [5000, 50001, '5000 to 50000'], [50001, Infinity, 'Over 50000']]
+const HOUR_BRACKETS = [[0, 1, loc('players.stats.hoursUnder1')], [1, 4, loc('players.stats.hours1to3')], [4, 12, loc('players.stats.range', { lo: 4, hi: 11 })], [12, 24, loc('players.stats.range', { lo: 12, hi: 23 })], [24, 48, loc('players.stats.range', { lo: 24, hi: 47 })], [48, 128, loc('players.stats.range', { lo: 48, hi: 127 })], [128, 400, loc('players.stats.range', { lo: 128, hi: 399 })], [400, 1200, loc('players.stats.range', { lo: 400, hi: 1199 })], [1200, Infinity, '1200+']]
+const GOLD_BRACKETS = [[0, 50, loc('players.stats.goldUnder50')], [50, 500, loc('players.stats.range', { lo: 50, hi: 499 })], [500, 5000, loc('players.stats.range', { lo: 500, hi: 4999 })], [5000, 50001, loc('players.stats.range', { lo: 5000, hi: 50000 })], [50001, Infinity, loc('players.stats.goldOver', { n: 50000 })]]
 
 // containers: inventory entry lists of the store's containers; materials: materialIds output
 function stats(rows, containers = [], materials = []) {
@@ -164,8 +165,8 @@ function stats(rows, containers = [], materials = []) {
     players: rows.length,
     characters: chars.length,
     races: count(chars, c => c.race),
-    genders: count(chars, c => (c.female ? 'Female' : 'Male')),
-    professions: count(chars, c => c.profession || 'None'),
+    genders: count(chars, c => (c.female ? loc('players.filter.female') : loc('players.filter.male'))),
+    professions: count(chars, c => c.profession || loc('players.none')),
     hours: count(rows, r => bracket(r.seconds / 3600, HOUR_BRACKETS)),
     hourOrder: HOUR_BRACKETS.map(b => b[2]),
     totalWealth: carried + stored,

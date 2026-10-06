@@ -3,25 +3,26 @@
 // Account changes (ban, kick, delete, faction ranks) go through the backend or the game console; character edits write the store.
 
 const PROFESSIONS = ['alchemist', 'blacksmith', 'cook', 'farmer', 'hunter', 'mage', 'miner', 'tailor', 'warrior', 'woodworker']
-const RANK_NAMES = ['Free', 'Novice', 'Adept', 'Expert', 'Master', 'Legendary']
+const RANK_NAMES = [loc('players.rank.free'), loc('players.rank.novice'), loc('players.rank.adept'), loc('players.rank.expert'), loc('players.rank.master'), loc('players.rank.legendary')]
 const titleCase = x => x[0].toUpperCase() + x.slice(1)
-const craftText = s => s.profession ? `${titleCase(s.profession)}, ${RANK_NAMES[s.rank] || 'Free'}, ${s.hours} h` : 'None'
+const craftText = s => s.profession ? loc('players.craftText', { profession: titleCase(s.profession), rank: RANK_NAMES[s.rank] || RANK_NAMES[0], hours: s.hours }) : loc('players.none')
 
 // A profession a sub-slot follows cannot become the primary; main.js applyMastery refuses it too
 function profOption(x, c) {
   const sub = x === c.profession ? null : (c.crafts || []).slice(1).find(s => s.profession === x)
-  return `<option value="${x}"${x === c.profession ? ' selected' : ''}${sub ? ' disabled' : ''}>${titleCase(x)}${sub ? ` (${sub.name.toLowerCase()} craft)` : ''}</option>`
+  return `<option value="${x}"${x === c.profession ? ' selected' : ''}${sub ? ' disabled' : ''}>${titleCase(x)}${sub ? ' ' + esc(loc('players.subCraft', { slot: sub.name.toLowerCase() })) : ''}</option>`
 }
 const FLAG_FILTERS = ['Online', 'GM', 'Banned', 'Dead']
 const GENDER_FILTERS = ['Male', 'Female']
+const FILTER_LABELS = { Online: loc('players.filter.online'), GM: loc('players.filter.gm'), Banned: loc('players.banned'), Dead: loc('players.filter.dead'), Male: loc('players.filter.male'), Female: loc('players.filter.female') }
 const SORTS = {
-  profile: ['Profile ID', (a, b) => a.profileId - b.profileId],
-  newest:  ['Newest', (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))],
-  oldest:  ['Oldest', (a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || ''))],
-  richest: ['Richest', (a, b) => b.gold - a.gold],
-  poorest: ['Poorest', (a, b) => a.gold - b.gold],
-  most:    ['Most Played', (a, b) => b.seconds - a.seconds],
-  least:   ['Least Played', (a, b) => a.seconds - b.seconds],
+  profile: [loc('players.profileId'), (a, b) => a.profileId - b.profileId],
+  newest:  [loc('players.sort.newest'), (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))],
+  oldest:  [loc('players.sort.oldest'), (a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || ''))],
+  richest: [loc('players.sort.richest'), (a, b) => b.gold - a.gold],
+  poorest: [loc('players.sort.poorest'), (a, b) => a.gold - b.gold],
+  most:    [loc('players.sort.most'), (a, b) => b.seconds - a.seconds],
+  least:   [loc('players.sort.least'), (a, b) => a.seconds - b.seconds],
 }
 
 let rows = []
@@ -37,14 +38,14 @@ const fmtFormDesc = fd => String(fd || '').includes(':') ? String(fd) : '0x' + S
 
 function parseHex(text, label) {
   const n = parseInt(String(text).trim().replace(/^0x/i, ''), 16)
-  if (!Number.isFinite(n) || n < 0) throw new Error(label + ': bad hex id')
+  if (!Number.isFinite(n) || n < 0) throw new Error(loc('players.badHex', { label }))
   return n >>> 0
 }
 
 function parseNum(text, label) {
   const s = String(text).trim()
   const n = Number(s)
-  if (!s || !Number.isFinite(n)) throw new Error(label + ': not a number')
+  if (!s || !Number.isFinite(n)) throw new Error(loc('players.notNumber', { label }))
   return n
 }
 
@@ -60,13 +61,13 @@ function renderToolbar() {
       const cb = el('input', { type: 'checkbox', checked: filters.has(name) })
       cb.addEventListener('change', () => { cb.checked ? filters.add(name) : filters.delete(name); renderList() })
       label.appendChild(cb)
-      label.appendChild(document.createTextNode(' ' + name))
+      label.appendChild(document.createTextNode(' ' + (FILTER_LABELS[name] || name)))
       box.appendChild(label)
     }
     menu.appendChild(box)
   }
   const sort = $('#players-sort')
-  if (!sort.options.length) for (const [key, [label]] of Object.entries(SORTS)) sort.appendChild(el('option', { value: key }, label))
+  if (!sort.options.length) for (const [key, [label]] of Object.entries(SORTS)) sort.appendChild(el('option', { value: key }, esc(label)))
 }
 
 // Flags must all hold; within genders and within races any one is enough
@@ -88,17 +89,17 @@ function renderList() {
   const ul = $('#players-list')
   const visible = rows.filter(matches).sort(SORTS[$('#players-sort').value || 'profile'][1])
   $('#players-count').textContent = `${visible.length} / ${rows.length}`
-  $('#players-filter-btn').textContent = filters.size ? `Filters (${filters.size})` : 'Filters'
+  $('#players-filter-btn').textContent = filters.size ? loc('players.filtersCount', { n: filters.size }) : loc('players.filters')
   ul.innerHTML = ''
-  const stats = el('li', { className: 'pinned' + (selected === 'stats' ? ' selected' : '') }, '<div class="pl-main"><span class="pl-name">General Stats</span></div>')
+  const stats = el('li', { className: 'pinned' + (selected === 'stats' ? ' selected' : '') }, `<div class="pl-main"><span class="pl-name">${esc(loc('players.stats.title'))}</span></div>`)
   stats.addEventListener('click', showStats)
   ul.appendChild(stats)
   for (const r of visible) {
     const li = el('li', { className: selected === r.profileId ? 'selected' : '' })
     li.innerHTML =
       `<div class="pl-main"><span class="dot ${online.has(r.profileId) ? 'ok' : 'off'}"></span><span class="pl-name">${esc(r.name)}</span>` +
-      `${r.banned ? '<span class="badge bad">banned</span>' : ''}</div>` +
-      `<div class="pl-sub">${r.characters.length} character${r.characters.length === 1 ? '' : 's'}${r.lastPlayed ? ` · ${esc(r.lastPlayed)}` : ''}</div>`
+      `${r.banned ? `<span class="badge bad">${esc(loc('common.banned'))}</span>` : ''}</div>` +
+      `<div class="pl-sub">${esc(loc(r.characters.length === 1 ? 'players.charCountOne' : 'players.charCountMany', { n: r.characters.length }))}${r.lastPlayed ? ` · ${esc(r.lastPlayed)}` : ''}</div>`
     li.addEventListener('click', () => showPlayer(r.profileId))
     ul.appendChild(li)
   }
@@ -106,7 +107,7 @@ function renderList() {
 
 async function loadPlayers() {
   const r = await window.mgr.playersList()
-  if (!r.ok) { rows = []; $('#players-list').innerHTML = `<li>Error: ${esc(r.error)}</li>`; return }
+  if (!r.ok) { rows = []; $('#players-list').innerHTML = `<li>${esc(loc('common.error', { error: r.error }))}</li>`; return }
   rows = r.rows
   races = r.races
   renderToolbar()
@@ -126,14 +127,14 @@ function showStats() {
   selected = 'stats'
   renderList()
   const box = $('#player-detail')
-  box.innerHTML = '<h3>General Stats</h3><p class="muted">Counts every account and living character in the database; gold and materials count every character and every container.</p>'
-  const btn = el('button', { className: 'action go' }, 'Generate stats')
+  box.innerHTML = `<h3>${esc(loc('players.stats.title'))}</h3><p class="muted">${esc(loc('players.stats.intro'))}</p>`
+  const btn = el('button', { className: 'action go' }, esc(loc('players.stats.generate')))
   btn.addEventListener('click', async () => {
     btn.disabled = true
-    btn.textContent = 'Generating…'
+    btn.textContent = loc('players.stats.generating')
     const r = await window.mgr.playersStats()
     btn.remove()
-    if (!r.ok) { box.appendChild(el('p', {}, `Error: ${esc(r.error)}`)); return }
+    if (!r.ok) { box.appendChild(el('p', {}, esc(loc('common.error', { error: r.error })))); return }
     const s = r.stats
     const block = (title, body) => `<div class="stat-block"><h4>${esc(title)}</h4>${body}</div>`
     const kv = (label, value) => `<div class="kv"><b>${esc(label)}</b><span>${value}</span></div>`
@@ -143,13 +144,13 @@ function showStats() {
     }
     const col = (...blocks) => `<div class="stat-col">${blocks.join('')}</div>`
     box.insertAdjacentHTML('beforeend', '<div class="stat-cols">' +
-      col(block('Totals', kv('Accounts', s.players) + kv('Living characters', s.characters)),
-        table('Gender', s.genders),
-        s.materialError ? block('Materials', `<p class="muted">Unavailable: ${esc(s.materialError)}</p>`) : table('Materials (characters and containers)', s.materials, s.materialOrder)) +
-      col(table('Hours played', s.hours, s.hourOrder), table('Profession', s.professions)) +
-      col(block('Wealth', kv('Total gold', s.totalWealth.toLocaleString()) + kv('Carried by characters', s.carriedWealth.toLocaleString()) +
-          kv('In containers', s.storedWealth.toLocaleString()) + kv('Average carried per account', s.averageWealth.toLocaleString())),
-        table('Gold carried per account', s.wealth, s.wealthOrder), table('Race', s.races)) +
+      col(block(loc('players.stats.totals'), kv(loc('players.stats.accounts'), s.players) + kv(loc('players.stats.living'), s.characters)),
+        table(loc('players.stats.gender'), s.genders),
+        s.materialError ? block(loc('players.stats.materials'), `<p class="muted">${esc(loc('players.stats.unavailable', { error: s.materialError }))}</p>`) : table(loc('players.stats.materialsAll'), s.materials, s.materialOrder)) +
+      col(table(loc('players.hoursPlayed'), s.hours, s.hourOrder), table(loc('players.profession'), s.professions)) +
+      col(block(loc('players.stats.wealth'), kv(loc('players.stats.totalGold'), s.totalWealth.toLocaleString()) + kv(loc('players.stats.carried'), s.carriedWealth.toLocaleString()) +
+          kv(loc('players.stats.stored'), s.storedWealth.toLocaleString()) + kv(loc('players.stats.average'), s.averageWealth.toLocaleString())),
+        table(loc('players.stats.goldPerAccount'), s.wealth, s.wealthOrder), table(loc('players.stats.race'), s.races)) +
       '</div>')
   })
   box.appendChild(btn)
@@ -163,53 +164,53 @@ async function showPlayer(profileId) {
   selected = profileId
   renderList()
   const box = $('#player-detail')
-  box.innerHTML = '<p class="muted">Loading…</p>'
+  box.innerHTML = `<p class="muted">${esc(loc('common.loadingCap'))}</p>`
   const r = await window.mgr.playersDetail(profileId)
-  if (!r.ok) { box.innerHTML = `<p>Error: ${esc(r.error)}</p>`; return }
+  if (!r.ok) { box.innerHTML = `<p>${esc(loc('common.error', { error: r.error }))}</p>`; return }
   detail = r
   const p = r.player
   const isOnline = online.has(p.profileId)
-  const roles = [p.gm && 'GM', p.dev && 'Developer', p.whitelisted && 'Whitelist'].filter(Boolean)
+  const roles = [p.gm && loc('players.role.gm'), p.dev && loc('players.role.dev'), p.whitelisted && loc('players.role.whitelist')].filter(Boolean)
   const list = items => items.length
-    ? '<ul class="mini">' + items.map(e => `<li><code>${esc(e.value)}</code>${e.lastSeen ? ` <span class="muted">last ${esc(fmtDate(e.lastSeen))}</span>` : ''}</li>`).join('') + '</ul>'
-    : '<span class="muted">none</span>'
+    ? '<ul class="mini">' + items.map(e => `<li><code>${esc(e.value)}</code>${e.lastSeen ? ` <span class="muted">${esc(loc('players.lastShort', { date: fmtDate(e.lastSeen) }))}</span>` : ''}</li>`).join('') + '</ul>'
+    : `<span class="muted">${esc(loc('players.noneLower'))}</span>`
   const factions = r.assignments.length
-    ? '<ul class="mini">' + r.assignments.map(a => `<li>${esc(a.faction)} - ${esc(a.rank)}${a.slot === null ? '' : ` <span class="muted">(slot ${a.slot})</span>`}</li>`).join('') + '</ul>'
-    : '<span class="muted">none</span>'
+    ? '<ul class="mini">' + r.assignments.map(a => `<li>${esc(a.faction)} - ${esc(a.rank)}${a.slot === null ? '' : ` <span class="muted">${esc(loc('players.slot', { slot: a.slot }))}</span>`}</li>`).join('') + '</ul>'
+    : `<span class="muted">${esc(loc('players.noneLower'))}</span>`
 
   box.innerHTML =
     `<h3><span class="dot ${isOnline ? 'ok' : 'off'}"></span> ${esc(p.name)}</h3>` +
-    `<div class="kv"><b>Account</b><span>${esc(p.username || '-')}</span></div>` +
-    `<div class="kv"><b>Discord ID</b><span>${esc(p.discordId)}</span></div>` +
-    `<div class="kv"><b>Roles</b><span>${roles.length ? roles.map(x => `<span class="badge">${x}</span>`).join(' ') : '<span class="muted">none</span>'}</span></div>` +
-    `<div class="kv"><b>Profile ID</b><span>${p.profileId}</span></div>` +
-    `<div class="kv"><b>Created</b><span>${esc(fmtDate(p.createdAt))}</span></div>` +
-    `<div class="kv"><b>Last seen</b><span>${esc(fmtDate(p.lastSeenAt))}</span></div>` +
-    `<div class="kv"><b>Hours played</b><span>${hours(p.seconds)}</span></div>` +
-    `<div class="kv"><b>IP addresses</b><span>${list(p.ips)}</span></div>` +
-    `<div class="kv"><b>HWIDs</b><span>${list(p.hwids)}</span></div>` +
-    `<div class="kv"><b>Factions</b><span>${factions}</span></div>` +
-    `<h4>Characters</h4>${r.charError ? `<p class="muted">character data unavailable: ${esc(r.charError)}</p>` : ''}` +
-    (p.characters.length ? '<ul class="char-list" id="pd-chars"></ul>' : '<p class="muted">No characters.</p>') +
+    `<div class="kv"><b>${esc(loc('players.account'))}</b><span>${esc(p.username || '-')}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.discordId'))}</b><span>${esc(p.discordId)}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.roles'))}</b><span>${roles.length ? roles.map(x => `<span class="badge">${esc(x)}</span>`).join(' ') : `<span class="muted">${esc(loc('players.noneLower'))}</span>`}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.profileId'))}</b><span>${p.profileId}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.created'))}</b><span>${esc(fmtDate(p.createdAt))}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.lastSeen'))}</b><span>${esc(fmtDate(p.lastSeenAt))}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.hoursPlayed'))}</b><span>${hours(p.seconds)}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.ips'))}</b><span>${list(p.ips)}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.hwids'))}</b><span>${list(p.hwids)}</span></div>` +
+    `<div class="kv"><b>${esc(loc('players.factions'))}</b><span>${factions}</span></div>` +
+    `<h4>${esc(loc('players.characters'))}</h4>${r.charError ? `<p class="muted">${esc(loc('players.charError', { error: r.charError }))}</p>` : ''}` +
+    (p.characters.length ? '<ul class="char-list" id="pd-chars"></ul>' : `<p class="muted">${esc(loc('players.noChars'))}</p>`) +
     '<div class="row">' +
-      `<label class="chk"><input type="checkbox" id="pd-ban"${p.banned ? ' checked' : ''} /> Banned</label>` +
-      `<button id="pd-kick" class="action small"${isOnline ? '' : ' disabled title="Not online"'}>Kick</button>` +
-      `<label class="chk"><input type="checkbox" id="pd-del-chars"${p.characters.length ? '' : ' disabled'} /> with characters</label>` +
-      '<button id="pd-delete" class="action small stop">Delete account</button>' +
+      `<label class="chk"><input type="checkbox" id="pd-ban"${p.banned ? ' checked' : ''} /> ${esc(loc('players.banned'))}</label>` +
+      `<button id="pd-kick" class="action small"${isOnline ? '' : ` disabled title="${esc(loc('players.notOnline'))}"`}>${esc(loc('players.kick'))}</button>` +
+      `<label class="chk"><input type="checkbox" id="pd-del-chars"${p.characters.length ? '' : ' disabled'} /> ${esc(loc('players.withChars'))}</label>` +
+      `<button id="pd-delete" class="action small stop">${esc(loc('players.deleteAccount'))}</button>` +
       '<span id="pd-status" class="status"></span>' +
     '</div>' +
-    '<small>Ban, kick and delete go through the backend or the game console, so those services must be running. A deleted account gets a fresh profile id at its next login.</small>'
+    `<small>${esc(loc('players.detailHelp'))}</small>`
 
   const ul = $('#pd-chars')
   for (const c of p.characters) {
     const li = el('li')
     li.innerHTML = `<span class="cname">${esc(c.name)}</span> <span class="cid">${esc(fmtFormDesc(c.formDesc))}</span>` +
-      `${c.fallen ? ` <span class="badge">${esc(c.fallen)}</span>` : ''} <span class="muted">${esc(c.race)}, ${c.female ? 'female' : 'male'}</span>`
+      `${c.fallen ? ` <span class="badge">${esc(c.fallen)}</span>` : ''} <span class="muted">${esc(c.race)}, ${esc(c.female ? loc('players.female') : loc('players.male'))}</span>`
     li.addEventListener('click', e => { if (!e.target.closest('button')) openCharModal(c) })
-    const del = el('button', { className: 'action small stop' }, 'Delete')
-    armConfirm(del, 'Delete', async () => {
+    const del = el('button', { className: 'action small stop' }, esc(loc('common.delete')))
+    armConfirm(del, loc('common.delete'), async () => {
       const res = await window.mgr.charsDelete(c.formDesc)
-      $('#pd-status').textContent = res.ok ? `${c.name} deleted.` : `Error: ${res.error}`
+      $('#pd-status').textContent = res.ok ? loc('players.charDeleted', { name: c.name }) : loc('common.error', { error: res.error })
       if (res.ok) { await loadPlayers(); showPlayer(p.profileId) }
     })
     li.appendChild(del)
@@ -218,21 +219,22 @@ async function showPlayer(profileId) {
 
   $('#pd-ban').addEventListener('change', async e => {
     const on = e.target.checked
-    $('#pd-status').textContent = on ? 'banning…' : 'unbanning…'
+    $('#pd-status').textContent = on ? loc('players.banning') : loc('players.unbanning')
     const res = await window.mgr.playersBan(p.profileId, on)
-    $('#pd-status').textContent = res.ok ? (on ? 'Banned.' : 'Unbanned.') : `Error: ${res.error}`
+    $('#pd-status').textContent = res.ok ? (on ? loc('players.bannedDone') : loc('players.unbannedDone')) : loc('common.error', { error: res.error })
     if (!res.ok) e.target.checked = !on
     else { p.banned = on; const row = rows.find(x => x.profileId === p.profileId); if (row) row.banned = on; renderList() }
   })
   $('#pd-kick').addEventListener('click', async () => {
     const res = await window.mgr.playersKick(p.profileId)
-    $('#pd-status').textContent = res.ok ? 'Kick sent.' : `Error: ${res.error}`
+    $('#pd-status').textContent = res.ok ? loc('players.kickSent') : loc('common.error', { error: res.error })
   })
-  armConfirm($('#pd-delete'), 'Delete account', async () => {
+  armConfirm($('#pd-delete'), loc('players.deleteAccount'), async () => {
     const res = await window.mgr.playersDelete(p.profileId, { deleteCharacters: $('#pd-del-chars').checked })
-    if (!res.ok) { $('#pd-status').textContent = `Error: ${res.error}`; return }
+    if (!res.ok) { $('#pd-status').textContent = loc('common.error', { error: res.error }); return }
     selected = null
-    box.innerHTML = `<p class="muted">Account deleted${res.deletedChars ? `, with ${res.deletedChars} character${res.deletedChars === 1 ? '' : 's'}` : ''}.</p>`
+    const gone = !res.deletedChars ? loc('players.accountDeleted') : loc(res.deletedChars === 1 ? 'players.accountDeletedOne' : 'players.accountDeletedMany', { n: res.deletedChars })
+    box.innerHTML = `<p class="muted">${esc(gone)}</p>`
     loadPlayers()
   })
 }
@@ -264,34 +266,34 @@ function renderCmMain() {
   const pos = c.position ? c.position.map(n => Math.round(n * 100) / 100).join(', ') : ''
   const box = $('#cm-main')
   box.innerHTML =
-    `<div class="sfield"><label>Name</label><input id="cm-name" type="text" class="sinput" value="${esc(c.name)}" /></div>` +
-    `<div class="sfield"><label>Max health change</label><input id="cm-hp" class="sinput" type="number" value="${c.attrBonus.health}" /></div>` +
-    `<div class="sfield"><label>Max stamina change</label><input id="cm-sp" class="sinput" type="number" value="${c.attrBonus.stamina}" /></div>` +
-    `<div class="sfield"><label>Max magicka change</label><input id="cm-mp" class="sinput" type="number" value="${c.attrBonus.magicka}" /></div>` +
-    `<div class="sfield"><label>Profession</label><select id="cm-prof" class="sinput"><option value="">None</option>${PROFESSIONS.map(x => profOption(x, c)).join('')}</select></div>` +
-    `<div class="sfield"><label>Hours in profession</label><input id="cm-hours" class="sinput" type="number" min="0" value="${c.professionHours}" /></div>` +
-    (c.crafts || []).slice(1).map(s => `<div class="sfield"><label>${esc(s.name)} craft</label><input class="sinput" type="text" readonly title="Chosen in game from the Skills tab; the in-game admin panel grants its hours and resets it" value="${esc(craftText(s))}" /></div>`).join('') +
-    `<div class="sfield"><label>Coordinates (x, y, z)</label><input id="cm-pos" type="text" class="sinput" value="${esc(pos)}" /></div>` +
-    `<div class="sfield"><label>Cell ID</label><input id="cm-cell" type="text" class="sinput" value="${esc(c.worldOrCell || '')}" /></div>`
+    `<div class="sfield"><label>${esc(loc('players.cm.name'))}</label><input id="cm-name" type="text" class="sinput" value="${esc(c.name)}" /></div>` +
+    `<div class="sfield"><label>${esc(loc('players.cm.maxHealthChange'))}</label><input id="cm-hp" class="sinput" type="number" value="${c.attrBonus.health}" /></div>` +
+    `<div class="sfield"><label>${esc(loc('players.cm.maxStaminaChange'))}</label><input id="cm-sp" class="sinput" type="number" value="${c.attrBonus.stamina}" /></div>` +
+    `<div class="sfield"><label>${esc(loc('players.cm.maxMagickaChange'))}</label><input id="cm-mp" class="sinput" type="number" value="${c.attrBonus.magicka}" /></div>` +
+    `<div class="sfield"><label>${esc(loc('players.profession'))}</label><select id="cm-prof" class="sinput"><option value="">${esc(loc('players.none'))}</option>${PROFESSIONS.map(x => profOption(x, c)).join('')}</select></div>` +
+    `<div class="sfield"><label>${esc(loc('players.cm.hours'))}</label><input id="cm-hours" class="sinput" type="number" min="0" value="${c.professionHours}" /></div>` +
+    (c.crafts || []).slice(1).map(s => `<div class="sfield"><label>${esc(loc('players.cm.craftLabel', { slot: s.name }))}</label><input class="sinput" type="text" readonly title="${esc(loc('players.cm.craftTitle'))}" value="${esc(craftText(s))}" /></div>`).join('') +
+    `<div class="sfield"><label>${esc(loc('players.cm.coordsLabel'))}</label><input id="cm-pos" type="text" class="sinput" value="${esc(pos)}" /></div>` +
+    `<div class="sfield"><label>${esc(loc('players.cm.cellId'))}</label><input id="cm-cell" type="text" class="sinput" value="${esc(c.worldOrCell || '')}" /></div>`
   const row = el('div', { className: 'row span-all' })
-  const save = el('button', { className: 'action go' }, 'Save')
+  const save = el('button', { className: 'action go' }, esc(loc('common.save')))
   save.addEventListener('click', saveCmMain)
   row.appendChild(save)
-  for (const [realm, label] of [['sovngarde', 'Send to Sovngarde'], ['soulCairn', 'Send to Soul Cairn']]) {
-    const b = el('button', { className: 'action small stop' }, label)
+  for (const [realm, label, sent] of [['sovngarde', loc('players.cm.sendSovngarde'), loc('players.cm.sentSovngarde')], ['soulCairn', loc('players.cm.sendSoulCairn'), loc('players.cm.sentSoulCairn')]]) {
+    const b = el('button', { className: 'action small stop' }, esc(label))
     b.disabled = !!c.fallen
     armConfirm(b, label, async () => {
       const r = await window.mgr.charsAfterlife(c.formDesc, realm)
-      cmStatus(r.ok ? `Sent to ${label.replace('Send to ', '')}.` : `Error: ${r.error}`)
+      cmStatus(r.ok ? sent : loc('common.error', { error: r.error }))
       if (r.ok) refreshAfterEdit()
     })
     row.appendChild(b)
   }
-  const revive = el('button', { className: 'action small go' }, 'Revive')
+  const revive = el('button', { className: 'action small go' }, esc(loc('players.cm.revive')))
   revive.disabled = !c.fallen
-  armConfirm(revive, 'Revive', async () => {
+  armConfirm(revive, loc('players.cm.revive'), async () => {
     const r = await window.mgr.charsRevive(c.formDesc)
-    cmStatus(r.ok ? 'Revived, they wake at the Temple of Kynareth.' : `Error: ${r.error}`)
+    cmStatus(r.ok ? loc('players.cm.revived') : loc('common.error', { error: r.error }))
     if (r.ok) refreshAfterEdit()
   })
   row.appendChild(revive)
@@ -300,18 +302,18 @@ function renderCmMain() {
 
 async function saveCmMain() {
   try {
-    const pos = $('#cm-pos').value.split(/[\s,]+/).filter(Boolean).map(x => parseNum(x, 'Coordinates'))
+    const pos = $('#cm-pos').value.split(/[\s,]+/).filter(Boolean).map(x => parseNum(x, loc('players.cm.coords')))
     const patch = {
       name: $('#cm-name').value,
-      attrBonus: { health: parseNum($('#cm-hp').value, 'Max health'), stamina: parseNum($('#cm-sp').value, 'Max stamina'), magicka: parseNum($('#cm-mp').value, 'Max magicka') },
-      mastery: { profession: $('#cm-prof').value, hours: parseNum($('#cm-hours').value, 'Hours in profession') },
+      attrBonus: { health: parseNum($('#cm-hp').value, loc('players.cm.maxHealth')), stamina: parseNum($('#cm-sp').value, loc('players.cm.maxStamina')), magicka: parseNum($('#cm-mp').value, loc('players.cm.maxMagicka')) },
+      mastery: { profession: $('#cm-prof').value, hours: parseNum($('#cm-hours').value, loc('players.cm.hours')) },
       location: { worldOrCellDesc: $('#cm-cell').value.trim(), position: pos },
     }
-    cmStatus('saving…')
+    cmStatus(loc('common.saving'))
     const r = await window.mgr.charsSave(cmChar.formDesc, patch)
-    cmStatus(r.ok ? 'Saved.' : `Error: ${r.error}`)
+    cmStatus(r.ok ? loc('players.cm.saved') : loc('common.error', { error: r.error }))
     if (r.ok) refreshAfterEdit()
-  } catch (err) { cmStatus(`Error: ${err.message}`) }
+  } catch (err) { cmStatus(loc('common.error', { error: err.message })) }
 }
 
 // Faction ranks held by this character's slot, and a faction and rank to add
@@ -322,11 +324,11 @@ function renderCmFaction() {
   const held = detail.assignments.filter(a => a.slot === slot || a.slot === null)
   for (const a of held) {
     const line = el('div', { className: 'row' })
-    line.appendChild(el('span', {}, `${esc(a.faction)} - ${esc(a.rank)}${a.slot === null ? ' <span class="muted">(whole account)</span>' : ''}`))
-    const rm = el('button', { className: 'action small stop', title: 'Remove rank' }, '✕')
+    line.appendChild(el('span', {}, `${esc(a.faction)} - ${esc(a.rank)}${a.slot === null ? ` <span class="muted">${esc(loc('players.cm.wholeAccount'))}</span>` : ''}`))
+    const rm = el('button', { className: 'action small stop', title: loc('players.cm.removeRank') }, '✕')
     armConfirm(rm, '✕', async () => {
       const r = await window.mgr.charsFaction(detail.player.profileId, { remove: a.id })
-      cmStatus(r.ok ? 'Rank removed.' : `Error: ${r.error}`)
+      cmStatus(r.ok ? loc('players.cm.rankRemoved') : loc('common.error', { error: r.error }))
       if (r.ok) refreshAfterEdit()
     })
     line.appendChild(rm)
@@ -334,7 +336,7 @@ function renderCmFaction() {
   }
   const row = el('div', { className: 'row' })
   const fac = el('select', { className: 'sinput' })
-  fac.appendChild(el('option', { value: '' }, 'Faction…'))
+  fac.appendChild(el('option', { value: '' }, esc(loc('players.cm.factionPick'))))
   const groups = new Map()
   for (const f of detail.factions) {
     if (!groups.has(f.province)) groups.set(f.province, fac.appendChild(el('optgroup', { label: f.province })))
@@ -347,11 +349,11 @@ function renderCmFaction() {
     for (const r of (f ? f.ranks : [])) rank.appendChild(el('option', { value: r.id }, esc(r.rank)))
   }
   fac.addEventListener('change', fillRanks)
-  const add = el('button', { className: 'action small go' }, 'Add rank')
+  const add = el('button', { className: 'action small go' }, esc(loc('players.cm.addRank')))
   add.addEventListener('click', async () => {
-    if (!rank.value) { cmStatus('Pick a faction and a rank'); return }
+    if (!rank.value) { cmStatus(loc('players.cm.pickRank')); return }
     const r = await window.mgr.charsFaction(detail.player.profileId, { requirementId: rank.value, slot, playerName: cmChar.name })
-    cmStatus(r.ok ? 'Rank added.' : `Error: ${r.error}`)
+    cmStatus(r.ok ? loc('players.cm.rankAdded') : loc('common.error', { error: r.error }))
     if (r.ok) refreshAfterEdit()
   })
   row.appendChild(fac)
@@ -385,26 +387,26 @@ async function fetchItemNames() {
 
 // key, label, kind (text | bool | hex | number | int | hexlist)
 const CM_APPEARANCE_FIELDS = [
-  ['isFemale', 'Female', 'bool'],
-  ['raceId', 'Race ID', 'hex'],
-  ['weight', 'Weight (0-100)', 'number'],
-  ['skinColor', 'Skin color (ARGB int)', 'int'],
-  ['hairColor', 'Hair color (ARGB int)', 'int'],
-  ['headTextureSetId', 'Head texture set', 'hex'],
-  ['headpartIds', 'Headparts (hex ids, one per line)', 'hexlist'],
+  ['isFemale', loc('players.filter.female'), 'bool'],
+  ['raceId', loc('players.cm.raceId'), 'hex'],
+  ['weight', loc('players.cm.weightLabel'), 'number'],
+  ['skinColor', loc('players.cm.skinColorLabel'), 'int'],
+  ['hairColor', loc('players.cm.hairColorLabel'), 'int'],
+  ['headTextureSetId', loc('players.cm.headTexture'), 'hex'],
+  ['headpartIds', loc('players.cm.headpartsLabel'), 'hexlist'],
 ]
 
 function renderCmAppearance() {
   const box = $('#cm-appearance')
-  box.innerHTML = '<h4>Appearance</h4>'
+  box.innerHTML = `<h4>${esc(loc('players.cm.appearance'))}</h4>`
   const a = cmChar.appearance
-  if (!a) { box.appendChild(el('p', { className: 'muted' }, 'No appearance data on this character.')); return }
+  if (!a) { box.appendChild(el('p', { className: 'muted' }, esc(loc('players.cm.noAppearance')))); return }
   for (const [key, label, kind] of CM_APPEARANCE_FIELDS) {
     const wrap = el('div', { className: 'sfield' })
     wrap.appendChild(el('label', {}, esc(label)))
     if (kind === 'bool') {
       const sel = el('select', { id: 'cma-' + key, className: 'sinput' })
-      for (const [t, v] of [['No', 'false'], ['Yes', 'true']]) sel.appendChild(el('option', { value: v, selected: String(!!a[key]) === v }, t))
+      for (const [t, v] of [[loc('players.cm.no'), 'false'], [loc('players.cm.yes'), 'true']]) sel.appendChild(el('option', { value: v, selected: String(!!a[key]) === v }, esc(t)))
       wrap.appendChild(sel)
     } else if (kind === 'hexlist') {
       const ta = el('textarea', { id: 'cma-' + key, rows: 5, spellcheck: false })
@@ -419,13 +421,13 @@ function renderCmAppearance() {
   }
   // Full-object escape hatch for morphs, presets and tints
   const adv = el('details')
-  adv.appendChild(el('summary', {}, 'All saved appearance data (JSON; overrides the fields above when edited)'))
+  adv.appendChild(el('summary', {}, esc(loc('players.cm.rawAppearance'))))
   const ta = el('textarea', { id: 'cma-raw', rows: 10, spellcheck: false })
   ta.value = JSON.stringify(a, null, 2)
   ta.dataset.initial = ta.value
   adv.appendChild(ta)
   box.appendChild(adv)
-  const save = el('button', { className: 'action go' }, 'Save appearance')
+  const save = el('button', { className: 'action go' }, esc(loc('players.cm.saveAppearance')))
   save.addEventListener('click', saveCmAppearance)
   box.appendChild(save)
 }
@@ -439,18 +441,18 @@ async function saveCmAppearance() {
     } else {
       appearance = JSON.parse(JSON.stringify(cmChar.appearance))
       appearance.isFemale = $('#cma-isFemale').value === 'true'
-      appearance.raceId = parseHex($('#cma-raceId').value, 'Race ID')
-      appearance.weight = parseNum($('#cma-weight').value, 'Weight')
-      appearance.skinColor = parseNum($('#cma-skinColor').value, 'Skin color') | 0
-      appearance.hairColor = parseNum($('#cma-hairColor').value, 'Hair color') | 0
-      appearance.headTextureSetId = parseHex($('#cma-headTextureSetId').value, 'Head texture set')
-      appearance.headpartIds = $('#cma-headpartIds').value.split(/[\s,]+/).filter(Boolean).map(x => parseHex(x, 'Headparts'))
+      appearance.raceId = parseHex($('#cma-raceId').value, loc('players.cm.raceId'))
+      appearance.weight = parseNum($('#cma-weight').value, loc('players.cm.weight'))
+      appearance.skinColor = parseNum($('#cma-skinColor').value, loc('players.cm.skinColor')) | 0
+      appearance.hairColor = parseNum($('#cma-hairColor').value, loc('players.cm.hairColor')) | 0
+      appearance.headTextureSetId = parseHex($('#cma-headTextureSetId').value, loc('players.cm.headTexture'))
+      appearance.headpartIds = $('#cma-headpartIds').value.split(/[\s,]+/).filter(Boolean).map(x => parseHex(x, loc('players.cm.headparts')))
     }
-    cmStatus('saving appearance…')
+    cmStatus(loc('players.cm.savingAppearance'))
     const r = await window.mgr.charsSave(cmChar.formDesc, { appearance })
-    cmStatus(r.ok ? 'Appearance saved.' : `Error: ${r.error}`)
+    cmStatus(r.ok ? loc('players.cm.appearanceSaved') : loc('common.error', { error: r.error }))
     if (r.ok) refreshAfterEdit()
-  } catch (err) { cmStatus(`Error: ${err.message}`) }
+  } catch (err) { cmStatus(loc('common.error', { error: err.message })) }
 }
 
 function entryHasExtras(e) {
@@ -459,44 +461,44 @@ function entryHasExtras(e) {
 
 function renderCmInventory() {
   const box = $('#cm-inventory')
-  box.innerHTML = `<h4>Inventory (${cmEntries.length} stack${cmEntries.length === 1 ? '' : 's'})</h4>`
+  box.innerHTML = `<h4>${esc(loc(cmEntries.length === 1 ? 'players.cm.inventoryOne' : 'players.cm.inventoryMany', { n: cmEntries.length }))}</h4>`
   const add = el('div', { className: 'inv-add' })
-  const idInp = el('input', { type: 'text', placeholder: 'form id, e.g. 0xF' })
+  const idInp = el('input', { type: 'text', placeholder: loc('players.cm.formIdPlaceholder') })
   const cntInp = el('input', { type: 'number', value: '1', min: '1' })
-  const addBtn = el('button', { className: 'action small' }, 'Add')
+  const addBtn = el('button', { className: 'action small' }, esc(loc('players.cm.add')))
   addBtn.addEventListener('click', () => {
     try {
-      const baseId = parseHex(idInp.value, 'Form id')
-      if (!baseId) throw new Error('Form id: bad hex id')
+      const baseId = parseHex(idInp.value, loc('players.cm.formId'))
+      if (!baseId) throw new Error(loc('players.badHex', { label: loc('players.cm.formId') }))
       const count = Math.max(1, Math.floor(Number(cntInp.value) || 1))
       const stack = cmEntries.find(e => e.baseId === baseId && !entryHasExtras(e))
       if (stack) stack.count += count
       else cmEntries.push({ baseId, count })
       renderCmInventory()
       fetchItemNames()
-    } catch (err) { cmStatus(`Error: ${err.message}`) }
+    } catch (err) { cmStatus(loc('common.error', { error: err.message })) }
   })
   add.append(idInp, cntInp, addBtn)
   box.appendChild(add)
   cmEntries.forEach((e, i) => {
     const row = el('div', { className: 'inv-row' })
     row.appendChild(el('span', { className: 'iid' }, esc(cmHex(e.baseId))))
-    const extras = entryHasExtras(e) ? ` <span class="badge" title="${esc(JSON.stringify(e))}">extras</span>` : ''
+    const extras = entryHasExtras(e) ? ` <span class="badge" title="${esc(JSON.stringify(e))}">${esc(loc('players.cm.extras'))}</span>` : ''
     row.appendChild(el('span', { className: 'iname' }, esc(cmItemNames[(e.baseId >>> 0).toString(16)] || '') + extras))
     const cnt = el('input', { type: 'number', className: 'icount', value: String(e.count), min: '0' })
     cnt.addEventListener('change', () => { e.count = Math.max(0, Math.floor(Number(cnt.value) || 0)) })
     row.appendChild(cnt)
-    const rm = el('button', { className: 'action small stop', title: 'Remove' }, '✕')
+    const rm = el('button', { className: 'action small stop', title: loc('players.cm.remove') }, '✕')
     rm.addEventListener('click', () => { cmEntries.splice(i, 1); renderCmInventory() })
     row.appendChild(rm)
     box.appendChild(row)
   })
-  const save = el('button', { className: 'action go' }, 'Save inventory')
+  const save = el('button', { className: 'action go' }, esc(loc('players.cm.saveInventory')))
   save.addEventListener('click', async () => {
-    cmStatus('saving inventory…')
+    cmStatus(loc('players.cm.savingInventory'))
     const entries = cmEntries.filter(e => e.count > 0)
     const r = await window.mgr.charsSave(cmChar.formDesc, { invEntries: entries })
-    cmStatus(r.ok ? 'Inventory saved.' : `Error: ${r.error}`)
+    cmStatus(r.ok ? loc('players.cm.inventorySaved') : loc('common.error', { error: r.error }))
     if (r.ok) refreshAfterEdit()
   })
   box.appendChild(save)

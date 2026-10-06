@@ -15,6 +15,7 @@ const modsync = require('./modsync')
 const { createConsoleRelay } = require('./relayClient')
 const schedule = require('./restartSchedule')
 const { maskSettings, secretValues, redactText } = require('./settingsMask')
+const { loc } = require('./loc')
 
 const backendModule = name => require(path.join(config.paths.backend, 'sources', name))
 const protocol = backendModule('manager/protocol')
@@ -39,7 +40,7 @@ const RUNNERS = {
 async function serviceJob(b, deps, verb) {
   const r = await deps.serviceAction(verb)
   for (const step of r.steps || []) b.line(step)
-  return r.ok ? { ok: true } : { ok: false, error: (r.steps || []).join('; ') || r.error || `${verb} failed` }
+  return r.ok ? { ok: true } : { ok: false, error: (r.steps || []).join('; ') || r.error || loc('services.failed', { verb }) }
 }
 
 function gitRun(root, args) {
@@ -70,11 +71,11 @@ async function readGitState(root = config.repoRoot) {
 
 /** Why a web build may not run from this checkout, or null. */
 function gitProblem(state) {
-  if (!state.ok) return `cannot read the git checkout: ${state.error}`
-  if (state.branch !== 'main') return `web builds run only from main, the checkout is on ${state.branch}`
-  if (state.merging) return 'a merge is in progress in the checkout'
+  if (!state.ok) return loc('agent.git.unreadable', { error: state.error })
+  if (state.branch !== 'main') return loc('agent.git.notMain', { branch: state.branch })
+  if (state.merging) return loc('agent.git.merging')
   const other = state.dirty.filter(f => !VERSION_FILES.includes(f))
-  if (other.length) return `the checkout has uncommitted changes besides version files: ${other.slice(0, 5).join(', ')}${other.length > 5 ? ', ...' : ''}`
+  if (other.length) return loc('agent.git.dirty', { files: other.slice(0, 5).join(', ') + (other.length > 5 ? ', ...' : '') })
   return null
 }
 
@@ -155,7 +156,7 @@ function createAgent(overrides = {}) {
     try { return { exists: true, ...modsync.readSettingsFile(deps.serverSettingsPath()) } }
     catch (err) {
       if (err.code === 'ENOENT') return { exists: false, settings: {}, mtimeMs: null }
-      return { exists: true, settings: {}, mtimeMs: null, error: err instanceof SyntaxError ? 'server-settings.json is not valid JSON' : 'server-settings.json cannot be read' }
+      return { exists: true, settings: {}, mtimeMs: null, error: err instanceof SyntaxError ? loc('agent.settingsInvalid') : loc('agent.settingsUnreadable') }
     }
   }
 
@@ -247,9 +248,9 @@ function createAgent(overrides = {}) {
     const id = jobId()
     let lock
     try { lock = deps.lock.acquire({ source: 'web', kind, actor: who, jobId: id }) }
-    catch (err) { return { status: 500, body: { error: `cannot take the build lock: ${err.message}` } } }
+    catch (err) { return { status: 500, body: { error: loc('lock.cannotTake', { error: err.message }) } } }
     if (!lock.ok) {
-      const error = `another task is running: ${managerLock.describe(lock.holder)}`
+      const error = loc('lock.otherTask', { holder: managerLock.describe(lock.holder) })
       deps.audit.append({ ...base, outcome: 'refused', detail: error })
       return { status: 409, body: { error, busy: lock.holder } }
     }
@@ -260,7 +261,7 @@ function createAgent(overrides = {}) {
       startedAt: new Date().toISOString(), finishedAt: null, result: null,
     }
     try { writeJsonAtomic(jobFile(id), job) }
-    catch (err) { lock.release(); return { status: 500, body: { error: `cannot record the job: ${err.message}` } } }
+    catch (err) { lock.release(); return { status: 500, body: { error: loc('agent.jobRecordFailed', { error: err.message }) } } }
     deps.audit.append({ ...base, outcome: 'started', jobId: id, commit: job.commit })
     running = job
     runJob(job, lock)
@@ -274,7 +275,7 @@ function createAgent(overrides = {}) {
     const b = deps.builder(write)
     let result
     try {
-      b.banner(`${job.label} requested by ${job.actor.username} (${job.actor.discordId})${job.commit ? ` at ${job.commit.slice(0, 12)}` : ''}`)
+      b.banner(job.commit ? loc('agent.requestedAt', { label: job.label, user: job.actor.username, id: job.actor.discordId, commit: job.commit.slice(0, 12) }) : loc('agent.requested', { label: job.label, user: job.actor.username, id: job.actor.discordId }))
       result = await RUNNERS[job.kind](b, deps)
     } catch (err) {
       result = { ok: false, error: err.message }
@@ -296,8 +297,8 @@ function createAgent(overrides = {}) {
   async function scheduledService(target, verb) {
     if (target !== 'live') return services.lockedServiceAction('agent', config.profiles[target], verb)
     const r = await startJob(`game.${verb}`, { discordId: 'scheduler', username: 'Schedule', ip: '127.0.0.1' })
-    if (r.status === 202) return { ok: true, detail: `job ${r.body.jobId}` }
-    return { ok: false, busy: !!(r.body && r.body.busy), error: (r.body && r.body.error) || `status ${r.status}` }
+    if (r.status === 202) return { ok: true, detail: loc('agent.jobDetail', { id: r.body.jobId }) }
+    return { ok: false, busy: !!(r.body && r.body.busy), error: (r.body && r.body.error) || loc('agent.status', { status: r.status }) }
   }
 
   function startSchedule() {
@@ -339,7 +340,7 @@ function createAgent(overrides = {}) {
 
     ['GET', /^\/logs\/([a-f0-9]{12})$/, async (m, q) => {
       const target = (await logTargets()).find(t => t.id === m[1])
-      if (!target) return { status: 404, body: { error: 'unknown log' } }
+      if (!target) return { status: 404, body: { error: loc('agent.api.unknownLog') } }
       const chunk = readChunk(target.file, { from: q.from, before: q.before, max: q.max || LOG_CHUNK })
       return { body: { ...chunk, text: webText(chunk.text), label: target.label } }
     }],
@@ -348,12 +349,12 @@ function createAgent(overrides = {}) {
 
     ['GET', /^\/jobs\/(\d{8}-\d{6}-[a-f0-9]{6})$/, async m => {
       const job = readJson(jobFile(m[1]))
-      return job ? { body: publicJob(job) } : { status: 404, body: { error: 'unknown job' } }
+      return job ? { body: publicJob(job) } : { status: 404, body: { error: loc('agent.api.unknownJob') } }
     }],
 
     ['GET', /^\/jobs\/(\d{8}-\d{6}-[a-f0-9]{6})\/log$/, async (m, q) => {
       const job = readJson(jobFile(m[1]))
-      if (!job) return { status: 404, body: { error: 'unknown job' } }
+      if (!job) return { status: 404, body: { error: loc('agent.api.unknownJob') } }
       let chunk = { text: '', start: 0, end: 0, size: 0 }
       try { chunk = readChunk(jobLog(job.id), { from: q.from || 0, max: LOG_CHUNK_MAX }) } catch { /* no output yet */ }
       return { body: { ...chunk, text: webText(chunk.text), status: job.status, done: job.status !== 'running' } }
@@ -361,7 +362,7 @@ function createAgent(overrides = {}) {
 
     ['POST', /^\/jobs$/, async (m, q, body, actor) => {
       if (!body || typeof body !== 'object' || Object.keys(body).some(k => k !== 'kind') || !Object.prototype.hasOwnProperty.call(protocol.JOB_KINDS, body.kind)) {
-        return { status: 400, body: { error: 'unknown job kind or options' } }
+        return { status: 400, body: { error: loc('agent.api.unknownKind') } }
       }
       const r = await startJob(body.kind, actor)
       return { status: r.status, body: r.body }
@@ -420,12 +421,12 @@ function createAgent(overrides = {}) {
       req.socket.destroy()
       return
     }
-    if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(String(req.headers.host || ''))) return sendJson(res, 421, { error: 'bad host' })
+    if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(String(req.headers.host || ''))) return sendJson(res, 421, { error: loc('agent.api.badHost') })
     const chunks = []
     let size = 0
     for await (const chunk of req) {
       size += chunk.length
-      if (size > MAX_BODY) return sendJson(res, 413, { error: 'body too large' })
+      if (size > MAX_BODY) return sendJson(res, 413, { error: loc('agent.api.tooLarge') })
       chunks.push(chunk)
     }
     const raw = Buffer.concat(chunks).toString('utf8')
@@ -436,10 +437,10 @@ function createAgent(overrides = {}) {
     }
     const url = new URL(req.url, 'http://127.0.0.1')
     const query = parseQuery(url)
-    if (!query) return sendJson(res, 400, { error: 'query values must be integers' })
+    if (!query) return sendJson(res, 400, { error: loc('agent.api.badQuery') })
     let body = null
     if (raw) {
-      try { body = JSON.parse(raw) } catch { return sendJson(res, 400, { error: 'invalid JSON' }) }
+      try { body = JSON.parse(raw) } catch { return sendJson(res, 400, { error: loc('agent.api.invalidJson') }) }
     }
     for (const [method, re, fn] of routes) {
       const m = re.exec(url.pathname)
@@ -451,7 +452,7 @@ function createAgent(overrides = {}) {
         return sendJson(res, 500, { error: webText(err.message) })
       }
     }
-    sendJson(res, 404, { error: 'not found' })
+    sendJson(res, 404, { error: loc('agent.api.notFound') })
   }
 
   function listen(port, host = '127.0.0.1') {

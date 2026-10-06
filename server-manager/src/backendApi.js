@@ -4,6 +4,7 @@
 
 const http   = require('http')
 const config = require('./config')
+const { loc } = require('./loc')
 
 const FACTION_METHODS = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE'])
 // Faction and rank ids are lower-case slugs, so no dot, percent sign, empty segment or query string ever reaches the backend
@@ -26,7 +27,7 @@ function backendRequest(method, apiPath, { body, headers = {}, timeout = 3000 } 
         resolve({ status: res.statusCode, data })
       })
     })
-    req.on('timeout', () => req.destroy(new Error('timeout')))
+    req.on('timeout', () => req.destroy(new Error(loc('backend.timeout'))))
     req.on('error', reject)
     req.end(payload === null ? undefined : payload)
   })
@@ -38,18 +39,18 @@ function factionsPathAllowed(method, subPath) {
 
 // The renderer's only use of the master token: /api/factions and nothing else
 async function factionsRequest(method, subPath, body) {
-  if (!factionsPathAllowed(method, subPath)) return { ok: false, status: 0, error: 'refused: not a faction route' }
+  if (!factionsPathAllowed(method, subPath)) return { ok: false, status: 0, error: loc('backend.notFactionRoute') }
   if (body !== undefined && (body === null || typeof body !== 'object' || Array.isArray(body) || JSON.stringify(body).length > MAX_BODY)) {
-    return { ok: false, status: 0, error: 'refused: the body must be a small JSON object' }
+    return { ok: false, status: 0, error: loc('backend.badBody') }
   }
   const token = config.backendApi.token
-  if (!token) return { ok: false, status: 0, error: 'masterApiAuthToken is not set in server-settings.json' }
+  if (!token) return { ok: false, status: 0, error: loc('backend.noToken') }
   try {
     const { status, data } = await backendRequest(method, `/api/factions${subPath}`, { body, headers: { 'X-Auth-Token': token }, timeout: 10000 })
     const ok = status >= 200 && status < 300
-    return { ok, status, data, error: ok ? undefined : (data && data.error) || `the backend answered ${status}` }
+    return { ok, status, data, error: ok ? undefined : (data && data.error) || loc('backend.answered', { status }) }
   } catch (err) {
-    return { ok: false, status: 0, error: `the backend is unreachable (${err.message}); is AlduinakBackend running?` }
+    return { ok: false, status: 0, error: loc('backend.unreachable', { error: err.message }) }
   }
 }
 

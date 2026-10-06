@@ -2,6 +2,8 @@
 
 // Numeric form ids the way libespm's Combiner assigns them: full plugins index<<24, light plugins 0xFE|slot<<12
 
+const { loc } = require('./loc')
+
 function basename(p) { return String(p).split(/[\\/]/).pop() }
 function keyOf(name) { return basename(name).trim().toLowerCase() }
 
@@ -36,11 +38,11 @@ function computeSlots(order, flagsByName) {
   for (const entry of order) {
     const name = basename(entry).trim()
     const key = name.toLowerCase()
-    if (slots.has(key)) throw new Error(`${name} appears twice in the load order`)
+    if (slots.has(key)) throw new Error(loc('formIds.twice', { name }))
     const light = lights.get(key)
-    if (light !== true && light !== false) throw new Error(`unknown light flag for ${name}`)
-    if (light && nextLight > 0xFFF) throw new Error('too many light plugins (max 4096)')
-    if (!light && nextFull > 0xFD) throw new Error('too many full plugins (max 254)')
+    if (light !== true && light !== false) throw new Error(loc('formIds.unknownFlag', { name }))
+    if (light && nextLight > 0xFFF) throw new Error(loc('formIds.tooManyLight'))
+    if (!light && nextFull > 0xFD) throw new Error(loc('formIds.tooManyFull'))
     slots.set(key, { name, light, index: light ? nextLight++ : nextFull++ })
   }
   return slots
@@ -72,8 +74,8 @@ function decodeId(id, slots) {
 
 function encodeId(plugin, local, slots) {
   const slot = slots.get(keyOf(plugin))
-  if (!slot) throw new Error(`${basename(plugin)} is not in the load order`)
-  if (slot.light && local > 0xFFF) throw new Error(`${slot.name} is a light plugin but local id 0x${local.toString(16)} does not fit 12 bits`)
+  if (!slot) throw new Error(loc('formIds.notInOrder', { name: basename(plugin) }))
+  if (slot.light && local > 0xFFF) throw new Error(loc('formIds.lightTooBig', { name: slot.name, id: local.toString(16) }))
   return slot.light
     ? (0xFE000000 | ((slot.index & 0xFFF) << 12) | (local & 0xFFF)) >>> 0
     : (((slot.index & 0xFF) << 24) | (local & 0xFFFFFF)) >>> 0

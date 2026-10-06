@@ -9,6 +9,7 @@ const modsync = require('./modsync')
 const playtime = require('./playtime')
 const managerLock = require('./managerLock')
 const { nssm, nativeModuleLocked } = require('./serviceCheck')
+const { loc } = require('./loc')
 
 // Host callbacks: onRotated(file) after a log is archived, status(text, profileKey) for warnings
 const hooks = { onRotated: () => {}, status: () => {} }
@@ -66,7 +67,7 @@ function purgePending(profile = LIVE) {
   let diff = null
   try { diff = modsync.readDiff(dataPaths(profile)) } catch {}
   if (!modsync.purgePending(diff)) return null
-  return 'refused: a MongoDB purge is pending for the new load order, run Purge MongoDB (or Restore last purge) first'
+  return loc('services.purgePending')
 }
 
 // The backend and both game servers hold MongoDB open; stopping it under them loses writes
@@ -82,7 +83,7 @@ async function isActive(key) {
 async function act(svc, verb) {
   if (verb === 'stop') {
     for (const dep of MONGO_USERS[svc.key] || []) {
-      if (await isActive(dep)) return { ok: false, text: `refused: stop ${serviceByKey[dep].label} first` }
+      if (await isActive(dep)) return { ok: false, text: loc('services.stopFirst', { service: serviceByKey[dep].label }) }
     }
   }
   const profile = profileOf(svc)
@@ -99,8 +100,8 @@ async function act(svc, verb) {
   }
   await nssm(verb, name)
   const r = await awaitStatus(name, verb === 'stop' ? 'SERVICE_STOPPED' : 'SERVICE_RUNNING')
-  if (r.ok) return { ok: true, text: verb === 'stop' ? 'stopped' : 'started' }
-  return { ok: false, text: `${verb} failed (status: ${r.status || 'unknown'})` }
+  if (r.ok) return { ok: true, text: verb === 'stop' ? loc('services.stopped') : loc('services.started') }
+  return { ok: false, text: loc('services.verbFailed', { verb, status: r.status || loc('console.unknown') }) }
 }
 
 const stepLine = (svc, r) => `${svc.label}: ${r.text}`
@@ -153,7 +154,7 @@ function archiveLogFile(file, profileKey) {
     fs.renameSync(file, path.join(monthDir, `${base}-${datestamp(stat.mtime)}${ext}`))
     hooks.onRotated(file) // fresh file: restart the tail from the top
   } catch (err) {
-    hooks.status(`log rotation skipped for ${file}: ${err.message}`, profileKey)
+    hooks.status(loc('services.rotationSkipped', { file, error: err.message }), profileKey)
   }
 }
 
@@ -189,7 +190,7 @@ async function countPlaytime(file) {
   try { pieces = fs.readdirSync(dir).filter(e => e.startsWith(base + '-') && e.endsWith(ext) && /^\d/.test(e.slice(base.length + 1))) } catch {}
   for (const f of [...pieces.map(e => path.join(dir, e)), file]) {
     try { await playtime.addFromLog(f, readServerSettings()) }
-    catch (err) { hooks.status(`hours played not counted from ${f}: ${err.message}`, LIVE.key) }
+    catch (err) { hooks.status(loc('services.playtimeSkipped', { file: f, error: err.message }), LIVE.key) }
   }
 }
 
@@ -212,14 +213,14 @@ async function statusAll() {
 // Act on a single service (per-service dropdowns and console commands).
 async function doServiceAction(key, action) {
   const svc = serviceByKey[key]
-  if (!svc) return { ok: false, error: `unknown service ${key}` }
+  if (!svc) return { ok: false, error: loc('services.unknownService', { key }) }
   const steps = []
   let ok = true
   const step = async verb => { const r = await act(svc, verb); ok = ok && r.ok; steps.push(stepLine(svc, r)); return r.ok }
   if (action === 'stop') await step('stop')
   else if (action === 'start') await step('start')
   else if (action === 'restart') { if (await step('stop')) await step('start') }
-  else return { ok: false, error: `unknown action ${action}` }
+  else return { ok: false, error: loc('services.unknownAction', { action }) }
   return { ok, steps, status: await statusAll() }
 }
 
@@ -229,25 +230,25 @@ async function lockedServiceAction(source, profile, verb) {
   const pending = verb === 'start' || verb === 'restart' ? purgePending(profile) : null
   if (pending) return { ok: false, error: pending }
   let lock
-  try { lock = managerLock.acquire({ source, kind: `scheduled ${verb} (${profile.label})`, actor: 'schedule' }) }
-  catch (err) { return { ok: false, error: `cannot take the build lock: ${err.message}` } }
-  if (!lock.ok) return { ok: false, busy: true, error: `another task is running: ${managerLock.describe(lock.holder)}` }
+  try { lock = managerLock.acquire({ source, kind: loc('services.scheduledKind', { verb, server: profile.label }), actor: 'schedule' }) }
+  catch (err) { return { ok: false, error: loc('lock.cannotTake', { error: err.message }) } }
+  if (!lock.ok) return { ok: false, busy: true, error: loc('lock.otherTask', { holder: managerLock.describe(lock.holder) }) }
   try {
     const r = await doServiceAction(profile.services.game, verb)
-    return r.ok ? { ok: true } : { ok: false, error: (r.steps || []).join('; ') || r.error || `${verb} failed` }
+    return r.ok ? { ok: true } : { ok: false, error: (r.steps || []).join('; ') || r.error || loc('services.failed', { verb }) }
   } finally { lock.release() }
 }
 
 // Act on every service in order (stop order reversed), or only on one group's services.
 // A service that is not installed is skipped, so a missing test profile never fails the live ones.
 async function doServicesAction(action, group) {
-  if (group && !config.groups.some(g => g.key === group)) return { ok: false, error: `unknown group ${group}` }
+  if (group && !config.groups.some(g => g.key === group)) return { ok: false, error: loc('services.unknownGroup', { group }) }
   const list = config.services.filter(s => !group || s.group === group)
   const status = await statusAll()
   const steps = []
   let ok = true
   const step = async (s, verb) => {
-    if (!/^SERVICE_/.test(status[s.key] || '')) { steps.push(`${s.label}: not installed, skipped`); return }
+    if (!/^SERVICE_/.test(status[s.key] || '')) { steps.push(loc('services.notInstalled', { service: s.label })); return }
     const r = await act(s, verb); ok = ok && r.ok; steps.push(stepLine(s, r))
   }
   const doStop  = async () => { for (const s of [...list].reverse()) await step(s, 'stop') }
@@ -255,7 +256,7 @@ async function doServicesAction(action, group) {
   if (action === 'stop') await doStop()
   else if (action === 'start') await doStart()
   else if (action === 'restart') { await doStop(); await doStart() }
-  else return { ok: false, error: `unknown action ${action}` }
+  else return { ok: false, error: loc('services.unknownAction', { action }) }
   return { ok, steps, status: await statusAll() }
 }
 
@@ -275,18 +276,18 @@ async function discoverLogTargets() {
     const name = await serviceName(s)
     for (const stream of ['AppStdout', 'AppStderr']) {
       const p = parseNssmPath(await nssm('get', name, stream))
-      add(p, `${s.label}${stream === 'AppStderr' ? ' (err)' : ''}`, s.key)
+      add(p, stream === 'AppStderr' ? loc('services.errLog', { service: s.label }) : s.label, s.key)
     }
     for (const f of s.logFiles || []) add(f, s.label, s.key)
   }
   // Fallbacks
   const fallbacks = [
-    [config.logDir, 'gameserver.log', 'Game', 'game'], [config.logDir, 'gameserver-err.log', 'Game (err)', 'game'],
-    [config.logDir, 'backend.log', 'Backend', 'backend'], [config.logDir, 'backend-err.log', 'Backend (err)', 'backend'],
-    [config.profiles.test.logDir, 'gameserver.log', 'Game', 'test-game'], [config.profiles.test.logDir, 'gameserver-err.log', 'Game (err)', 'test-game'],
+    [config.logDir, 'gameserver.log', loc('services.game'), 'game'], [config.logDir, 'gameserver-err.log', loc('services.errLog', { service: loc('services.game') }), 'game'],
+    [config.logDir, 'backend.log', loc('services.backend'), 'backend'], [config.logDir, 'backend-err.log', loc('services.errLog', { service: loc('services.backend') }), 'backend'],
+    [config.profiles.test.logDir, 'gameserver.log', loc('services.game'), 'test-game'], [config.profiles.test.logDir, 'gameserver-err.log', loc('services.errLog', { service: loc('services.game') }), 'test-game'],
   ]
   for (const [dir, name, label, key] of fallbacks) add(path.join(dir, name), label, key)
-  for (const f of ['error.log', 'access.log']) add(path.join('C:\\nginx', 'logs', f), `Nginx (${f.replace('.log', '')})`, 'nginx')
+  for (const f of ['error.log', 'access.log']) add(path.join('C:\\nginx', 'logs', f), `${loc('services.nginx')} (${f.replace('.log', '')})`, 'nginx')
   // Keep only the files that actually exist right now (re-checked on each refresh).
   return targets.filter(t => { try { return fs.statSync(t.file).isFile() } catch { return false } })
 }
@@ -294,9 +295,9 @@ async function discoverLogTargets() {
 // A running game server re-upserts every loaded form, so database writes need it stopped; a dry run only warns
 async function requireGameStopped(log, dryRun, profile = LIVE) {
   const status = await gameStatus(profile)
-  const error = status === 'SERVICE_STOPPED' ? nativeModuleLocked(profile) : `the ${profile.label} game is ${status || 'in an unknown state'}, stop it first`
+  const error = status === 'SERVICE_STOPPED' ? nativeModuleLocked(profile) : loc('services.gameRunning', { server: profile.label, status: status || loc('services.unknownState') })
   if (!error) return null
-  if (dryRun) { log(`WARNING: ${error} (a dry run needs no stop)`); return null }
+  if (dryRun) { log(loc('services.dryRunWarning', { error })); return null }
   return { ok: false, error }
 }
 

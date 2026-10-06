@@ -6,6 +6,7 @@
 
 const path = require('path')
 const fs   = require('fs')
+const { loc } = require('./loc')
 
 const repoRoot = path.resolve(__dirname, '..', '..')
 
@@ -60,10 +61,10 @@ module.exports = {
 
   // Console tab containers, left to right; a service's group decides which one lists it
   groups: [
-    { key: 'backend', label: 'Backend' },
-    { key: 'mongo',   label: 'MongoDB' },
-    { key: 'main',    label: 'Main Server' },
-    { key: 'test',    label: 'Test Server' },
+    { key: 'backend', label: loc('services.backend') },
+    { key: 'mongo',   label: loc('services.mongo') },
+    { key: 'main',    label: loc('servers.main') },
+    { key: 'test',    label: loc('servers.test') },
   ],
 
   // nssm services. `key` is the short label shown in the UI; `name` is the
@@ -73,20 +74,20 @@ module.exports = {
   // logFiles: logs nssm does not know (MongoDB is a plain Windows service)
   // The one MongoDB instance serves both game servers (databases skymp and skymp_test) and the backend
   services: [
-    { key: 'mongo',        name: 'AlduinakMongo',       legacyNames: [],                                label: 'MongoDB', group: 'mongo',   logFiles: [mongoLogFile('mongod.cfg', 'C:\\Alduinak\\mongodb\\log\\mongod.log')] },
-    { key: 'nginx',        name: 'AlduinakNginx',       legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: 'Nginx',   group: 'backend', accessLog: 'C:\\nginx\\logs\\access.log' },
-    { key: 'backend',      name: 'AlduinakBackend',     legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: 'Backend', group: 'backend' },
-    { key: 'livekit',      name: 'AlduinakLiveKit',     legacyNames: [],                                label: 'LiveKit', group: 'main' },
-    { key: 'game',         name: 'AlduinakGameServer',  legacyNames: ['SkyrpGameServer'],               label: 'Game',    group: 'main' },
-    { key: 'test-livekit', name: 'AlduinakLiveKitTest', legacyNames: [],                                label: 'LiveKit', group: 'test' },
-    { key: 'test-game',    name: 'AlduinakTestServer',  legacyNames: [],                                label: 'Game',    group: 'test' },
+    { key: 'mongo',        name: 'AlduinakMongo',       legacyNames: [],                                label: loc('services.mongo'), group: 'mongo',   logFiles: [mongoLogFile('mongod.cfg', 'C:\\Alduinak\\mongodb\\log\\mongod.log')] },
+    { key: 'nginx',        name: 'AlduinakNginx',       legacyNames: ['SkyrpNginx', 'SkyMPNginx'],      label: loc('services.nginx'), group: 'backend', accessLog: 'C:\\nginx\\logs\\access.log' },
+    { key: 'backend',      name: 'AlduinakBackend',     legacyNames: ['SkyrpBackend', 'SkyRP-Backend'], label: loc('services.backend'), group: 'backend' },
+    { key: 'livekit',      name: 'AlduinakLiveKit',     legacyNames: [],                                label: loc('services.livekit'), group: 'main' },
+    { key: 'game',         name: 'AlduinakGameServer',  legacyNames: ['SkyrpGameServer'],               label: loc('services.game'), group: 'main' },
+    { key: 'test-livekit', name: 'AlduinakLiveKitTest', legacyNames: [],                                label: loc('services.livekit'), group: 'test' },
+    { key: 'test-game',    name: 'AlduinakTestServer',  legacyNames: [],                                label: loc('services.game'), group: 'test' },
   ],
 
   // The two game servers: live receives files only through the Migrate box, every build targets buildProfile.
   // files: this profile's manifest set under paths.dataDir; versionsPrefix: its keys in versions.json
   profiles: {
     live: {
-      key: 'live', label: 'Main Server', backendId: 'alduinak',
+      key: 'live', label: loc('servers.main'), backendId: 'alduinak',
       serverDir, serverSettings,
       clientOut: path.join(repoRoot, 'build', 'dist', 'client'),
       services: { game: 'game', mongo: 'mongo', livekit: 'livekit' },
@@ -97,7 +98,7 @@ module.exports = {
       get logDir() { return process.env.ALDUINAK_LOG_DIR || readServerSetting('logDir', serverSettings) || 'C:\\logs' },
     },
     test: {
-      key: 'test', label: 'Test Server', backendId: 'test',
+      key: 'test', label: loc('servers.test'), backendId: 'test',
       serverDir: testServerDir, serverSettings: testServerSettings,
       clientOut: path.join(repoRoot, 'build', 'dist', 'testclient'),
       services: { game: 'test-game', mongo: 'mongo', livekit: 'test-livekit' },

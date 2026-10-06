@@ -23,7 +23,7 @@ const { backendRequest, factionsRequest } = require('./backendApi')
 const playerData = require('./playerData')
 const serviceStats = require('./serviceStats')
 const news = require('./news')
-const { managerSection, dashboardSection } = require('./loc')
+const { loc, managerSection, dashboardSection } = require('./loc')
 
 let win = null
 
@@ -58,7 +58,7 @@ else app.whenReady().then(() => {
     await statusAll()
     const legacy = config.services.filter(s => resolvedNames[s.key] && resolvedNames[s.key] !== s.name)
     if (legacy.length) {
-      send('console:relay', { kind: 'status', text: `legacy service names in use (${legacy.map(s => resolvedNames[s.key]).join(', ')}) - run build\\dist\\server\\install-services.bat once to migrate` })
+      send('console:relay', { kind: 'status', text: loc('console.legacyNames', { names: legacy.map(s => resolvedNames[s.key]).join(', ') }) })
     }
   }, 4000)
 })
@@ -169,12 +169,12 @@ ipcMain.handle('schedule:save', async (_e, raw) => {
 const BUILD_KINDS = ['server', 'launcher', 'client', 'native', 'gamemode']
 const GROUP_KEYS = config.groups.map(g => g.key)
 const CONSOLE_HELP = [
-  'Manager commands:',
-  '  help                                 this help',
-  '  status                               service status by container',
-  '  start|stop|restart <svc|group|all>   control services (' + config.services.map(s => s.key).join(', ') + '; groups ' + GROUP_KEYS.join(', ') + '; a service key wins over a group of the same name)',
-  '  build <' + BUILD_KINDS.join('|') + '>   run a build for the ' + config.profiles[config.buildProfile].label + ' (output streams here)',
-  "Anything else is sent to this server's game console (gamemode).",
+  loc('console.help.title'),
+  loc('console.help.help'),
+  loc('console.help.status'),
+  loc('console.help.services', { services: config.services.map(s => s.key).join(', '), groups: GROUP_KEYS.join(', ') }),
+  loc('console.help.build', { kinds: BUILD_KINDS.join('|'), server: config.profiles[config.buildProfile].label }),
+  loc('console.help.other'),
 ].join('\n')
 
 function consoleOut(text, profile) { send('console:relay', { kind: 'output', text: text + '\n', profile }) }
@@ -190,12 +190,12 @@ async function tryLocalCommand(cmd, profile) {
   // append below the local output (fan-out arrives via console:relay).
   if (verb === 'help' || verb === '?') {
     out(CONSOLE_HELP)
-    if (!relay.command('help').ok) out('(game console offline - gamemode commands unavailable)')
+    if (!relay.command('help').ok) out(loc('console.gameOffline'))
     return { ok: true }
   }
   if (verb === 'status') {
     const st = await statusAll()
-    out(config.groups.map(g => `[${g.label}] ` + config.services.filter(s => s.group === g.key).map(s => `${s.label}: ${st[s.key] || 'unknown'}`).join(', ')).join('\n'))
+    out(config.groups.map(g => `[${g.label}] ` + config.services.filter(s => s.group === g.key).map(s => `${s.label}: ${st[s.key] || loc('console.unknown')}`).join(', ')).join('\n'))
     relay.command('status')
     return { ok: true }
   }
@@ -204,22 +204,22 @@ async function tryLocalCommand(cmd, profile) {
     const keys = config.services.map(s => s.key)
     const targets = [...keys, ...GROUP_KEYS.filter(g => !keys.includes(g)), 'all']
     if (!targets.includes(arg)) {
-      out(`usage: ${verb} <${targets.join('|')}>`)
+      out(loc('console.usage', { verb, targets: targets.join('|') }))
       return { ok: true }
     }
     out(`${verb} ${arg}…`)
     const r = keys.includes(arg) ? await doServiceAction(arg, verb) : await doServicesAction(verb, arg === 'all' ? undefined : arg)
-    out((r.steps || [r.error || 'failed']).join('\n'))
+    out((r.steps || [r.error || loc('console.failed')]).join('\n'))
     return { ok: r.ok !== false }
   }
   if (verb === 'build') {
-    if (!BUILD_KINDS.includes(arg)) { out(`usage: build <${BUILD_KINDS.join('|')}>`); return { ok: true } }
+    if (!BUILD_KINDS.includes(arg)) { out(loc('console.usage', { verb: 'build', targets: BUILD_KINDS.join('|') })); return { ok: true } }
     const holder = managerLock.holder()
-    if (holder) { out(`a build or sync is already running (${managerLock.describe(holder)}) - wait for it to finish`); return { ok: true } }
-    out(`starting ${arg} build…`)
+    if (holder) { out(loc('console.buildBusy', { holder: managerLock.describe(holder) })); return { ok: true } }
+    out(loc('console.buildStarting', { kind: arg }))
     // Not awaited: builds take minutes; progress streams via build:log and the
     // outcome is reported here when it lands.
-    runBuild(arg).then(r => out(r.ok ? `${arg} build complete` : `${arg} build failed: ${r.error || 'see log'}`))
+    runBuild(arg).then(r => out(r.ok ? loc('console.buildComplete', { kind: arg }) : loc('console.buildFailed', { kind: arg, error: r.error || loc('common.seeLog') })))
     return { ok: true }
   }
   return null
@@ -227,7 +227,7 @@ async function tryLocalCommand(cmd, profile) {
 
 ipcMain.handle('console:command', async (_e, text, profile) => {
   const cmd = String(text || '').trim()
-  if (!cmd) return { ok: false, error: 'empty command' }
+  if (!cmd) return { ok: false, error: loc('console.empty') }
   if (!relays[profile]) profile = 'live'
   const local = await tryLocalCommand(cmd, profile)
   if (local) return local
@@ -244,8 +244,8 @@ const profileOrLive = key => config.profiles[key] || LIVE
 async function exclusive(fn) {
   let lock
   try { lock = managerLock.acquire({ source: 'electron', kind: 'manager build or sync', actor: `local:${os.userInfo().username}` }) }
-  catch (err) { return { ok: false, error: `cannot take the build lock: ${err.message}` } }
-  if (!lock.ok) return { ok: false, error: `a build or sync is already running: ${managerLock.describe(lock.holder)}` }
+  catch (err) { return { ok: false, error: loc('lock.cannotTake', { error: err.message }) } }
+  if (!lock.ok) return { ok: false, error: loc('lock.busy', { holder: managerLock.describe(lock.holder) }) }
   try {
     const r = await fn()
     // Let queued build:log messages land before the renderer prints the outcome, else the failure line appears above its error.
@@ -264,7 +264,7 @@ function runBuild(kind, opts) {
     if (kind === 'client')   return b.buildClient(opts)
     if (kind === 'native')   return b.buildNative()
     if (kind === 'gamemode') return b.buildGamemode()
-    return { ok: false, error: `unknown build ${kind}` }
+    return { ok: false, error: loc('build.unknownBuild', { kind }) }
   })
 }
 
@@ -278,7 +278,7 @@ ipcMain.handle('build:gamemode', () => runBuild('gamemode'))
 function ghDispatch() {
   return new Promise((resolve) => {
     const g = config.github
-    if (!g.token) return resolve({ ok: false, error: 'No GitHub token. Set ALDUINAK_GH_TOKEN in skymp5-backend/.env (a PAT with actions:write scope).' })
+    if (!g.token) return resolve({ ok: false, error: loc('build.ci.noToken') })
     const body = JSON.stringify({ ref: g.ref })
     const req = https.request({
       hostname: 'api.github.com',
@@ -296,7 +296,7 @@ function ghDispatch() {
       let d = ''; res.on('data', c => d += c)
       res.on('end', () => {
         if (res.statusCode === 204) resolve({ ok: true, url: `https://github.com/${g.repo}/actions/workflows/${g.workflow}` })
-        else resolve({ ok: false, error: `GitHub API ${res.statusCode}: ${String(d).slice(0, 300)}` })
+        else resolve({ ok: false, error: loc('build.ci.apiError', { status: res.statusCode, body: String(d).slice(0, 300) }) })
       })
     })
     req.on('error', e => resolve({ ok: false, error: e.message }))
@@ -330,16 +330,16 @@ function setEnvVar(file, key, value) {
 const SEMVER_RE = /^\d+\.\d+\.\d+$/
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 function versionError(key, version) {
-  if (key === 'launcher') return SEMVER_RE.test(version) ? null : 'Use a semver like 1.2.3'
+  if (key === 'launcher') return SEMVER_RE.test(version) ? null : loc('versions.semver')
   if (key === 'launcherUrl') return launcherUrlError(version)
-  return VERSION_RE.test(version) ? null : 'Use a version like 1.2.3, 1.2.3-b4 or 1.2.3+4'
+  return VERSION_RE.test(version) ? null : loc('versions.version')
 }
 
 // The launcher's updater installs only over https and follows the website's redirect to its CDN zip
 function launcherUrlError(url) {
   let parsed = null
   try { parsed = new URL(url) } catch { /* reported below */ }
-  return parsed && parsed.protocol === 'https:' && parsed.hostname && !/\s/.test(url) && url.length <= 500 ? null : 'Use a full https:// URL'
+  return parsed && parsed.protocol === 'https:' && parsed.hostname && !/\s/.test(url) && url.length <= 500 ? null : loc('versions.url')
 }
 
 // Register the getVersion/setVersion IPC pair for one component. The getter reads
@@ -379,7 +379,7 @@ ipcMain.handle('versions:published', () => {
 })
 
 ipcMain.handle('versions:set', (_e, key, version) => {
-  if (!VERSION_KEYS.includes(key)) return { ok: false, error: `unknown version key ${key}` }
+  if (!VERSION_KEYS.includes(key)) return { ok: false, error: loc('versions.unknownKey', { key }) }
   version = String(version || '').trim()
   const error = versionError(key, version)
   if (error) return { ok: false, error }
@@ -390,10 +390,10 @@ ipcMain.handle('versions:set', (_e, key, version) => {
 // Writes the package's version into versions.json, so launchers update to it
 ipcMain.handle('versions:publish', (_e, key) => {
   const pkg = PUBLISHED_PKG[key]
-  if (!pkg) return { ok: false, error: 'unknown component' }
+  if (!pkg) return { ok: false, error: loc('versions.unknownComponent') }
   try {
     const version = String(JSON.parse(fs.readFileSync(pkg, 'utf8')).version)
-    if (versionError(key, version)) return { ok: false, error: `bad version ${version}` }
+    if (versionError(key, version)) return { ok: false, error: loc('versions.bad', { version }) }
     backendModule('versions').writeVersion(key, version)
     return { ok: true, version }
   } catch (err) { return { ok: false, error: err.message } }
@@ -410,10 +410,10 @@ function maxCharactersOf(settings) {
 }
 
 // Afterlife state of a changeform, as afterlifeSystem.ts isFallen reads it: the realm label, 'perma-dead', or '' for a living character
-const REALM_LABELS = { sovngarde: 'Sovngarde', soulCairn: 'the Soul Cairn' }
+const REALM_LABELS = { sovngarde: loc('players.fallen.sovngarde'), soulCairn: loc('players.fallen.soulCairn') }
 function fallenOf(cf) {
   const d = (cf && cf.dynamicFields) || {}
-  if (d['private.permaDead'] === true) return 'perma-dead'
+  if (d['private.permaDead'] === true) return loc('players.fallen.permaDead')
   const realm = d['private.afterlife'] && d['private.afterlife'].realm
   return REALM_LABELS[realm] || ''
 }
@@ -428,7 +428,7 @@ function charFromCf(cf) {
   let appearance = null
   if (cf.appearanceDump && typeof cf.appearanceDump === 'object') appearance = cf.appearanceDump
   else if (typeof cf.appearanceDump === 'string') { try { appearance = JSON.parse(cf.appearanceDump) } catch {} }
-  const name = cf.displayName || (appearance && appearance.name) || cf.formDesc || '(unnamed)'
+  const name = cf.displayName || (appearance && appearance.name) || cf.formDesc || loc('players.unnamed')
   const df = cf.dynamicFields || {}
   return {
     profileId,
@@ -474,7 +474,7 @@ async function replaceFile(from, to, attempts = 10) {
 async function withDatabase(settings, fn) {
   let MongoClient
   try { ({ MongoClient } = require('mongodb')) }
-  catch { throw new Error('mongodb module not installed in server-manager - run npm install') }
+  catch { throw new Error(loc('players.noMongoModule')) }
   const client = new MongoClient(settings.databaseUri, { serverSelectionTimeoutMS: 3000 })
   try {
     await client.connect()
@@ -544,7 +544,7 @@ function whitelistRoleId() {
 
 async function playerRows() {
   const settings = readServerSettings()
-  if (settings.databaseDriver !== 'mongodb') throw new Error('the Players tab needs the MongoDB database (databaseDriver "mongodb")')
+  if (settings.databaseDriver !== 'mongodb') throw new Error(loc('players.needsMongo'))
   const [backend, chars] = await Promise.all([playerData.readBackend(settings), readCharactersByProfile()])
   return { backend, rows: playerData.buildRows(backend, chars, whitelistRoleId()) }
 }
@@ -560,7 +560,7 @@ ipcMain.handle('players:detail', async (_e, profileId) => {
   try {
     const { backend, rows } = await playerRows()
     const row = rows.find(r => r.profileId === Number(profileId))
-    if (!row) return { ok: false, error: 'player not found' }
+    if (!row) return { ok: false, error: loc('players.notFound') }
     return {
       ok: true,
       charError: _charError || undefined,
@@ -591,13 +591,13 @@ ipcMain.handle('players:stats', async () => {
 // Writes to the backend's records go through its API with the manager token
 async function backendCall(method, apiPath, body) {
   const token = config.backendApi.token
-  if (!token) return { ok: false, error: 'masterApiAuthToken is not set in server-settings.json' }
+  if (!token) return { ok: false, error: loc('backend.noToken') }
   try {
     const { status, data } = await backendRequest(method, apiPath, { body, headers: { 'X-Auth-Token': token }, timeout: 10000 })
     const ok = status >= 200 && status < 300
-    return { ok, data, error: ok ? undefined : (data && data.error) || `the backend answered ${status}` }
+    return { ok, data, error: ok ? undefined : (data && data.error) || loc('backend.answered', { status }) }
   } catch (err) {
-    return { ok: false, error: `the backend is unreachable (${err.message}); start the Backend service` }
+    return { ok: false, error: loc('backend.unreachableStart', { error: err.message }) }
   }
 }
 
@@ -607,11 +607,11 @@ ipcMain.handle('players:ban', (_e, profileId, enabled) =>
 // Kicks the account's online character through the game console
 ipcMain.handle('players:kick', async (_e, profileId) => {
   const r = await consoleRelay.query('__playersjson', '__PLAYERSJSON__')
-  if (!r.ok) return { ok: false, error: `${r.error}: the game server must be running` }
+  if (!r.ok) return { ok: false, error: loc('players.kickNeedsGame', { error: r.error }) }
   let online = []
-  try { online = JSON.parse(r.payload) } catch { return { ok: false, error: 'bad players payload' } }
+  try { online = JSON.parse(r.payload) } catch { return { ok: false, error: loc('players.badPayload') } }
   const hit = online.find(p => Number(p.profileId) === Number(profileId))
-  if (!hit) return { ok: false, error: 'they are not online' }
+  if (!hit) return { ok: false, error: loc('players.notOnlineError') }
   return consoleRelay.command(`kick ${hit.name}`)
 })
 
@@ -629,7 +629,7 @@ ipcMain.handle('chars:faction', (_e, profileId, change) => {
 function asUint(v, label) {
   if (typeof v === 'string' && v.trim() !== '') v = Number(v)
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 0xffffffff) {
-    throw new Error(`${label}: not a valid number/form id`)
+    throw new Error(loc('players.edit.notUint', { label }))
   }
   return v >>> 0
 }
@@ -637,7 +637,7 @@ function asUint(v, label) {
 // The server's Appearance::FromJson needs the full field set with exact types;
 // normalize everything so a save can never brick the character.
 function sanitizeAppearance(a) {
-  if (!a || typeof a !== 'object' || Array.isArray(a)) throw new Error('appearance: not an object')
+  if (!a || typeof a !== 'object' || Array.isArray(a)) throw new Error(loc('players.edit.appearanceNotObject'))
   const out = {
     isFemale: !!a.isFemale,
     raceId: asUint(a.raceId, 'raceId'),
@@ -656,16 +656,16 @@ function sanitizeAppearance(a) {
     name: String(a.name || ''),
   }
   if (out.options.some(n => !Number.isFinite(n)) || out.presets.some(n => !Number.isFinite(n))) {
-    throw new Error('appearance: options/presets must be numbers')
+    throw new Error(loc('players.edit.appearanceNumbers'))
   }
   // raceId 0 resolves to no espm record, which makes the server skip the whole character at load
-  if (!out.raceId) throw new Error('appearance: raceId must be a non-zero race form id')
+  if (!out.raceId) throw new Error(loc('players.edit.appearanceRace'))
   return out
 }
 
 const INV_EXTRA_KEYS = ['health', 'enchantmentId', 'maxCharge', 'removeEnchantmentOnUnequip', 'chargePercent', 'name', 'soul', 'poisonId', 'poisonCount', 'worn', 'wornLeft']
 function sanitizeInvEntries(list) {
-  if (!Array.isArray(list)) throw new Error('inventory: not an array')
+  if (!Array.isArray(list)) throw new Error(loc('players.edit.inventoryNotArray'))
   const out = []
   for (const e of list) {
     const entry = { baseId: asUint(e && e.baseId, 'baseId'), count: asUint(e && e.count, 'count') }
@@ -678,19 +678,19 @@ function sanitizeInvEntries(list) {
 
 // Reads the character's changeform, lets mutate change it and writes it back whole (dynamicFields keys hold dots, so no field paths)
 async function updateCharacterDoc(formDesc, mutate) {
-  if (typeof formDesc !== 'string' || !formDesc) throw new Error('missing formDesc')
+  if (typeof formDesc !== 'string' || !formDesc) throw new Error(loc('players.edit.missingFormDesc'))
   const settings = readServerSettings()
   if ((settings.databaseDriver || 'file') === 'mongodb') {
     await withMongoChangeForms(settings, async col => {
       const cf = await col.findOne({ formDesc, recType: 1 })
-      if (!cf) throw new Error(`no character with formDesc ${formDesc}`)
+      if (!cf) throw new Error(loc('players.edit.noCharacter', { formDesc }))
       mutate(cf, settings)
       const { _id, ...doc } = cf
       await col.replaceOne({ _id }, doc)
     })
   } else {
     const hit = [...fileChangeForms(settings)].find(([, cf]) => cf.formDesc === formDesc && cf.recType === 1)
-    if (!hit) throw new Error(`no character with formDesc ${formDesc}`)
+    if (!hit) throw new Error(loc('players.edit.noCharacter', { formDesc }))
     mutate(hit[1], settings)
     fs.writeFileSync(hit[0], JSON.stringify(hit[1], null, 2))
   }
@@ -703,7 +703,7 @@ const RANK_HOURS = [40, 100, 180, 6000]
 const MASTERY_VERSION = 2
 const ATTR_LIMIT = 1000   // adminSystem.ts attrSet bounds
 // masterySystem.ts slots: the primary in private.mastery, the sub-slots in private.masterySlots
-const CRAFT_SLOTS = [['Primary', null], ['Secondary', 'secondary'], ['Tertiary', 'tertiary']]
+const CRAFT_SLOTS = [[loc('players.slotName.primary'), null], [loc('players.slotName.secondary'), 'secondary'], [loc('players.slotName.tertiary'), 'tertiary']]
 
 // Every craft slot of a character with its profession ('' when empty), hours and rank, read-only apart from the primary
 function craftsOf(df) {
@@ -717,17 +717,17 @@ function craftsOf(df) {
 
 function intIn(v, lo, hi, label) {
   const n = Number(v)
-  if (!Number.isInteger(n) || n < lo || n > hi) throw new Error(`${label}: a whole number from ${lo} to ${hi}`)
+  if (!Number.isInteger(n) || n < lo || n > hi) throw new Error(loc('players.edit.wholeNumber', { label, lo, hi }))
   return n
 }
 
 // A new profession, or a record from before the rank ladder, drops its marker spells; the server grants the right ones at the next login
 function applyMastery(cf, df, { profession, hours }) {
   const prof = profession ? String(profession) : null
-  if (prof && !PROFESSIONS.includes(prof)) throw new Error(`profession: unknown ${prof}`)
+  if (prof && !PROFESSIONS.includes(prof)) throw new Error(loc('players.edit.unknownProfession', { profession: prof }))
   const rec = { profession: null, points: 0, lastPointAt: 0, rank: 0, granted: [], spellTier: 0, ...(df['private.mastery'] || {}) }
   const sub = prof && prof !== rec.profession ? craftsOf(df).slice(1).find(c => c.profession === prof) : null
-  if (sub) throw new Error(`profession: ${prof} is this character's ${sub.name.toLowerCase()} craft; reset that slot in game or from the admin panel first`)
+  if (sub) throw new Error(loc('players.edit.subCraft', { profession: prof, slot: sub.name.toLowerCase() }))
   if (rec.profession !== prof || rec.v !== MASTERY_VERSION) {
     const drop = new Set((rec.granted || []).map(Number))
     if (Array.isArray(cf.learnedSpells)) cf.learnedSpells = cf.learnedSpells.filter(id => !drop.has(Number(id)))
@@ -741,7 +741,7 @@ function applyMastery(cf, df, { profession, hours }) {
     rec.profession = prof
   }
   rec.v = MASTERY_VERSION
-  rec.points = intIn(hours, 0, 100000, 'Hours in profession')
+  rec.points = intIn(hours, 0, 100000, loc('players.cm.hours'))
   // The server settles a mage's spell cap and any retuned thresholds at login
   rec.rank = prof ? 1 + RANK_HOURS.filter(h => rec.points >= h).length : 0
   df['private.mastery'] = rec
@@ -754,7 +754,7 @@ function applyCharacterPatch(cf, patch) {
   if (patch.invEntries !== undefined) { cf.inv = { entries: sanitizeInvEntries(patch.invEntries) }; changed = true }
   if (patch.name !== undefined) {
     const name = String(patch.name).replace(/\p{Cc}/gu, ' ').trim().slice(0, 60)
-    if (!name) throw new Error('Name: empty')
+    if (!name) throw new Error(loc('players.edit.nameEmpty'))
     cf.appearanceDump = { ...(cf.appearanceDump || {}), name }
     if (cf.displayName !== undefined) cf.displayName = name
     changed = true
@@ -762,22 +762,22 @@ function applyCharacterPatch(cf, patch) {
   if (patch.attrBonus !== undefined) {
     const b = patch.attrBonus || {}
     df['private.attrBonus'] = {
-      health: intIn(b.health, -ATTR_LIMIT, ATTR_LIMIT, 'Max health'),
-      magicka: intIn(b.magicka, -ATTR_LIMIT, ATTR_LIMIT, 'Max magicka'),
-      stamina: intIn(b.stamina, -ATTR_LIMIT, ATTR_LIMIT, 'Max stamina'),
+      health: intIn(b.health, -ATTR_LIMIT, ATTR_LIMIT, loc('players.cm.maxHealth')),
+      magicka: intIn(b.magicka, -ATTR_LIMIT, ATTR_LIMIT, loc('players.cm.maxMagicka')),
+      stamina: intIn(b.stamina, -ATTR_LIMIT, ATTR_LIMIT, loc('players.cm.maxStamina')),
     }
     changed = true
   }
   if (patch.mastery !== undefined) { applyMastery(cf, df, patch.mastery || {}); changed = true }
   if (patch.location !== undefined) {
     const { worldOrCellDesc, position } = patch.location || {}
-    if (!/^[0-9a-f]{1,8}:[^:]+\.(esm|esp|esl)$/i.test(String(worldOrCellDesc || ''))) throw new Error('Cell: expected a form id and plugin, e.g. 165a7:Skyrim.esm')
-    if (!Array.isArray(position) || position.length !== 3 || position.some(n => !Number.isFinite(Number(n)))) throw new Error('Coordinates: three numbers')
+    if (!/^[0-9a-f]{1,8}:[^:]+\.(esm|esp|esl)$/i.test(String(worldOrCellDesc || ''))) throw new Error(loc('players.edit.cell'))
+    if (!Array.isArray(position) || position.length !== 3 || position.some(n => !Number.isFinite(Number(n)))) throw new Error(loc('players.edit.coords'))
     cf.worldOrCellDesc = String(worldOrCellDesc)
     cf.position = position.map(Number)
     changed = true
   }
-  if (!changed) throw new Error('nothing to save')
+  if (!changed) throw new Error(loc('players.edit.nothing'))
 }
 
 async function saveCharacter(formDesc, patch) {
@@ -793,10 +793,10 @@ const REALM_ARRIVALS = {
 // As afterlifeSystem.ts send() does, written to the store while the game server is stopped
 async function sendToRealm(formDesc, realm) {
   const arrival = REALM_ARRIVALS[realm]
-  if (!arrival) throw new Error(`unknown realm ${realm}`)
-  if (await gameStatus() !== 'SERVICE_STOPPED') throw new Error('stop the game server first: it owns the character while it runs')
+  if (!arrival) throw new Error(loc('players.edit.unknownRealm', { realm }))
+  if (await gameStatus() !== 'SERVICE_STOPPED') throw new Error(loc('players.edit.stopGameFirst'))
   await updateCharacterDoc(formDesc, cf => {
-    if (fallenOf(cf)) throw new Error('They are already fallen')
+    if (fallenOf(cf)) throw new Error(loc('players.edit.alreadyFallen'))
     const df = cf.dynamicFields = { ...(cf.dynamicFields || {}) }
     df['private.afterlife'] = { realm, reason: 'server manager', at: Date.now() }
     delete df['private.afterlifeOutfit']
@@ -810,12 +810,12 @@ ipcMain.handle('chars:afterlife', async (_e, formDesc, realm) => {
 })
 
 async function deleteCharacter(formDesc) {
-  if (typeof formDesc !== 'string' || !formDesc) throw new Error('missing formDesc')
+  if (typeof formDesc !== 'string' || !formDesc) throw new Error(loc('players.edit.missingFormDesc'))
   const settings = readServerSettings()
   if ((settings.databaseDriver || 'file') === 'mongodb') {
     await withMongoChangeForms(settings, async col => {
       const r = await col.deleteOne({ formDesc, recType: 1 })
-      if (!r.deletedCount) throw new Error(`no character with formDesc ${formDesc}`)
+      if (!r.deletedCount) throw new Error(loc('players.edit.noCharacter', { formDesc }))
     })
   } else {
     let deleted = false
@@ -825,13 +825,13 @@ async function deleteCharacter(formDesc) {
       deleted = true
       break
     }
-    if (!deleted) throw new Error(`no character with formDesc ${formDesc}`)
+    if (!deleted) throw new Error(loc('players.edit.noCharacter', { formDesc }))
   }
   _charCache = { at: 0, map: new Map() }
 }
 
 async function deleteCharactersByProfile(profileId) {
-  if (!Number.isInteger(profileId) || profileId < 0) throw new Error('bad profileId')
+  if (!Number.isInteger(profileId) || profileId < 0) throw new Error(loc('players.edit.badProfileId'))
   const settings = readServerSettings()
   let count = 0
   if ((settings.databaseDriver || 'file') === 'mongodb') {
@@ -864,11 +864,11 @@ const REVIVE_PROPS = ['private.afterlife', 'private.permaDead', 'private.faction
 
 // The server's own revive rules against the store: the doc must be a fallen character and its profile below the living limit
 function reviveRefusal(cf, docs, settings) {
-  if (!cf || cf.recType !== 1 || cf.isDeleted) return 'no such character'
-  if (!fallenOf(cf)) return 'They are not fallen'
-  if (cf.isDead) return 'They are dead right now, wait for the respawn'
+  if (!cf || cf.recType !== 1 || cf.isDeleted) return loc('players.revive.noCharacter')
+  if (!fallenOf(cf)) return loc('players.revive.notFallen')
+  if (cf.isDead) return loc('players.revive.dead')
   const living = docs.filter(d => d.recType === 1 && !d.isDeleted && Number(d.profileId) === Number(cf.profileId) && !fallenOf(d)).length
-  if (living >= maxCharactersOf(settings)) return 'The extra slot is in use: delete the character created in it first'
+  if (living >= maxCharactersOf(settings)) return loc('players.revive.slotInUse')
   return ''
 }
 
@@ -881,7 +881,7 @@ function revivedFields(cf) {
 
 // Only while the game server is stopped: a running server owns the changeform in memory and would overwrite the edit at its next save
 async function reviveOffline(formDesc) {
-  if (typeof formDesc !== 'string' || !formDesc) throw new Error('missing formDesc')
+  if (typeof formDesc !== 'string' || !formDesc) throw new Error(loc('players.edit.missingFormDesc'))
   const settings = readServerSettings()
   if ((settings.databaseDriver || 'file') === 'mongodb') {
     await withMongoChangeForms(settings, async col => {
@@ -906,12 +906,12 @@ ipcMain.handle('chars:revive', async (_e, formDesc) => {
   try {
     if (await gameStatus() === 'SERVICE_RUNNING') {
       // Player characters carry a bare hex formDesc; the gamemode resolves it with getIdFromDesc
-      if (!/^[0-9a-f]{1,8}$/i.test(String(formDesc || ''))) return { ok: false, error: 'not a player character' }
+      if (!/^[0-9a-f]{1,8}$/i.test(String(formDesc || ''))) return { ok: false, error: loc('players.revive.notPlayer') }
       const r = await consoleRelay.query('__revivejson ' + formDesc, '__REVIVEJSON__', 5000)
-      if (!r.ok) return { ok: false, error: `${r.error}: start the backend, or stop the game server to revive in the database` }
+      if (!r.ok) return { ok: false, error: loc('players.revive.relayDown', { error: r.error }) }
       let res
-      try { res = JSON.parse(r.payload) } catch { return { ok: false, error: 'bad revive payload' } }
-      if (!res.ok) return { ok: false, error: res.error || 'refused' }
+      try { res = JSON.parse(r.payload) } catch { return { ok: false, error: loc('players.revive.badPayload') } }
+      if (!res.ok) return { ok: false, error: res.error || loc('players.revive.refused') }
       _revivedPending.add(formDesc)
     } else {
       await reviveOffline(formDesc)
@@ -941,7 +941,7 @@ ipcMain.handle('chars:itemNames', async (_e, baseIds) => {
   if (!ids.length) return { ok: true, names: {} }
   const r = await consoleRelay.query('__itemnamesjson ' + ids.map(n => n.toString(16)).join(','), '__ITEMNAMESJSON__', 5000)
   if (!r.ok) return { ok: false, error: r.error }
-  try { return { ok: true, names: JSON.parse(r.payload) } } catch { return { ok: false, error: 'bad names payload' } }
+  try { return { ok: true, names: JSON.parse(r.payload) } } catch { return { ok: false, error: loc('players.badNamesPayload') } }
 })
 
 // Ask the gamemode (over the relay) which profiles are currently online.
@@ -951,7 +951,7 @@ ipcMain.handle('players:online', async () => {
   try {
     const list = JSON.parse(r.payload)
     return { ok: true, profileIds: list.map(p => Number(p.profileId)), online: list }
-  } catch { return { ok: false, error: 'bad players payload' } }
+  } catch { return { ok: false, error: loc('players.badPayload') } }
 })
 
 // ── Security tab: alerts the backend and the game server raise into securityAlerts ──
@@ -960,7 +960,7 @@ const ALERT_TYPES = ['banEvasion', 'goldSpawn']
 
 async function withAlerts(fn) {
   const settings = readServerSettings()
-  if (settings.databaseDriver !== 'mongodb') throw new Error('security alerts need the MongoDB database')
+  if (settings.databaseDriver !== 'mongodb') throw new Error(loc('security.needsMongo'))
   return withDatabase(settings, db => fn(db.collection('securityAlerts')))
 }
 
@@ -976,7 +976,7 @@ ipcMain.handle('security:unread', async () => {
 })
 
 ipcMain.handle('security:list', async (_e, type) => {
-  if (!ALERT_TYPES.includes(type)) return { ok: false, error: 'unknown alert type' }
+  if (!ALERT_TYPES.includes(type)) return { ok: false, error: loc('security.unknownType') }
   try {
     return await withAlerts(async col => ({
       ok: true,
@@ -986,7 +986,7 @@ ipcMain.handle('security:list', async (_e, type) => {
 })
 
 ipcMain.handle('security:markRead', async (_e, type) => {
-  if (!ALERT_TYPES.includes(type)) return { ok: false, error: 'unknown alert type' }
+  if (!ALERT_TYPES.includes(type)) return { ok: false, error: loc('security.unknownType') }
   try {
     return await withAlerts(async col => {
       await col.updateMany({ type, read: false }, { $set: { read: true, readAt: new Date() } })
@@ -1016,8 +1016,8 @@ function readSettingsOrEmpty(file) {
   try { return modsync.readSettingsFile(file) }
   catch (err) {
     if (err.code === 'ENOENT') return { settings: {}, mtimeMs: null }
-    if (err instanceof SyntaxError) throw new Error(`${path.basename(file)} is not valid JSON: ${err.message}`)
-    throw err.code ? new Error(`${path.basename(file)} cannot be read: ${err.message}`) : err
+    if (err instanceof SyntaxError) throw new Error(loc('common.invalidJson', { file: path.basename(file), error: err.message }))
+    throw err.code ? new Error(loc('common.unreadable', { file: path.basename(file), error: err.message })) : err
   }
 }
 
@@ -1030,7 +1030,7 @@ function readSettingsOrNull(file = config.paths.serverSettings) {
 // The modlist sync, purge and migrate actions refuse to run without that server's settings
 function requireSettings(profile = LIVE) {
   const settings = readSettingsOrNull(profile.serverSettings)
-  if (!settings) throw new Error(`${profile.label} server-settings.json not found at ${profile.serverSettings}`)
+  if (!settings) throw new Error(loc('settings.notFound', { server: profile.label, path: profile.serverSettings }))
   return settings
 }
 
@@ -1040,16 +1040,16 @@ function liveOverlap(profile) {
   const live = readSettingsOrNull(LIVE.serverSettings) || {}
   const test = requireSettings(profile)
   // The game server defaults an unnamed mongodb database to db while the purge would open the URI path one
-  if ((test.databaseDriver || 'file') === 'mongodb' && !test.databaseName) return `refused: ${profile.serverSettings} has no databaseName, set it (skymp_test) first`
+  if ((test.databaseDriver || 'file') === 'mongodb' && !test.databaseName) return loc('modlist.noDatabaseName', { path: profile.serverSettings })
   const key = v => String(v).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
   // host:port plus the database name; credentials and options do not count
   const host = uri => (/^[a-z+]+:\/\/(?:[^@/]*@)?([^/?]+)/i.exec(String(uri)) || [])[1] || String(uri)
   // An empty databaseName makes the driver open the URI path database (else test), so compare what the purge would open
   const uriDb = uri => decodeURIComponent((/^[a-z+]+:\/\/(?:[^@/]*@)?[^/?]+\/([^?]*)/i.exec(String(uri)) || [])[1] || '') || 'test'
   const db = s => (s.databaseUri ? `${host(s.databaseUri)}/${s.databaseName || uriDb(s.databaseUri)}` : '')
-  const checks = [['server dir', profile.serverDir, LIVE.serverDir], ['settings file', profile.serverSettings, LIVE.serverSettings], ['dataDir', test.dataDir, live.dataDir], ['database', db(test), db(live)]]
+  const checks = [[loc('modlist.overlap.serverDir'), profile.serverDir, LIVE.serverDir], [loc('modlist.overlap.settingsFile'), profile.serverSettings, LIVE.serverSettings], ['dataDir', test.dataDir, live.dataDir], [loc('modlist.overlap.database'), db(test), db(live)]]
   for (const [what, a, b] of checks) {
-    if (a && b && key(a) === key(b)) return `refused: the ${profile.label} ${what} (${a}) is the ${LIVE.label}'s, fix ${profile.serverSettings} first`
+    if (a && b && key(a) === key(b)) return loc('modlist.overlap.refused', { server: profile.label, what, value: a, live: LIVE.label, path: profile.serverSettings })
   }
   return null
 }
@@ -1075,7 +1075,7 @@ ipcMain.handle('settings:read', (_e, key) => {
     const source = exists ? file : config.paths.backendEnvExample
     return { ok: true, path: file, values: readEnvValues(source), seeded: !exists }
   }
-  return { ok: false, error: 'unknown config' }
+  return { ok: false, error: loc('settings.unknownConfig') }
 })
 
 // mtimeMs is the value settings:read returned; a file edited since then (Sync server settings, a hand edit) is never overwritten
@@ -1086,8 +1086,8 @@ ipcMain.handle('settings:write', (_e, key, values, extraRaw, mtimeMs) => {
       // A corrupt file must block the save, or this write replaces the live config with {}.
       let current, now
       try { ({ settings: current, mtimeMs: now } = readSettingsOrEmpty(file)) }
-      catch (err) { throw new Error(`refusing to save: ${path.basename(file)} is unreadable (${err.message}) - fix the file first`) }
-      if (now !== (mtimeMs ?? null)) throw new Error('server-settings.json changed on disk, reload the Settings tab first')
+      catch (err) { throw new Error(loc('settings.refuseUnreadable', { file: path.basename(file), error: err.message })) }
+      if (now !== (mtimeMs ?? null)) throw new Error(loc('settings.changedOnDisk'))
       for (const field of schema.serverSettings) {
         const v = values[field.key]
         if (v === undefined) continue
@@ -1097,7 +1097,7 @@ ipcMain.handle('settings:write', (_e, key, values, extraRaw, mtimeMs) => {
           current[field.key] = !!v
         } else if (field.type === 'json') {
           if (v === '' || v === null) { delete current[field.key]; continue }
-          try { current[field.key] = JSON.parse(v) } catch (e) { throw new Error(`${field.label}: invalid JSON (${e.message})`) }
+          try { current[field.key] = JSON.parse(v) } catch (e) { throw new Error(loc('settings.fieldInvalidJson', { label: field.label, error: e.message })) }
         } else {
           if (v === '' || v === null) delete current[field.key]; else current[field.key] = String(v)
         }
@@ -1105,7 +1105,7 @@ ipcMain.handle('settings:write', (_e, key, values, extraRaw, mtimeMs) => {
       // Merge the "other / advanced" raw-JSON bucket of unknown keys.
       if (extraRaw && String(extraRaw).trim()) {
         let extra
-        try { extra = JSON.parse(extraRaw) } catch (e) { throw new Error(`Advanced JSON: ${e.message}`) }
+        try { extra = JSON.parse(extraRaw) } catch (e) { throw new Error(loc('settings.advancedJson', { error: e.message })) }
         const known = new Set(schema.serverSettings.map(f => f.key))
         for (const k of Object.keys(current)) if (!known.has(k)) delete current[k] // replace the bucket wholesale
         Object.assign(current, extra)
@@ -1127,7 +1127,7 @@ ipcMain.handle('settings:write', (_e, key, values, extraRaw, mtimeMs) => {
       }
       return { ok: true, path: file }
     }
-    return { ok: false, error: 'unknown config' }
+    return { ok: false, error: loc('settings.unknownConfig') }
   } catch (err) { return { ok: false, error: err.message } }
 })
 
@@ -1141,9 +1141,9 @@ ipcMain.handle('news:delete',   (_e, i)       => newsResult(() => news.remove(i)
 ipcMain.handle('news:addImage', async () => {
   const { dialog } = require('electron')
   const r = await dialog.showOpenDialog({
-    title: 'Choose a news image',
+    title: loc('news.dialogTitle'),
     properties: ['openFile'],
-    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+    filters: [{ name: loc('news.dialogFilter'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
   })
   if (r.canceled || !r.filePaths.length) return { ok: false, cancelled: true }
   return newsResult(() => news.addImage(r.filePaths[0]))
@@ -1158,47 +1158,45 @@ async function installBuiltManifest(profile, building, b) {
   const paths = modsync.pathsFor(profile)
   const previousDiff = modsync.readDiff(paths)
   const settings = readSettingsOrNull(profile.serverSettings)
-  if (!settings) b.line(`[manifest] WARNING: ${profile.label} server-settings.json not found, the load order the database was written under is recorded as empty`)
+  if (!settings) b.line(`[manifest] ${loc('modlist.manifest.noSettings', { server: profile.label })}`)
   const live = paths.manifest
   const rotate = modsync.shouldRotatePrev(previousDiff)
   let prev, diff
   try {
     const next = modsync.readManifestLight(building)
-    if (!next) throw new Error(`no usable manifest at ${path.basename(building)}`)
+    if (!next) throw new Error(loc('modlist.manifest.unusable', { file: path.basename(building) }))
     prev = modsync.readManifestLight(rotate ? live : paths.prevManifest)
     diff = modsync.computeDiff({ prev, next, settings: settings || {}, previousDiff, paths })
   } catch (err) {
     fs.rmSync(building, { force: true })
-    b.line(`[manifest] ${err.message}; ${path.basename(live)} and the previous diff are untouched`)
+    b.line(`[manifest] ${loc('modlist.manifest.untouched', { error: err.message, file: path.basename(live) })}`)
     return { ok: false, error: err.message }
   }
   // A pending diff means an earlier run did not finish, so its steps run again even without new changes
   if (!previousDiff && prev && modsync.nothingChanged(diff)) {
     fs.rmSync(building, { force: true })
-    b.line(`[manifest] no changes against ${path.basename(live)} (built ${prev.builtAt || '?'}), kept as is`)
+    b.line(`[manifest] ${loc('modlist.manifest.noChanges', { file: path.basename(live), built: prev.builtAt || '?' })}`)
     return { ok: true, unchanged: true, diff }
   }
   if (rotate && prev) {
     fs.copyFileSync(live, paths.prevManifest)
-    b.line(`[manifest] deployed manifest snapshotted to ${path.basename(paths.prevManifest)}`)
+    b.line(`[manifest] ${loc('modlist.manifest.snapshot', { file: path.basename(paths.prevManifest) })}`)
   }
   const renameErr = await replaceFile(building, live)
   if (renameErr) {
-    return { ok: false, error: `could not replace ${path.basename(live)}: ${renameErr.message}; the compiled manifest is waiting in ${path.basename(building)} and the next run overwrites it` }
+    return { ok: false, error: loc('modlist.manifest.replaceFailed', { file: path.basename(live), error: renameErr.message, building: path.basename(building) }) }
   }
   modsync.writeDiff(diff, paths)
   const { mods, plugins, files } = diff
-  b.line(`[manifest] diff vs ${prev ? prev.builtAt : 'nothing'}: mods +${mods.added.length} -${mods.removed.length} ~${mods.changed.length}, ` +
-    `plugins +${plugins.added.length} -${plugins.removed.length}${plugins.reordered ? ' (reordered)' : ''}, ` +
-    `files +${files.added} -${files.removed} ~${files.changed}`)
+  b.line(`[manifest] ${loc(plugins.reordered ? 'modlist.manifest.diffReordered' : 'modlist.manifest.diff', { prev: prev ? prev.builtAt : loc('modlist.manifest.nothing'), modsAdded: mods.added.length, modsRemoved: mods.removed.length, modsChanged: mods.changed.length, pluginsAdded: plugins.added.length, pluginsRemoved: plugins.removed.length, filesAdded: files.added, filesRemoved: files.removed, filesChanged: files.changed })}`)
   for (const c of mods.changed) if (c.versionFrom !== undefined) b.line(`[manifest] ${c.name}: ${c.versionFrom || '?'} -> ${c.versionTo || '?'}`)
   const shifted = Array.isArray(diff.shiftedPlugins) ? diff.shiftedPlugins : []
   const flagChanges = Array.isArray(diff.flagChanges) ? diff.flagChanges : []
   if (diff.purgeNeeded) {
-    b.line(`[manifest] MongoDB purge needed before the game server starts: ${plugins.removed.length} removed, ${shifted.length} shifted, ${flagChanges.length} light flag change(s)`)
-    for (const s of shifted) b.line(`[manifest] shift ${s.name}: ${s.from} -> ${s.to}`)
+    b.line(`[manifest] ${loc('modlist.manifest.purgeNeeded', { removed: plugins.removed.length, shifted: shifted.length, flags: flagChanges.length })}`)
+    for (const s of shifted) b.line(`[manifest] ${loc('modlist.manifest.shift', { name: s.name, from: s.from, to: s.to })}`)
   }
-  for (const w of (Array.isArray(diff.warnings) ? diff.warnings : [])) b.line(`[manifest] WARNING: ${w}`)
+  for (const w of (Array.isArray(diff.warnings) ? diff.warnings : [])) b.line(`[manifest] ${loc('common.warning', { text: w })}`)
   return { ok: true, diff }
 }
 
@@ -1206,7 +1204,7 @@ async function installBuiltManifest(profile, building, b) {
 async function updateManifest(profile, b = builder('modlist:log', profile)) {
   const paths = modsync.pathsFor(profile)
   const dep = await b.ensureDeps(config.paths.backend, 'backend', 'npm')   // compile-manifest needs 7zip-bin
-  if (!dep.ok) return { ok: false, error: 'backend dependency install failed' }
+  if (!dep.ok) return { ok: false, error: loc('modlist.backendDeps') }
   const building = paths.manifest + '.building'
   const args = ['scripts/compile-manifest.js', '--mo2', config.mo2Root, '--profile', config.profile, '--out', building,
     '--modlist-out', paths.modlist, '--extras-dir', profile.extrasDir, '--server', profile.backendId]
@@ -1215,8 +1213,8 @@ async function updateManifest(profile, b = builder('modlist:log', profile)) {
   const r = await b.run('node', args, config.paths.backend, 'compile-manifest', null, false)
   if (!r.ok) {
     fs.rmSync(building, { force: true })
-    b.line(`[manifest] compile-manifest failed; ${path.basename(paths.manifest)} and the previous diff are untouched`)
-    return { ok: false, error: 'compile-manifest failed' }
+    b.line(`[manifest] ${loc('modlist.manifest.untouched', { error: loc('modlist.compileFailed'), file: path.basename(paths.manifest) })}`)
+    return { ok: false, error: loc('modlist.compileFailed') }
   }
   return installBuiltManifest(profile, building, b)
 }
@@ -1225,14 +1223,14 @@ ipcMain.handle('modlist:diff', (_e, profileKey) => modsync.readDiff(modsync.path
 
 function readManifestOrFail(paths) {
   const manifest = modsync.readManifestLight(paths.manifest)
-  if (!manifest) throw new Error(`no ${path.basename(paths.manifest)}, build the manifest first`)
+  if (!manifest) throw new Error(loc('modlist.noManifest', { file: path.basename(paths.manifest) }))
   return manifest
 }
 
 // Record a sync step on the stored diff; a missing or unreadable diff only logs
 function stampDiff(paths, patch, log) {
   try { if (modsync.readDiff(paths)) modsync.updateDiff(patch, paths) }
-  catch (err) { log(`[diff] not updated: ${err.message}`) }
+  catch (err) { log(`[diff] ${loc('modlist.diffNotUpdated', { error: err.message })}`) }
 }
 
 function syncServerSettings(b, profile) {
@@ -1250,7 +1248,7 @@ async function syncDataFolder(b, profile) {
   const prev = modsync.readManifestLight(paths.prevManifest)
   const stamp = readJsonOrNull(paths.stamp)
   const settings = requireSettings(profile)
-  if (!settings.dataDir) return { ok: false, error: 'server-settings.json has no dataDir' }
+  if (!settings.dataDir) return { ok: false, error: loc('modlist.noDataDir') }
   // syncData persists the stamp file itself after a real run
   const r = await modsync.syncData({ manifest, prev, stamp, dataDir: settings.dataDir, mo2Root: config.mo2Root, log: t => b.line(t), dryRun: false, paths })
   if (r.ok) stampDiff(paths, { syncedDataAt: new Date().toISOString() }, t => b.line(t))
@@ -1262,7 +1260,7 @@ async function purgeDatabase(b, profile) {
   const log = t => b.line(`[purge] ${t}`)
   const manifest = readManifestOrFail(paths)
   const diff = modsync.readDiff(paths)
-  if (!diff) return { ok: false, error: 'build the manifest first so the current load order is recorded for the MongoDB purge' }
+  if (!diff) return { ok: false, error: loc('modlist.purgeNeedsDiff') }
   const settings = requireSettings(profile)
   const r = await mongoPurge.purgeRemovedMods({
     settings, diff, dryRun: false, log,
@@ -1280,14 +1278,14 @@ async function purgeDatabase(b, profile) {
 // Server settings, data folder and MongoDB purge for a freshly installed manifest, each under a banner; the diff file goes on success
 async function applyManifest(b, profile, diff) {
   const steps = [
-    ['server settings', () => syncServerSettings(b, profile)],
-    ['data folder', () => syncDataFolder(b, profile)],
-    ['MongoDB purge', () => purgeDatabase(b, profile)],
+    [loc('modlist.step.settings'), () => syncServerSettings(b, profile)],
+    [loc('modlist.step.data'), () => syncDataFolder(b, profile)],
+    [loc('modlist.step.purge'), () => purgeDatabase(b, profile)],
   ]
   for (const [label, run] of steps) {
     b.line(`\n######## ${label} ########`)
     const r = await run()
-    if (!r.ok) return { ok: false, error: `${label}: ${r.error || 'failed'}`, diff, report: r.report }
+    if (!r.ok) return { ok: false, error: `${label}: ${r.error || loc('console.failed')}`, diff, report: r.report }
   }
   fs.rmSync(modsync.pathsFor(profile).diff, { force: true })
   return { ok: true, diff }
@@ -1305,7 +1303,7 @@ ipcMain.handle('modlist:run', (_e, profileKey) => exclusive(async () => {
   const built = await updateManifest(profile, b)
   if (!built.ok) return built
   if (built.unchanged) {
-    b.line(`MO2 modlist matches the ${profile.label} manifest (mods and versions), nothing to sync`)
+    b.line(loc('modlist.unchanged', { server: profile.label }))
     return built
   }
   return applyManifest(b, profile, built.diff)
@@ -1318,7 +1316,7 @@ ipcMain.handle('modlist:purgeRestore', (_e, profileKey) => exclusive(async () =>
   const b = builder('modlist:log', profile)
   const log = t => b.line(`[restore] ${t}`)
   const diff = modsync.readDiff(paths)
-  if (!diff || !diff.purgeBackup) return { ok: false, error: `no purge backup recorded in ${path.basename(paths.diff)}` }
+  if (!diff || !diff.purgeBackup) return { ok: false, error: loc('modlist.noPurgeBackup', { file: path.basename(paths.diff) }) }
   const settings = requireSettings(profile)
   const blocked = await requireGameStopped(log, false, profile)
   if (blocked) return blocked
@@ -1338,17 +1336,17 @@ const clientFilesDir = () => readEnvValues(config.paths.backendEnv).CLIENT_FILES
 
 ipcMain.handle('migrate:server', () => exclusive(async () => {
   const b = builder('modlist:log', LIVE)
-  b.banner('Migrate server: test -> live')
+  b.banner(loc('migrate.banner.server'))
   const blocked = await requireGameStopped(t => b.line(t), false, LIVE)
   if (blocked) return blocked
   if (!fs.existsSync(path.join(TEST.serverDir, 'dist_back', 'skymp5-server.js'))) {
-    return { ok: false, error: `no dist_back/skymp5-server.js in ${TEST.serverDir}, Build server first` }
+    return { ok: false, error: loc('migrate.noServerBuild', { dir: TEST.serverDir }) }
   }
   const backupDir = path.join(backupRoot(), migrate.stamp(), 'server')
-  b.line(`[migrate] ${TEST.serverDir} -> ${LIVE.serverDir}, old copies in ${backupDir}`)
+  b.line(`[migrate] ${loc('migrate.serverCopy', { from: TEST.serverDir, to: LIVE.serverDir, backup: backupDir })}`)
   try {
     const { copied } = migrate.copyServerItems({ from: TEST.serverDir, to: LIVE.serverDir, backupDir, log: t => b.line(`[migrate] ${t}`) })
-    b.line(`\n✓ ${copied.length} item(s) copied to the Main Server; press Migrate settings next, then start the Main Server.`)
+    b.line('\n' + loc('migrate.serverDone', { n: copied.length }))
     return { ok: true, copied, backupDir }
   } catch (err) {
     return { ok: false, error: err.message, backupDir }
@@ -1357,7 +1355,7 @@ ipcMain.handle('migrate:server', () => exclusive(async () => {
 
 ipcMain.handle('migrate:settings', () => exclusive(async () => {
   const b = builder('modlist:log', LIVE)
-  b.banner('Migrate settings: test -> live')
+  b.banner(loc('migrate.banner.settings'))
   const blocked = await requireGameStopped(t => b.line(t), false, LIVE)
   if (blocked) return blocked
   let live, test
@@ -1367,11 +1365,11 @@ ipcMain.handle('migrate:settings', () => exclusive(async () => {
   try {
     fs.mkdirSync(backupRoot(), { recursive: true })
     fs.copyFileSync(LIVE.serverSettings, backupFile)
-    b.line(`[migrate] live server-settings.json backed up to ${backupFile}`)
+    b.line(`[migrate] ${loc('migrate.settingsBackup', { file: backupFile })}`)
     const { merged, added, changed, kept } = migrate.mergeSettings({ live, test, log: t => b.line(`[migrate] ${t}`) })
-    if (!added.length && !changed.length) b.line('[migrate] live settings already carry every test setting')
+    if (!added.length && !changed.length) b.line(`[migrate] ${loc('migrate.settingsSame')}`)
     else modsync.writeSettingsFile(LIVE.serverSettings, merged)
-    b.line(`\n✓ settings merged: ${added.length} added, ${changed.length} changed, ${kept.length} protected key(s) kept; start the Main Server.`)
+    b.line('\n' + loc('migrate.settingsDone', { added: added.length, changed: changed.length, kept: kept.length }))
     return { ok: true, added, changed, kept, backupFile }
   } catch (err) {
     return { ok: false, error: err.message, backupFile }
@@ -1380,50 +1378,50 @@ ipcMain.handle('migrate:settings', () => exclusive(async () => {
 
 // A manifest step that had nothing new leaves the live settings, Data folder and database as they are
 function skipStep(log) {
-  log('manifest unchanged, skipped')
+  log(loc('migrate.stepSkipped'))
   return { ok: true }
 }
 
 ipcMain.handle('migrate:client', () => exclusive(async () => {
   const b = builder('modlist:log', LIVE)
-  b.banner('Migrate client: test -> live')
+  b.banner(loc('migrate.banner.client'))
   const blocked = await requireGameStopped(t => b.line(t), false, LIVE)
   if (blocked) return blocked
   const testPaths = modsync.pathsFor(TEST)
   const livePaths = modsync.pathsFor(LIVE)
-  if (!fs.existsSync(path.join(TEST.clientOut, 'Data'))) return { ok: false, error: `${TEST.clientOut} has no Data folder, Build client first` }
-  if (!fs.existsSync(testPaths.manifest)) return { ok: false, error: `no ${path.basename(testPaths.manifest)}, run Update modlist for the Test Server first` }
+  if (!fs.existsSync(path.join(TEST.clientOut, 'Data'))) return { ok: false, error: loc('migrate.noClientBuild', { dir: TEST.clientOut }) }
+  if (!fs.existsSync(testPaths.manifest)) return { ok: false, error: loc('migrate.noTestManifest', { file: path.basename(testPaths.manifest) }) }
   const backupDir = path.join(backupRoot(), migrate.stamp())
   const log = t => b.line(`[migrate] ${t}`)
   let diff = null
   let unchanged = false
   const steps = [
-    ['manifest', async () => {
+    [loc('migrate.step.manifest'), async () => {
       const text = migrate.rewriteExtrasUrls(fs.readFileSync(testPaths.manifest, 'utf8'), TEST.extrasDir, LIVE.extrasDir)
       const names = migrate.extrasArchives(text, LIVE.extrasDir)
       const { missing } = migrate.copyExtras({ names, from: path.join(clientFilesDir(), TEST.extrasDir), to: path.join(clientFilesDir(), LIVE.extrasDir), log })
-      if (missing.length) return { ok: false, error: `extras archive(s) missing from ${path.join(clientFilesDir(), TEST.extrasDir)}: ${missing.join(', ')}` }
+      if (missing.length) return { ok: false, error: loc('migrate.extrasMissing', { dir: path.join(clientFilesDir(), TEST.extrasDir), names: missing.join(', ') }) }
       const building = livePaths.manifest + '.building'
       fs.writeFileSync(building, text)
       const r = await installBuiltManifest(LIVE, building, b)
       if (r.ok) { diff = r.diff; unchanged = Boolean(r.unchanged) }
       return r
     }],
-    ['modlist', () => {
-      if (!fs.existsSync(testPaths.modlist)) return { ok: false, error: `no ${path.basename(testPaths.modlist)}` }
+    [loc('migrate.step.modlist'), () => {
+      if (!fs.existsSync(testPaths.modlist)) return { ok: false, error: loc('migrate.noFile', { file: path.basename(testPaths.modlist) }) }
       fs.copyFileSync(testPaths.modlist, livePaths.modlist)
       log(`${path.basename(testPaths.modlist)} -> ${path.basename(livePaths.modlist)}`)
       return { ok: true }
     }],
-    ['server settings', () => (unchanged ? skipStep(log) : syncServerSettings(b, LIVE))],
-    ['data folder', () => (unchanged ? skipStep(log) : syncDataFolder(b, LIVE))],
-    ['MongoDB purge', () => (unchanged ? skipStep(log) : purgeDatabase(b, LIVE))],
-    ['client files', () => {
+    [loc('modlist.step.settings'), () => (unchanged ? skipStep(log) : syncServerSettings(b, LIVE))],
+    [loc('modlist.step.data'), () => (unchanged ? skipStep(log) : syncDataFolder(b, LIVE))],
+    [loc('modlist.step.purge'), () => (unchanged ? skipStep(log) : purgeDatabase(b, LIVE))],
+    [loc('migrate.step.clientFiles'), () => {
       const { KEY_FILES } = require(path.join(config.paths.backend, 'scripts', 'client-package'))
       migrate.backupClientKeyFiles({ clientDir: LIVE.clientOut, keyFiles: KEY_FILES, backupDir: path.join(backupDir, 'client'), log })
-      log(`mirroring ${TEST.clientOut} -> ${LIVE.clientOut}`)
+      log(loc('migrate.mirroring', { from: TEST.clientOut, to: LIVE.clientOut }))
       const r = migrate.mirrorDir({ from: TEST.clientOut, to: LIVE.clientOut, log })
-      log(`client files: ${r.copied} copied, ${r.deleted} deleted, ${r.unchanged} unchanged`)
+      log(loc('migrate.clientFiles', { copied: r.copied, deleted: r.deleted, unchanged: r.unchanged }))
       return { ok: true }
     }],
   ]
@@ -1431,9 +1429,9 @@ ipcMain.handle('migrate:client', () => exclusive(async () => {
     b.line(`\n######## ${label} ########`)
     let r
     try { r = await run() } catch (err) { r = { ok: false, error: err.message } }
-    if (!r.ok) return { ok: false, error: `${label}: ${r.error || 'failed'}`, diff, report: r.report, backupDir }
+    if (!r.ok) return { ok: false, error: `${label}: ${r.error || loc('console.failed')}`, diff, report: r.report, backupDir }
   }
   if (!unchanged) fs.rmSync(livePaths.diff, { force: true })
-  b.line('\n✓ client migrated to the Main Server; save the Live version in the Migrate box so launchers pick it up, then start the Main Server.')
+  b.line('\n' + loc('migrate.clientDone'))
   return { ok: true, diff, backupDir }
 }))

@@ -9,7 +9,7 @@
   tab.addEventListener('click', () => {
     if (editor) return
     if (!window.FactionEditor) {
-      root.innerHTML = '<p class="muted">The shared editor skymp5-backend/public/dashboard/faction-editor.js did not load; run the manager from the repo checkout.</p>'
+      root.innerHTML = `<p class="muted">${esc(loc('factions.editorMissing'))}</p>`
       return
     }
     editor = window.FactionEditor.mount(root, {

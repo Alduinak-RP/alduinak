@@ -6,6 +6,7 @@ const fs   = require('fs')
 const path = require('path')
 const { execFile } = require('child_process')
 const config = require('./config')
+const { loc } = require('./loc')
 
 const LOCK_CODES = ['EBUSY', 'EPERM', 'EACCES']
 
@@ -24,7 +25,7 @@ function nativeModuleLocked(profile = config.profiles.live) {
   const file = path.join(profile.serverDir, 'scam_native.node')
   if (!fs.existsSync(file)) return null
   try { fs.closeSync(fs.openSync(file, 'r+')); return null }
-  catch (err) { return LOCK_CODES.includes(err.code) ? 'a game server process still holds scam_native.node (started outside nssm?), stop it first' : null }
+  catch (err) { return LOCK_CODES.includes(err.code) ? loc('services.nativeHeld') : null }
 }
 
 function scStatus(name) {
@@ -50,7 +51,7 @@ async function serviceStatus(key) {
 async function gameServerBlocker(profileKey = 'live') {
   const profile = config.profiles[profileKey]
   const { name, status } = await serviceStatus(profile.services.game)
-  if (status !== 'SERVICE_STOPPED') return `${name} is ${status || 'in an unknown state (neither nssm nor sc could query it)'}, stop it first`
+  if (status !== 'SERVICE_STOPPED') return loc('services.serviceRunning', { name, status: status || loc('services.unknownStateQuery') })
   return nativeModuleLocked(profile)
 }
 

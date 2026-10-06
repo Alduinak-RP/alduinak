@@ -6,6 +6,7 @@ const fs     = require('fs')
 const path   = require('path')
 const crypto = require('crypto')
 const { isDeepStrictEqual } = require('util')
+const { loc } = require('./loc')
 
 // Copied from the test server dir when present; a directory replaces the live one wholesale
 const SERVER_ITEMS = ['dist_back', 'scam_native.node', 'gamemode.js', 'gamemode_extensions', 'plugins', 'data/scripts', 'NPC-Spawns.json', 'weather-regions.json', 'Jobs.json', 'faction-access.json', 'alert-keywords.json']
@@ -84,12 +85,12 @@ function copyServerItems({ from, to, backupDir, items = SERVER_ITEMS, log = noop
   for (const item of items) {
     const src = path.join(from, item)
     const dest = path.join(to, item)
-    if (!exists(src)) { log(`skip ${item}: not in ${from}`); continue }
-    let note = ''
-    if (exists(dest)) { copyItem(dest, path.join(backupDir, item)); backedUp.push(item); note = ', old copy backed up' }
+    if (!exists(src)) { log(loc('migrate.log.skip', { item, from })); continue }
+    let backed = false
+    if (exists(dest)) { copyItem(dest, path.join(backupDir, item)); backedUp.push(item); backed = true }
     copyItem(src, dest)
     copied.push(item)
-    log(`copied ${item}${note}`)
+    log(loc(backed ? 'migrate.log.copiedBackedUp' : 'migrate.log.copied', { item }))
   }
   return { copied, backedUp }
 }
@@ -112,15 +113,15 @@ function mergeSettings({ live, test, protectedKeys = PROTECTED_SETTINGS, log = n
     if (MANIFEST_SETTINGS.includes(key)) continue
     const same = key in live && isDeepStrictEqual(live[key], test[key])
     if (prot.has(key)) {
-      if (!same) { kept.push(key); log(`kept ${key} (protected)`) }
+      if (!same) { kept.push(key); log(loc('migrate.log.kept', { key })) }
       continue
     }
     if (same) continue
-    if (key in live) { changed.push(key); log(`changed ${key}: ${short(live[key])} -> ${short(test[key])}`) }
-    else { added.push(key); log(`added ${key}`) }
+    if (key in live) { changed.push(key); log(loc('migrate.log.changed', { key, from: short(live[key]), to: short(test[key]) })) }
+    else { added.push(key); log(loc('migrate.log.added', { key })) }
     merged[key] = test[key]
   }
-  if (MANIFEST_SETTINGS.some(k => k in test)) log('loadOrder and archives left as they are: Migrate client syncs them from the manifest')
+  if (MANIFEST_SETTINGS.some(k => k in test)) log(loc('migrate.log.manifestKeys'))
   return { merged, added, changed, kept }
 }
 
@@ -159,7 +160,7 @@ function mirrorDir({ from, to, log = noop }) {
     writable(file)
     fs.rmSync(file, { force: true })
     result.deleted++
-    log(`deleted ${rel}`)
+    log(loc('migrate.log.deleted', { file: rel }))
   }
   if (exists(to)) pruneEmptyDirs(to, to)
   return result
@@ -175,7 +176,7 @@ function backupClientKeyFiles({ clientDir, keyFiles, backupDir, skip = BACKUP_SK
     if (!exists(file)) continue
     copyFile(file, path.join(backupDir, 'Data', rel))
     backedUp.push(rel)
-    log(`backed up ${rel}`)
+    log(loc('migrate.log.backedUp', { file: rel }))
   }
   return backedUp
 }
@@ -201,11 +202,11 @@ function copyExtras({ names, from, to, log = noop }) {
   for (const name of names) {
     const src = path.join(from, name)
     const dest = path.join(to, name)
-    if (!exists(src)) { missing.push(name); log(`MISSING ${name} in ${from}`); continue }
-    if (exists(dest) && fs.statSync(src).size === fs.statSync(dest).size && sha256File(src) === sha256File(dest)) { skipped.push(name); log(`${name} already in ${to}`); continue }
+    if (!exists(src)) { missing.push(name); log(loc('migrate.log.missing', { name, from })); continue }
+    if (exists(dest) && fs.statSync(src).size === fs.statSync(dest).size && sha256File(src) === sha256File(dest)) { skipped.push(name); log(loc('migrate.log.alreadyIn', { name, to })); continue }
     copyFile(src, dest)
     copied.push(name)
-    log(`copied ${name} -> ${to}`)
+    log(loc('migrate.log.copiedTo', { name, to }))
   }
   return { copied, skipped, missing }
 }

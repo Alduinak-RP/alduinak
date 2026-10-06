@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
-  <title>Alduinak Server Manager</title>
+  <title data-loc="app.title"></title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="../../../skymp5-backend/public/dashboard/faction-editor.css" />
 </head>
 <body>
   <nav id="tabs">
-    <button class="tab active" data-tab="console">Console</button>
-    <button class="tab" data-tab="players">Players</button>
-    <button class="tab" data-tab="factions">Factions</button>
-    <button class="tab" data-tab="build">Build</button>
-    <button class="tab" data-tab="schedule">Schedule</button>
-    <button class="tab" data-tab="news">News</button>
-    <button class="tab" data-tab="settings">Settings</button>
-    <button class="tab" data-tab="security">Security <span class="count-badge" id="security-badge" hidden></span></button>
+    <button class="tab active" data-tab="console" data-loc="tabs.console"></button>
+    <button class="tab" data-tab="players" data-loc="tabs.players"></button>
+    <button class="tab" data-tab="factions" data-loc="tabs.factions"></button>
+    <button class="tab" data-tab="build" data-loc="tabs.build"></button>
+    <button class="tab" data-tab="schedule" data-loc="tabs.schedule"></button>
+    <button class="tab" data-tab="news" data-loc="tabs.news"></button>
+    <button class="tab" data-tab="settings" data-loc="tabs.settings"></button>
+    <button class="tab" data-tab="security"><span data-loc="tabs.security"></span> <span class="count-badge" id="security-badge" hidden></span></button>
   </nav>
   <main>
     <section id="console" class="panel active">
@@ -25,19 +25,19 @@
 
     <section id="players" class="panel">
       <div class="row">
-        <input id="player-search" type="text" placeholder="Search Discord name, Discord ID, character or profile ID…" autocomplete="off" />
+        <input id="player-search" type="text" data-loc-placeholder="players.searchPlaceholder" autocomplete="off" />
         <div class="dropdown">
-          <button id="players-filter-btn" class="action">Filters</button>
+          <button id="players-filter-btn" class="action" data-loc="players.filters"></button>
           <div id="players-filter-menu" class="dropdown-menu" hidden></div>
         </div>
-        <select id="players-sort" title="Sort by"></select>
-        <button id="players-refresh" class="action">Refresh</button>
+        <select id="players-sort" data-loc-title="players.sortBy"></select>
+        <button id="players-refresh" class="action" data-loc="common.refresh"></button>
         <span id="players-count" class="status"></span>
       </div>
       <div class="split resizable">
         <ul id="players-list" class="players"></ul>
         <div id="player-detail" class="detail">
-          <p class="muted">Select a player, or General Stats.</p>
+          <p class="muted" data-loc="players.selectHint"></p>
         </div>
       </div>
     </section>
@@ -49,92 +49,92 @@
     <section id="build" class="panel">
       <div class="build-cols">
         <div class="build-col">
-          <h3>Server</h3>
+          <h3 data-loc="build.server.title"></h3>
           <div class="field">
-            <label>Live version <span class="muted">(versions.json)</span></label>
+            <label><span data-loc="build.liveVersion"></span> <span class="muted">(versions.json)</span></label>
             <div class="row">
               <input id="server-live-version" type="text" placeholder="1.0.0" />
-              <button id="server-live-save" class="action small">Save</button>
+              <button id="server-live-save" class="action small" data-loc="common.save"></button>
             </div>
           </div>
           <div class="field">
-            <label>Test version <span class="muted" id="server-test-published"></span></label>
+            <label><span data-loc="build.testVersion"></span> <span class="muted" id="server-test-published"></span></label>
             <div class="row">
               <input id="server-version" type="text" placeholder="1.0.0" />
-              <button id="server-save" class="action small">Save</button>
+              <button id="server-save" class="action small" data-loc="common.save"></button>
             </div>
           </div>
-          <small>Builds land in <code>build/dist/testserver</code>: the TS bundle into <code>dist_back</code>, <code>gamemode.js</code> from <code>gamemode_extensions/</code>. The Test Server hot-reloads gamemode.js; restart it for dist_back or scam_native.node. Test version Save writes <code>skymp5-server/package.json</code> and the test server version.</small>
-          <label class="chk"><input type="checkbox" id="build-server-native" /> Run CMake first (C++ changed, VS 2022)</label>
-          <button id="build-gamemode" class="action">Build gamemode only</button>
-          <button id="build-server" class="action go">Build server</button>
+          <small data-loc-html="build.server.help"></small>
+          <label class="chk"><input type="checkbox" id="build-server-native" /> <span data-loc="build.runCmake"></span></label>
+          <button id="build-gamemode" class="action" data-loc="build.server.gamemodeOnly"></button>
+          <button id="build-server" class="action go" data-loc="build.server.button"></button>
         </div>
         <div class="build-col">
-          <h3>Client</h3>
+          <h3 data-loc="build.client.title"></h3>
           <div class="field">
-            <label>Live version <span class="muted">(versions.json)</span></label>
+            <label><span data-loc="build.liveVersion"></span> <span class="muted">(versions.json)</span></label>
             <div class="row">
               <input id="client-live-version" type="text" placeholder="1.0.0" />
-              <button id="client-live-save" class="action small">Save</button>
+              <button id="client-live-save" class="action small" data-loc="common.save"></button>
             </div>
           </div>
           <div class="field">
-            <label>Test version <span class="muted" id="client-test-published"></span></label>
+            <label><span data-loc="build.testVersion"></span> <span class="muted" id="client-test-published"></span></label>
             <div class="row">
               <input id="client-version" type="text" placeholder="1.0.0" />
-              <button id="client-save" class="action small">Save</button>
+              <button id="client-save" class="action small" data-loc="common.save"></button>
             </div>
           </div>
-          <small>Build client rebuilds the UI and skymp5-client.js into <code>build/dist/testclient</code>; package its Data folder as the Alduinak Client Files mod, upload it to Nexus and install it into MO2. The button then reads Update Modlist (manifest from MO2, test server load order, Data folder and database), then Update Version, which publishes the test client version. Test version Save writes <code>skymp5-client/package.json</code> only.</small>
-          <label class="chk"><input type="checkbox" id="build-client-native" /> Run CMake first (C++ changed, VS 2022)</label>
-          <button id="modlist-run" class="action">Update modlist</button>
-          <span id="modlist-gate" class="gate" hidden>Test server must be stopped</span>
-          <button id="modlist-purge-restore" class="action small stop" hidden>Restore last purge</button>
-          <button id="build-client" class="action go">Build client</button>
+          <small data-loc-html="build.client.help"></small>
+          <label class="chk"><input type="checkbox" id="build-client-native" /> <span data-loc="build.runCmake"></span></label>
+          <button id="modlist-run" class="action" data-loc="build.client.updateModlist"></button>
+          <span id="modlist-gate" class="gate" hidden></span>
+          <button id="modlist-purge-restore" class="action small stop" hidden data-loc="build.client.restorePurge"></button>
+          <button id="build-client" class="action go" data-loc="build.client.button"></button>
         </div>
         <div class="build-col">
-          <h3>Migrate</h3>
+          <h3 data-loc="build.migrate.title"></h3>
           <div class="field">
-            <label>Live <span class="muted" id="migrate-live-now"></span></label>
+            <label><span data-loc="build.migrate.live"></span> <span class="muted" id="migrate-live-now"></span></label>
             <div class="row">
-              <input id="migrate-live-server" type="text" placeholder="server" />
-              <input id="migrate-live-client" type="text" placeholder="client" />
-              <button id="migrate-live-copy" class="action small">Copy test build</button>
-              <button id="migrate-live-save" class="action small">Save</button>
+              <input id="migrate-live-server" type="text" data-loc-placeholder="build.migrate.serverPlaceholder" />
+              <input id="migrate-live-client" type="text" data-loc-placeholder="build.migrate.clientPlaceholder" />
+              <button id="migrate-live-copy" class="action small" data-loc="build.migrate.copyTestBuild"></button>
+              <button id="migrate-live-save" class="action small" data-loc="common.save"></button>
             </div>
           </div>
           <div class="field">
-            <label>Test <span class="muted" id="migrate-test-now"></span></label>
+            <label><span data-loc="build.migrate.test"></span> <span class="muted" id="migrate-test-now"></span></label>
             <div class="row">
-              <input id="migrate-test-server" type="text" placeholder="server" />
-              <input id="migrate-test-client" type="text" placeholder="client" />
-              <button id="migrate-test-copy" class="action small">Copy test build</button>
-              <button id="migrate-test-save" class="action small">Save</button>
+              <input id="migrate-test-server" type="text" data-loc-placeholder="build.migrate.serverPlaceholder" />
+              <input id="migrate-test-client" type="text" data-loc-placeholder="build.migrate.clientPlaceholder" />
+              <button id="migrate-test-copy" class="action small" data-loc="build.migrate.copyTestBuild"></button>
+              <button id="migrate-test-save" class="action small" data-loc="common.save"></button>
             </div>
           </div>
-          <small>Only way to the Main Server, which must be stopped. Migrate server copies dist_back, scam_native.node, gamemode and the server data files (never the world, settings or player state); it then reads Migrate settings, which merges new test settings into the live server-settings.json without touching its name, ports, players, database, access or Discord keys. Migrate client installs the test manifest, modlist and extras live, syncs the live load order, Data folder and database and mirrors build/dist/testclient onto build/dist/client. Old files go to <code>build/dist/backup</code>. The Live and Test rows publish the server and client versions of that side in versions.json (Save writes the filled fields only); Copy test build fills both from the skymp5-server and skymp5-client packages. Versions may carry a build, e.g. 1.2.3-b4 or 1.2.3+4.</small>
-          <span id="migrate-gate" class="gate" hidden>Main server must be stopped</span>
-          <button id="migrate-server" class="action">Migrate server</button>
-          <button id="migrate-client" class="action go">Migrate client</button>
+          <small data-loc-html="build.migrate.help"></small>
+          <span id="migrate-gate" class="gate" hidden></span>
+          <button id="migrate-server" class="action" data-loc="build.migrate.server"></button>
+          <button id="migrate-client" class="action go" data-loc="build.migrate.client"></button>
         </div>
         <div class="build-col">
-          <h3>Launcher</h3>
+          <h3 data-loc="build.launcher.title"></h3>
           <div class="field">
-            <label>Version <span class="muted" id="launcher-live"></span></label>
+            <label><span data-loc="build.launcher.version"></span> <span class="muted" id="launcher-live"></span></label>
             <div class="row">
               <input id="launcher-version" type="text" placeholder="1.0.0" />
-              <button id="launcher-save" class="action small">Save</button>
+              <button id="launcher-save" class="action small" data-loc="common.save"></button>
             </div>
           </div>
           <div class="field">
-            <label>Download URL <span class="muted">(versions.json launcherUrl)</span></label>
+            <label><span data-loc="build.launcher.downloadUrl"></span> <span class="muted">(versions.json launcherUrl)</span></label>
             <div class="row">
               <input id="launcher-url" type="text" placeholder="https://alduinak.com/download" />
-              <button id="launcher-url-save" class="action small">Save</button>
+              <button id="launcher-url-save" class="action small" data-loc="common.save"></button>
             </div>
           </div>
-          <small>Version Save sets the version of the next build only. Build launcher writes <code>build/launcher-website/AlduinakLauncher.exe</code> (with the cleaned-master patches) and <code>build/launcher/AlduinakLauncher.exe</code> (without them, served by nginx for old launchers); zip the website one and upload the zip to the website so the Download URL serves it (https only; the launcher follows the website's redirect and unpacks the zip), then Update Version tells every launcher to update. Downloads then come from the website, not this server.</small>
-          <button id="build-launcher" class="action go">Build launcher</button>
+          <small data-loc-html="build.launcher.help"></small>
+          <button id="build-launcher" class="action go" data-loc="build.launcher.button"></button>
         </div>
       </div>
       <div id="modlist-diff" class="cards"></div>
@@ -144,17 +144,17 @@
     <section id="schedule" class="panel">
       <div id="schedule-runner" class="sched-runner"></div>
       <div class="row">
-        <label for="schedule-tz" class="muted">Time zone</label>
+        <label for="schedule-tz" class="muted" data-loc="schedule.timeZone"></label>
         <input id="schedule-tz" type="text" list="schedule-tz-list" placeholder="America/New_York" autocomplete="off" />
         <datalist id="schedule-tz-list"></datalist>
-        <button id="schedule-add" class="action">Add task</button>
-        <button id="schedule-reload" class="action">Reload</button>
-        <button id="schedule-save" class="action go">Save</button>
+        <button id="schedule-add" class="action" data-loc="schedule.addTask"></button>
+        <button id="schedule-reload" class="action" data-loc="common.reload"></button>
+        <button id="schedule-save" class="action go" data-loc="common.save"></button>
         <span id="schedule-status" class="status"></span>
       </div>
-      <small>Times are in the time zone above (an IANA name), not the box's own. <b>Restart</b> broadcasts <i>Server restart in N minutes</i> 60, 30, 10, 5, 4, 3, 2 and 1 minutes before, then restarts that game server; it is skipped when that server is stopped and waits up to 30 minutes for a running build. <b>Say</b> broadcasts the message, <b>Console command</b> sends a game console command as typed in the Console tab, <b>Start</b> and <b>Stop</b> control the game service. No day ticked means every day. A task whose time passed more than 10 minutes ago (box asleep, nothing running) waits for its next time. Saved to <code id="schedule-file"></code>.</small>
+      <small><span data-loc-html="schedule.help"></span> <code id="schedule-file"></code>.</small>
       <table class="sched-table">
-        <thead><tr><th>On</th><th>Task</th><th>Server</th><th>Time</th><th>Days</th><th>Message or command</th><th>Next run</th><th></th></tr></thead>
+        <thead><tr><th data-loc="schedule.col.on"></th><th data-loc="schedule.col.task"></th><th data-loc="schedule.col.server"></th><th data-loc="schedule.col.time"></th><th data-loc="schedule.col.days"></th><th data-loc="schedule.col.text"></th><th data-loc="schedule.col.next"></th><th></th></tr></thead>
         <tbody id="schedule-tasks"></tbody>
       </table>
       <pre id="schedule-log" class="log"></pre>
@@ -162,16 +162,15 @@
 
     <section id="news" class="panel">
       <div class="row">
-        <button id="news-refresh" class="action">Reload</button>
-        <button id="news-new" class="action go">New entry</button>
+        <button id="news-refresh" class="action" data-loc="common.reload"></button>
+        <button id="news-new" class="action go" data-loc="news.newEntry"></button>
         <span id="news-status" class="status"></span>
       </div>
-      <small>The launcher's Latest News. Entries are shown newest first, exactly in this order. A save reaches
-        the launcher straight away - the backend re-reads the file and does not need restarting.</small>
+      <small data-loc="news.help"></small>
       <div class="split">
         <ul id="news-list" class="players"></ul>
         <div id="news-detail" class="detail">
-          <p class="muted">Select an entry to edit it, or start a new one.</p>
+          <p class="muted" data-loc="news.selectHint"></p>
         </div>
       </div>
     </section>
@@ -179,12 +178,12 @@
     <section id="settings" class="panel">
       <div class="subtabs">
         <button class="subtab active" data-cfg="serverSettings">server-settings.json</button>
-        <button class="subtab" data-cfg="testServerSettings">server-settings.json (test)</button>
-        <button class="subtab" data-cfg="backendEnv">backend .env</button>
+        <button class="subtab" data-cfg="testServerSettings">server-settings.json <span data-loc="settings.testSuffix"></span></button>
+        <button class="subtab" data-cfg="backendEnv" data-loc="settings.backendEnv"></button>
       </div>
       <div class="row">
-        <button id="settings-reload" class="action">Reload</button>
-        <button id="settings-save" class="action go">Save</button>
+        <button id="settings-reload" class="action" data-loc="common.reload"></button>
+        <button id="settings-save" class="action go" data-loc="common.save"></button>
         <span id="settings-status" class="status"></span>
       </div>
       <div id="settings-form" class="settings-form"></div>
@@ -194,7 +193,7 @@
       <div class="split">
         <ul id="security-kinds" class="players narrow"></ul>
         <div id="security-detail" class="detail wide">
-          <p class="muted">Select a kind of alert.</p>
+          <p class="muted" data-loc="security.selectHint"></p>
         </div>
       </div>
     </section>
@@ -203,11 +202,11 @@
   <div id="char-modal" class="modal-overlay" hidden>
     <div class="modal">
       <div class="modal-head">
-        <h3 id="cm-title">Character</h3>
+        <h3 id="cm-title" data-loc="players.cm.title"></h3>
         <span id="cm-status" class="status"></span>
-        <button id="cm-close" class="action small">Close</button>
+        <button id="cm-close" class="action small" data-loc="common.close"></button>
       </div>
-      <small>Edits write straight to the character store. Apply them while the game server is stopped (or at least while this player is offline) - a running server can overwrite them.</small>
+      <small data-loc="players.cm.help"></small>
       <div id="cm-main" class="cm-main"></div>
       <div id="cm-faction" class="cm-faction"></div>
       <div class="modal-cols">

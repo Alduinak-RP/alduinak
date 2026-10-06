@@ -4,6 +4,7 @@
 
 const schema = require('./settingsSchema')
 const { sanitize } = require('./mongoPurge')
+const { loc } = require('./loc')
 
 // Nested keys and unknown top-level keys that hold credentials (voiceChat apiKey/apiSecret, discordAuth botToken, metricsAuth password, additionalServerSettings[].token)
 const SECRET_NAME_RE = /token|secret|passw|pwd|api_?key|private|credential|webhook|cookie|^auth|databaseuri|_uri$/i
@@ -56,7 +57,7 @@ function maskEntry(file, key, value, field) {
 /** Masked fields for one settings file; values is the parsed object (server-settings.json) or the .env key map. */
 function maskSettings(file, values) {
   const fields = schema[file]
-  if (!fields) throw new Error(`unknown settings file ${file}`)
+  if (!fields) throw new Error(loc('settings.unknownFile', { file }))
   const known = new Set(fields.map(f => f.key))
   const src = values || {}
   return {

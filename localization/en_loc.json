@@ -1898,26 +1898,26 @@
       "minutes": "{n} min",
       "bank": {
         "counted": "Counted",
-        "countedFor": "{label}, next in {time}",
         "nextIn": "next in {time}",
         "countedTitle": "This hour is counted for the {label}. Work counts an hour again in {time}.",
-        "countedTitlePlain": "This hour is counted. Work counts an hour again in {time}.",
         "open": "Open",
         "countsNow": "work counts now",
         "openTitle": "Your next work counts an hour for its craft.",
         "empty": "Empty",
         "emptyTitle": "An extra craft inside the counted hour is banked here.",
         "pending": "Pending",
-        "pendingFor": "{label}, in {time}",
-        "pendingSoon": "{label}, any moment",
         "pendingTitle": "A banked hour for the {label}, counted in {time}{rule}.",
-        "offline": ", online or not",
         "online": " of online time",
         "pendingTitleSoon": "A banked hour for the {label}, counted within a minute.",
         "title": "Hour bank",
         "ruleOffline": "One hour counts per hour, whichever craft. Extra crafts wait here and count in order, online or not.",
         "ruleOnline": "One hour counts per hour, whichever craft. Extra crafts wait here and count in order while you are online.",
-        "hour": "Hour {n} · {state}"
+        "hour": "Hour {n} · {state}",
+        "countedFor": "{label}, next in {time}",
+        "countedTitlePlain": "This hour is counted. Work counts an hour again in {time}.",
+        "pendingFor": "{label}, in {time}",
+        "pendingSoon": "{label}, any moment",
+        "offline": ", online or not"
       },
       "everyone": "everyone",
       "freeWorkHours": "{hours} of free work",
@@ -3773,5 +3773,1780 @@
       "insecure": "Refusing to install an update from a non-HTTPS URL."
     }
   },
-  "manager": {}
+  "manager": {
+    "app": {
+      "title": "Alduinak Server Manager"
+    },
+    "tabs": {
+      "console": "Console",
+      "players": "Players",
+      "factions": "Factions",
+      "build": "Build",
+      "schedule": "Schedule",
+      "news": "News",
+      "settings": "Settings",
+      "security": "Security"
+    },
+    "players": {
+      "searchPlaceholder": "Search Discord name, Discord ID, character or profile ID…",
+      "filters": "Filters",
+      "sortBy": "Sort by",
+      "selectHint": "Select a player, or General Stats.",
+      "cm": {
+        "title": "Character",
+        "help": "Edits write straight to the character store. Apply them while the game server is stopped (or at least while this player is offline) - a running server can overwrite them.",
+        "name": "Name",
+        "maxHealthChange": "Max health change",
+        "maxStaminaChange": "Max stamina change",
+        "maxMagickaChange": "Max magicka change",
+        "hours": "Hours in profession",
+        "craftLabel": "{slot} craft",
+        "craftTitle": "Chosen in game from the Skills tab; the in-game admin panel grants its hours and resets it",
+        "coordsLabel": "Coordinates (x, y, z)",
+        "cellId": "Cell ID",
+        "sendSovngarde": "Send to Sovngarde",
+        "sentSovngarde": "Sent to Sovngarde.",
+        "sendSoulCairn": "Send to Soul Cairn",
+        "sentSoulCairn": "Sent to Soul Cairn.",
+        "revive": "Revive",
+        "revived": "Revived, they wake at the Temple of Kynareth.",
+        "coords": "Coordinates",
+        "maxHealth": "Max health",
+        "maxStamina": "Max stamina",
+        "maxMagicka": "Max magicka",
+        "saved": "Saved.",
+        "wholeAccount": "(whole account)",
+        "removeRank": "Remove rank",
+        "rankRemoved": "Rank removed.",
+        "factionPick": "Faction…",
+        "addRank": "Add rank",
+        "pickRank": "Pick a faction and a rank",
+        "rankAdded": "Rank added.",
+        "raceId": "Race ID",
+        "weightLabel": "Weight (0-100)",
+        "skinColorLabel": "Skin color (ARGB int)",
+        "hairColorLabel": "Hair color (ARGB int)",
+        "headTexture": "Head texture set",
+        "headpartsLabel": "Headparts (hex ids, one per line)",
+        "appearance": "Appearance",
+        "noAppearance": "No appearance data on this character.",
+        "no": "No",
+        "yes": "Yes",
+        "rawAppearance": "All saved appearance data (JSON; overrides the fields above when edited)",
+        "saveAppearance": "Save appearance",
+        "weight": "Weight",
+        "skinColor": "Skin color",
+        "hairColor": "Hair color",
+        "headparts": "Headparts",
+        "savingAppearance": "saving appearance…",
+        "appearanceSaved": "Appearance saved.",
+        "inventoryOne": "Inventory ({n} stack)",
+        "inventoryMany": "Inventory ({n} stacks)",
+        "formIdPlaceholder": "form id, e.g. 0xF",
+        "add": "Add",
+        "formId": "Form id",
+        "extras": "extras",
+        "remove": "Remove",
+        "saveInventory": "Save inventory",
+        "savingInventory": "saving inventory…",
+        "inventorySaved": "Inventory saved."
+      },
+      "rank": {
+        "free": "Free",
+        "novice": "Novice",
+        "adept": "Adept",
+        "expert": "Expert",
+        "master": "Master",
+        "legendary": "Legendary"
+      },
+      "craftText": "{profession}, {rank}, {hours} h",
+      "none": "None",
+      "subCraft": "({slot} craft)",
+      "filter": {
+        "online": "Online",
+        "gm": "GM",
+        "dead": "Dead",
+        "male": "Male",
+        "female": "Female"
+      },
+      "banned": "Banned",
+      "profileId": "Profile ID",
+      "sort": {
+        "newest": "Newest",
+        "oldest": "Oldest",
+        "richest": "Richest",
+        "poorest": "Poorest",
+        "most": "Most Played",
+        "least": "Least Played"
+      },
+      "badHex": "{label}: bad hex id",
+      "notNumber": "{label}: not a number",
+      "filtersCount": "Filters ({n})",
+      "stats": {
+        "title": "General Stats",
+        "intro": "Counts every account and living character in the database; gold and materials count every character and every container.",
+        "generate": "Generate stats",
+        "generating": "Generating…",
+        "totals": "Totals",
+        "accounts": "Accounts",
+        "living": "Living characters",
+        "gender": "Gender",
+        "materials": "Materials",
+        "unavailable": "Unavailable: {error}",
+        "materialsAll": "Materials (characters and containers)",
+        "wealth": "Wealth",
+        "totalGold": "Total gold",
+        "carried": "Carried by characters",
+        "stored": "In containers",
+        "average": "Average carried per account",
+        "goldPerAccount": "Gold carried per account",
+        "race": "Race",
+        "raceOther": "Other",
+        "raceUnfinished": "Unfinished",
+        "hoursUnder1": "Under 1 hour",
+        "hours1to3": "1 to 3 hours",
+        "range": "{lo} to {hi}",
+        "goldUnder50": "Under 50 gold",
+        "goldOver": "Over {n}"
+      },
+      "charCountOne": "{n} character",
+      "charCountMany": "{n} characters",
+      "hoursPlayed": "Hours played",
+      "profession": "Profession",
+      "role": {
+        "gm": "GM",
+        "dev": "Developer",
+        "whitelist": "Whitelist"
+      },
+      "lastShort": "last {date}",
+      "noneLower": "none",
+      "slot": "(slot {slot})",
+      "account": "Account",
+      "discordId": "Discord ID",
+      "roles": "Roles",
+      "created": "Created",
+      "lastSeen": "Last seen",
+      "ips": "IP addresses",
+      "hwids": "HWIDs",
+      "factions": "Factions",
+      "characters": "Characters",
+      "charError": "character data unavailable: {error}",
+      "noChars": "No characters.",
+      "notOnline": "Not online",
+      "kick": "Kick",
+      "withChars": "with characters",
+      "deleteAccount": "Delete account",
+      "detailHelp": "Ban, kick and delete go through the backend or the game console, so those services must be running. A deleted account gets a fresh profile id at its next login.",
+      "female": "female",
+      "male": "male",
+      "charDeleted": "{name} deleted.",
+      "banning": "banning…",
+      "unbanning": "unbanning…",
+      "bannedDone": "Banned.",
+      "unbannedDone": "Unbanned.",
+      "kickSent": "Kick sent.",
+      "accountDeleted": "Account deleted.",
+      "accountDeletedOne": "Account deleted, with {n} character.",
+      "accountDeletedMany": "Account deleted, with {n} characters.",
+      "fallen": {
+        "sovngarde": "Sovngarde",
+        "soulCairn": "the Soul Cairn",
+        "permaDead": "perma-dead"
+      },
+      "unnamed": "(unnamed)",
+      "needsMongo": "the Players tab needs the MongoDB database (databaseDriver \"mongodb\")",
+      "notFound": "player not found",
+      "kickNeedsGame": "{error}: the game server must be running",
+      "badPayload": "bad players payload",
+      "notOnlineError": "they are not online",
+      "edit": {
+        "notUint": "{label}: not a valid number/form id",
+        "appearanceNotObject": "appearance: not an object",
+        "appearanceNumbers": "appearance: options/presets must be numbers",
+        "appearanceRace": "appearance: raceId must be a non-zero race form id",
+        "inventoryNotArray": "inventory: not an array",
+        "missingFormDesc": "missing formDesc",
+        "noCharacter": "no character with formDesc {formDesc}",
+        "wholeNumber": "{label}: a whole number from {lo} to {hi}",
+        "unknownProfession": "profession: unknown {profession}",
+        "subCraft": "profession: {profession} is this character's {slot} craft; reset that slot in game or from the admin panel first",
+        "nameEmpty": "Name: empty",
+        "cell": "Cell: expected a form id and plugin, e.g. 165a7:Skyrim.esm",
+        "coords": "Coordinates: three numbers",
+        "nothing": "nothing to save",
+        "unknownRealm": "unknown realm {realm}",
+        "stopGameFirst": "stop the game server first: it owns the character while it runs",
+        "alreadyFallen": "They are already fallen",
+        "badProfileId": "bad profileId"
+      },
+      "slotName": {
+        "primary": "Primary",
+        "secondary": "Secondary",
+        "tertiary": "Tertiary"
+      },
+      "revive": {
+        "noCharacter": "no such character",
+        "notFallen": "They are not fallen",
+        "dead": "They are dead right now, wait for the respawn",
+        "slotInUse": "The extra slot is in use: delete the character created in it first",
+        "notPlayer": "not a player character",
+        "relayDown": "{error}: start the backend, or stop the game server to revive in the database",
+        "badPayload": "bad revive payload",
+        "refused": "refused"
+      },
+      "badNamesPayload": "bad names payload",
+      "defaultName": "Player {id}",
+      "noMongoModule": "mongodb module not installed in server-manager - run npm install"
+    },
+    "common": {
+      "refresh": "Refresh",
+      "save": "Save",
+      "reload": "Reload",
+      "close": "Close",
+      "dragResize": "Drag to resize",
+      "clickAgain": "Click again to confirm",
+      "loading": "loading…",
+      "error": "Error: {error}",
+      "errorPath": "Error: {error} ({path})",
+      "saving": "saving…",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "banned": "banned",
+      "loadingCap": "Loading…",
+      "seeLog": "see log",
+      "invalidJson": "{file} is not valid JSON: {error}",
+      "unreadable": "{file} cannot be read: {error}",
+      "warning": "WARNING: {text}"
+    },
+    "build": {
+      "server": {
+        "title": "Server",
+        "help": "Builds land in <code>build/dist/testserver</code>: the TS bundle into <code>dist_back</code>, <code>gamemode.js</code> from <code>gamemode_extensions/</code>. The Test Server hot-reloads gamemode.js; restart it for dist_back or scam_native.node. Test version Save writes <code>skymp5-server/package.json</code> and the test server version.",
+        "gamemodeOnly": "Build gamemode only",
+        "button": "Build server"
+      },
+      "liveVersion": "Live version",
+      "testVersion": "Test version",
+      "runCmake": "Run CMake first (C++ changed, VS 2022)",
+      "client": {
+        "title": "Client",
+        "help": "Build client rebuilds the UI and skymp5-client.js into <code>build/dist/testclient</code>; package its Data folder as the Alduinak Client Files mod, upload it to Nexus and install it into MO2. The button then reads Update Modlist (manifest from MO2, test server load order, Data folder and database), then Update Version, which publishes the test client version. Test version Save writes <code>skymp5-client/package.json</code> only.",
+        "updateModlist": "Update modlist",
+        "restorePurge": "Restore last purge",
+        "button": "Build client",
+        "updateModlistStep": "Update Modlist",
+        "installFirst": "Install the new Alduinak Client Files into MO2 first, then press Update Modlist again.",
+        "restored": "Restored {n} document(s). Update modlist again once the cause is fixed."
+      },
+      "migrate": {
+        "title": "Migrate",
+        "live": "Live",
+        "test": "Test",
+        "serverPlaceholder": "server",
+        "clientPlaceholder": "client",
+        "copyTestBuild": "Copy test build",
+        "help": "Only way to the Main Server, which must be stopped. Migrate server copies dist_back, scam_native.node, gamemode and the server data files (never the world, settings or player state); it then reads Migrate settings, which merges new test settings into the live server-settings.json without touching its name, ports, players, database, access or Discord keys. Migrate client installs the test manifest, modlist and extras live, syncs the live load order, Data folder and database and mirrors build/dist/testclient onto build/dist/client. Old files go to <code>build/dist/backup</code>. The Live and Test rows publish the server and client versions of that side in versions.json (Save writes the filled fields only); Copy test build fills both from the skymp5-server and skymp5-client packages. Versions may carry a build, e.g. 1.2.3-b4 or 1.2.3+4.",
+        "server": "Migrate server",
+        "client": "Migrate client",
+        "now": "(server {server}, client {client})",
+        "fillFirst": "fill the server or client version first",
+        "settings": "Migrate settings"
+      },
+      "launcher": {
+        "title": "Launcher",
+        "version": "Version",
+        "downloadUrl": "Download URL",
+        "help": "Version Save sets the version of the next build only. Build launcher writes <code>build/launcher-website/AlduinakLauncher.exe</code> (with the cleaned-master patches) and <code>build/launcher/AlduinakLauncher.exe</code> (without them, served by nginx for old launchers); zip the website one and upload the zip to the website so the Download URL serves it (https only; the launcher follows the website's redirect and unpacks the zip), then Update Version tells every launcher to update. Downloads then come from the website, not this server.",
+        "button": "Build launcher",
+        "live": "Live: {version}"
+      },
+      "published": "(published {version})",
+      "saved": "{label} saved.",
+      "saver": {
+        "launcher": "launcher version",
+        "launcherUrl": "launcher download URL",
+        "clientTest": "client test version",
+        "serverTest": "server test version",
+        "clientLive": "client live version",
+        "serverLive": "server live version",
+        "migrateLive": "live server and client versions",
+        "migrateTest": "test server and client versions"
+      },
+      "noVersion": "no {component} version",
+      "stepDone": "✓ {label} done.",
+      "stepFailed": "✗ {label} failed: {error}",
+      "step": {
+        "gamemode": "Build gamemode",
+        "publish": "Publish {component} version",
+        "publishTestClient": "Publish test client version"
+      },
+      "updateVersion": "Update Version",
+      "advertises": "versions.json now advertises {component} {version}",
+      "advertisesTestClient": "versions.json now advertises test client {version}",
+      "gate": {
+        "testStopped": "Test server must be stopped",
+        "testMissing": "Test server service is not installed",
+        "mainStopped": "Main server must be stopped",
+        "mainMissing": "Main server service is not installed"
+      },
+      "diff": {
+        "itemsOne": "{n} item",
+        "itemsMany": "{n} items",
+        "more": "and {n} more",
+        "light": "light",
+        "full": "full",
+        "warnings": "warnings",
+        "modsAdded": "mods added",
+        "modsRemoved": "mods removed",
+        "modsChanged": "mods changed",
+        "pluginsAdded": "plugins added",
+        "pluginsRemoved": "plugins removed",
+        "pluginsShifted": "plugins shifted (form ids change)",
+        "flagChanged": "light flag changed",
+        "filesAdded": "files added",
+        "filesRemoved": "files removed",
+        "filesChanged": "files changed",
+        "none": "No changes since the last modlist",
+        "yes": "yes",
+        "reordered": "plugins reordered"
+      },
+      "unknownBuild": "unknown build {kind}",
+      "ci": {
+        "noToken": "No GitHub token. Set ALDUINAK_GH_TOKEN in skymp5-backend/.env (a PAT with actions:write scope).",
+        "apiError": "GitHub API {status}: {body}"
+      }
+    },
+    "schedule": {
+      "timeZone": "Time zone",
+      "addTask": "Add task",
+      "help": "Times are in the time zone above (an IANA name), not the box's own. <b>Restart</b> broadcasts <i>Server restart in N minutes</i> 60, 30, 10, 5, 4, 3, 2 and 1 minutes before, then restarts that game server; it is skipped when that server is stopped and waits up to 30 minutes for a running build. <b>Say</b> broadcasts the message, <b>Console command</b> sends a game console command as typed in the Console tab, <b>Start</b> and <b>Stop</b> control the game service. No day ticked means every day. A task whose time passed more than 10 minutes ago (box asleep, nothing running) waits for its next time. Saved to",
+      "col": {
+        "on": "On",
+        "task": "Task",
+        "server": "Server",
+        "time": "Time",
+        "days": "Days",
+        "text": "Message or command",
+        "next": "Next run"
+      },
+      "day": {
+        "sun": "Sun",
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat"
+      },
+      "kind": {
+        "restart": "Restart",
+        "say": "Say",
+        "command": "Console command",
+        "start": "Start",
+        "stop": "Stop"
+      },
+      "unsaved": "Unsaved changes",
+      "runnerAgent": "Runner: the AlduinakManager service (last report {time}). Tasks run whether or not this app is open.",
+      "agentSilent": "the AlduinakManager service is {state} but not reporting (restart it after updating server-manager/src)",
+      "agentMissing": "the AlduinakManager service is not installed (server-manager/Setup-Agent.bat, see docs/docs_web_server_manager.md)",
+      "runnerApp": "Runner: only this app. Tasks run only while the Server Manager is open, because {reason}.",
+      "enabled": "Enabled",
+      "everyDay": "No day ticked runs it every day",
+      "messageHint": "Message to broadcast",
+      "commandHint": "Game console command, as in the Console tab",
+      "afterSave": "after Save",
+      "disabled": "disabled",
+      "deleteTask": "Delete task",
+      "none": "No tasks. Add one.",
+      "noFile": "No schedule.json yet: showing the default daily restart, which runs until you save your own.",
+      "saving": "Saving…",
+      "notSaved": "Not saved: {error}",
+      "saved": "Saved.",
+      "warn": {
+        "hour": "1 hour",
+        "minute": "{n} minute",
+        "minutes": "{n} minutes",
+        "text": "Server restart in {when}. Please find a safe spot and log out."
+      },
+      "err": {
+        "notObject": "the schedule must be a JSON object",
+        "timeZone": "unknown time zone \"{zone}\", use an IANA name like America/New_York",
+        "tasks": "tasks must be a list of at most {n}",
+        "where": "task {n}",
+        "taskNotObject": "{where} is not an object",
+        "id": "{where} needs a unique id of letters, digits, - or _",
+        "kind": "{where}: kind must be one of {kinds}",
+        "target": "{where}: target must be live or test",
+        "time": "{where}: time must be HH:MM (24 hour)",
+        "days": "{where}: days are 0 (Sunday) to 6 (Saturday)",
+        "text": "{where}: {key} must be one line of at most {n} characters",
+        "sayMessage": "{where}: a say task needs a message",
+        "commandText": "{where}: a command task needs a command",
+        "invalidFile": "{file} is not valid, no task runs: {error}"
+      },
+      "log": {
+        "say": "say \"{text}\"",
+        "command": "command \"{text}\"",
+        "task": "{what} on {target} ({id})",
+        "notSent": "{task} not sent: {error}",
+        "sent": "{task} sent",
+        "skippedStopped": "{task} skipped: the game server is not running",
+        "done": "{task} done",
+        "doneDetail": "{task} done ({detail})",
+        "waiting": "{task} waiting: {error}",
+        "notRun": "{task} not run: {error}",
+        "next": "next {task} at {at}",
+        "catchingUp": "catching up {task} due at {at}",
+        "warning": "restart warning ({n} min) on {target}",
+        "warningNotSent": "restart warning ({n} min) on {target} not sent: {error}",
+        "skippedLate": "{task} skipped: its time passed more than {n} minutes ago",
+        "taskError": "{task} error: {error}",
+        "error": "schedule error: {error}"
+      }
+    },
+    "news": {
+      "newEntry": "New entry",
+      "help": "The launcher's Latest News. Entries are shown newest first, exactly in this order. A save reaches the launcher straight away - the backend re-reads the file and does not need restarting.",
+      "selectHint": "Select an entry to edit it, or start a new one.",
+      "none": "No entries yet.",
+      "noImage": "(no image)",
+      "editEntry": "Edit entry",
+      "field": {
+        "title": "Title",
+        "body": "Body",
+        "tag": "Tag",
+        "date": "Date",
+        "image": "Image"
+      },
+      "datePlaceholder": "today's date when left empty",
+      "addImage": "Add image…",
+      "previewFrom": "The launcher loads this from {url}",
+      "previewNone": "No image: the card renders without one.",
+      "choosing": "choosing…",
+      "added": "Added {image}",
+      "saved": "Saved",
+      "deleteConfirm": "Delete \"{title}\"? The launcher stops showing it at once.",
+      "deleting": "deleting…",
+      "deleted": "Deleted",
+      "countOne": "{n} entry",
+      "countMany": "{n} entries",
+      "dialogTitle": "Choose a news image",
+      "dialogFilter": "Images",
+      "err": {
+        "invalidJson": "news.json is not valid JSON, refusing to touch it: {error}",
+        "notImage": "{name} is not an image the launcher can show",
+        "noEntry": "no entry to save",
+        "noTitle": "a news entry needs a title",
+        "gone": "that entry is gone; refresh and try again",
+        "tooMany": "the launcher only ever shows a handful; {n} entries is enough",
+        "noFile": "no file chosen",
+        "badType": "{name} is not a png, jpg, gif or webp",
+        "copyFailed": "could not copy the image: {error}"
+      }
+    },
+    "settings": {
+      "testSuffix": "(test)",
+      "backendEnv": "backend .env",
+      "seeded": "{path}  (new — seeded from .env.example)",
+      "otherRaw": "Other (raw JSON)",
+      "extraKeys": "Keys without a dedicated field",
+      "on": "On",
+      "off": "Off",
+      "show": "show",
+      "hide": "hide",
+      "saved": "Saved {path}",
+      "notFound": "{server} server-settings.json not found at {path}",
+      "unknownConfig": "unknown config",
+      "refuseUnreadable": "refusing to save: {file} is unreadable ({error}) - fix the file first",
+      "changedOnDisk": "server-settings.json changed on disk, reload the Settings tab first",
+      "fieldInvalidJson": "{label}: invalid JSON ({error})",
+      "advancedJson": "Advanced JSON: {error}",
+      "unknownFile": "unknown settings file {file}"
+    },
+    "security": {
+      "selectHint": "Select a kind of alert.",
+      "banEvasion": {
+        "label": "Ban Evasions",
+        "hint": "An IP address or HWID seen on more than one Discord account."
+      },
+      "goldSpawn": {
+        "label": "Gold Spawning",
+        "hint": "A character gained more gold than goldAlertThreshold (default 5000) between two samples, 10 to 60 seconds apart: looting, a trade or a spawn."
+      },
+      "account": "(profile {profileId}, {discordId})",
+      "shared": "{kind} {value} is shared",
+      "kindHwid": "HWID",
+      "kindIp": "IP",
+      "goldGained": "{name} gained {gain} gold",
+      "goldDetail": "{before} to {after} gold, character {actorId}, profile {profileId}",
+      "none": "No alerts.",
+      "needsMongo": "security alerts need the MongoDB database",
+      "unknownType": "unknown alert type"
+    },
+    "services": {
+      "backend": "Backend",
+      "nginx": "Nginx",
+      "mongo": "MongoDB",
+      "game": "Game",
+      "livekit": "LiveKit",
+      "purgePending": "refused: a MongoDB purge is pending for the new load order, run Purge MongoDB (or Restore last purge) first",
+      "stopFirst": "refused: stop {service} first",
+      "stopped": "stopped",
+      "started": "started",
+      "verbFailed": "{verb} failed (status: {status})",
+      "rotationSkipped": "log rotation skipped for {file}: {error}",
+      "playtimeSkipped": "hours played not counted from {file}: {error}",
+      "unknownService": "unknown service {key}",
+      "unknownAction": "unknown action {action}",
+      "scheduledKind": "scheduled {verb} ({server})",
+      "failed": "{verb} failed",
+      "unknownGroup": "unknown group {group}",
+      "notInstalled": "{service}: not installed, skipped",
+      "errLog": "{service} (err)",
+      "gameRunning": "the {server} game is {status}, stop it first",
+      "unknownState": "in an unknown state",
+      "dryRunWarning": "WARNING: {error} (a dry run needs no stop)",
+      "nativeHeld": "a game server process still holds scam_native.node (started outside nssm?), stop it first",
+      "serviceRunning": "{name} is {status}, stop it first",
+      "unknownStateQuery": "in an unknown state (neither nssm nor sc could query it)"
+    },
+    "servers": {
+      "main": "Main Server",
+      "test": "Test Server"
+    },
+    "console": {
+      "startAll": "Start all",
+      "stopAll": "Stop all",
+      "collapse": "Collapse or expand",
+      "start": "START",
+      "stop": "STOP",
+      "restart": "RESTART",
+      "inputPlaceholder": "Command, 'help' lists them",
+      "send": "Send",
+      "notDelivered": "[command not delivered] {error}",
+      "error": "error: {error}",
+      "actionTitle": "{action} {service}",
+      "groupTitle": "{action} all: {group}",
+      "online": "Online",
+      "offline": "Offline",
+      "cpu": "CPU {cpu}%",
+      "ram": "RAM {mb} MB",
+      "notRunning": "not running",
+      "requests": "{n} req/min",
+      "welcome": "Type 'help' for manager commands (services, builds); anything else goes to the {server} game console.",
+      "legacyNames": "legacy service names in use ({names}) - run build\\dist\\server\\install-services.bat once to migrate",
+      "help": {
+        "title": "Manager commands:",
+        "help": "  help                                 this help",
+        "status": "  status                               service status by container",
+        "services": "  start|stop|restart <svc|group|all>   control services ({services}; groups {groups}; a service key wins over a group of the same name)",
+        "build": "  build <{kinds}>   run a build for the {server} (output streams here)",
+        "other": "Anything else is sent to this server's game console (gamemode)."
+      },
+      "gameOffline": "(game console offline - gamemode commands unavailable)",
+      "unknown": "unknown",
+      "usage": "usage: {verb} <{targets}>",
+      "failed": "failed",
+      "buildBusy": "a build or sync is already running ({holder}) - wait for it to finish",
+      "buildStarting": "starting {kind} build…",
+      "buildComplete": "{kind} build complete",
+      "buildFailed": "{kind} build failed: {error}",
+      "empty": "empty command"
+    },
+    "factions": {
+      "editorMissing": "The shared editor skymp5-backend/public/dashboard/faction-editor.js did not load; run the manager from the repo checkout."
+    },
+    "lock": {
+      "cannotTake": "cannot take the build lock: {error}",
+      "busy": "a build or sync is already running: {holder}",
+      "otherTask": "another task is running: {holder}",
+      "holder": "{kind} ({source}, since {since})",
+      "holderActor": "{kind} ({source}, {actor}, since {since})",
+      "aTask": "a task"
+    },
+    "versions": {
+      "semver": "Use a semver like 1.2.3",
+      "version": "Use a version like 1.2.3, 1.2.3-b4 or 1.2.3+4",
+      "url": "Use a full https:// URL",
+      "unknownKey": "unknown version key {key}",
+      "unknownComponent": "unknown component",
+      "bad": "bad version {version}"
+    },
+    "backend": {
+      "noToken": "masterApiAuthToken is not set in server-settings.json",
+      "answered": "the backend answered {status}",
+      "unreachableStart": "the backend is unreachable ({error}); start the Backend service",
+      "notFactionRoute": "refused: not a faction route",
+      "badBody": "refused: the body must be a small JSON object",
+      "unreachable": "the backend is unreachable ({error}); is AlduinakBackend running?",
+      "timeout": "timeout"
+    },
+    "modlist": {
+      "noDatabaseName": "refused: {path} has no databaseName, set it (skymp_test) first",
+      "overlap": {
+        "serverDir": "server dir",
+        "settingsFile": "settings file",
+        "database": "database",
+        "refused": "refused: the {server} {what} ({value}) is the {live}'s, fix {path} first"
+      },
+      "manifest": {
+        "noSettings": "WARNING: {server} server-settings.json not found, the load order the database was written under is recorded as empty",
+        "unusable": "no usable manifest at {file}",
+        "untouched": "{error}; {file} and the previous diff are untouched",
+        "noChanges": "no changes against {file} (built {built}), kept as is",
+        "snapshot": "deployed manifest snapshotted to {file}",
+        "replaceFailed": "could not replace {file}: {error}; the compiled manifest is waiting in {building} and the next run overwrites it",
+        "diff": "diff vs {prev}: mods +{modsAdded} -{modsRemoved} ~{modsChanged}, plugins +{pluginsAdded} -{pluginsRemoved}, files +{filesAdded} -{filesRemoved} ~{filesChanged}",
+        "diffReordered": "diff vs {prev}: mods +{modsAdded} -{modsRemoved} ~{modsChanged}, plugins +{pluginsAdded} -{pluginsRemoved} (reordered), files +{filesAdded} -{filesRemoved} ~{filesChanged}",
+        "nothing": "nothing",
+        "purgeNeeded": "MongoDB purge needed before the game server starts: {removed} removed, {shifted} shifted, {flags} light flag change(s)",
+        "shift": "shift {name}: {from} -> {to}"
+      },
+      "backendDeps": "backend dependency install failed",
+      "compileFailed": "compile-manifest failed",
+      "noManifest": "no {file}, build the manifest first",
+      "diffNotUpdated": "not updated: {error}",
+      "noDataDir": "server-settings.json has no dataDir",
+      "purgeNeedsDiff": "build the manifest first so the current load order is recorded for the MongoDB purge",
+      "step": {
+        "settings": "server settings",
+        "data": "data folder",
+        "purge": "MongoDB purge"
+      },
+      "unchanged": "MO2 modlist matches the {server} manifest (mods and versions), nothing to sync",
+      "noPurgeBackup": "no purge backup recorded in {file}",
+      "settingsNotObject": "server-settings.json is not a JSON object",
+      "diff": {
+        "needManifest": "computeDiff needs the current manifest",
+        "unprovided": "enabled in plugins.txt but provided by no mod in the manifest: {names}; fix the MO2 profile and rebuild the manifest",
+        "syncedBeforePurge": "server settings were synced before the MongoDB purge ran; if the game server was restarted in between, restore the last purge backup or expect inconsistent ids",
+        "unknownFlags": "light flag unknown for {names}: the MongoDB purge will refuse until the plugin file can be read",
+        "shiftFailed": "shifted plugins not computed: {error}",
+        "noFile": "no {file} to update, compute a diff first"
+      },
+      "settings": {
+        "invalidJson": "server-settings.json is not valid JSON, refusing to write it: {error}",
+        "unreadable": "cannot read {file}: {error}",
+        "noPlugins": "the manifest lists no enabled plugins, refusing to empty the loadOrder",
+        "inSync": "loadOrder already in sync with the manifest ({n} plugins)",
+        "changed": "loadOrder: {from} -> {to} plugins ({added} added, {removed} removed)",
+        "changedReordered": "loadOrder: {from} -> {to} plugins ({added} added, {removed} removed, order changed)",
+        "notInData": "WARNING: {name} is not in {dir} yet, run Sync Data before restarting the game server",
+        "unprovided": "WARNING: {name} is enabled in plugins.txt but no mod in the manifest provides it, fix the MO2 profile and rebuild the manifest",
+        "dryRun": "dry run: server-settings.json not written",
+        "wrote": "wrote {file} ({n} plugins), previous copy at {prev}",
+        "restartHint": "restart the game server to load the new order; players must re-run the launcher"
+      },
+      "data": {
+        "sizeDiffers": "size differs",
+        "noHash": "no recorded hash",
+        "shaDiffers": "sha256 differs",
+        "copyMismatch": "sha256 mismatch after copy, the MO2 file differs from the manifest (rebuild the manifest)",
+        "noManifest": "no manifest loaded",
+        "noDataFolder": "Data folder not found: {dir}",
+        "noModsFolder": "MO2 mods folder not found: {dir}",
+        "header": "sync: {dir} <- {mods}",
+        "headerDry": "dry run: {dir} <- {mods}",
+        "stampOther": "{file} was written for {other}, not {dir}: ignored",
+        "expected": "manifest {built}: {n} files expected, {known} known from the last deploy",
+        "checked": "checked {n} files",
+        "unsafePath": "unsafe path",
+        "vanilla": "vanilla master, never deleted",
+        "reserved": "written by the game server, never touched",
+        "stillEnabledWarning": "WARNING: {file} is still enabled in plugins.txt but no mod provides it, kept so the server keeps booting; fix the MO2 profile and rebuild the manifest",
+        "stillEnabled": "still enabled in plugins.txt, fix the MO2 profile and rebuild the manifest",
+        "dropped": "no longer in the manifest",
+        "droppedPlugin": "no longer in the manifest, {why} on disk but plugins and archives are removed anyway",
+        "droppedKept": "no longer in the manifest but {why} on disk, left in place",
+        "unsafeMod": "unsafe mod name \"{mod}\"",
+        "sizeMismatch": "MO2 file size {size} differs from the manifest ({expected}), rebuild the manifest",
+        "plan": "plan: {deletes} delete(s), {copies} copy(ies), {upToDate} up to date, {skipped} skipped, {missing} missing source(s)",
+        "delete": "delete {file} ({reason})",
+        "missingSource": "MISSING SOURCE {file} (mod \"{mod}\")",
+        "skip": "skip {file}: {reason}",
+        "copy": "copy {file} <- {mod}",
+        "moreCopies": "... and {n} more copies ({total} total)",
+        "dryRun": "dry run: nothing touched",
+        "deleteError": "ERROR deleting {file}: {error}",
+        "copyError": "ERROR copying {file}: {error}",
+        "copied": "copied {n}/{total}",
+        "done": "done: {copied} copied, {deleted} deleted, {upToDate} already up to date, {errors} error(s), {missing} missing source(s)",
+        "problems": "{errors} error(s), {missing} missing source(s), see log"
+      }
+    },
+    "migrate": {
+      "banner": {
+        "server": "Migrate server: test -> live",
+        "settings": "Migrate settings: test -> live",
+        "client": "Migrate client: test -> live"
+      },
+      "noServerBuild": "no dist_back/skymp5-server.js in {dir}, Build server first",
+      "serverCopy": "{from} -> {to}, old copies in {backup}",
+      "serverDone": "✓ {n} item(s) copied to the Main Server; press Migrate settings next, then start the Main Server.",
+      "settingsBackup": "live server-settings.json backed up to {file}",
+      "settingsSame": "live settings already carry every test setting",
+      "settingsDone": "✓ settings merged: {added} added, {changed} changed, {kept} protected key(s) kept; start the Main Server.",
+      "stepSkipped": "manifest unchanged, skipped",
+      "noClientBuild": "{dir} has no Data folder, Build client first",
+      "noTestManifest": "no {file}, run Update modlist for the Test Server first",
+      "step": {
+        "manifest": "manifest",
+        "modlist": "modlist",
+        "clientFiles": "client files"
+      },
+      "extrasMissing": "extras archive(s) missing from {dir}: {names}",
+      "noFile": "no {file}",
+      "mirroring": "mirroring {from} -> {to}",
+      "clientFiles": "client files: {copied} copied, {deleted} deleted, {unchanged} unchanged",
+      "clientDone": "✓ client migrated to the Main Server; save the Live version in the Migrate box so launchers pick it up, then start the Main Server.",
+      "log": {
+        "skip": "skip {item}: not in {from}",
+        "copied": "copied {item}",
+        "copiedBackedUp": "copied {item}, old copy backed up",
+        "kept": "kept {key} (protected)",
+        "changed": "changed {key}: {from} -> {to}",
+        "added": "added {key}",
+        "manifestKeys": "loadOrder and archives left as they are: Migrate client syncs them from the manifest",
+        "deleted": "deleted {file}",
+        "backedUp": "backed up {file}",
+        "missing": "MISSING {name} in {from}",
+        "alreadyIn": "{name} already in {to}",
+        "copiedTo": "copied {name} -> {to}"
+      }
+    },
+    "builder": {
+      "spawnFailed": "[spawn failed] {error}",
+      "runError": "[error] {error}",
+      "exit": "[exit {code}]",
+      "deps": {
+        "noDir": "{label}: directory not found ({dir})",
+        "installing": "installing dependencies (node_modules missing)…",
+        "retry": "frozen install failed - retrying without --frozen-lockfile…",
+        "failed": "{label}: dependency install failed"
+      },
+      "prereq": {
+        "install": "install {label}",
+        "banner": "Installing missing prerequisites",
+        "noWinget": "missing {missing} and winget is unavailable to auto-install - install the App Installer (winget), or get them manually: Node https://nodejs.org/ , Git https://git-scm.com/download/win . Then re-run (or set ALDUINAK_NO_AUTO_INSTALL=1).",
+        "installing": "missing: {missing} - installing with winget…",
+        "stillMissing": "still missing after install: {missing}. Check the winget output above (a PENDING REBOOT is the usual cause - reboot and Build again).",
+        "done": "toolchain installed."
+      },
+      "native": {
+        "needVs": "Visual Studio 2022 with the \"Desktop development with C++\" workload.",
+        "addVs": "      Add it to an existing VS 2022 install (elevated):",
+        "needCmake": "CMake (comes with the C++ workload above, or install it separately and put it on PATH)",
+        "needGit": "Git (needed for the vcpkg submodule)",
+        "needPython": "Python 3 (some vcpkg ports need it)",
+        "needVcpkg": "the vcpkg submodule (run: git submodule update --init --recursive)",
+        "resetCache": "build/ was configured with Visual Studio at {vs}; resetting CMakeCache.txt and CMakeFiles (dist and vcpkg_installed are kept)",
+        "resetFailed": "could not reset the stale CMake cache: {error}",
+        "banner": "Native (C++) build for the {server}",
+        "windowsOnly": "native build is Windows-only",
+        "cannotBuild": "cannot build - missing:",
+        "ciTip": "Tip: the \"CI Rebuild\" button builds the same binaries on GitHub instead.",
+        "missingTools": "missing build tools: {n} item(s), see log",
+        "nodeLocked": "scam_native.node is locked - stop the {server} game service before a server native build",
+        "yarnMissing": "yarn missing - installing with npm…",
+        "yarnRequired": "yarn is required by the CMake configure - install it manually: npm install -g yarn",
+        "vcpkgBoot": "bootstrapping vcpkg (first run, this takes a few minutes)…",
+        "vcpkgFailed": "vcpkg bootstrap failed - see log",
+        "bundleFailed": "client bundle build failed - see log",
+        "configuring": "configuring (first run compiles all vcpkg dependencies - expect 1-3 hours)…",
+        "configureFailed": "cmake configure failed - see log",
+        "compiling": "compiling…",
+        "restored": "restored {file} (the build regenerates it with upstream defaults)",
+        "buildFailed": "cmake build failed - see log",
+        "missingFile": "MISSING {file}",
+        "done": "✓ Native build complete for the {server}: server {serverDir}, client {clientOut}"
+      },
+      "deploy": {
+        "removed": "removed stale {name}",
+        "removeFailed": "could not remove {name}: {error}"
+      },
+      "gamemode": {
+        "banner": "Gamemode ({server})",
+        "noParts": "no gamemode_extensions/*.js found - gamemode.js left untouched.",
+        "readFailed": "gamemode: could not read {name} ({error})",
+        "locFailed": "gamemode: could not read localization/en_loc.json ({error})",
+        "syntax": "gamemode: syntax error in the concatenated output - {error}",
+        "upToDate": "gamemode.js already up to date.",
+        "done": "✓ gamemode.js built from {n} extension file(s); the server hot-reloads it within a second."
+      },
+      "noServerDir": "{server} dir not found: {dir} (run deploy/testserver/setup-testserver.ps1 first)",
+      "server": {
+        "noScript": "skymp5-server/package.json has no build-ts script of the form \"tsc ... && esbuild ... --outfile=...\"",
+        "tscFailed": "tsc failed - TypeScript errors stop the build (see log)",
+        "esbuildFailed": "esbuild failed (see log)",
+        "banner": "Game server ({server})",
+        "noNative": "note: scam_native.node is not in {dir} - copy it from the CI \"server-dist\" artifact or tick Run CMake first so the game server can start.",
+        "done": "✓ Game server TS bundle built into {dir}; the {server} hot-reloads gamemode.js, restart it for dist_back or scam_native.node."
+      },
+      "launcher": {
+        "banner": "Launcher",
+        "noPatches": "no cleaned-master patches (*.vcdiff) in {dir}, the website installer bundles them",
+        "copyFailed": "launcher: could not copy the cleaned-master patches ({error})",
+        "bundling": "bundling {n} cleaned-master patch(es) from {dir} into the website installer",
+        "tauriFailed": "tauri build failed - see log (is Rust installed?)",
+        "noInstaller": "no {version} installer found in {dir}",
+        "clearFailed": "launcher: could not remove the cleaned-master patches for the nginx installer ({error})",
+        "bundleFailed": "tauri bundle failed - see log",
+        "website": "website installer, with the patches → {file}: zip it and upload the zip to the website",
+        "nginx": "nginx installer, without them → {file}: Electron launchers up to 2.3.0 and a launcherUrl on this server get it",
+        "urlHere": "note: launcherUrl {url} is on this server, so launcher updates keep coming from the nginx installer and fresh installs keep downloading the patches from here; save the website zip's URL as Download URL to move both off this box",
+        "publishHint": "upload the zip, then press Update Version to publish {version}",
+        "done": "✓ Launcher built → {website} (website) and {nginx} (nginx)"
+      },
+      "front": {
+        "banner": "Front-end UI",
+        "configFailed": "front-end: could not write config.js ({error})",
+        "failed": "front-end build failed (see log)",
+        "copyFailed": "front-end: could not copy ui-static/{name} ({error})",
+        "done": "✓ Front-end UI built into {dir}"
+      },
+      "logic": {
+        "banner": "Client logic (skymp5-client.js)",
+        "failed": "client logic build failed (see log)",
+        "done": "✓ skymp5-client.js built into {dir}."
+      },
+      "client": {
+        "noSeed": "client build output not found at {dir} and nothing to seed it from ({live}) - download the CI \"dist\" artifact (PR Windows Flatrim workflow) and extract it there, then Build again.",
+        "seeding": "{dir} has no Data folder yet, seeding it once from {live}…",
+        "seedFailed": "could not seed {dir} from {live}: {error}",
+        "seeded": "seeded.",
+        "banner": "Client ({server})",
+        "noOutput": "client build output not found at {dir} - download the CI \"dist\" artifact (PR Windows Flatrim workflow) and extract it into {out}, then Build again.",
+        "missingFiles": "client files missing from {dir}: {files} - rebuild the client (Native for a dll)",
+        "done": "✓ Client built into {out}. Package {data} as the Alduinak Client Files mod, upload it to Nexus, install it into MO2 ({mod}), then press Update Modlist."
+      }
+    },
+    "relay": {
+      "notConnectedHint": "relay not connected - is the backend running?",
+      "notConnected": "relay not connected",
+      "timeout": "query timed out",
+      "badPort": "relay port {port} is not usable (WS_PORT and WS_PORT_TEST in the backend .env must be distinct integers); console offline until it is fixed and the manager restarted",
+      "connected": "connected to relay"
+    },
+    "formIds": {
+      "twice": "{name} appears twice in the load order",
+      "unknownFlag": "unknown light flag for {name}",
+      "tooManyLight": "too many light plugins (max 4096)",
+      "tooManyFull": "too many full plugins (max 254)",
+      "notInOrder": "{name} is not in the load order",
+      "lightTooBig": "{name} is a light plugin but local id 0x{id} does not fit 12 bits"
+    },
+    "purge": {
+      "start": {
+        "notInOrder": "startPoints[0].worldOrCell {raw} is not in the new load order",
+        "badValue": "startPoints[0].worldOrCell \"{raw}\" is neither a number nor a <hex>:<Plugin> descriptor",
+        "unresolved": "startPoints[0].worldOrCell {raw} cannot be resolved in the new load order",
+        "badPos": "startPoints[0].pos must be three numbers"
+      },
+      "reencodeFailed": "{label}: {id} cannot be re-encoded ({error}), treated as removed",
+      "change": {
+        "remapped": "{label}: remapped {from} -> {to} ({plugin})",
+        "remappedExtra": "{label}: remapped {key} {from} -> {to} on {item} ({plugin})",
+        "droppedExtra": "{label}: dropped {key} {id} ({plugin}) from {item}",
+        "droppedStack": "{label}: dropped {count} x {id} ({plugin})",
+        "dropped": "{label}: dropped {id} ({plugin})",
+        "spawnReset": "spawn point reset to {to} (was {from})",
+        "toSpawn": "relocated to spawn point {to}",
+        "toStart": "relocated to start point {to}",
+        "faction": "factions: dropped {formDesc}",
+        "slotCleared": "equipment: cleared {slot} {id} ({plugin})",
+        "slotRemapped": "equipment: remapped {slot} {from} -> {to} ({plugin})",
+        "textureSet": "setNodeTextureSet: dropped {node} {value} ({plugin})",
+        "headTextureZero": "headTextureSetId {id} ({plugin}) set to 0",
+        "refRemapped": "{label}: remapped {ref} {from} -> {to} ({plugin})"
+      },
+      "references": "{path} references {name}",
+      "who": "{formDesc} \"{name}\" (profile {profileId})",
+      "foreignPlugin": "{plugin} is not in the old or new load order",
+      "inRemoved": "{field} {value} is in removed plugin {plugin}",
+      "spawnNoStart": "{who}: spawn point {spawn} is in removed plugin {plugin} and no startPoints[0] is configured",
+      "spawnWasRemoved": "{who}: spawn point was in removed plugin {plugin}, reset to {to}",
+      "cellNoStart": "{who}: worldOrCellDesc {cell} is in removed plugin {plugin}, its spawn point is unusable and no startPoints[0] is configured",
+      "headTextureZero": "{who}: headTextureSetId {id} belonged to removed plugin {plugin}, set to 0",
+      "raceRemoved": "WARNING {who}: raceId {id} belongs to removed plugin {plugin} and was left unchanged, this character will not load correctly",
+      "effectRemoved": "{who}: active effect {id} belongs to removed plugin {plugin} (left unchanged)",
+      "effectShifted": "{who}: active effect {id} belongs to shifted plugin {plugin} (left unchanged)",
+      "dynamicHit": "{who}: {hit} (left unchanged)",
+      "refRemoved": "{who}: {label} {ref} {id} belongs to removed plugin {plugin} (left unchanged)",
+      "deleteLine": "DELETE {formDesc} (recType {recType}, profileId {profileId}, base {base}): {reason}",
+      "updateLine": "UPDATE {formDesc} \"{name}\" (profileId {profileId}): {changes}",
+      "warning": "warning: {text}",
+      "mongoOnly": "databaseDriver is \"{driver}\", only mongodb is supported",
+      "noDiff": "no manifest diff: rebuild the manifest first",
+      "alreadyPurged": "this diff was already purged at {at}",
+      "noOldOrder": "diff.settingsLoadOrder is empty: nothing recorded the load order the data was written under",
+      "noNewOrder": "newLoadOrder is empty",
+      "unknownFlags": "unknown light flag for: {names} (rebuild the manifest)",
+      "orderCount": "{n} plugins ({full} full, {light} light)",
+      "dryRun": "dry run, nothing will be written",
+      "applying": "applying purge",
+      "orders": "old order: {old}, new order: {new}",
+      "removed": "removed: {names}",
+      "added": "added: {names}",
+      "shifted": "shifted: {names}",
+      "orderMismatch": "server-settings.json loadOrder does not match the target order yet: run Sync server settings first",
+      "unfinished": "a previous purge did not finish, restore {backup} first",
+      "itsBackup": "its backup",
+      "nothingToPurge": "nothing to purge: no plugin was removed or shifted",
+      "startPoint": "start point: {desc} [{pos}]",
+      "scannedProgress": "scanned {n}",
+      "scanned": "scanned {n}: {deletes} to delete, {updates} to update, {warnings} warning(s), {unresolved} unresolved id(s), {dynamic} dynamic id(s) left alone",
+      "abort": "ABORT: {text}",
+      "playerHits": "{n} player character(s) reference removed plugins and are never deleted: {hits}",
+      "nothingToWrite": "nothing to write",
+      "needBackupDir": "backupDir is required to apply the purge",
+      "backedUp": "backed up {n} document(s) to {file}",
+      "updateMismatch": "updateOne matched {n} document(s) for {formDesc}, is the game server still running?",
+      "updatedProgress": "updated {n}",
+      "updated": "updated {n} document(s)",
+      "deleteMismatch": "deleteMany removed {n} of {total} document(s), is the game server still running?",
+      "deleted": "deleted {n} document(s)",
+      "stillPresent": "{n} deleted document(s) still present",
+      "reread": "re-read {n} of {total} updated document(s)",
+      "verifyFailed": "verification failed: {problems}",
+      "verified": "verified: no descriptor outside the new load order remains in the {n} updated document(s)",
+      "failed": "FAILED: {error}",
+      "restore": {
+        "noFile": "no purge backup file recorded",
+        "unreadable": "cannot read {file}: {error}",
+        "invalid": "{file} is not a valid purge backup: {error}",
+        "empty": "{file} holds no documents to restore",
+        "start": "restoring {n} document(s) from {file} ({deleted} deleted, {updated} updated)",
+        "replaceFailed": "replaceOne neither matched nor inserted {formDesc}",
+        "progress": "restored {n}",
+        "verifyFailed": "verification failed: {n} of {total} restored document(s) present",
+        "done": "restored {n} document(s): {inserted} re-inserted, {replaced} replaced"
+      }
+    },
+    "agent": {
+      "git": {
+        "unreadable": "cannot read the git checkout: {error}",
+        "notMain": "web builds run only from main, the checkout is on {branch}",
+        "merging": "a merge is in progress in the checkout",
+        "dirty": "the checkout has uncommitted changes besides version files: {files}"
+      },
+      "settingsInvalid": "server-settings.json is not valid JSON",
+      "settingsUnreadable": "server-settings.json cannot be read",
+      "jobRecordFailed": "cannot record the job: {error}",
+      "requested": "{label} requested by {user} ({id})",
+      "requestedAt": "{label} requested by {user} ({id}) at {commit}",
+      "jobDetail": "job {id}",
+      "status": "status {status}",
+      "api": {
+        "unknownLog": "unknown log",
+        "unknownJob": "unknown job",
+        "unknownKind": "unknown job kind or options",
+        "badHost": "bad host",
+        "tooLarge": "body too large",
+        "badQuery": "query values must be integers",
+        "invalidJson": "invalid JSON",
+        "notFound": "not found"
+      }
+    },
+    "serverField": {
+      "name": {
+        "label": "Server name",
+        "help": "Public name shown in the launcher / master list."
+      },
+      "port": {
+        "label": "Game port (UDP)",
+        "help": "RakNet game port."
+      },
+      "maxPlayers": {
+        "label": "Max connections",
+        "help": "RakNet connection cap including the queue room, at most the native MAX_PLAYERS (1300). To test the queue lower Play slots, never this: a connection above this number is refused before the queue sees it."
+      },
+      "playerSlots": {
+        "label": "Play slots",
+        "help": "Verified logins that may play at once; logins above it wait in the queue up to Max connections. Empty = Max connections (queue off). Read at boot."
+      },
+      "queueGraceMs": {
+        "label": "Queue grace (ms)",
+        "help": "How long a disconnected player keeps their slot or queue place. Default 120000."
+      },
+      "queueStaffBypass": {
+        "label": "Staff skip the queue",
+        "help": "On (default, also when unset): adminRoles tiers, adminRoleIds and adminProfileIds never wait. Turn off to test the queue with a staff account. Read at boot."
+      },
+      "lang": {
+        "label": "Language"
+      },
+      "listenHost": {
+        "label": "Listen host",
+        "help": "Bind address for game (RakNet) traffic."
+      },
+      "uiListenHost": {
+        "label": "UI listen host",
+        "help": "Bind address for the HTTP/UI port."
+      },
+      "ip": {
+        "label": "Advertised IP",
+        "help": "Public IP advertised to clients (NAT)."
+      },
+      "offlineMode": {
+        "label": "Offline mode",
+        "help": "When on, any profile id may connect; master/masterKey are ignored."
+      },
+      "master": {
+        "label": "Master URL",
+        "help": "Master API URL for online-mode session validation. Empty = offline."
+      },
+      "masterKey": {
+        "label": "Master key",
+        "help": "Public server id, not a secret: players receive it via /api/serverinfo and the launcher. The backend reads it from here."
+      },
+      "masterApiAuthToken": {
+        "label": "Master API auth token",
+        "help": "Private secret sent as X-Auth-Token on heartbeats, bans and purchases. The backend reads it from here."
+      },
+      "enableConsoleCommandsForAll": {
+        "label": "Console commands for all (keep off)",
+        "help": "Must stay off. The console is disabled on this server; turning this on skips the admin check and gives every player additem, placeatme and the other server console commands."
+      },
+      "characterSelect": {
+        "label": "Character select",
+        "help": "Show the character-select screen on join."
+      },
+      "characterSelectMaxCharacters": {
+        "label": "Max characters",
+        "help": "Character slots per player when character select is on (1-10, default 3)."
+      },
+      "npcEnabled": {
+        "label": "NPCs enabled"
+      },
+      "npcCorpseWatch": {
+        "label": "NPC corpse watch (debug)",
+        "help": "On: every 2 s the spawn-zone poll reads each zone corpse's position and navmesh height and logs a body that jumped 64+ units or lies 32+ units under the navmesh (evidence for corpse sync reports). Off (default, also when unset): no corpse is read; keep it off on live. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "masteryResetsPerCharacter": {
+        "label": "Profession resets per character",
+        "help": "How many times a player may set a craft aside from the profession menu on one character; the hours go with it. With multiclassing one count is shared by all slots and a reset clears one slot. Read at boot. Default 1."
+      },
+      "masteryHourBank": {
+        "label": "Profession hour bank",
+        "help": "Hours that extra crafts inside the counted hour may bank, shared by every craft slot of a character and paid in craft order, one per hour after the last counted hour. The Skills tab strip has one cell more than this (2 is hours 1, 2 and 3). 0 turns the bank off. Read at boot. Default 2."
+      },
+      "masteryBankOffline": {
+        "label": "Hour bank counts offline",
+        "help": "On (default): a banked hour falls due an hour after the last counted hour whether the character is online or not, and what fell due while away is paid at login. Off: it needs a full hour of online time, time logged out does not count. The Skills tab shows the rule in force. Read at boot."
+      },
+      "masterySlots": {
+        "label": "Craft slots (multiclassing)",
+        "help": "Profession slots in pick order, 1 to 3: [{ name, cap, rankHours }]. cap is a rank name or index from Novice to Legendary; rankHours the hours for each rank from Novice (the primary defaults to 0 plus masteryRankHours). Empty or one entry (the default [{ \"name\": \"Primary\", \"cap\": \"Legendary\" }]) is multiclassing off, records kept. Test: Secondary to Adept at [20, 60], Tertiary to Novice at [20]. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "masterySlotKits": {
+        "label": "Sub-slot kits",
+        "help": "On (default): a secondary or tertiary pick hands over that craft's kit items (masteryKits), never gold, once per craft per character, none when the primary kit was that craft's. Read at boot."
+      },
+      "securityAlertChannelId": {
+        "label": "Security alert channel",
+        "help": "Discord channel id where the backend posts every new Security tab alert (ban evasion, gold spawning). Read live. Empty posts nothing."
+      },
+      "needsFatigueEnabled": {
+        "label": "Fatigue enabled",
+        "help": "Off makes every craft, gather, kill and cast cost no fatigue; hunger keeps running. Read at boot. Default on."
+      },
+      "needsFatigueOfflinePerHour": {
+        "label": "Fatigue refill per offline hour",
+        "help": "Share of the fatigue bar refilled per hour logged out, added at login and capped at a full bar. 1 = 100% an hour, the online rate; 0 turns it off. Read at boot. Default 1."
+      },
+      "torchBurnMinutes": {
+        "label": "Torch burn (minutes)",
+        "help": "Minutes of use after which a held torch burns out and one is taken from the inventory; the burn carries over relogs. 0 turns it off. Read at boot. Default 15."
+      },
+      "goldAlertThreshold": {
+        "label": "Gold alert threshold",
+        "help": "Gold a character may gain between two samples, 10 to 60 seconds apart, before the Security tab gets a Gold Spawning alert. 0 disables it. Read at boot. Default 5000."
+      },
+      "isPapyrusHotReloadEnabled": {
+        "label": "Papyrus hot reload",
+        "help": "Reload compiled .pex scripts on change."
+      },
+      "locale": {
+        "label": "Locale file",
+        "help": "File in data/localization (no .json) for M.GetText()."
+      },
+      "manaclesFormId": {
+        "label": "Manacles item",
+        "help": "Form id (number or \"0x...\" string) of the item a captor must hold to restrain a player. Defaults to vanilla prisoner cuffs 0x0005DC02."
+      },
+      "captiveAnimEvent": {
+        "label": "Captive anim event",
+        "help": "Behaviour-graph event played on a restrained player. Leave empty for the default bound-hands pose."
+      },
+      "carrierAnimEvent": {
+        "label": "Carrier anim event",
+        "help": "Behaviour-graph event played on a player carrying someone. Leave empty for the default hold pose."
+      },
+      "startingItems": {
+        "label": "Starting items",
+        "help": "Kit granted to fresh characters: [{ baseId, count }]. baseId as a number or \"0x...\" string. Default: the miner clothes; the gold comes with the first profession kit (masteryKitGold). Gold (0x0000000f) listed here is granted once per slot, and that character's profession kit then comes without gold. Wearable kit items are equipped when character creation finishes."
+      },
+      "playersInheritBaseSpells": {
+        "label": "Players inherit base spells",
+        "help": "On (default): player characters carry the Player record's castable spells (Flames, Healing) and their race's greater power. Off: characters start without them; abilities, racial passives, lesser powers (Night Eye) and spells learned from tomes stay. Read by the native server at boot."
+      },
+      "logoutGraceMs": {
+        "label": "Logout grace (ms)",
+        "help": "How long a disconnected body stays killable in the world before despawning. Default 300000."
+      },
+      "respawnSeconds": {
+        "label": "Respawn seconds",
+        "help": "Bleedout/respawn timer applied to players (gamemode). Default 15."
+      },
+      "afkKickMinutes": {
+        "label": "AFK kick (minutes)",
+        "help": "Minutes without movement, chat, or voice before an idle player is kicked. Players still in character creation are never kicked. 0 disables. Default 20."
+      },
+      "afkWarnMinutes": {
+        "label": "AFK warning (minutes)",
+        "help": "Minutes before the AFK kick to warn the player in chat. Default 1."
+      },
+      "regenerationMultiplier": {
+        "label": "Regen multiplier",
+        "help": "Scales the health/magicka/stamina regen the server accepts from clients. 1 = race-record rates, 0 = no natural regen. Needs a native rebuild to change engine behavior; the setting itself is read at boot."
+      },
+      "healthRegenerationMultiplier": {
+        "label": "Health regen multiplier",
+        "help": "Takes the place of Regen multiplier for health only; magicka and stamina keep it. 0.08 matches the Slow health regeneration ability of plugin r29 (a full bar in about 30 minutes); 0 refuses all regeneration, every health increase a client reports (potions, food and Restoration still heal). Empty (default) = health follows Regen multiplier. Protected: Migrate settings never carries it to live. Needs a native server build from ea63f69a or later. Read at boot."
+      },
+      "npcBlockedDamageShare": {
+        "label": "NPC blocked damage share",
+        "help": "Share of an NPC's weapon hit that still lands when a player blocks it, 0 to 1. Default 0.2 (blocking is 80% effective against NPCs); 0 restores full blocks. A player's hit on a blocking player stays fully blocked, NPCs blocking are unchanged. Under the rebalance formula the same share of the NPC's damage after DT lands. Read by the native server at boot."
+      },
+      "combatCritNotice": {
+        "label": "Critical hit notices",
+        "help": "On (default, also when unset): while alduinakDamageFormulaSettings.enabled is true a critical hit tells the attacking player \"Critical hit! <damage> damage.\" and the player hit \"You took a critical hit: <damage> damage.\". Off keeps both off. Read by the gamemode when it loads: Build gamemode only or a restart applies a change."
+      },
+      "craftedExtrasTemperRules": {
+        "label": "Temper rules in vanilla menus",
+        "help": "On: a temper done in the vanilla menu follows the recipe's rank gates and rank cap and costs one craft of fatigue. Off: it takes the materials only, up to Legendary, as in 1.0. Unset (default): on while alduinakDamageFormulaSettings has enabled or durability.enabled true, off otherwise. Read at boot."
+      },
+      "chatRanges": {
+        "label": "Chat ranges",
+        "help": "Audible ranges in game units: { whisper, low, say, wide, shout }. Provided keys override the defaults."
+      },
+      "voiceChat": {
+        "label": "Voice chat",
+        "help": "LiveKit proximity voice: { enabled, url, apiKey, apiSecret, room, rangeUnits }. rangeUnits = MAX talk range (defaults to chatRanges.shout); speakers pick their range between chatRanges.whisper and this with V + mousewheel."
+      },
+      "maskName": {
+        "label": "Mask name",
+        "help": "Name shown for a /mask-ed player. Default \"Masked Person\"."
+      },
+      "introduceCooldownMs": {
+        "label": "Introduce cooldown (ms)",
+        "help": "Min gap between /introduce prompts to the same target. Default 10000."
+      },
+      "masteryKitGold": {
+        "label": "Profession kit gold",
+        "help": "Gold every profession's starting kit carries on top of its items, alchemists included; a character that got gold from Starting items gets none. Default 50; 0 turns it off. Read at boot."
+      },
+      "gatheringVeinTotal": {
+        "label": "Ore per vein",
+        "help": "Ore collections every mining vein holds, one per pickaxe strike. Default 6; 0 uses each record's own total (3 for vanilla veins). Read at boot."
+      },
+      "gatheringVeinRespawnMinutes": {
+        "label": "Vein regrow (minutes)",
+        "help": "Minutes after the first ore taken until the whole vein is back at once. Default 1440 (24 h); 0 keeps the default. Read at boot."
+      },
+      "gatheringVeinRegenMinutes": {
+        "label": "Vein gradual regrow (minutes)",
+        "help": "Leave empty (default) for the whole vein at once. Set: one ore collection grows back per that many minutes instead. Read at boot."
+      },
+      "gatheringProduceYield": {
+        "label": "Beehive yield",
+        "help": "{ \"<container editor id>\": { \"<item editor id>\": count } } handed over on E instead of the container record's contents. Default: occupied and vacant beehives and apiaries give 2 Bee Honeycomb, 2 Bee and 2 Beehive Husk, back after an hour (gatheringProduceContainers). Read at boot."
+      },
+      "gatheringPickMinutes": {
+        "label": "Nirnroot and critter regrow (minutes)",
+        "help": "Minutes a picked nirnroot or a caught bee or firefly stays gone for everyone. Default 30. Read at boot."
+      },
+      "huntingSkinPlayers": {
+        "label": "Hunters skin player bodies",
+        "help": "A hunter with the hunting knife skins a dead player's body during the respawn wait, or the body a PK left, for Human Flesh, maybe a Human Heart and on a Khajiit maybe a Khajiit Pelt; an own body then vanishes as if looted (the player respawns at once with their pack), a PK body also gives the skinner everything it holds, keys and letters included. crouch (default, also when unset): the body opens a Search and Skin menu for them (a client without the menu skins on crouch and interact), anyone else searches. interact: every interact skins, as on an animal. off: never. Read at boot."
+      },
+      "huntingHumanHeartChance": {
+        "label": "Human heart chance",
+        "help": "Chance, 0 to 1, that skinning a player's body also gives a Human Heart. Default 0.1. Read at boot."
+      },
+      "huntingKhajiitPeltChance": {
+        "label": "Khajiit pelt chance",
+        "help": "Chance, 0 to 1, that skinning a player's body that looks Khajiit (KhajiitRace or its vampire form, a PK body included) also gives a Khajiit Pelt (AldKhajiitPelt, plugin r24). Default 0.2. Read at boot."
+      },
+      "gatheringAlchemistFloraDiscount": {
+        "label": "Alchemist flora discount",
+        "help": "Extra share of the fatigue an alchemist (Novice or better) saves when picking alchemy flora (flowers, mushrooms, herbs and nirnroot that give an ingredient, never crops), on top of the farmer price for their rank they already pay. Default 0 (off); 0.5 halves it again. Read at boot."
+      },
+      "needsSurvivalModeFlag": {
+        "label": "Survival mode flag on clients",
+        "help": "On (default): clients set the Creation's Survival_ModeToggle (SRVT) to 1 with each needs update. The HUD polls that global every frame and draws the red penalty segments on the stamina and magicka bars only under it; off, the HUD clears them once after each load whatever the penalty globals hold. Survival_ModeEnabled is script-only, nothing in the engine reads it. On also gives every client the engine's Survival extras: arrows, bolts and the lockpick weigh their record weight and armour cards show a Warmth line. Read at boot."
+      },
+      "racialPassives": {
+        "label": "Racial passives",
+        "help": "The only place race numbers live; resistances, stats, claws and powers stay in the plugin. { enabled (default true; false makes every race neutral), aliases { \"<race>\": \"<entry race>\" } over the built-in vampire and child races, races { \"<RaceEditorId>\": { fatigueCostMult, hungerRateMult, coldRateMult, warmth, rawMeatSafe, freezingWaterImmune, startingItems [{ baseId, count }] } }, startItemsSince (epoch ms or a date, default the 1.0 launch: a character created since then gets missed start items at its next login), selfCheck (\"off\" default, \"log\" logs each client race report as check ok or MISMATCH, \"resync\" also asks the client once per spawn to redo its race sync), powers { \"<SPEL editor id>\": { cooldownHours (real hours from the last use, counting offline, default 0), consumeOnMiss (default false), commandAnimal { ... } } }: a player's cast of a listed power is refused while its cooldown runs, and a power whose effect block is not built yet (Command Animal until RC6) is always refused }. A missing multiplier is 1, warmth 0, a flag false; empty makes every race neutral. The Test Nord entry is { \"warmth\": 25, \"freezingWaterImmune\": false }: Nords grow cold like anyone and carry Survival's 25 warmth. Start items come once per profile and slot when creation finishes and never count as starter gold. Not protected: Migrate settings carries it to live, so remove quick-test powers first. Read at boot; see docs_racial_passives.md."
+      },
+      "survivalEnabled": {
+        "label": "Survival enabled",
+        "help": "Master switch for cold, afflictions, raw meat, diseases and the body rules. Default off. Off, or a part switched off, undoes at each login what an earlier session granted. Protected: Migrate settings never copies it to live; set it there by hand once survival is signed off."
+      },
+      "survivalRespawnHealthPoints": {
+        "label": "Respawn health points",
+        "help": "Health points a respawn after a death (temple, afterlife arrival) and a staff revive wake with, measured against the race base health (100, an Orc 150); magicka and stamina keep theirs. Default 1; 0 uses the share below."
+      },
+      "survivalRespawnHealth": {
+        "label": "Respawn health share",
+        "help": "Share of base health a respawn wakes with when the points above are 0, above 0 up to 1. Default 0.01; 1 turns the respawn rule off, whatever the points say."
+      },
+      "survivalCarryWeightSpell": {
+        "label": "Carry weight ability",
+        "help": "Editor id or \"hex:Plugin\" desc of a carry weight ability every character is granted, in quotes. Default \"\" (none, carry weight stays 300, and a character holding one loses it at login); \"Survival_abLowerCarryWeightSpell\" is Survival's carry weight 150."
+      },
+      "survivalNoHealthRegen": {
+        "label": "Slow health regeneration",
+        "help": "On (default): every character holds AldSurvival_AbNoHealthRegen (plugin r27a). Since plugin r29 the ability slows health regeneration to a full bar in about 30 minutes; up to r28 it stopped it. Potions, food and Restoration still heal. Off removes it at login. The server half is Health regen multiplier (Gameplay), which should be 0.08 to match; 0 refuses all regeneration."
+      },
+      "survivalFreezingWater": {
+        "label": "Freezing water",
+        "help": "On (default): swimming in a freezing area raises cold to 300 at once, holds cold level 30 and takes health (next key). Off removes all of it."
+      },
+      "survivalFreezingWaterDamage": {
+        "label": "Freezing water health / s",
+        "help": "Health points a real second of swimming in freezing water takes, before frost resistance. Default 0.25: a full bar of 100 lasts 6 min 40 s (Survival's own 5 a second took 20 s). 0 takes no health."
+      },
+      "survivalFoodPoisoningChance": {
+        "label": "Raw meat poisoning chance",
+        "help": "Chance raw meat gives food poisoning, times (1 - disease resistance); 0 to 1, 0 turns it off. Races with racialPassives rawMeatSafe never get it."
+      },
+      "survivalFoodPoisoningHours": {
+        "label": "Food poisoning hours",
+        "help": "Real hours food poisoning lasts, offline included."
+      },
+      "survivalRawMeatExtra": {
+        "label": "Extra raw meat",
+        "help": "More raw meat foods: editor ids, hex ids or descs, on top of Survival_FoodRawMeat and the hunting meats. Default []."
+      },
+      "survivalCure": {
+        "label": "What cures",
+        "help": "cureDiseaseOrHealth (default): a Cure Disease potion or a potion restoring the minimum health below cures diseases, food poisoning and afflictions. cureDisease: Cure Disease potions only. Shrines never cure."
+      },
+      "survivalCureMinHealth": {
+        "label": "Curing potion health",
+        "help": "Health a potion must restore to cure under cureDiseaseOrHealth."
+      },
+      "survivalColdEnabled": {
+        "label": "Cold enabled",
+        "help": "On (default): cold and warmth run while survival is on. Off takes the cold stage ability back at login."
+      },
+      "survivalColdHoursToNumb": {
+        "label": "Hours to Numb",
+        "help": "Real hours in which cold level 20 with no warmth fills the bar at an area rate of 1, 20 times slower than single player. 0.02 only for quick tests, never on live."
+      },
+      "survivalColdLevelMult": {
+        "label": "Cold level multiplier",
+        "help": "Survival_ColdLevelMult: with no warmth, cold rises this much per cold level in survivalColdHoursToNumb hours (50 x level 20 = 1000)."
+      },
+      "survivalColdStages": {
+        "label": "Cold stages",
+        "help": "Cold at which Comfortable, Chilly, Very Cold, Freezing and Numb begin: five rising numbers below 1000. Default [50, 120, 300, 500, 800]."
+      },
+      "survivalColdStart": {
+        "label": "Starting cold",
+        "help": "Cold of a new character, after a respawn and after an admin reset; offline warming stops here."
+      },
+      "survivalColdLevels": {
+        "label": "Cold levels",
+        "help": "{ warm, cool, freezing, chillyInterior, warmNight, coolNight, freezingNight, rain, snow, blizzard, freezingWater } merged over the default { 0, 3, 6, 6, 1, 2, 4, 3, 6, 10, 30 }."
+      },
+      "survivalColdAreaRate": {
+        "label": "Cold area rates",
+        "help": "{ warm, cool, freezing, chillyInterior } merged over the default { 1, 1, 0.6667, 0.6667 }: cold gain multiplier of the area class the character stands in, not applied in freezing water. The default makes a freezing blizzard night with no warmth take one hour from no cold to Freezing; 0.8333 for freezing and chillyInterior puts the hour on a snowy night (a blizzard night 48 minutes); 1 everywhere is Survival's plain pace (40 minutes)."
+      },
+      "survivalColdLevelCaps": {
+        "label": "Cold level caps",
+        "help": "Cold level that lets cold reach stages 1 to 5: five rising numbers. Default [1, 4, 7, 10, 13]."
+      },
+      "survivalNightHours": {
+        "label": "Night hours",
+        "help": "[after, before] on the game clock. Default [19, 7]."
+      },
+      "survivalRegionClimate": {
+        "label": "Region climate",
+        "help": "{ \"<weather region id>\": \"warm\" | \"cool\" | \"freezing\" | \"none\" } merged over the 45 classed regions of survivalClimate.ts."
+      },
+      "survivalWorldClimate": {
+        "label": "World climate",
+        "help": "{ \"<worldspace editor id>\": class } merged over the defaults (Whiterun, Windhelm, Solitude and Markarth worlds cool, Riften warm, the realms none)."
+      },
+      "survivalHighAltitude": {
+        "label": "High altitude",
+        "help": "{ freezingZ, \"<weather region id>\": height }: freezing above the height. Default { \"freezingZ\": 19000, \"fallForest\": 15150 }."
+      },
+      "survivalColdWarmPerMinute": {
+        "label": "Warming per minute",
+        "help": "Cold lost per minute above the cold level's cap, not within 10 s of a hit."
+      },
+      "survivalColdOfflineWarmPerHour": {
+        "label": "Offline warming per hour",
+        "help": "Cold lost per hour logged out, down to the starting cold."
+      },
+      "survivalHeatRadius": {
+        "label": "Heat radius",
+        "help": "Units from a fire, forge or cooking pot within which a character standing still warms."
+      },
+      "survivalHeatRestore": {
+        "label": "Heat warming",
+        "help": "Cold taken off by a heat source every check."
+      },
+      "survivalHeatCheckSeconds": {
+        "label": "Heat check (s)",
+        "help": "Seconds between heat checks, 1 or more."
+      },
+      "survivalHeatStillUnits": {
+        "label": "Heat stand-still distance",
+        "help": "A character who moved less than this since the last check counts as standing still."
+      },
+      "survivalHeatExtraBases": {
+        "label": "Extra heat sources",
+        "help": "Base editor ids or descs that also warm. Read by misc/gen-heat-sources.py, which writes heatSources.ts: rerun it and Build server after a change. Default []."
+      },
+      "survivalHeatKeywords": {
+        "label": "Heat furniture keywords",
+        "help": "Furniture keywords that warm, read by misc/gen-heat-sources.py like the key above. Default [\"CraftingCookpot\", \"AldCraftingKiln\"]."
+      },
+      "survivalWarmth": {
+        "label": "Warmth ratings",
+        "help": "{ normal, warm, cold: [body, head, hands, feet], torch, cloak, max, maxReduction } merged over { [27, 18, 13, 13], [54, 29, 24, 24], [17, 8, 7, 7], 50, 0, 206, 0.85 }: max warmth cuts cold gain by maxReduction."
+      },
+      "survivalWarmthTable": {
+        "label": "Warmth table",
+        "help": "On (default): the server rates the pieces the engine's Survival keywords leave out from armorWarmth.ts (misc/gen-armor-warmth.py): mod pieces and enchanted copies count as warm or cold like the comparable base game piece, and cloaks, capes, collars, scarves and masks add 3 to 20 warmth. Off counts keywords only, as the item cards show."
+      },
+      "survivalHotFoodWarmth": {
+        "label": "Hot food warmth",
+        "help": "Warmth a hot meal gives."
+      },
+      "survivalHotFoodWarmthMinutes": {
+        "label": "Hot food minutes",
+        "help": "Real minutes a hot meal keeps warming."
+      },
+      "survivalSpellHitCold": {
+        "label": "Spell hit cold",
+        "help": "Cold a frost spell hit adds (up to Freezing) and a fire spell hit takes off (down to Chilly)."
+      },
+      "survivalColdOnHit": {
+        "label": "Cold from creature hits",
+        "help": "{ \"<race editor id fragment>\": cold } added by an unblocked hit of those races, merged over { \"frostbitespider\": 30, \"falmer\": 30 }."
+      },
+      "survivalColdKills": {
+        "label": "Cold kills",
+        "help": "On kills a character at cold 1000. Default off."
+      },
+      "survivalColdStageAbilities": {
+        "label": "Cold stage abilities",
+        "help": "On (default): the Survival_ColdStage0..5 ability of the current stage (speed, lockpicking, the frost shader)."
+      },
+      "survivalColdHealthPenalty": {
+        "label": "Cold health penalty",
+        "help": "On (default): clients shrink maximum health by the cold share, like hunger and fatigue do stamina and magicka."
+      },
+      "survivalColdMaxHealthPenalty": {
+        "label": "Cold health penalty cap",
+        "help": "Largest share of maximum health cold takes, 0 to 1, so Numb keeps a fifth of the bar."
+      },
+      "survivalColdHealthScale": {
+        "label": "Cold health scale (native)",
+        "help": "Off (default): the cold penalty only shrinks the health bar on the client, the server counts damage and healing against the full base maximum. On: the server also writes private.healthScale (1 - the penalty) and the native counts damage, potions and food against the shrunk maximum, so a Numb character of base 100 has 20 health points. Untested in game."
+      },
+      "survivalFreezingWaterWorlds": {
+        "label": "Freezing water worlds",
+        "help": "Worldspace editor ids whose water always freezes, besides freezing areas and cold interiors. Default [\"DLC1HunterHQWorld\"]."
+      },
+      "survivalAfflictions": {
+        "label": "Afflictions",
+        "help": "{ weakened, frostbitten: { chance 0 to 1, tickMinutes } | false } merged over { 0.2, 15 }, { 0.16, 5 }, rolled at Starving and Numb; false turns them all off."
+      },
+      "survivalAfflictionHours": {
+        "label": "Affliction hours",
+        "help": "Real hours an affliction lasts, offline included (0.1 only for quick tests)."
+      },
+      "survivalDiseasesEnabled": {
+        "label": "Diseases enabled",
+        "help": "On (default): creature hits and contagion give diseases while survival is on. Off gives none and removes those held at login."
+      },
+      "survivalDiseases": {
+        "label": "Disease overrides",
+        "help": "{ \"<disease id>\": false | { name, contagious, stageHours [h1, h2] } } over the 27 catalog diseases of survivalDiseases.ts; false drops one. Default {}."
+      },
+      "survivalDiseaseCarriers": {
+        "label": "Disease carriers",
+        "help": "{ \"<race editor id fragment>\": false | { chance 0 to 1, diseases [ids] } } merged over the 20 default carriers (skeever, wolf, bear, troll, draugr, ...)."
+      },
+      "survivalDiseaseCarrierExclude": {
+        "label": "Races that carry nothing",
+        "help": "Race editor id fragments no carrier matches. Default [\"werewolf\", \"werebear\"]."
+      },
+      "survivalDiseaseStageHours": {
+        "label": "Disease stage hours",
+        "help": "[stage 1 to 2, stage 2 to 3] in real hours, offline included; stage 3 stays until cured. Default [84, 84] ([0.05, 0.05] only for quick tests)."
+      },
+      "survivalMaxDiseases": {
+        "label": "Most diseases at once",
+        "help": "Diseases a character can hold at once; an admin may give more."
+      },
+      "survivalContagionChance": {
+        "label": "Contagion chance",
+        "help": "Chance per contagious disease a client reports near the player, times (1 - disease resistance); the server rolls once per confirmed disease and pair per cooldown; 0 turns contagion off."
+      },
+      "survivalContagionRange": {
+        "label": "Contagion range",
+        "help": "Units within which the client counts a carrier; empty uses the chat whisper range (chatRanges.whisper)."
+      },
+      "survivalContagionCheckSeconds": {
+        "label": "Contagion check (s)",
+        "help": "Seconds between one client's contagion checks, 1 or more; the server accepts one report per player per this less 5 s."
+      },
+      "survivalContagionCooldownMinutes": {
+        "label": "Contagion cooldown (min)",
+        "help": "Minutes before the same disease and pair of players roll again; 0 rolls at every report."
+      },
+      "captureInteractMaxDistance": {
+        "label": "Capture range",
+        "help": "Max game-units distance to start a capture/carry. Default 256."
+      },
+      "captureConsentTimeoutMs": {
+        "label": "Capture consent timeout (ms)",
+        "help": "How long a capture/carry consent prompt waits for an answer. Default 20000."
+      },
+      "captureConsentCooldownMs": {
+        "label": "Capture consent cooldown (ms)",
+        "help": "Min gap before prompting the same target again. Default 15000."
+      },
+      "tradeMaxDistance": {
+        "label": "Trade range",
+        "help": "Max game-units distance both players must stay within to trade. Default 1024."
+      },
+      "tradeInviteTtlMs": {
+        "label": "Trade invite TTL (ms)",
+        "help": "Pending trade invites auto-cancel after this. Default 60000."
+      },
+      "tradeInviteCooldownMs": {
+        "label": "Trade invite cooldown (ms)",
+        "help": "Min gap between trade invites per initiator to target. Default 30000."
+      },
+      "searchStartMaxDistance": {
+        "label": "Search start range",
+        "help": "Max game-units distance to start searching a player. Default 256."
+      },
+      "searchKeepMaxDistance": {
+        "label": "Search keep range",
+        "help": "The search window closes once the pair drift further apart than this. Default 512."
+      },
+      "searchConsentTimeoutMs": {
+        "label": "Search consent timeout (ms)",
+        "help": "How long a search consent prompt waits for an answer. Default 20000."
+      },
+      "searchConsentCooldownMs": {
+        "label": "Search consent cooldown (ms)",
+        "help": "Min gap before prompting the same target again. Default 15000."
+      },
+      "keySplitOnLogin": {
+        "label": "Split old key stacks at login",
+        "help": "Splits a stack of property keys cut before keys were numbered (Property Key (TAG) xN) into N numbered keys when its holder logs in. Keep off until the client with the new SkyrimPlatformImpl.dll has shipped and named keys stay separate in game; an older client merges the split keys back and put/take fails. Read at startup. Default off."
+      },
+      "bountyBoardCostGold": {
+        "label": "Bounty board post cost",
+        "help": "Gold taken for pinning a notice on a Missives board. 0 = free. Default 25."
+      },
+      "bountyBoardStashBase": {
+        "label": "Bounty board strongbox base",
+        "help": "CONT base (hex:Plugin desc or load-order id) placed at each board to hold the posting fees. A strongbox of another base is replaced at the next start, contents moved over. Default the vanilla strongbox without items (StrongBox); pick a base with no items of its own, or every client shows its own rolled loot in it. Read at startup."
+      },
+      "bountyBoardStashLift": {
+        "label": "Bounty board strongbox lift",
+        "help": "{ \"<board name>\": units } the strongbox stands above the visible board's foot, over the built-in lifts (Winterhold 40, Dawnstar 49, Falkreath 17; misc/bounty-stash-lift.py measures them). A box off its spot is moved at the next start, contents kept. Read at startup."
+      },
+      "writingEnabled": {
+        "label": "Writeable letters and books",
+        "help": "Lets players write letters, journals and books. Keep off until the plugin with the writing records is in the manifest and players have re-downloaded. Read at startup. Default off."
+      },
+      "dataDir": {
+        "label": "Data directory",
+        "help": "ESMs / ESPs / UI / scripts."
+      },
+      "gamemodePath": {
+        "label": "Gamemode path"
+      },
+      "gamemodeHotReload": {
+        "label": "Gamemode hot reload",
+        "help": "On: the server reloads gamemode.js about a second after it changes (Build gamemode only). Off (default, also when unset): gamemode.js loads only when the server starts. On for the Test Server, off on live. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "databaseDriver": {
+        "label": "Database driver"
+      },
+      "databaseName": {
+        "label": "Database name",
+        "help": "File DB folder / Mongo db name. Characters live in <name>/changeForms."
+      },
+      "databaseUri": {
+        "label": "Database URI",
+        "help": "Mongo connection string (mongodb driver only). Embeds credentials - keep it secret."
+      },
+      "logDir": {
+        "label": "Log directory",
+        "help": "Where chat.log and service logs are written. Overridden by the ALDUINAK_LOG_DIR env var."
+      },
+      "loadOrder": {
+        "label": "Load order",
+        "help": "Array of ESM/ESP filenames in order."
+      },
+      "archives": {
+        "label": "BSA archives",
+        "help": "Array of BSA filenames to load."
+      },
+      "startPoints": {
+        "label": "Start points",
+        "help": "Spawn points: [{ pos:[x,y,z], worldOrCell, angleZ }]."
+      },
+      "reloot": {
+        "label": "Reloot timers",
+        "help": "Record type → ms before respawn. FLOR and TREE are the alchemy plants: 1800000 (30 min) live, one hour when unset. Native server, read at boot."
+      },
+      "forbiddenReloot": {
+        "label": "Forbidden reloot",
+        "help": "Record types that never respawn; wins over Reloot timers. Item types (MISC, WEAP, ...) and FLOR/TREE: a plugin-placed ref is taken once and never comes back. \"LIGH\": placed torches and lanterns. \"CONT\": an emptied container never refills, so storage chests stay player-only. Native server, read at boot."
+      },
+      "emptyContainers": {
+        "label": "Empty containers",
+        "help": "On (default, also when unset): chests, barrels and other placed containers from every plugin open without their plugin loot; items players put in stay, and containers already filled keep what they hold. Off: a container that never received anything gets its plugin loot on its next open. NPCs and corpses are unaffected. Native server, read at boot."
+      },
+      "containerLootBaseIds": {
+        "label": "Containers keeping loot",
+        "help": "CONT base records (numbers, \"0x...\" strings or \"hex:File.esp\") that keep their plugin loot while Empty containers is on. Default []. Native server, read at boot."
+      },
+      "exteriorScriptAllowlist": {
+        "label": "Exterior scripts",
+        "help": "Vanilla Papyrus scripts that still run on exterior objects; every other vanilla script is stripped there. Default: [\"default2StateActivator\", \"NorLever01SCRIPT\"] so lever-driven exterior gates open. [] strips them too. Native server, read at boot."
+      },
+      "leverLinks": {
+        "label": "Lever links",
+        "help": "Levers wired to their gate through markers the server never loads: [{ levers:[\"hex:File.esp\", ...], target:\"hex:File.esp\", all?, openAnim?, closeAnim? }]. all: every lever pulled once before the target moves. A DOOR target toggles isOpen, anything else plays open/close. Default: Soljund's Sinkhole portcullis. [] disables. Read at boot."
+      },
+      "blockedSpells": {
+        "label": "Blocked spells",
+        "help": "Spell form ids players may not cast (numbers or \"0x...\" strings), e.g. racial powers."
+      },
+      "adminProfileIds": {
+        "label": "Admin profile IDs",
+        "help": "Master-api profile ids granted in-game admin chat commands. Array of numbers."
+      },
+      "adminRoleIds": {
+        "label": "Admin Discord roles",
+        "help": "Legacy flat list of Discord role ids (strings) that get the in-game admin menu (Insert) and the server console. Roles here but in no adminRoles tier get full (senior) rights. Example: [\"1521259484859863190\"]."
+      },
+      "adminRoles": {
+        "label": "Admin role tiers",
+        "help": "Discord role ids per tier: { senior:[...], developer:[...], gm:[...] }. senior and gm have every power; developer has everything except Kick and Ban. Tier lists win over adminRoleIds; precedence senior > developer > gm."
+      },
+      "adminTeleportLocations": {
+        "label": "Admin teleport locations",
+        "help": "Admin panel Teleport tab: [{ name, cellOrWorldDesc: \"hexId:Plugin.esm\", pos:[x,y,z], rot:[x,y,z], kind? }]. Listed before the built-in map-marker locations; bad entries are dropped at boot."
+      },
+      "npcSettings": {
+        "label": "NPC settings"
+      },
+      "metricsAuth": {
+        "label": "Metrics auth",
+        "help": "{ user, password } for /metrics basic auth."
+      },
+      "damageMultFormulaSettings": {
+        "label": "Damage formula"
+      },
+      "alduinakDamageFormulaSettings": {
+        "label": "Rebalance and durability",
+        "help": "The generated block of misc/combat-settings/generate.py (staged in alduinak-r13/live); change design.json and run the generator again rather than editing rows here, and after every plugin change. Empty (default) = combat as in 1.0. enabled (default false): the rebalance formula prices weapon hits by row damage against worn DT, with playerHitCap (45), the sneak, power and rate limit rules and blockStamina { perArmorWeight 0.006, weightCap 115 }. durability.enabled (default false), independent of enabled: worn weapons, armor and shields wear on hits (durability.wear, HP tables per row), show a name tag (durability.nameTag { showAtFull true, brokenLabel \"Broken\" }) and are repaired at the benches; the condition is for roleplay only and changes no hit (durability.effect is checked but not applied). durability.repair { unitsPerMissing { weapon 0.5, cuirass 0.5, other 1 }: share one set of temper materials restores; fallbackMaterial { kind: { row: form key } } for items without a temper recipe; requireProfessionRank (false); fatigue (0); anyBench (false: workbench armor and shields, grindstone weapons); menuOnActivate (true); chatCommand (\"repair\", \"\" for none); lowNoticeBelow (0.25) }. effectModifiers (default true): OneHandedMod, TwoHandedMod, MarksmanMod and BlockMod of abilities and diseases scale weapon damage and blocking while either switch is on, so a hungry player's block leaks. A wrong value rejects the whole block with error lines at boot and the server runs as without it. Protected: Migrate settings never carries it to live. With plugin r28, enabled false is not a return to 1.0 numbers. Read at boot; see docs_server_configuration_reference.md."
+      },
+      "combatTrace": {
+        "label": "Combat trace (debug)",
+        "help": "On: the rebalance formula logs one line per priced weapon hit and per resisted spell hit, and NeedsSystem one line per block priced by armor weight, at info level (the balance trace). Off (default, also when unset): those lines stay at debug. Turn it on for the Test Server only; live keeps it off. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "maxMovementSpeed": {
+        "label": "Max movement speed",
+        "help": "Authority check: horizontal units per second a movement report of a player may cover since the last accepted one (at least 0.13 s counted, plus 256 units of slack). Going over it logs `MovementValidation - <actor> moved <n> units in <s> s, over the <bound> units maxMovementSpeed allows, logged only|refused`, at most once per player every 30 s. Default 2048. Read at boot."
+      },
+      "enforceMovementSpeed": {
+        "label": "Enforce max movement speed",
+        "help": "Off (default, also when unset): going over Max movement speed is only logged. On: the report is refused and the player is put back (Teleport2). Turn it on for the Test Server once the logs show no false positives (horses, Whirlwind Sprint, lag). Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "maxActivateDistance": {
+        "label": "Max activate distance",
+        "help": "Authority check: units from the player or hosted NPC to the object it activates (doors, containers, items, seats); closing a container or leaving a seat is never checked, nor is another cell. Going over it logs `ActionListener::OnActivate - <caster> activates <target> from <n> units, farther than maxActivateDistance <max>, logged only|refused`, at most once per player every 30 s. Default 1024. Read at boot."
+      },
+      "enforceActivateDistance": {
+        "label": "Enforce max activate distance",
+        "help": "Off (default, also when unset): an activation farther than Max activate distance is only logged. On: it is refused. Very large objects (gates) have far origins, so check the logs on the Test Server first. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "meleeSlack": {
+        "label": "Melee reach slack",
+        "help": "Authority check: units a melee hit of a player (fists, any weapon but a staff, a bow bash) may land beyond its reach, the weapon reach x fCombatDistance or the race unarmed reach, measured between the two origins. It covers body size and movement lag. NPC attackers are never checked, because creatures hit from far-off origins. Going over it logs `ActionListener::OnHit - <attacker> hits <target> with <weapon> from <n> units, beyond its reach <r> plus meleeSlack <slack>, logged only|refused`, at most once per player every 30 s. Default 400. Read at boot."
+      },
+      "enforceMeleeReach": {
+        "label": "Enforce melee reach",
+        "help": "Off (default, also when unset): a melee hit of a player beyond its reach plus Melee reach slack is only logged. On: the hit is refused. Large targets (dragons, mammoths, giants) have far origins, so check the logs on the Test Server first. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "maxShotDistance": {
+        "label": "Max shot distance",
+        "help": "Authority check: units from the shooter, a player or a hosted NPC, to the target of a bow or crossbow hit. Going over it logs `ActionListener::OnHit - <shooter> shoots <target> with <weapon> from <n> units, farther than maxShotDistance <max>, logged only|refused`, at most once per player every 30 s. Default 8192. Read at boot."
+      },
+      "enforceShotDistance": {
+        "label": "Enforce max shot distance",
+        "help": "Off (default, also when unset): a shot farther than Max shot distance is only logged. On: the hit is refused. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "spellHitWindow": {
+        "label": "Spell hit window",
+        "help": "Authority check: seconds a spell hit may land after the longest effect duration of the last cast or keep-alive of that spell by the attacker, or of a cloak or hazard spell that grants it. Players and hosted NPCs are checked. Going over it logs `ActionListener::OnHit - <attacker> hits <target> with spell <spell> without a cast of it or of a spell that grants it within its longest effect plus spellHitWindow <s> s, logged only|refused`, at most once per player every 30 s. Separately, a second hit by the same attacker on the same target with the same spell within 90 ms is always dropped. Default 10. Read at boot."
+      },
+      "enforceSpellHitWindow": {
+        "label": "Enforce spell hit window",
+        "help": "Off (default, also when unset): a spell hit outside Spell hit window is only logged. On: the hit is refused. Runes triggered long after their cast and creature breath or spit attacks that send no cast can fall outside it, so check the logs on the Test Server first. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "maxAppearanceNameLength": {
+        "label": "Max appearance name length",
+        "help": "Authority check: characters of the name in an appearance, from the race menu or a server write (character creation, /mask, polymorph). Going over it, like a head part that is not an HDPT, a face texture that is not a TXST or a weight outside 0-100, logs `MpActor::SetAppearanceAndBroadcast - appearance of <actor>: <problems>, logged only|refused`. A race that is not a RACE is always refused. Default 64. Read at boot."
+      },
+      "maxAppearanceTints": {
+        "label": "Max appearance tints",
+        "help": "Authority check: tint layers in an appearance, logged like Max appearance name length. Default 128. Read at boot."
+      },
+      "enforceAppearanceLimits": {
+        "label": "Enforce appearance limits",
+        "help": "Off (default, also when unset): an appearance over Max appearance name length or Max appearance tints, or with a head part, face texture or weight the plugins do not back, is only logged. On: it is refused and the old look stays. Head parts from a client-side cosmetic plugin that the server does not load would be refused, so check the logs on the Test Server first. Protected: Migrate settings never copies it to live. Read at boot."
+      },
+      "additionalServerSettings": {
+        "label": "Additional settings (GitHub)"
+      },
+      "discordAuth": {
+        "label": "Discord auth",
+        "help": "Discord bot integration: { botToken, guilds:[{ guildId, banRoleId, eventLogChannelId }] }. Holds a bot token - keep it secret."
+      },
+      "discordAlertKinds": {
+        "label": "Discord alert kinds",
+        "help": "Alert kinds posted to the event log channel. Default [\"admin\",\"execute\",\"ticket\"]; add \"keyword\" or \"login\" to post them. Deaths are never posted. Read at boot."
+      }
+    },
+    "settingsGroup": {
+      "identity": "Identity",
+      "networking": "Networking",
+      "modeAuth": "Mode & auth",
+      "gameplay": "Gameplay",
+      "races": "Races",
+      "survival": "Survival",
+      "interactions": "Interactions",
+      "dataStorage": "Data & storage",
+      "advanced": "Advanced",
+      "httpRelay": "HTTP & relay",
+      "gameServer": "Game server",
+      "serverMetadata": "Server metadata",
+      "discord": "Discord",
+      "adminDashboard": "Admin dashboard",
+      "accessControl": "Access control",
+      "clientUpdates": "Client updates",
+      "ciTooling": "CI & tooling",
+      "webManager": "Web manager"
+    },
+    "envField": {
+      "PORT": {
+        "label": "HTTP port",
+        "help": "Express backend listen port."
+      },
+      "WS_PORT": {
+        "label": "WS relay port",
+        "help": "In-game chat + admin console relay."
+      },
+      "RELAY_SECRET": {
+        "label": "Relay secret",
+        "help": "Shared between the relay, the gamemode, and this manager."
+      },
+      "SKYMP_HOST": {
+        "label": "Game server host"
+      },
+      "SERVER_ADDRESS": {
+        "label": "Public address",
+        "help": "Public IP advertised to external clients."
+      },
+      "SERVER_GAMEMODE": {
+        "label": "Gamemode label"
+      },
+      "DISCORD_CLIENT_ID": {
+        "label": "Discord client ID"
+      },
+      "DISCORD_CLIENT_SECRET": {
+        "label": "Discord client secret"
+      },
+      "DISCORD_REDIRECT_URI": {
+        "label": "Discord redirect URI"
+      },
+      "DISCORD_BOT_TOKEN": {
+        "label": "Discord bot token"
+      },
+      "DISCORD_GUILD_ID": {
+        "label": "Discord guild ID"
+      },
+      "DASHBOARD_PORT": {
+        "label": "Dashboard port"
+      },
+      "DASHBOARD_PUBLIC_URL": {
+        "label": "Dashboard public URL"
+      },
+      "DASHBOARD_API_BASE_URL": {
+        "label": "Dashboard API base URL"
+      },
+      "DISCORD_DASHBOARD_REDIRECT_URI": {
+        "label": "Dashboard redirect URI"
+      },
+      "DASHBOARD_DISCORD_IDS": {
+        "label": "Dashboard Discord IDs",
+        "help": "Comma-separated Discord user IDs."
+      },
+      "WEBSITE_URL": {
+        "label": "Website URL"
+      },
+      "LAUNCH_CHECK_ENFORCE": {
+        "label": "Enforce launch check",
+        "help": "Refuse connections whose launcher did not verify client files + load order. Unset = enforced (the default); only Off disables it, for players on pre-check launcher builds."
+      },
+      "BAN_LOG_DIR": {
+        "label": "Ban log directory",
+        "help": "Where ban.log and faction.log are written. Empty = the default logs folder."
+      },
+      "CLIENT_FILES_DIR": {
+        "label": "Client files directory",
+        "help": "Folder holding the served client files. Empty = build/client-files."
+      },
+      "ALDUINAK_GH_TOKEN": {
+        "label": "GitHub token (PAT)",
+        "help": "PAT with actions:write - powers the manager CI Rebuild (workflow dispatch)."
+      },
+      "MANAGER_AGENT_PORT": {
+        "label": "Agent port",
+        "help": "Loopback port of the AlduinakManager service. Default 4003. Restart the backend and the agent after a change."
+      },
+      "MANAGER_AGENT_SECRET": {
+        "label": "Agent secret",
+        "help": "Shared secret the backend signs agent calls with, at least 32 characters."
+      },
+      "MANAGER_LOG_DIR": {
+        "label": "Manager log folder",
+        "help": "Web jobs, their logs, the busy lock and the audit files."
+      },
+      "MANAGER_AUDIT_WEBHOOK_URL": {
+        "label": "Audit Discord webhook",
+        "help": "Optional private staff channel webhook that mirrors manager actions and failed logins."
+      }
+    }
+  }
 }

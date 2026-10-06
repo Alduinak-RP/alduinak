@@ -42,7 +42,7 @@ function appendLog(node, text) {
 
 // A draggable divider after list inside split; the list's width is remembered under storageKey
 function makeResizable(split, list, storageKey) {
-  const bar = el('div', { className: 'splitter', title: 'Drag to resize' })
+  const bar = el('div', { className: 'splitter', title: loc('common.dragResize') })
   list.after(bar)
   list.style.flexShrink = '0'
   try { const w = Number(localStorage.getItem(storageKey)); if (w) list.style.width = w + 'px' } catch {}
@@ -74,7 +74,7 @@ $$('.tab').forEach(tab => {
 
 // Destructive buttons ask for a second click instead of a dialog; a preview (dry run) must return truthy to arm, armMs 0 stays armed until disarmConfirm, onArm runs once armed.
 const armTimers = new WeakMap()
-function armConfirm(btn, label, fn, { preview = null, armMs = 4000, armedLabel = 'Click again to confirm', onArm = null } = {}) {
+function armConfirm(btn, label, fn, { preview = null, armMs = 4000, armedLabel = loc('common.clickAgain'), onArm = null } = {}) {
   if (!btn) return
   btn.dataset.label = label
   btn.addEventListener('click', async () => {
@@ -126,13 +126,13 @@ $$('.subtab').forEach(sub => {
 async function loadSettings() {
   const form = $('#settings-form')
   const st = $('#settings-status')
-  st.textContent = 'loading…'
+  st.textContent = loc('common.loading')
   form.innerHTML = ''
   const r = await window.mgr.settingsRead(settingsKey)
-  if (!r.ok) { st.textContent = `Error: ${r.error}` + (r.path ? ` (${r.path})` : ''); return }
+  if (!r.ok) { st.textContent = r.path ? loc('common.errorPath', { error: r.error, path: r.path }) : loc('common.error', { error: r.error }); return }
   currentValues = r.values || {}
   settingsMtimeMs = r.mtimeMs ?? null
-  st.textContent = r.path + (r.seeded ? '  (new — seeded from .env.example)' : '')
+  st.textContent = r.seeded ? loc('settings.seeded', { path: r.path }) : r.path
   renderSettingsForm(r.extra)
 }
 
@@ -157,9 +157,9 @@ function renderSettingsForm(extra) {
   // server-settings.json
   if (schemaKey() === 'serverSettings') {
     const fs = el('fieldset', { className: 'sgroup' })
-    fs.appendChild(el('legend', {}, 'Other (raw JSON)'))
+    fs.appendChild(el('legend', {}, esc(loc('settings.otherRaw'))))
     const wrap = el('div', { className: 'sfield wide' })
-    wrap.appendChild(el('label', {}, 'Keys without a dedicated field'))
+    wrap.appendChild(el('label', {}, esc(loc('settings.extraKeys'))))
     const ta = el('textarea', { id: 'settings-extra', rows: 6, spellcheck: false })
     ta.value = extra && Object.keys(extra).length ? JSON.stringify(extra, null, 2) : '{}'
     wrap.appendChild(ta)
@@ -177,7 +177,7 @@ function renderField(f) {
   if (f.type === 'bool') {
     const on = (settingsKey === 'backendEnv') ? String(val).toLowerCase() === 'true' : val === true
     const group = el('div', { className: 'radio-group', id })
-    for (const opt of [['On', true], ['Off', false]]) {
+    for (const opt of [[loc('settings.on'), true], [loc('settings.off'), false]]) {
       const lbl = el('label', { className: 'radio' })
       const radio = el('input', { type: 'radio', name: id, value: String(opt[1]) })
       if (val !== undefined && opt[1] === on) radio.checked = true
@@ -200,10 +200,10 @@ function renderField(f) {
   } else if (f.type === 'secret') {
     const row = el('div', { className: 'secret-row' })
     const inp = el('input', { id, type: 'password', className: 'sinput', value: val == null ? '' : String(val) })
-    const toggle = el('button', { type: 'button', className: 'action small reveal' }, 'show')
+    const toggle = el('button', { type: 'button', className: 'action small reveal' }, esc(loc('settings.show')))
     toggle.addEventListener('click', () => {
       inp.type = inp.type === 'password' ? 'text' : 'password'
-      toggle.textContent = inp.type === 'password' ? 'show' : 'hide'
+      toggle.textContent = inp.type === 'password' ? loc('settings.show') : loc('settings.hide')
     })
     row.appendChild(inp); row.appendChild(toggle)
     wrap.appendChild(row)
@@ -236,10 +236,10 @@ $('#settings-reload').addEventListener('click', loadSettings)
 $('#settings-save').addEventListener('click', async () => {
   const values = collectSettings()
   const extra = schemaKey() === 'serverSettings' ? ($('#settings-extra')?.value || '') : undefined
-  $('#settings-status').textContent = 'saving…'
+  $('#settings-status').textContent = loc('common.saving')
   const r = await window.mgr.settingsWrite(settingsKey, values, extra, settingsMtimeMs)
   if (r.ok && r.mtimeMs !== undefined) settingsMtimeMs = r.mtimeMs
-  $('#settings-status').textContent = r.ok ? `Saved ${r.path}` : `Error: ${r.error}`
+  $('#settings-status').textContent = r.ok ? loc('settings.saved', { path: r.path }) : loc('common.error', { error: r.error })
 })
 
 // News tab
@@ -259,7 +259,7 @@ function renderNewsList() {
   const list = $('#news-list')
   list.innerHTML = ''
   if (!newsItems.length) {
-    list.appendChild(el('li', { className: 'muted' }, 'No entries yet.'))
+    list.appendChild(el('li', { className: 'muted' }, esc(loc('news.none'))))
     return
   }
   newsItems.forEach((item, i) => {
@@ -273,29 +273,29 @@ function renderNewsList() {
 function renderNewsDetail() {
   const box = $('#news-detail')
   if (newsSelected === null) {
-    box.innerHTML = '<p class="muted">Select an entry to edit it, or start a new one.</p>'
+    box.innerHTML = `<p class="muted">${esc(loc('news.selectHint'))}</p>`
     return
   }
   const isNew = newsSelected === 'new'
   const item = isNew ? { title: '', body: '', tag: 'UPDATE', date: '', image: '' } : newsItems[newsSelected]
-  const options = ['<option value="">(no image)</option>']
+  const options = [`<option value="">${esc(loc('news.noImage'))}</option>`]
     .concat(newsImages.map(p => `<option value="${esc(p)}"${item.image === p ? ' selected' : ''}>${esc(p)}</option>`))
   // An entry may carry an http(s) image that is not in the folder; keep it selectable
   if (item.image && !newsImages.includes(item.image)) {
     options.push(`<option value="${esc(item.image)}" selected>${esc(item.image)}</option>`)
   }
   box.innerHTML = `
-    <h3>${isNew ? 'New entry' : 'Edit entry'}</h3>
-    <label>Title<input id="news-title" type="text" maxlength="120" value="${esc(item.title)}" /></label>
-    <label>Body<textarea id="news-body" rows="6" maxlength="4000">${esc(item.body || '')}</textarea></label>
-    <label>Tag<input id="news-tag" type="text" maxlength="24" value="${esc(item.tag || 'UPDATE')}" /></label>
-    <label>Date<input id="news-date" type="text" maxlength="40" placeholder="today's date when left empty" value="${esc(item.date || '')}" /></label>
-    <label>Image<select id="news-image">${options.join('')}</select></label>
+    <h3>${esc(isNew ? loc('news.newEntry') : loc('news.editEntry'))}</h3>
+    <label>${esc(loc('news.field.title'))}<input id="news-title" type="text" maxlength="120" value="${esc(item.title)}" /></label>
+    <label>${esc(loc('news.field.body'))}<textarea id="news-body" rows="6" maxlength="4000">${esc(item.body || '')}</textarea></label>
+    <label>${esc(loc('news.field.tag'))}<input id="news-tag" type="text" maxlength="24" value="${esc(item.tag || 'UPDATE')}" /></label>
+    <label>${esc(loc('news.field.date'))}<input id="news-date" type="text" maxlength="40" placeholder="${esc(loc('news.datePlaceholder'))}" value="${esc(item.date || '')}" /></label>
+    <label>${esc(loc('news.field.image'))}<select id="news-image">${options.join('')}</select></label>
     <div class="row">
-      <button id="news-image-add" class="action small">Add image…</button>
-      <button id="news-save" class="action go">Save</button>
-      ${isNew ? '' : '<button id="news-delete" class="action small stop">Delete</button>'}
-      <button id="news-cancel" class="action small">Cancel</button>
+      <button id="news-image-add" class="action small">${esc(loc('news.addImage'))}</button>
+      <button id="news-save" class="action go">${esc(loc('common.save'))}</button>
+      ${isNew ? '' : `<button id="news-delete" class="action small stop">${esc(loc('common.delete'))}</button>`}
+      <button id="news-cancel" class="action small">${esc(loc('common.cancel'))}</button>
     </div>
     <div id="news-preview" class="muted"></div>`
 
@@ -303,12 +303,12 @@ function renderNewsDetail() {
   // The panel's CSP is default-src 'self', so the image itself cannot be shown here; the launcher is where it renders
   const showPreview = () => {
     const v = $('#news-image').value
-    preview.textContent = v ? `The launcher loads this from ${v}` : 'No image: the card renders without one.'
+    preview.textContent = v ? loc('news.previewFrom', { url: v }) : loc('news.previewNone')
   }
   $('#news-image').addEventListener('change', showPreview)
 
   $('#news-image-add').addEventListener('click', async () => {
-    newsSetStatus('choosing…')
+    newsSetStatus(loc('news.choosing'))
     const r = await window.mgr.newsAddImage()
     if (r.cancelled) return newsSetStatus('')
     if (!r.ok) return newsSetStatus(r.error, true)
@@ -319,7 +319,7 @@ function renderNewsDetail() {
     $('#news-image').value = keep.image
     $('#news-title').value = keep.title
     $('#news-body').value = keep.body || ''
-    newsSetStatus(`Added ${r.image}`)
+    newsSetStatus(loc('news.added', { image: r.image }))
   })
 
   $('#news-save').addEventListener('click', async () => {
@@ -330,27 +330,27 @@ function renderNewsDetail() {
       date:  $('#news-date').value,
       image: $('#news-image').value,
     }
-    newsSetStatus('saving…')
+    newsSetStatus(loc('common.saving'))
     const r = await window.mgr.newsSave(isNew ? undefined : newsSelected, entry)
     if (!r.ok) return newsSetStatus(r.error, true)
     newsItems = r.items
     newsImages = r.images
     newsSelected = isNew ? 0 : newsSelected
     renderNews()
-    newsSetStatus('Saved')
+    newsSetStatus(loc('news.saved'))
   })
 
   if (!isNew) {
     $('#news-delete').addEventListener('click', async () => {
-      if (!confirm(`Delete "${item.title}"? The launcher stops showing it at once.`)) return
-      newsSetStatus('deleting…')
+      if (!confirm(loc('news.deleteConfirm', { title: item.title }))) return
+      newsSetStatus(loc('news.deleting'))
       const r = await window.mgr.newsDelete(newsSelected)
       if (!r.ok) return newsSetStatus(r.error, true)
       newsItems = r.items
       newsImages = r.images
       newsSelected = null
       renderNews()
-      newsSetStatus('Deleted')
+      newsSetStatus(loc('news.deleted'))
     })
   }
 
@@ -364,13 +364,13 @@ function renderNews() {
 }
 
 async function loadNews() {
-  newsSetStatus('loading…')
+  newsSetStatus(loc('common.loading'))
   const r = await window.mgr.newsList()
   if (!r.ok) return newsSetStatus(r.error, true)
   newsItems = r.items
   newsImages = r.images
   renderNews()
-  newsSetStatus(`${newsItems.length} ${newsItems.length === 1 ? 'entry' : 'entries'}`)
+  newsSetStatus(loc(newsItems.length === 1 ? 'news.countOne' : 'news.countMany', { n: newsItems.length }))
 }
 
 $('#news-refresh').addEventListener('click', loadNews)

@@ -7,6 +7,7 @@
 const fs     = require('fs')
 const path   = require('path')
 const config = require('./config')
+const { loc } = require('./loc')
 
 const FILE    = path.join(config.repoRoot, 'skymp5-backend', 'data', 'news.json')
 const IMG_DIR = path.join(config.repoRoot, 'skymp5-backend', 'public', 'images')
@@ -25,7 +26,7 @@ function readAll() {
     return Array.isArray(items) ? items : []
   } catch (err) {
     if (err.code === 'ENOENT') return []
-    throw new Error(`news.json is not valid JSON, refusing to touch it: ${err.message}`)
+    throw new Error(loc('news.err.invalidJson', { error: err.message }))
   }
 }
 
@@ -49,7 +50,7 @@ function cleanImage(value) {
   if (!v) return ''
   if (/^https?:\/\//i.test(v)) return v.slice(0, 500)
   const name = path.basename(v)
-  if (!IMAGE_EXT.has(path.extname(name).toLowerCase())) throw new Error(`${name} is not an image the launcher can show`)
+  if (!IMAGE_EXT.has(path.extname(name).toLowerCase())) throw new Error(loc('news.err.notImage', { name }))
   return '/images/' + name
 }
 
@@ -71,16 +72,16 @@ function images() {
 
 // index null appends, otherwise replaces that entry in place
 function save(index, entry) {
-  if (!entry || typeof entry !== 'object') return { ok: false, error: 'no entry to save' }
+  if (!entry || typeof entry !== 'object') return { ok: false, error: loc('news.err.noEntry') }
   const title = trim(entry.title, MAX_TITLE)
-  if (!title) return { ok: false, error: 'a news entry needs a title' }
+  if (!title) return { ok: false, error: loc('news.err.noTitle') }
   let image
   try { image = cleanImage(entry.image) } catch (err) { return { ok: false, error: err.message } }
 
   const items = readAll()
   const at = index === null || index === undefined ? -1 : Number(index)
-  if (at !== -1 && (!Number.isInteger(at) || at < 0 || at >= items.length)) return { ok: false, error: 'that entry is gone; refresh and try again' }
-  if (at === -1 && items.length >= MAX_ITEMS) return { ok: false, error: `the launcher only ever shows a handful; ${MAX_ITEMS} entries is enough` }
+  if (at !== -1 && (!Number.isInteger(at) || at < 0 || at >= items.length)) return { ok: false, error: loc('news.err.gone') }
+  if (at === -1 && items.length >= MAX_ITEMS) return { ok: false, error: loc('news.err.tooMany', { n: MAX_ITEMS }) }
 
   const next = {
     ...(at === -1 ? {} : items[at]),
@@ -101,7 +102,7 @@ function save(index, entry) {
 function remove(index) {
   const items = readAll()
   const at = Number(index)
-  if (!Number.isInteger(at) || at < 0 || at >= items.length) return { ok: false, error: 'that entry is gone; refresh and try again' }
+  if (!Number.isInteger(at) || at < 0 || at >= items.length) return { ok: false, error: loc('news.err.gone') }
   items.splice(at, 1)
   writeAll(items)
   return { ok: true, items, images: images() }
@@ -110,14 +111,14 @@ function remove(index) {
 // Copies a picked file into the backend's public images folder and returns its "/images/<name>" path
 function addImage(sourcePath) {
   const src = String(sourcePath || '')
-  if (!src) return { ok: false, error: 'no file chosen' }
+  if (!src) return { ok: false, error: loc('news.err.noFile') }
   const name = path.basename(src)
-  if (!IMAGE_EXT.has(path.extname(name).toLowerCase())) return { ok: false, error: `${name} is not a png, jpg, gif or webp` }
+  if (!IMAGE_EXT.has(path.extname(name).toLowerCase())) return { ok: false, error: loc('news.err.badType', { name }) }
   try {
     fs.mkdirSync(IMG_DIR, { recursive: true })
     fs.copyFileSync(src, path.join(IMG_DIR, name))
   } catch (err) {
-    return { ok: false, error: `could not copy the image: ${err.message}` }
+    return { ok: false, error: loc('news.err.copyFailed', { error: err.message }) }
   }
   return { ok: true, image: '/images/' + name, images: images() }
 }

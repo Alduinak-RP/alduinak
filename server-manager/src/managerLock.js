@@ -7,6 +7,7 @@ const path   = require('path')
 const crypto = require('crypto')
 const { execFileSync } = require('child_process')
 const config = require('./config')
+const { loc } = require('./loc')
 
 const PROCESS_STARTED_AT = Date.now() - Math.round(process.uptime() * 1000)
 const startTimes = new Map() // pid -> { at, value }
@@ -81,7 +82,7 @@ function clearStale(file, seen) {
 }
 
 function describe(h) {
-  return `${h.kind || 'a task'} (${h.source || 'unknown'}${h.actor ? `, ${h.actor}` : ''}, since ${h.startedAt || '?'})`
+  return loc(h.actor ? 'lock.holderActor' : 'lock.holder', { kind: h.kind || loc('lock.aTask'), source: h.source || loc('console.unknown'), actor: h.actor, since: h.startedAt || '?' })
 }
 
 /** { ok: true, record, release } or { ok: false, holder }. */

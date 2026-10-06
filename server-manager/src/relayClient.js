@@ -4,6 +4,7 @@
 
 const WebSocket = require('ws')
 const config = require('./config')
+const { loc } = require('./loc')
 
 // onStatus(text) reports connection changes, onOutput(text) receives console output that no pending query consumed; port picks the relay (live by default)
 function createConsoleRelay({ onStatus = () => {}, onOutput = () => {}, port = config.relay.port } = {}) {
@@ -13,7 +14,7 @@ function createConsoleRelay({ onStatus = () => {}, onOutput = () => {}, port = c
       if (this.ws) return
       // A bad port never falls back to another relay: that console would drive the wrong game
       if (!Number.isInteger(port) || port < 1 || port > 65535) {
-        onStatus(`relay port ${port} is not usable (WS_PORT and WS_PORT_TEST in the backend .env must be distinct integers); console offline until it is fixed and the manager restarted`)
+        onStatus(loc('relay.badPort', { port }))
         return
       }
       let ws
@@ -23,7 +24,7 @@ function createConsoleRelay({ onStatus = () => {}, onOutput = () => {}, port = c
       ws.on('open', () => ws.send(JSON.stringify({ type: 'auth', role: 'console', secret: config.relay.secret })))
       ws.on('message', raw => {
         let m; try { m = JSON.parse(raw.toString()) } catch { return }
-        if (m.type === 'auth_ok') { this.connected = true; onStatus('connected to relay'); return }
+        if (m.type === 'auth_ok') { this.connected = true; onStatus(loc('relay.connected')); return }
         if (m.type === 'console_output' || m.type === 'console_log') {
           const text = String(m.text ?? '')
           // A marked reply line is consumed by its pending query, not shown in the
@@ -39,7 +40,7 @@ function createConsoleRelay({ onStatus = () => {}, onOutput = () => {}, port = c
     },
     scheduleReconnect() { if (this.timer) return; this.timer = setTimeout(() => { this.timer = null; this.connect() }, 4000) },
     command(text) {
-      if (!this.connected || !this.ws) return { ok: false, error: 'relay not connected - is the backend running?' }
+      if (!this.connected || !this.ws) return { ok: false, error: loc('relay.notConnectedHint') }
       try { this.ws.send(JSON.stringify({ type: 'console_command', text })); return { ok: true } }
       catch (err) { return { ok: false, error: err.message } }
     },
@@ -54,8 +55,8 @@ function createConsoleRelay({ onStatus = () => {}, onOutput = () => {}, port = c
     },
     queryNow(command, marker, timeoutMs) {
       return new Promise(resolve => {
-        if (!this.connected || !this.ws) return resolve({ ok: false, error: 'relay not connected' })
-        const timer = setTimeout(() => { this.pending.delete(marker); resolve({ ok: false, error: 'query timed out' }) }, timeoutMs)
+        if (!this.connected || !this.ws) return resolve({ ok: false, error: loc('relay.notConnected') })
+        const timer = setTimeout(() => { this.pending.delete(marker); resolve({ ok: false, error: loc('relay.timeout') }) }, timeoutMs)
         this.pending.set(marker, { resolve: payload => resolve({ ok: true, payload }), timer })
         try { this.ws.send(JSON.stringify({ type: 'console_command', text: command })) }
         catch (err) { this.pending.delete(marker); clearTimeout(timer); resolve({ ok: false, error: err.message }) }

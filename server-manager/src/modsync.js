@@ -7,6 +7,7 @@ const path   = require('path')
 const crypto = require('crypto')
 const config = require('./config')
 const formIds = require('./formIds')
+const { loc } = require('./loc')
 const { expand } = require(path.join(config.paths.backend, 'sources', 'manifestFormat'))
 
 const VANILLA_PLUGINS = ['Skyrim.esm', 'Update.esm', 'Dawnguard.esm', 'HearthFires.esm', 'Dragonborn.esm']
@@ -95,7 +96,7 @@ function writeSettingsFile(settingsPath, obj) {
 function readSettingsFile(settingsPath) {
   const st = fs.statSync(settingsPath)
   const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8').replace(/^\uFEFF/, ''))
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('server-settings.json is not a JSON object')
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error(loc('modlist.settingsNotObject'))
   return { settings, mtimeMs: st.mtimeMs }
 }
 
@@ -148,7 +149,7 @@ function readManifestLight(file) {
   catch (err) { if (err.code === 'ENOENT') return null; throw err }
   let m
   try { m = expand(JSON.parse(text)) }
-  catch (err) { throw new Error(`${path.basename(file)} is not valid JSON: ${err.message}`) }
+  catch (err) { throw new Error(loc('common.invalidJson', { file: path.basename(file), error: err.message })) }
   return {
     builtAt: m.build || null,
     order:   m.order,
@@ -264,7 +265,7 @@ function diffFileLists(prevFiles, nextFiles) {
 }
 
 function computeDiff({ prev = null, next, settings = {}, previousDiff = null, dataDir, mo2Root, profileDir, paths: p = paths } = {}) {
-  if (!next || !Array.isArray(next.mods)) throw new Error('computeDiff needs the current manifest')
+  if (!next || !Array.isArray(next.mods)) throw new Error(loc('modlist.diff.needManifest'))
   settings = settings || {}
   dataDir = dataDir || settings.dataDir || ''
   mo2Root = mo2Root || config.mo2Root
@@ -313,14 +314,14 @@ function computeDiff({ prev = null, next, settings = {}, previousDiff = null, da
 
   const warnings = []
   const unprovided = unprovidedPlugins(next, nextExp)
-  if (unprovided.length) warnings.push(`enabled in plugins.txt but provided by no mod in the manifest: ${unprovided.join(', ')}; fix the MO2 profile and rebuild the manifest`)
+  if (unprovided.length) warnings.push(loc('modlist.diff.unprovided', { names: unprovided.join(', ') }))
 
   // A previous diff that still needs its purge owns the load order the database was written under
   const carry = Boolean(previousDiff && !previousDiff.purgedAt && previousDiff.purgeNeeded && Array.isArray(previousDiff.settingsLoadOrder) && previousDiff.settingsLoadOrder.length)
   const currentOrder = Array.isArray(settings.loadOrder) ? settings.loadOrder.map(basename) : []
   const settingsLoadOrder = carry ? previousDiff.settingsLoadOrder.slice() : currentOrder
   const settingsLoadOrderFrom = carry ? (previousDiff.settingsLoadOrderFrom || previousDiff.builtAt || null) : (next.builtAt || null)
-  if (carry && previousDiff.syncedSettingsAt) warnings.push('server settings were synced before the MongoDB purge ran; if the game server was restarted in between, restore the last purge backup or expect inconsistent ids')
+  if (carry && previousDiff.syncedSettingsAt) warnings.push(loc('modlist.diff.syncedBeforePurge'))
 
   const newOrder = uniqueNames([...VANILLA_PLUGINS, ...nextEnabled])
   const newSet = new Set(newOrder.map(lower))
@@ -338,10 +339,10 @@ function computeDiff({ prev = null, next, settings = {}, previousDiff = null, da
     ...newOrder.filter(n => typeof flagOf(n).lightNext !== 'boolean'),
   ].map(spell))
   let shiftedPlugins = []
-  if (unknown.length) warnings.push(`light flag unknown for ${unknown.join(', ')}: the MongoDB purge will refuse until the plugin file can be read`)
+  if (unknown.length) warnings.push(loc('modlist.diff.unknownFlags', { names: unknown.join(', ') }))
   else {
     try { shiftedPlugins = formIds.shiftedBetween(settingsLoadOrder, formIds.flagsOf(pluginFlags, 'light'), newOrder, formIds.flagsOf(pluginFlags, 'lightNext')) }
-    catch (err) { warnings.push(`shifted plugins not computed: ${err.message}`) }
+    catch (err) { warnings.push(loc('modlist.diff.shiftFailed', { error: err.message })) }
   }
   const purgeNeeded = plugins.removed.length > 0 || removedFromOrder.length > 0 || shiftedPlugins.length > 0 || flagChanges.length > 0 || unknown.length > 0
 
@@ -381,12 +382,12 @@ function readDiff(p = paths) {
   try { text = fs.readFileSync(p.diff, 'utf8') }
   catch (err) { if (err.code === 'ENOENT') return null; throw err }
   try { return JSON.parse(text) }
-  catch (err) { throw new Error(`${path.basename(p.diff)} is not valid JSON: ${err.message}`) }
+  catch (err) { throw new Error(loc('common.invalidJson', { file: path.basename(p.diff), error: err.message })) }
 }
 
 function updateDiff(patch, p = paths) {
   const diff = readDiff(p)
-  if (!diff) throw new Error(`no ${path.basename(p.diff)} to update, compute a diff first`)
+  if (!diff) throw new Error(loc('modlist.diff.noFile', { file: path.basename(p.diff) }))
   Object.assign(diff, patch)
   return writeDiff(diff, p)
 }
@@ -409,12 +410,12 @@ function syncSettings({ manifest, settingsPath = config.paths.serverSettings, lo
   let settings
   try { ({ settings } = readSettingsFile(settingsPath)) }
   catch (err) {
-    if (err instanceof SyntaxError) return fail(`server-settings.json is not valid JSON, refusing to write it: ${err.message}`)
-    return fail(err.code ? `cannot read ${settingsPath}: ${err.message}` : err.message)
+    if (err instanceof SyntaxError) return fail(loc('modlist.settings.invalidJson', { error: err.message }))
+    return fail(err.code ? loc('modlist.settings.unreadable', { file: settingsPath, error: err.message }) : err.message)
   }
-  if (!settings.dataDir) return fail('server-settings.json has no dataDir')
+  if (!settings.dataDir) return fail(loc('modlist.noDataDir'))
   const enabled = enabledPlugins(manifest)
-  if (!enabled.length) return fail('the manifest lists no enabled plugins, refusing to empty the loadOrder')
+  if (!enabled.length) return fail(loc('modlist.settings.noPlugins'))
 
   const dataDir = String(settings.dataDir).replace(/\\/g, '/').replace(/\/+$/, '')
   const target = [...VANILLA_PLUGINS, ...enabled]
@@ -429,27 +430,27 @@ function syncSettings({ manifest, settingsPath = config.paths.serverSettings, lo
   const result = { ok: true, changed, added, removed, reordered, loadOrder }
 
   if (!changed) {
-    line(`[settings] loadOrder already in sync with the manifest (${target.length} plugins)`)
+    line(`[settings] ${loc('modlist.settings.inSync', { n: target.length })}`)
     return result
   }
-  line(`[settings] loadOrder: ${currentNames.length} -> ${target.length} plugins (${added.length} added, ${removed.length} removed${reordered ? ', order changed' : ''})`)
+  line(`[settings] ${loc(reordered ? 'modlist.settings.changedReordered' : 'modlist.settings.changed', { from: currentNames.length, to: target.length, added: added.length, removed: removed.length })}`)
   for (const n of removed) line(`[settings] - ${n}`)
   for (const n of added) line(`[settings] + ${n}`)
   for (const n of added) {
-    if (!statFile(path.join(settings.dataDir, n))) line(`[settings] WARNING: ${n} is not in ${settings.dataDir} yet, run Sync Data before restarting the game server`)
+    if (!statFile(path.join(settings.dataDir, n))) line(`[settings] ${loc('modlist.settings.notInData', { name: n, dir: settings.dataDir })}`)
   }
   for (const n of unprovidedPlugins(manifest)) {
-    line(`[settings] WARNING: ${n} is enabled in plugins.txt but no mod in the manifest provides it, fix the MO2 profile and rebuild the manifest`)
+    line(`[settings] ${loc('modlist.settings.unprovided', { name: n })}`)
   }
   if (dryRun) {
-    line('[settings] dry run: server-settings.json not written')
+    line(`[settings] ${loc('modlist.settings.dryRun')}`)
     return result
   }
 
   settings.loadOrder = loadOrder
   const { prevCopy } = writeSettingsFile(settingsPath, settings)
-  line(`[settings] wrote ${basename(settingsPath)} (${loadOrder.length} plugins), previous copy at ${basename(prevCopy)}`)
-  line('[settings] restart the game server to load the new order; players must re-run the launcher')
+  line(`[settings] ${loc('modlist.settings.wrote', { file: basename(settingsPath), n: loadOrder.length, prev: basename(prevCopy) })}`)
+  line(`[settings] ${loc('modlist.settings.restartHint')}`)
   return result
 }
 
@@ -457,10 +458,10 @@ function syncSettings({ manifest, settingsPath = config.paths.serverSettings, lo
 
 // '' when the file on disk still matches the recorded manifest entry, else why not
 async function modifiedReason(file, st, rec) {
-  if (typeof rec.size === 'number' && st.size !== rec.size) return 'size differs'
-  if (!rec.sha256) return 'no recorded hash'
+  if (typeof rec.size === 'number' && st.size !== rec.size) return loc('modlist.data.sizeDiffers')
+  if (!rec.sha256) return loc('modlist.data.noHash')
   if (st.size > HASH_LIMIT) return ''
-  return (await sha256File(file)) === rec.sha256 ? '' : 'sha256 differs'
+  return (await sha256File(file)) === rec.sha256 ? '' : loc('modlist.data.shaDiffers')
 }
 
 async function destUpToDate(dest, f) {
@@ -477,7 +478,7 @@ async function copyVerified({ src, dest, sha256, size }) {
   try {
     fs.copyFileSync(longPath(src), longPath(tmp))
     if (sha256 && size <= HASH_LIMIT && (await sha256File(tmp)) !== sha256) {
-      throw new Error('sha256 mismatch after copy, the MO2 file differs from the manifest (rebuild the manifest)')
+      throw new Error(loc('modlist.data.copyMismatch'))
     }
     if (statFile(dest)) clearReadOnly(dest)
     fs.renameSync(longPath(tmp), longPath(dest))
@@ -490,27 +491,27 @@ async function copyVerified({ src, dest, sha256, size }) {
 async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root = config.mo2Root, log, dryRun = false, paths: p = paths } = {}) {
   const line = lineLogger(log)
   const fail = error => ({ ok: false, error, plan: null, applied: null, stamp })
-  if (!manifest || !Array.isArray(manifest.mods)) return fail('no manifest loaded')
-  if (!dataDir) return fail('server-settings.json has no dataDir')
+  if (!manifest || !Array.isArray(manifest.mods)) return fail(loc('modlist.data.noManifest'))
+  if (!dataDir) return fail(loc('modlist.noDataDir'))
   const dataRoot = path.resolve(String(dataDir))
   const modsDir = path.join(path.resolve(String(mo2Root)), 'mods')
-  if (!isDir(dataRoot)) return fail(`Data folder not found: ${dataRoot}`)
-  if (!isDir(modsDir)) return fail(`MO2 mods folder not found: ${modsDir}`)
+  if (!isDir(dataRoot)) return fail(loc('modlist.data.noDataFolder', { dir: dataRoot }))
+  if (!isDir(modsDir)) return fail(loc('modlist.data.noModsFolder', { dir: modsDir }))
 
-  line(`[data] ${dryRun ? 'dry run' : 'sync'}: ${dataRoot} <- ${modsDir}`)
+  line(`[data] ${loc(dryRun ? 'modlist.data.headerDry' : 'modlist.data.header', { dir: dataRoot, mods: modsDir })}`)
   const expectedNext = resolveExpected(manifest)
   const deployedBefore = new Map()
   if (prev) for (const [key, f] of resolveExpected(prev)) deployedBefore.set(key, f)
   // A stamp written for another Data folder describes files this one never received
   let stampFiles = stamp && Array.isArray(stamp.files) ? stamp.files : []
   if (stamp && stamp.dataDir && fileKey(path.resolve(String(stamp.dataDir))) !== fileKey(dataRoot)) {
-    line(`[data] ${basename(p.stamp)} was written for ${stamp.dataDir}, not ${dataRoot}: ignored`)
+    line(`[data] ${loc('modlist.data.stampOther', { file: basename(p.stamp), other: stamp.dataDir, dir: dataRoot })}`)
     stampFiles = []
   }
   for (const f of stampFiles) {
     if (f && f.to) deployedBefore.set(fileKey(f.to), { to: f.to, mod: f.mod, sha256: lower(f.sha256 || ''), size: f.size })
   }
-  line(`[data] manifest ${manifest.builtAt || '?'}: ${expectedNext.size} files expected, ${deployedBefore.size} known from the last deploy`)
+  line(`[data] ${loc('modlist.data.expected', { built: manifest.builtAt || '?', n: expectedNext.size, known: deployedBefore.size })}`)
 
   const plan = { deletes: [], copies: [], upToDate: 0, skipped: [], missingSources: [] }
   const deleteJobs = [], copyJobs = []
@@ -519,55 +520,55 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
   let checked = 0
   const progress = async () => {
     if (++checked % 200 === 0) await yieldLoop()
-    if (checked % 250 === 0) line(`[data] checked ${checked} files`)
+    if (checked % 250 === 0) line(`[data] ${loc('modlist.data.checked', { n: checked })}`)
   }
 
   for (const [key, rec] of deployedBefore) {
     if (expectedNext.has(key)) continue
     const rel = safeRel(rec.to)
-    if (!rel) { plan.skipped.push({ to: rec.to, reason: 'unsafe path' }); continue }
-    if (VANILLA_SET.has(lower(rel))) { plan.skipped.push({ to: rec.to, reason: 'vanilla master, never deleted' }); continue }
-    if (RESERVED.has(lower(rel))) { plan.skipped.push({ to: rec.to, reason: 'written by the game server, never touched' }); continue }
+    if (!rel) { plan.skipped.push({ to: rec.to, reason: loc('modlist.data.unsafePath') }); continue }
+    if (VANILLA_SET.has(lower(rel))) { plan.skipped.push({ to: rec.to, reason: loc('modlist.data.vanilla') }); continue }
+    if (RESERVED.has(lower(rel))) { plan.skipped.push({ to: rec.to, reason: loc('modlist.data.reserved') }); continue }
     const file = path.join(dataRoot, rel)
     const st = statFile(file)
     if (!st) continue
     await progress()
     if (stillEnabled.has(lower(rel))) {
-      line(`[data] WARNING: ${rec.to} is still enabled in plugins.txt but no mod provides it, kept so the server keeps booting; fix the MO2 profile and rebuild the manifest`)
-      plan.skipped.push({ to: rec.to, reason: 'still enabled in plugins.txt, fix the MO2 profile and rebuild the manifest' })
+      line(`[data] ${loc('modlist.data.stillEnabledWarning', { file: rec.to })}`)
+      plan.skipped.push({ to: rec.to, reason: loc('modlist.data.stillEnabled') })
       continue
     }
     const why = await modifiedReason(file, st, rec)
-    if (!why) plan.deletes.push({ to: rec.to, reason: 'no longer in the manifest' })
-    else if (PLUGIN_OR_ARCHIVE_RE.test(rel)) plan.deletes.push({ to: rec.to, reason: `no longer in the manifest, ${why} on disk but plugins and archives are removed anyway` })
-    else { plan.skipped.push({ to: rec.to, reason: `no longer in the manifest but ${why} on disk, left in place` }); continue }
+    if (!why) plan.deletes.push({ to: rec.to, reason: loc('modlist.data.dropped') })
+    else if (PLUGIN_OR_ARCHIVE_RE.test(rel)) plan.deletes.push({ to: rec.to, reason: loc('modlist.data.droppedPlugin', { why }) })
+    else { plan.skipped.push({ to: rec.to, reason: loc('modlist.data.droppedKept', { why }) }); continue }
     deleteJobs.push({ to: rec.to, file })
   }
 
   for (const [key, f] of expectedNext) {
     const rel = safeRel(f.to)
-    if (!rel) { plan.skipped.push({ to: f.to, reason: 'unsafe path' }); continue }
-    if (!safeName(f.mod)) { plan.skipped.push({ to: f.to, reason: `unsafe mod name "${f.mod}"` }); continue }
-    if (RESERVED.has(lower(rel))) { plan.skipped.push({ to: f.to, reason: 'written by the game server, never touched' }); continue }
+    if (!rel) { plan.skipped.push({ to: f.to, reason: loc('modlist.data.unsafePath') }); continue }
+    if (!safeName(f.mod)) { plan.skipped.push({ to: f.to, reason: loc('modlist.data.unsafeMod', { mod: f.mod }) }); continue }
+    if (RESERVED.has(lower(rel))) { plan.skipped.push({ to: f.to, reason: loc('modlist.data.reserved') }); continue }
     const src = path.join(modsDir, f.mod, rel)
     const dest = path.join(dataRoot, rel)
     await progress()
     const sst = statFile(src)
     if (!sst) { plan.missingSources.push({ to: f.to, mod: f.mod }); continue }
-    if (sst.size !== f.size) { plan.skipped.push({ to: f.to, reason: `MO2 file size ${sst.size} differs from the manifest (${f.size}), rebuild the manifest` }); continue }
+    if (sst.size !== f.size) { plan.skipped.push({ to: f.to, reason: loc('modlist.data.sizeMismatch', { size: sst.size, expected: f.size }) }); continue }
     if (await destUpToDate(dest, f)) { plan.upToDate++; upToDateKeys.add(key); continue }
     plan.copies.push({ to: f.to, mod: f.mod })
     copyJobs.push({ key, to: f.to, src, dest, sha256: f.sha256, size: f.size })
   }
 
-  line(`[data] plan: ${plan.deletes.length} delete(s), ${plan.copies.length} copy(ies), ${plan.upToDate} up to date, ${plan.skipped.length} skipped, ${plan.missingSources.length} missing source(s)`)
-  for (const d of plan.deletes) line(`[data] delete ${d.to} (${d.reason})`)
-  for (const m of plan.missingSources) line(`[data] MISSING SOURCE ${m.to} (mod "${m.mod}")`)
-  for (const s of plan.skipped) line(`[data] skip ${s.to}: ${s.reason}`)
-  for (const c of plan.copies.slice(0, 100)) line(`[data] copy ${c.to} <- ${c.mod}`)
-  if (plan.copies.length > 100) line(`[data] ... and ${plan.copies.length - 100} more copies (${plan.copies.length} total)`)
+  line(`[data] ${loc('modlist.data.plan', { deletes: plan.deletes.length, copies: plan.copies.length, upToDate: plan.upToDate, skipped: plan.skipped.length, missing: plan.missingSources.length })}`)
+  for (const d of plan.deletes) line(`[data] ${loc('modlist.data.delete', { file: d.to, reason: d.reason })}`)
+  for (const m of plan.missingSources) line(`[data] ${loc('modlist.data.missingSource', { file: m.to, mod: m.mod })}`)
+  for (const s of plan.skipped) line(`[data] ${loc('modlist.data.skip', { file: s.to, reason: s.reason })}`)
+  for (const c of plan.copies.slice(0, 100)) line(`[data] ${loc('modlist.data.copy', { file: c.to, mod: c.mod })}`)
+  if (plan.copies.length > 100) line(`[data] ${loc('modlist.data.moreCopies', { n: plan.copies.length - 100, total: plan.copies.length })}`)
   if (dryRun) {
-    line('[data] dry run: nothing touched')
+    line(`[data] ${loc('modlist.data.dryRun')}`)
     return { ok: true, plan, applied: null, stamp }
   }
 
@@ -575,7 +576,7 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
   const touchedDirs = new Set()
   for (const job of deleteJobs) {
     try { removeFile(job.file); applied.deleted++; touchedDirs.add(path.dirname(job.file)) }
-    catch (err) { applied.errors.push({ to: job.to, error: err.message }); line(`[data] ERROR deleting ${job.to}: ${err.message}`) }
+    catch (err) { applied.errors.push({ to: job.to, error: err.message }); line(`[data] ${loc('modlist.data.deleteError', { file: job.to, error: err.message })}`) }
   }
   for (const dir of touchedDirs) pruneEmptyDirs(dir, dataRoot)
 
@@ -583,8 +584,8 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
   let n = 0
   for (const job of copyJobs) {
     try { await copyVerified(job); applied.copied++; copiedKeys.add(job.key) }
-    catch (err) { applied.errors.push({ to: job.to, error: err.message }); line(`[data] ERROR copying ${job.to}: ${err.message}`) }
-    if (++n % 250 === 0) line(`[data] copied ${n}/${copyJobs.length}`)
+    catch (err) { applied.errors.push({ to: job.to, error: err.message }); line(`[data] ${loc('modlist.data.copyError', { file: job.to, error: err.message })}`) }
+    if (++n % 250 === 0) line(`[data] ${loc('modlist.data.copied', { n, total: copyJobs.length })}`)
     if (n % 200 === 0) await yieldLoop()
   }
 
@@ -602,11 +603,11 @@ async function syncData({ manifest, prev = null, stamp = null, dataDir, mo2Root 
   const newStamp = { syncedAt: new Date().toISOString(), manifestBuiltAt: manifest.builtAt || null, dataDir: dataRoot, files }
   writeJsonAtomic(p.stamp, newStamp)
 
-  line(`[data] done: ${applied.copied} copied, ${applied.deleted} deleted, ${plan.upToDate} already up to date, ${applied.errors.length} error(s), ${plan.missingSources.length} missing source(s)`)
+  line(`[data] ${loc('modlist.data.done', { copied: applied.copied, deleted: applied.deleted, upToDate: plan.upToDate, errors: applied.errors.length, missing: plan.missingSources.length })}`)
   const problems = applied.errors.length + plan.missingSources.length
   return {
     ok: problems === 0,
-    ...(problems ? { error: `${applied.errors.length} error(s), ${plan.missingSources.length} missing source(s), see log` } : {}),
+    ...(problems ? { error: loc('modlist.data.problems', { errors: applied.errors.length, missing: plan.missingSources.length }) } : {}),
     plan, applied, stamp: newStamp,
   }
 }
