@@ -360,11 +360,11 @@ test('a record from before the shared bank folds its per-slot banks into the que
   assert.deepEqual(t.primary().queue, ['tailor', 'tailor', 'miner', 'blacksmith'], 'every hour kept, the slot with the oldest counted hour first')
   assert.ok(!('bank' in t.primary()) && !('bank' in t.subs().secondary) && !('onlineMs' in t.subs().secondary), 'the new shape')
   assert.equal(t.primary().onlineMs, 5 * 60000, 'the primary keeps the character\'s online time')
-  assert.ok(t.lines.some((l) => /4 hours moved from the old per-craft banks into the shared bank: tailor, tailor, miner, blacksmith/.test(l)))
+  assert.ok(t.lines.some((l) => /4 hours moved from the per-craft banks into the shared bank: tailor, tailor, miner, blacksmith/.test(l)))
   const lines = t.lines.length
   t.login()
   assert.deepEqual(t.primary().queue, ['tailor', 'tailor', 'miner', 'blacksmith'], 'a second login folds nothing twice')
-  assert.ok(!t.lines.slice(lines).some((l) => /moved from the old/.test(l)))
+  assert.ok(!t.lines.slice(lines).some((l) => /moved from the per-craft/.test(l)))
   t.craft(NAILS)
   assert.equal(t.primary().queue.length, 4, 'an over-full bank takes no more')
   assert.deepEqual(t.last('professionState').bank, bankOf({ countedMs: 50 * 60000, counted: 'blacksmith', payMs: 50 * 60000, queue: ['tailor', 'tailor', 'miner', 'blacksmith'] }))
@@ -391,6 +391,42 @@ test('a sub-slot out of force keeps its old per-slot bank until it is back in fo
   assert.deepEqual([t.primary().queue, 'bank' in t.subs().secondary], [['tailor', 'tailor'], false])
 })
 
+test('multiclass turned off keeps the queued hours of a sub-craft with its slot record and brings them back once the slot is in force again', () => {
+  const t = setup()
+  t.choose('blacksmith', 0)
+  t.choose('tailor', 1)
+  const start = now
+  t.craft(NAILS)
+  now += 60000
+  t.craft(STRIPS)
+  t.craft(STRIPS)
+  assert.deepEqual(t.primary().queue, ['tailor', 'tailor'])
+  t.sys.disconnect(USER, t.ctx)
+  t.sys.slots = parseSlots(undefined, RANK_HOURS).slots
+  now += 3 * HOUR
+  t.login()
+  assert.deepEqual([t.primary().queue, t.subs().secondary.bank, t.subs().secondary.points, t.sys.banked.size], [[], 2, 0, 0], 'kept with the slot, nothing paid or dropped')
+  assert.ok(t.lines.some((l) => /2 hours kept with the slot out of force, back in the bank once it is in force again: tailor, tailor/.test(l)))
+  assert.ok(!t.lines.some((l) => /dropped from the bank/.test(l)))
+  t.craft(NAILS)
+  assert.deepEqual([t.primary().points, t.primary().queue], [2, []], 'the bank is free for the crafts in force')
+  t.sys.slots = parseSlots(THREE, RANK_HOURS).slots
+  now += 90 * 60000
+  t.login()
+  assert.deepEqual([t.subs().secondary.points, 'bank' in t.subs().secondary, t.primary().queue], [1, false, ['tailor']], 'back in the bank and paid in turn, one per interval')
+  assert.equal(t.subs().secondary.lastPointAt, start + 4 * HOUR + 60000)
+  assert.ok(t.lines.some((l) => /2 hours moved from the per-craft banks into the shared bank: tailor, tailor/.test(l)))
+  const u = setup({ slots: THREE.slice(0, 2) })
+  u.choose('blacksmith', 0)
+  u.choose('tailor', 1)
+  const subs = u.subs()
+  subs.tertiary = { profession: 'miner', points: 3, lastPointAt: 0, rank: 0 }
+  u.mp.props.set(`${ACTOR}:private.masterySlots`, subs)
+  u.mp.set(ACTOR, 'private.mastery', { ...u.primary(), queue: ['miner', 'tailor'] })
+  u.craft(NAILS)
+  assert.deepEqual([u.primary().queue, u.subs().tertiary.bank], [['tailor'], 1], 'a stored slot beyond masterySlots keeps its hour too')
+})
+
 test('a reset empties that craft\'s banked hours and a sub-slot reaching its cap loses its own; the others stay', () => {
   const t = setup()
   t.choose('blacksmith', 0)
@@ -403,7 +439,7 @@ test('a reset empties that craft\'s banked hours and a sub-slot reaching its cap
   assert.deepEqual(t.primary().queue, ['tailor', 'blacksmith'])
   t.sys.grantPoints(t.ctx, ACTOR, 1, 1)
   assert.deepEqual([t.subs().secondary.rank, t.primary().queue], [2, ['blacksmith']], 'at its cap the tailor hour is dropped')
-  assert.ok(t.lines.some((l) => /1 hour dropped from the bank, the craft is set aside, out of force or at its cap: tailor/.test(l)))
+  assert.ok(t.lines.some((l) => /1 hour dropped from the bank, the craft is set aside or at its cap: tailor/.test(l)))
   const u = setup()
   u.choose('blacksmith', 0)
   u.choose('tailor', 1)

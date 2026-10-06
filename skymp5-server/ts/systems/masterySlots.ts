@@ -25,7 +25,7 @@ export interface SlotRecord {
   // Epoch ms of the slot's last counted hour, 0 before any
   lastPointAt: number;
   rank: number;
-  // Hours a record from before the shared bank (2026-10-05) banked for this slot alone; folded into the character's queue at load
+  // Hours banked for this slot alone, by a record from before the shared bank (2026-10-05) or kept while the slot was out of force; folded into the character's queue at load
   bank?: number;
 }
 

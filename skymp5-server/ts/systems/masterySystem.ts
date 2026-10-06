@@ -717,14 +717,20 @@ export class MasterySystem implements System {
     return paid;
   }
 
-  // Drops the queued hours no slot in force can take (its craft set aside, out of force or at its cap); the caller writes. The count dropped
+  // Takes out of the queue the hours no slot in force can pay: a craft whose slot is out of force keeps them in its record for the fold, one set aside or at its cap loses them. The count taken; the caller writes
   private prune(actorId: number, char: Character): number {
-    const payable = new Set(this.activeSlots(char).filter((s) => !this.atCap(s)).map((s) => s.rec.profession || ""));
-    const dropped = char.primary.queue.filter((p) => !payable.has(p));
-    if (!dropped.length) return 0;
+    const stored = SLOT_NAMES.map((_, i) => this.slotAt(char, i)).filter((s): s is Slot => !!s && !!s.rec.profession);
+    const payable = new Set(stored.filter((s) => s.cfg && !this.atCap(s)).map((s) => s.rec.profession || ""));
+    const outOfForce = new Map(stored.filter((s) => !s.cfg).map((s) => [s.rec.profession || "", s.rec]));
+    const taken = char.primary.queue.filter((p) => !payable.has(p));
+    if (!taken.length) return 0;
     char.primary.queue = char.primary.queue.filter((p) => payable.has(p));
-    this.log(`[mastery] ${hex(actorId)} ${hoursText(dropped.length)} dropped from the bank, the craft is set aside, out of force or at its cap: ${dropped.join(", ")}`);
-    return dropped.length;
+    const kept = taken.filter((p) => outOfForce.has(p));
+    for (const p of kept) outOfForce.get(p)!.bank = (outOfForce.get(p)!.bank || 0) + 1;
+    const dropped = taken.filter((p) => !outOfForce.has(p));
+    if (kept.length) this.log(`[mastery] ${hex(actorId)} ${hoursText(kept.length)} kept with the slot out of force, back in the bank once it is in force again: ${kept.join(", ")}`);
+    if (dropped.length) this.log(`[mastery] ${hex(actorId)} ${hoursText(dropped.length)} dropped from the bank, the craft is set aside or at its cap: ${dropped.join(", ")}`);
+    return taken.length;
   }
 
   // A sub-slot at its cap earns no more hours
@@ -906,7 +912,7 @@ export class MasterySystem implements System {
 
   // At login: an old record's fold is written, the hours no slot can take go, what fell due while away is paid, and the rest joins the bank check
   private settleBank(ctx: SystemContext, actorId: number, char: Character, now: number): void {
-    if (char.folded) this.log(`[mastery] ${hex(actorId)} ${hoursText(char.folded)} moved from the old per-craft banks into the shared bank: ${char.primary.queue.join(", ")}`);
+    if (char.folded) this.log(`[mastery] ${hex(actorId)} ${hoursText(char.folded)} moved from the per-craft banks into the shared bank: ${char.primary.queue.join(", ")}`);
     if (char.folded || this.prune(actorId, char)) this.save(ctx, actorId, char);
     if (!char.primary.queue.length) return;
     this.payDue(ctx, actorId, char, now);
@@ -1731,7 +1737,7 @@ export class MasterySystem implements System {
     return char;
   }
 
-  // The per-slot banks of an old record join the queue, oldest counted hour first then by slot; a slot out of force keeps its count, the next save writes the new shape
+  // The per-slot banks (an old record's, or the hours kept while a slot was out of force) join the queue, oldest counted hour first then by slot; a slot out of force keeps its count, the next save writes the fold
   private foldBanks(char: Character): void {
     const old = this.activeSlots(char).filter((s) => s.rec.bank);
     if (!old.length) return;

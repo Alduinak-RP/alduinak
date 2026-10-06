@@ -78,9 +78,11 @@ server logs:
 - `[mastery] <id> <profession> hour paid from the bank after 60 min: <H>h[, N hours still banked]`
 - `[mastery] <id> online with <N> hours banked (<craft>, <craft>), next paid in <M> min` at login, once the hours that
   fell due while away are paid
-- `[mastery] <id> <N> hours dropped from the bank, the craft is set aside, out of force or at its cap: <craft>`
-- `[mastery] <id> <N> hours moved from the old per-craft banks into the shared bank: <craft>, <craft>` once per record
-  from before the shared bank (see "Old records")
+- `[mastery] <id> <N> hours dropped from the bank, the craft is set aside or at its cap: <craft>`
+- `[mastery] <id> <N> hours kept with the slot out of force, back in the bank once it is in force again: <craft>` when
+  a sub-slot holding banked hours is no longer configured (see "Old records")
+- `[mastery] <id> <N> hours moved from the per-craft banks into the shared bank: <craft>, <craft>` once per record from
+  before the shared bank, and once more when a slot out of force comes back with hours kept (see "Old records")
 
 A profession reset empties that craft's banked hours and leaves the others, and so does a profession changed or
 cleared in the manager's character editor (Players tab); the character's hour clock (`clockAt`) keeps running either
@@ -118,8 +120,12 @@ the minutes down by itself (a 15 s re-render while something is running).
 is oldest first and then in slot order; the `bank` fields are dropped, the sub-slots' `onlineMs` go and the primary's
 stays as the character's. The next save writes the new shape, at login at the latest (with the log line above), nothing
 is paid twice, and a folded queue longer than `masteryHourBank` is paid down in order and takes no new hour until it is
-below the cap. A sub-slot out of force (multiclassing turned off) keeps its old `bank` count until it is back in force,
-when it is folded. The character's hour clock is `clockAt` on the primary record, set with every counted hour and
+below the cap. A sub-slot out of force (multiclassing turned off, or a stored slot beyond `masterySlots`) keeps its old
+`bank` count until it is back in force, when it is folded, and the shared queue's hours for its craft are moved into
+that count too, at the next login or counted hour (the "kept with the slot out of force" line), so turning
+multiclassing off loses no banked hour: the character's bank is free for the crafts in force, and the hours come back
+with the slot and are paid in order from then. Only a craft set aside (a reset, a manager change) or a sub-slot at its
+cap loses its banked hours. The character's hour clock is `clockAt` on the primary record, set with every counted hour and
 left alone by a reset or a manager change; a record from before the field takes the latest `lastPointAt` of its slots
 in force when it is next loaded, and a slot's own `lastPointAt` still says when its last hour was counted (the strip
 names the hour counting now by it, so after a reset "Hour 1" is counted with no craft named).
@@ -288,11 +294,13 @@ multiclassing off: the primary then works exactly as before. The Test value:
   primary's or the other sub-slot's craft is dropped (the lower slot keeps it; a stored slot no longer configured is
   kept as it is), ranks are recomputed both ways, markers above a
   rank are revoked at once and missing ones granted after the login delay, and the markers of a slot no longer
-  configured are revoked with its record kept. So one entry turns multiclassing off without losing anything, and
-  restoring the key grants the markers again at the following login. Old server code never reads
+  configured are revoked with its record kept, and the banked hours of its craft wait in that record (see "Old
+  records"). So one entry turns multiclassing off without losing anything, and restoring the key grants the markers
+  again at the following login and puts the banked hours back in the bank. Old server code never reads
   `private.masterySlots` but leaves its markers held.
 - **Storage.** `private.masterySlots` `{ v: 1, secondary, tertiary, granted, kits }` appears with the first sub-slot
-  pick; each sub-slot is `{ profession, points, lastPointAt, rank, bank, onlineMs }` or `null`, and `granted` lists
+  pick; each sub-slot is `{ profession, points, lastPointAt, rank }` or `null` (plus `bank`, its own banked hours,
+  while it is out of force or until a record from before the shared bank is folded), and `granted` lists
   the markers held for either sub-slot, which the manager's MongoDB purge re-encodes when a plugin slot moves
   (`DYNAMIC_IDS`). The manager's character popup shows the two sub-slots read-only and refuses a primary that is
   already the character's secondary or tertiary.
