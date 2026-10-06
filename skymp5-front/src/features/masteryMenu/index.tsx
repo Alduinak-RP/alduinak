@@ -38,23 +38,21 @@ export interface MasterySlot {
   rankHours: number[];
 }
 
-// One held craft's hour clock and bank (masterySystem.ts BankSlot); times are ms left at the bank's `at`
-export interface MasteryBankSlot {
-  slot: number;
-  // Until work counts an hour again, 0 when it counts now
-  countedMs: number;
-  banked: number;
-  // Until the next banked hour is counted
-  payMs: number;
-  capped?: boolean;
-}
-
+// The character's hour clock and shared bank (masterySystem.ts BankSummary); times are ms left at the bank's `at`
 export interface MasteryBank {
+  // Bank places
   max: number;
   intervalMs: number;
   // Banked hours also fall due while logged out
   offline?: boolean;
-  slots: MasteryBankSlot[];
+  // Until work counts an hour again, 0 when it counts now
+  countedMs: number;
+  // Profession id of the hour counting now, null when none is
+  counted: string | null;
+  // Until the first banked hour is counted
+  payMs: number;
+  // The profession id each banked hour pays, in pay order
+  queue: string[];
   // Local epoch ms the client received it
   at: number;
 }
@@ -170,42 +168,45 @@ interface BankHour {
   title: string;
 }
 
-// The counted hour first, then one cell per bank place; left gives what remains of a countdown now. The cell text stays short (three held
-// crafts leave each cell about 65 px); the strip's caption carries the online rule and the tooltip the full sentence
-const bankHours = (b: MasteryBankSlot, bank: MasteryBank, label: string, left: (ms: number) => number): BankHour[] => {
-  const counted = left(b.countedMs);
-  const online = bank.offline ? '' : loc('mastery.bank.online');
+// Hour 1 is the hour counting now, then a cell per bank place (or per queued hour when an old record folded in more), each paid an interval after the one before
+const bankHours = (bank: MasteryBank, label: (id: string) => string, left: (ms: number) => number): BankHour[] => {
+  const counted = left(bank.countedMs);
+  const who = bank.counted ? label(bank.counted) : '';
+  const time = minutesText(counted);
   const hours: BankHour[] = [
     counted > 0
       ? {
           filled: true,
           state: loc('mastery.bank.counted'),
-          detail: loc('mastery.bank.nextIn', { time: minutesText(counted) }),
-          title: loc('mastery.bank.countedTitle', { label, time: minutesText(counted) }),
+          detail: who ? loc('mastery.bank.countedFor', { label: who, time }) : loc('mastery.bank.nextIn', { time }),
+          title: who ? loc('mastery.bank.countedTitle', { label: who, time }) : loc('mastery.bank.countedTitlePlain', { time }),
         }
-      : { filled: false, state: loc('mastery.bank.open'), detail: loc('mastery.bank.countsNow'), title: loc('mastery.bank.openTitle', { label }) },
+      : { filled: false, state: loc('mastery.bank.open'), detail: loc('mastery.bank.countsNow'), title: loc('mastery.bank.openTitle') },
   ];
-  for (let i = 0; i < bank.max; i++) {
-    if (i >= b.banked) {
+  const places = Math.max(bank.max, bank.queue.length);
+  for (let i = 0; i < places; i++) {
+    const id = bank.queue[i];
+    if (!id) {
       hours.push({ filled: false, state: loc('mastery.bank.empty'), detail: '', title: loc('mastery.bank.emptyTitle') });
       continue;
     }
-    const wait = left(b.payMs) + i * bank.intervalMs;
+    const wait = left(bank.payMs) + i * bank.intervalMs;
     const when = wait > 0 ? minutesText(wait) : '';
+    const rule = bank.offline ? loc('mastery.bank.offline') : loc('mastery.bank.online');
     hours.push({
       filled: true,
       state: loc('mastery.bank.pending'),
-      detail: when ? loc('mastery.bank.inTime', { time: when }) : loc('mastery.bank.anyMoment'),
-      title: when ? loc('mastery.bank.pendingTitle', { label, time: when, online }) : loc('mastery.bank.pendingTitleSoon', { label }),
+      detail: when ? loc('mastery.bank.pendingFor', { label: label(id), time: when }) : loc('mastery.bank.pendingSoon', { label: label(id) }),
+      title: when ? loc('mastery.bank.pendingTitle', { label: label(id), time: when, rule }) : loc('mastery.bank.pendingTitleSoon', { label: label(id) }),
     });
   }
   return hours;
 };
 
-// Each held craft's counted hour and banked hours; the countdowns tick locally between the server's pushes
-const HourBank = ({ bank, slots }: { bank: MasteryBank; slots: MasterySlot[] }) => {
+// The hour counting now and the banked hours in pay order; the countdowns tick locally between the server's pushes
+const HourBank = ({ bank, professions, slots }: { bank: MasteryBank; professions: Profession[]; slots: MasterySlot[] }) => {
   const [now, setNow] = useState(Date.now());
-  const running = bank.slots.some((b) => b.countedMs > 0 || b.banked > 0);
+  const running = bank.countedMs > 0 || bank.queue.length > 0;
   useEffect(() => {
     setNow(Date.now());
     if (!running) return undefined;
@@ -213,36 +214,25 @@ const HourBank = ({ bank, slots }: { bank: MasteryBank; slots: MasterySlot[] }) 
     return () => clearInterval(timer);
   }, [bank.at, running]);
   const left = (ms: number): number => Math.max(0, ms - Math.max(0, now - bank.at));
+  const label = (id: string): string => {
+    const p = professions.filter((x) => x.id === id)[0];
+    const s = slots.filter((x) => x.profession === id)[0];
+    return (p && p.label) || (s && s.label) || id;
+  };
   return (
     <div className="mastery__bank">
       <div className="mastery__bank-rule">
         <span className="mastery__bank-title">{loc('mastery.bank.title')}</span>
         {bank.offline ? loc('mastery.bank.ruleOffline') : loc('mastery.bank.ruleOnline')}
       </div>
-      {bank.slots.map((b) => {
-        const held = slots.filter((s) => s.slot === b.slot)[0];
-        const label = held ? held.label || held.profession || '' : '';
-        return (
-          <div key={b.slot} className="mastery__bank-craft">
-            <span className="mastery__bank-name">{label + (held && slots.length > 1 ? ' \u00b7 ' + slotName(held) : '')}</span>
-            <div className="mastery__bank-hours">
-              {b.capped ? (
-                <div className="mastery__bank-hour">
-                  {loc('mastery.bank.atCap')}
-                  <span className="mastery__bank-detail">{loc('mastery.bank.noMoreHours')}</span>
-                </div>
-              ) : (
-                bankHours(b, bank, label, left).map((h, i) => (
-                  <div key={i} className={'mastery__bank-hour' + (h.filled ? ' mastery__bank-hour--filled' : '')} title={h.title}>
-                    {loc('mastery.bank.hour', { n: i + 1, state: h.state })}
-                    <span className="mastery__bank-detail">{h.detail || '\u00a0'}</span>
-                  </div>
-                ))
-              )}
-            </div>
+      <div className="mastery__bank-hours">
+        {bankHours(bank, label, left).map((h, i) => (
+          <div key={i} className={'mastery__bank-hour' + (h.filled ? ' mastery__bank-hour--filled' : '')} title={h.title}>
+            {loc('mastery.bank.hour', { n: i + 1, state: h.state })}
+            <span className="mastery__bank-detail">{h.detail || '\u00a0'}</span>
           </div>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 };
@@ -257,7 +247,8 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
   // Craft slots show once the server configures more than one
   const slots = data.slots && data.slots.length > 1 ? data.slots : [];
   const multi = slots.length > 0;
-  const bank = data.bank && data.bank.slots.length ? data.bank : null;
+  // The strip shows once a craft is held
+  const bank = data.bank && (multi ? slots.some((s) => !!s.profession) : !!chosen) ? data.bank : null;
 
   // The detail side stays empty until a profession is focused
   const [viewing, setViewing] = useState('');
@@ -313,7 +304,7 @@ const MasteryMenu = ({ data, embedded }: { data: MasteryData; embedded?: boolean
         {embedded ? null : <div className="mastery__corner">{loc('mastery.corner')}</div>}
         <h1 className="mastery__title">{current ? loc('mastery.titleFor', { label: current.label }) : loc('mastery.title')}</h1>
 
-        {bank ? <HourBank bank={bank} slots={data.slots || []} /> : null}
+        {bank ? <HourBank bank={bank} professions={professions} slots={data.slots || []} /> : null}
 
         {multi ? (
           <div className="mastery__slots">

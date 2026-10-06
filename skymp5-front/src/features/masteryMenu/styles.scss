@@ -273,7 +273,7 @@ $text-dim: rgba(232, 224, 208, 0.6);
   }
 
   &__bank-rule {
-    flex: 0 0 120px;
+    flex: 0 0 200px;
     padding: 6px 10px 7px 14px;
     border-right: 1px solid $border-dim;
     color: $text-dim;
@@ -282,37 +282,27 @@ $text-dim: rgba(232, 224, 208, 0.6);
     letter-spacing: 0.03em;
   }
 
-  &__bank-title,
-  &__bank-name {
+  &__bank-title {
     display: block;
     margin-bottom: 4px;
     color: $gold;
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  // One held craft: its name over its hours
-  &__bank-craft {
+  // One row of cells for the whole character
+  &__bank-hours {
     flex: 1 1 0;
     min-width: 0;
-    padding: 6px 10px 7px;
-    border-right: 1px solid $border-dim;
-
-    &:last-child {
-      border-right: 0;
-    }
-  }
-
-  &__bank-hours {
     display: flex;
+    align-items: center;
     gap: 6px;
+    padding: 6px 10px 7px;
   }
 
-  // Hour 1 is the counted hour, the others are the bank
+  // Hour 1 is the hour counting now, the others are the bank in pay order
   &__bank-hour {
     flex: 1 1 0;
     min-width: 0;
@@ -580,16 +570,13 @@ $text-dim: rgba(232, 224, 208, 0.6);
     }
 
     &__bank-rule {
-      flex-basis: 100px;
+      flex-basis: 160px;
       padding-left: 10px;
-    }
-
-    &__bank-craft {
-      padding: 5px 8px 6px;
     }
 
     &__bank-hours {
       gap: 4px;
+      padding: 5px 8px 6px;
     }
 
     &__bank-hour {
