@@ -15,6 +15,9 @@ declare const window: any;
 
 // Mirrors holdMode for the widget setter, which runs in the browser with injected vars only
 let wheelHold = false;
+
+// In engine furniture (a chair, a bed) or on a horse; must run on update
+const isSeatedOrMounted = (player: Actor): boolean => player.getSitState() !== 0 || player.isOnMount();
 const WIDGET_ID = 24;
 
 // An idle played in first person loses the character's collision, so an emote holds the camera in third person (poseCamera.ts)
@@ -332,6 +335,13 @@ export class EmoteService extends ClientListener {
       if (this.activeEmote !== anim) return;
       const player = this.sp.Game.getPlayer();
       if (!player) return;
+      // A state idle takes a seated or mounted graph out of its furniture without the exit while the engine keeps the actor seated; overlays stay on their own layer
+      if (anim.indexOf("Offset") !== 0 && isSeatedOrMounted(player)) {
+        this.activeEmote = "";
+        logToPlatformLog(this, `emote ${anim} skipped: the player is ${player.isOnMount() ? "mounted" : `seated (sit state ${player.getSitState()})`}`);
+        notifyNextUpdate(this.controller, this.sp, "Stand up to use emotes.");
+        return;
+      }
       // An idle started with a weapon or spell in hand glitches, so the hands are emptied first
       if (player.isWeaponDrawn()) {
         if (sheathePolls >= SHEATHE_MAX_POLLS) {
@@ -377,7 +387,7 @@ export class EmoteService extends ClientListener {
     if (!player) return;
     if (this.activeEmote && this.idleEnded(player)) this.activeEmote = "";
     // A chair or a mount taken after the emote owns the camera again
-    const free = player.getSitState() !== 0 || player.isOnMount();
+    const free = isSeatedOrMounted(player);
     // A pose can outlast its emote (a refused exit, a stand-up clip, a draw), and it is the animation-driven graph that loses collision in first person
     const lingering = !this.activeEmote && !free && player.getAnimationVariableBool(ANIM_DRIVEN_VAR);
     if (!free && (this.activeEmote || lingering)) {
@@ -472,8 +482,9 @@ export class EmoteService extends ClientListener {
       if (chain !== this.chainId) return;
       const player = this.sp.Game.getPlayer();
       if (!player) return;
-      // IdleForceDefaultState is a global wildcard into the sheathed branch, so drawn hands skip the exit
-      if (player.isWeaponDrawn()) {
+      // IdleForceDefaultState is a global wildcard into the sheathed branch, so drawn hands skip the exit, and so does a seated or mounted player, whose idle the furniture already ended
+      if (player.isWeaponDrawn() || isSeatedOrMounted(player)) {
+        if (!player.isWeaponDrawn()) logToPlatformLog(this, `emote exit ${attempts[index]} skipped: the player is ${player.isOnMount() ? "mounted" : `seated (sit state ${player.getSitState()})`}`);
         if (onDone) onDone();
         return;
       }

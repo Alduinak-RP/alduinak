@@ -17,7 +17,12 @@ reaches first person. A player in first person gets third person first and the i
 is back; after 3 s still in first person the emote is given up with "Emotes play in third person.". A 250 ms
 check keeps the hold while the emote is active and, after it, while the graph still reads `bAnimationDriven` (a
 stand-up clip, an exit the graph refused, a pose a draw did not end), and lifts it after two checks with neither.
-A chair or a mount taken meanwhile owns the camera again. A pose that outlasts its emote by 5 s writes
+A chair or a mount taken meanwhile owns the camera again. A player seated in engine furniture (a bench, a bed) or
+on a horse gets no state idle: the wheel and `EmoteService.play` refuse it with "Stand up to use emotes." (an
+offset overlay such as Crossed Arms still plays), and `W` or a draw on such a player forgets the emote instead of
+sending `IdleForceDefaultState`, which would take the graph out of the chair without the furniture exit while the
+engine keeps the actor seated and in its seat collision. Both write `EmoteService: emote <idle> skipped: the
+player is seated (sit state 3)` or `emote exit <event> skipped: ...` to the Platform log. A pose that outlasts its emote by 5 s writes
 `EmoteService: emote camera: the graph still reads bAnimationDriven 5000 ms after <idle> ended, third person held
 while it lasts` to the Platform log. The same check ends the emote once the
 graph's `bIdlePlaying` has been off for two checks after the idle was seen playing (a one-shot such as Wave
