@@ -678,10 +678,10 @@ export const applyInventory = (
     }
   });
 
-  // One 3D rebuild covers every worn change of the apply
+  // One 3D rebuild covers every worn change of the apply; a dead actor's 3D is left alone, the engine's face morph job can read a head rebuilt under it
   if (queueNiNodeUpdateNeeded) {
     const ac = Actor.from(refr);
-    if (ac) {
+    if (ac && !ac.isDead()) {
       ac.queueNiNodeUpdate();
     }
   }

@@ -288,6 +288,38 @@ void InstallCompoundFrustumStateGuard()
   logger::info("Compound frustum save guard installed");
 }
 
+// The face morph job (26999) of the Face morphing frame stage runs 26988 on every queued BSFaceGenNiNode; for a dead actor with its eyes
+// closing it reads node->parent->AsFadeNode() with no null check, and a head rebuilt or destroyed between the queueing and the job (the
+// client's queueNiNodeUpdate on a dead copy, a respawn) leaves an orphan node and a null read on the job thread
+struct FaceMorphJobGuard
+{
+  static void thunk(RE::BSFaceGenNiNode* a_node, bool a_full)
+  {
+    if (a_node && a_node->parent) {
+      func(a_node, a_full);
+    }
+  }
+  static inline REL::Relocation<decltype(&thunk)> func;
+};
+
+void InstallFaceMorphJobGuard()
+{
+  if (!REL::Module::IsAE()) {
+    logger::info("Face morph job guard skipped, the game is not 1.6");
+    return;
+  }
+  const auto call = REL::ID(26999).address() + 0x13;
+  if (*reinterpret_cast<const std::uint8_t*>(call) != 0xE8 ||
+      call + 5 + *reinterpret_cast<const std::int32_t*>(call + 1) !=
+        REL::ID(26988).address()) {
+    logger::warn("Face morph update call not found in the morph job, the "
+                 "detached face node guard is skipped");
+    return;
+  }
+  Hooks::write_thunk_call<FaceMorphJobGuard>(call);
+  logger::info("Face morph job guard installed");
+}
+
 // The engine stacks items whose extras compare equal; copies with different custom names must stay apart, as on the server
 struct TextDisplayDataIsNotEqual
 {
@@ -423,6 +455,7 @@ void Hooks::Install()
   InstallCreateSourceVoiceGuard();
   InstallShutdownCursorRelease();
   InstallCompoundFrustumStateGuard();
+  InstallFaceMorphJobGuard();
   InstallTextDisplayDataIsNotEqualHook();
   InstallActivateButtonHook();
   CarryHold::Install();

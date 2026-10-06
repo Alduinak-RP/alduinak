@@ -420,6 +420,42 @@ the first time a view goes past the buffer. Stack dumps of later culling
 crashes (ids 76553, 32189, 108600) can hold stale SkyrimPlatformImpl.dll
 addresses from these copies; that alone does not point at the guard.
 
+**Detached face nodes** (`Hooks.cpp` `InstallFaceMorphJobGuard`, 1.6 only,
+2026-10-05): the Face morphing frame stage queues one job (id 26999) per
+`BSFaceGenNiNode` the downward pass saw and runs the per-head morph update
+(26988) on a job thread. For a dead actor whose eyes are closing that update
+reads `node->parent->AsFadeNode()` with no null check, and the job holds only
+the node, so a head rebuilt (`DoReset3D` detaches the old face node) or
+destroyed between the queueing and the job crashed the thread with a null
+read (`SkyrimSE.exe+04328E9`, a dead male Khajiit player copy, crash report
+of 2026-10-02). Our client rebuilt dead copies far more often than vanilla:
+the on-screen head and tint rebuild, the 3D rebuild after any worn change
+(looting a corpse) and the respawn. The guard wraps the call in the job and
+skips a node that has no parent any more (a detached node is not drawn, so
+nothing is lost), one pointer test per face job; `Face morph job guard
+installed` in `skyrim-platform.log`, or why it was skipped. The client also
+stops asking for the 3D of a dead copy to be rebuilt (`FormView`
+`updateTagAndTint` and `verifyCopyOutfit`, `applyInventory`), which is less
+work per frame on a battlefield as well.
+
+**DirectInput device lifetime** (`DInputHook.cpp`, 2026-10-05): the engine's
+window procedure recreates the mouse device on every `WM_ACTIVATE`
+(`BSInputDeviceManager::ReinitializeMouse`: Unacquire, Release, CreateDevice)
+while a loading screen polls input on its serving thread, and SkyrimPlatform's
+wrapper around each device deleted itself in `Release` and called the real
+device with no lifetime protection, so a poll that had just entered
+`GetDeviceState` (which also runs the browser's `OnUpdate` and a log line in
+`Acquire`) used a freed device: `RtlEnterCriticalSection` on a destroyed
+section, 28 s after launch, in the crash of 2026-10-03 while the owner was
+alt-tabbed to Discord during the startup load. The wrapper now keeps a
+recursive mutex around every call into the real device, is never deleted
+(`Release` drops the real device and nulls the pointer; the few bytes leak
+once per activation), answers `DIERR_INPUTLOST` once its device is gone (the
+engine zeroes the state and acquires again), and knows from its creation
+whether it is the keyboard, which removes the two `GetDeviceInfo` calls every
+poll made. The browser update, the hook's task queue and the log lines stay
+outside the lock, so the main thread's `Release` never waits on CEF or disk.
+
 **Papyrus update watchdog** (`PapyrusTESModPlatform.cpp`
 `TESModPlatform::Update`): SkyrimPlatform's `update` event, and with it every
 client step that needs Papyrus (spawn, race menu, needs request, load

@@ -698,7 +698,8 @@ export class FormView {
       const carryPartner = (held && this.carriedState.onPlayer) || isCarrierCloneId(this.refrId);
       if (isOnScreen !== this.isOnScreen) {
         this.isOnScreen = isOnScreen;
-        if (isOnScreen && Date.now() - this.lastNiNodeUpdateMs >= FormView.niNodeUpdateMinIntervalMs && !(carryPartner && this.lastNiNodeUpdateMs)) {
+        // A dead copy's head stays as it is: the engine's face morph job can read a head rebuilt under it (crash report 2026-10-02)
+        if (isOnScreen && !actor.isDead() && Date.now() - this.lastNiNodeUpdateMs >= FormView.niNodeUpdateMinIntervalMs && !(carryPartner && this.lastNiNodeUpdateMs)) {
           this.lastNiNodeUpdateMs = Date.now();
           actor.queueNiNodeUpdate();
           // The rebuilt 3D drops effect shaders
@@ -776,7 +777,7 @@ export class FormView {
     logToPlatformLog("FormView", `${this.getRemoteRefrId().toString(16)} copy outfit after settle: ${total - missing.length} of ${total} worn, re-dressing ${missing.map((e) => e.baseId.toString(16)).join("/")}`);
     equipEntries(ac, missing);
     if (isPlayerCopy) this.redrawTints();
-    else ac.queueNiNodeUpdate();
+    else if (!ac.isDead()) ac.queueNiNodeUpdate();
   }
 
   // The engine's torch check for NPCs unequips a copy's torch where it is not dark, so a player copy's held torch is equipped again
