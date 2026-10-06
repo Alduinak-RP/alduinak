@@ -11,7 +11,6 @@ import { RequestPacer, classifyDiscordAnswer, discordRetryOptions } from "./disc
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
-const loginFailedIpMismatch = JSON.stringify({ customPacketType: "loginFailedIpMismatch" });
 const loginFailedSessionNotFound = JSON.stringify({ customPacketType: "loginFailedSessionNotFound" });
 
 type Mp = any; // TODO
@@ -142,6 +141,12 @@ export class Login implements System {
       let profileId: number | null = null;
       (async () => {
         const guidBeforeAsyncOp = ctx.svr.getUserGuid(userId);
+        // The slot can be freed and reused by another player during the async waits; a changed guid ends the flow without a packet, which would reach the new occupant
+        const requireSameConnection = (op: string) => {
+          if (!ctx.svr.isConnected(userId) || ctx.svr.getUserGuid(userId) !== guidBeforeAsyncOp) {
+            throw new Error(`Connection changed during ${op}`);
+          }
+        };
         const profile = await this.getUserProfile(gameData.session, userId, ctx);
         profileId = profile.id;
         const guidAfterAsyncOp = ctx.svr.isConnected(userId) ? ctx.svr.getUserGuid(userId) : "<disconnected>";
@@ -215,6 +220,7 @@ export class Login implements System {
           let unavailable: number | null = null;
           for (const guildConfig of discordAuth.guilds) {
             await discordPacer.acquire();
+            requireSameConnection("the Discord member check wait");
             let response: Response;
             try {
               response = await this.fetchRetry(
@@ -247,6 +253,7 @@ export class Login implements System {
               console.error(`discordAuth: Discord API returned ${answer.status} for guild ${guildConfig.guildId} (profile ${profile.id})${hint}`);
             }
           }
+          requireSameConnection("the Discord member check");
 
           if (!isMemberOfAny && unavailable === null) {
             ctx.svr.sendCustomPacket(userId, loginFailedNotInTheDiscordServer);
@@ -274,13 +281,8 @@ export class Login implements System {
             ctx.svr.sendCustomPacket(userId, loginFailedBanned);
             throw new Error("Banned on one of the Discord servers");
           }
-
-          if (ip !== ctx.svr.getUserIp(userId)) {
-            // Quick and dirty same-user check: during the async http call the userId could be freed and reused by someone else
-            ctx.svr.sendCustomPacket(userId, loginFailedIpMismatch);
-            throw new Error("IP mismatch");
-          }
         }
+        requireSameConnection("the login checks");
 
         if (discordAuth && discordAuth.botToken && discordAuth.guilds) {
           const ipToPrint = shouldHideIp ? loc("login.ipHidden") : ip;
