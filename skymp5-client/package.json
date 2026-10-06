@@ -1,6 +1,6 @@
 {
   "name": "skymp5-client",
-  "version": "1.0.1-b6",
+  "version": "1.0.1-b7",
   "license": "GPL-3.0",
   "main": "dist/index.js",
   "scripts": {
