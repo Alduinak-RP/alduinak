@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
 import { isBlankOrNum, isNum, optionalNumber } from './util';
+import { loc } from '../../loc';
 
 interface JobEnd {
   id: string;
@@ -65,21 +66,21 @@ type JobTextField = Exclude<keyof JobForm, 'enabled'>;
 
 // Four columns: the job, what it asks for, then one row per end
 const JOB_FIELDS: Array<{ key: JobTextField; label: string; placeholder: string; half?: boolean }> = [
-  { key: 'name', label: 'Name', placeholder: 'Haybales', half: true },
-  { key: 'item', label: 'Item', placeholder: 'hay bale' },
-  { key: 'prompt', label: 'Prompt', placeholder: 'Carry hay' },
-  { key: 'pay', label: 'Pay (gold)', placeholder: 'blank: file default' },
-  { key: 'anim', label: 'Carry anim', placeholder: 'OffsetCarryBasketStart' },
-  { key: 'requires', label: 'Requires', placeholder: 'woodChoppingAxes' },
-  { key: 'requiresText', label: 'Requires text', placeholder: "a woodcutter's axe" },
-  { key: 'pickupId', label: 'Pickup ID', placeholder: 'Set pickup here' },
-  { key: 'pickupPos', label: 'Pickup POS', placeholder: 'x, y, z' },
-  { key: 'pickupRadius', label: 'Pickup radius', placeholder: '200' },
-  { key: 'pickupLabel', label: 'Pickup label', placeholder: 'the hay pile' },
-  { key: 'dropoffId', label: 'Dropoff ID', placeholder: 'Set dropoff here' },
-  { key: 'dropoffPos', label: 'Dropoff POS', placeholder: 'x, y, z' },
-  { key: 'dropoffRadius', label: 'Dropoff radius', placeholder: '250' },
-  { key: 'dropoffLabel', label: 'Dropoff label', placeholder: 'the stable' },
+  { key: 'name', label: loc('adminPanel.common.name'), placeholder: loc('adminPanel.jobs.namePlaceholder'), half: true },
+  { key: 'item', label: loc('adminPanel.jobs.item'), placeholder: loc('adminPanel.jobs.itemPlaceholder') },
+  { key: 'prompt', label: loc('adminPanel.jobs.prompt'), placeholder: loc('adminPanel.jobs.promptPlaceholder') },
+  { key: 'pay', label: loc('adminPanel.jobs.pay'), placeholder: loc('adminPanel.jobs.payPlaceholder') },
+  { key: 'anim', label: loc('adminPanel.jobs.anim'), placeholder: 'OffsetCarryBasketStart' },
+  { key: 'requires', label: loc('adminPanel.jobs.requires'), placeholder: 'woodChoppingAxes' },
+  { key: 'requiresText', label: loc('adminPanel.jobs.requiresText'), placeholder: loc('adminPanel.jobs.requiresTextPlaceholder') },
+  { key: 'pickupId', label: loc('adminPanel.jobs.pickupId'), placeholder: loc('adminPanel.jobs.setPickup') },
+  { key: 'pickupPos', label: loc('adminPanel.jobs.pickupPos'), placeholder: loc('adminPanel.jobs.posPlaceholder') },
+  { key: 'pickupRadius', label: loc('adminPanel.jobs.pickupRadius'), placeholder: '200' },
+  { key: 'pickupLabel', label: loc('adminPanel.jobs.pickupLabel'), placeholder: loc('adminPanel.jobs.pickupLabelPlaceholder') },
+  { key: 'dropoffId', label: loc('adminPanel.jobs.dropoffId'), placeholder: loc('adminPanel.jobs.setDropoff') },
+  { key: 'dropoffPos', label: loc('adminPanel.jobs.dropoffPos'), placeholder: loc('adminPanel.jobs.posPlaceholder') },
+  { key: 'dropoffRadius', label: loc('adminPanel.jobs.dropoffRadius'), placeholder: '250' },
+  { key: 'dropoffLabel', label: loc('adminPanel.jobs.dropoffLabel'), placeholder: loc('adminPanel.jobs.dropoffLabelPlaceholder') },
 ];
 
 // Closing the menu to walk to the other end remounts the panel, so the form and the last applied position live here
@@ -116,8 +117,7 @@ const formOf = (j: JobRow): JobForm => ({
 
 const statusText = (j: JobRow): string => {
   if (j.status) return j.status.charAt(0).toUpperCase() + j.status.slice(1);
-  const carrying = j.carrying ? ' · ' + j.carrying + ' carrying' : '';
-  return 'Active · ' + j.item + ' · ' + j.pay + ' gold' + carrying;
+  return loc(j.carrying ? 'adminPanel.jobs.activeCarrying' : 'adminPanel.jobs.active', { item: j.item, pay: j.pay, n: j.carrying });
 };
 
 const Jobs = ({ jobs, pos, ev, send }: JobsProps) => {
@@ -164,9 +164,9 @@ const Jobs = ({ jobs, pos, ev, send }: JobsProps) => {
     <div className="admin-panel__body">
       <div className="admin-panel__list admin-panel__list--jobs">
         {!jobs ? (
-          <div className="admin-panel__empty">Loading jobs</div>
+          <div className="admin-panel__empty">{loc('adminPanel.jobs.loading')}</div>
         ) : list.length === 0 ? (
-          <div className="admin-panel__empty">No jobs in Jobs.json</div>
+          <div className="admin-panel__empty">{loc('adminPanel.jobs.none')}</div>
         ) : (
           list.map((j) => (
             <div key={j.name} className="admin-panel__row admin-panel__row--zone">
@@ -178,10 +178,10 @@ const Jobs = ({ jobs, pos, ev, send }: JobsProps) => {
                 </span>
               </div>
               <div className="admin-panel__zone-buttons">
-                <Button text="TP pickup" width={96} height={24} onClick={() => send(ev.jobTp, j.name, 'pickup')} />
-                <Button text="TP dropoff" width={104} height={24} onClick={() => send(ev.jobTp, j.name, 'dropoff')} />
-                <Button text="Edit" width={56} height={24} onClick={() => setForm(formOf(j))} />
-                <Button text="Delete" width={68} height={24} onClick={() => send(ev.jobDelete, j.name)} />
+                <Button text={loc('adminPanel.jobs.tpPickup')} width={96} height={24} onClick={() => send(ev.jobTp, j.name, 'pickup')} />
+                <Button text={loc('adminPanel.jobs.tpDropoff')} width={104} height={24} onClick={() => send(ev.jobTp, j.name, 'dropoff')} />
+                <Button text={loc('adminPanel.common.edit')} width={56} height={24} onClick={() => setForm(formOf(j))} />
+                <Button text={loc('adminPanel.common.delete')} width={68} height={24} onClick={() => send(ev.jobDelete, j.name)} />
               </div>
             </div>
           ))
@@ -201,17 +201,17 @@ const Jobs = ({ jobs, pos, ev, send }: JobsProps) => {
         ))}
       </div>
       <div className="admin-panel__actions">
-        <Button text="Set pickup here" width={168} height={32} onClick={() => send(ev.jobPos, 'pickup')} />
-        <Button text="Set dropoff here" width={168} height={32} onClick={() => send(ev.jobPos, 'dropoff')} />
+        <Button text={loc('adminPanel.jobs.setPickup')} width={168} height={32} onClick={() => send(ev.jobPos, 'pickup')} />
+        <Button text={loc('adminPanel.jobs.setDropoff')} width={168} height={32} onClick={() => send(ev.jobPos, 'dropoff')} />
         <label className="admin-panel__checkbox">
           <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-          Enabled
+          {loc('adminPanel.jobs.enabled')}
         </label>
-        <Button text="Save" width={104} height={32} disabled={!canSave} onClick={save} />
-        <Button text="Clear" width={104} height={32} onClick={() => setForm(EMPTY_JOB_FORM)} />
+        <Button text={loc('common.save')} width={104} height={32} disabled={!canSave} onClick={save} />
+        <Button text={loc('adminPanel.common.clear')} width={104} height={32} onClick={() => setForm(EMPTY_JOB_FORM)} />
       </div>
       <span className="admin-panel__hint">
-        Set here takes where the server has you now; the form stays while you close the menu and walk to the other end. Save replaces the job of the same name.
+        {loc('adminPanel.jobs.hint')}
       </span>
     </div>
   );

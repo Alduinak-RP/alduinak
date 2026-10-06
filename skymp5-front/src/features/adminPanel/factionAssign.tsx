@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import Button from '../../constructorComponents/button';
+import { loc } from '../../loc';
 import Dropdown, { DropdownOption } from './dropdown';
 import { FactionMenuData, TYPE_LABEL } from './factionTab';
 
@@ -43,11 +44,11 @@ const FactionAssign = ({ faction, ev, send, target, enabled }: FactionAssignProp
   return (
     <div className="admin-panel__mastery">
       <div className="admin-panel__mastery-row">
-        <span className="admin-panel__mastery-who">Faction</span>
+        <span className="admin-panel__mastery-who">{loc('adminPanel.factionAssign.faction')}</span>
         <Dropdown
           className="admin-panel__faction-pick admin-panel__faction-pick--short"
           value={pickedProvince}
-          placeholder={factions.length ? 'Province' : 'Loading factions'}
+          placeholder={factions.length ? loc('adminPanel.factionAssign.province') : loc('adminPanel.faction.loading')}
           disabled={!factions.length}
           options={provinces}
           onChange={(p) => {
@@ -58,7 +59,7 @@ const FactionAssign = ({ faction, ev, send, target, enabled }: FactionAssignProp
         <Dropdown
           className="admin-panel__faction-pick admin-panel__faction-pick--short"
           value={pickedType}
-          placeholder="Type"
+          placeholder={loc('adminPanel.common.type')}
           disabled={!pickedProvince}
           options={types}
           onChange={setType}
@@ -66,7 +67,7 @@ const FactionAssign = ({ faction, ev, send, target, enabled }: FactionAssignProp
         <Dropdown
           className="admin-panel__faction-pick admin-panel__faction-pick--wide"
           value={pickedFaction}
-          placeholder="Faction"
+          placeholder={loc('adminPanel.factionAssign.faction')}
           disabled={!pickedType}
           options={shown}
           onChange={(id) => ev.factionMenu && send(ev.factionMenu, id)}
@@ -74,15 +75,15 @@ const FactionAssign = ({ faction, ev, send, target, enabled }: FactionAssignProp
         <Dropdown
           className="admin-panel__faction-pick admin-panel__faction-pick--rank"
           value={pickedRank}
-          placeholder="Position"
+          placeholder={loc('adminPanel.factionAssign.position')}
           disabled={!pickedFaction}
           options={ranks.map((r) => ({ value: r.slug, label: r.name }))}
           onChange={setRank}
         />
-        <Button text="Add" width={72} height={30} disabled={!enabled || !pickedFaction || !pickedRank} onClick={() => act('adminAdd')} />
-        <Button text="Remove" width={88} height={30} disabled={!enabled || !pickedFaction} onClick={() => act('adminRemove')} />
+        <Button text={loc('adminPanel.common.add')} width={72} height={30} disabled={!enabled || !pickedFaction || !pickedRank} onClick={() => act('adminAdd')} />
+        <Button text={loc('adminPanel.common.remove')} width={88} height={30} disabled={!enabled || !pickedFaction} onClick={() => act('adminRemove')} />
       </div>
-      <span className="admin-panel__hint">Choose a province, type, faction and position, then add or remove the selected online character.</span>
+      <span className="admin-panel__hint">{loc('adminPanel.factionAssign.hint')}</span>
     </div>
   );
 };

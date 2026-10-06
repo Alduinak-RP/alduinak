@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import Button from '../../constructorComponents/button';
 import Dropdown from './dropdown';
 import { formatCountdown, isNum } from './util';
+import { loc } from '../../loc';
 
 export interface WeatherChance {
   desc: string;
@@ -93,7 +94,7 @@ const WeatherTab = ({ data, now, ev, send }: WeatherTabProps) => {
     .map((w) => ({ value: w.desc, label: weatherLabel(w.edid) + ' · ' + w.chance + '%' }))
     .concat(catalog.filter((c) => !own.some((w) => w.desc === c.desc)).map((c) => ({ value: c.desc, label: weatherLabel(c.edid) })));
   const weatherPick = weatherOptions.some((o) => o.value === form.weather) ? form.weather : '';
-  const regionOptions = [{ value: '', label: 'The region I am in' + (here ? ' (' + here.name + ')' : '') }].concat(
+  const regionOptions = [{ value: '', label: here ? loc('adminPanel.weather.myRegionNamed', { name: here.name }) : loc('adminPanel.weather.myRegion') }].concat(
     regions.slice().sort((a, b) => a.name.localeCompare(b.name)).map((r) => ({ value: r.id, label: r.name })));
 
   // Seconds left, counted down from the server's own clock at the moment the list was built
@@ -101,9 +102,9 @@ const WeatherTab = ({ data, now, ev, send }: WeatherTabProps) => {
     data ? Math.max(0, Math.round((r.endsAt - data.at) / 1000 - (now - data.receivedAt) / 1000)) : 0;
 
   const statusText = (r: WeatherRegionRow): string => {
-    const time = r.endsAt ? formatCountdown(leftSec(r)) : 'until cleared';
-    const players = r.players + (r.players === 1 ? ' player' : ' players');
-    return weatherLabel(r.weather) + ' · ' + (r.forced ? 'forced, ' + time : time) + ' · ' + players;
+    const time = r.endsAt ? formatCountdown(leftSec(r)) : loc('adminPanel.weather.untilCleared');
+    const players = loc(r.players === 1 ? 'adminPanel.weather.playerOne' : 'adminPanel.weather.playerMany', { n: r.players });
+    return weatherLabel(r.weather) + ' · ' + (r.forced ? loc('adminPanel.weather.forced', { time }) : time) + ' · ' + players;
   };
 
   const canForce = !!(ev.weatherSet && picked && weatherPick && isMinutes(form.minutes));
@@ -120,22 +121,22 @@ const WeatherTab = ({ data, now, ev, send }: WeatherTabProps) => {
     <div className="admin-panel__body">
       <div className="admin-panel__list admin-panel__list--jobs">
         {!data ? (
-          <div className="admin-panel__empty">Loading weather</div>
+          <div className="admin-panel__empty">{loc('adminPanel.weather.loading')}</div>
         ) : rows.length === 0 ? (
-          <div className="admin-panel__empty">No weather regions (weatherEnabled is off)</div>
+          <div className="admin-panel__empty">{loc('adminPanel.weather.none')}</div>
         ) : (
           rows.map((r) => (
             <div key={r.id} className={'admin-panel__row admin-panel__row--zone' + (picked && picked.id === r.id ? ' admin-panel__row--selected' : '')}>
               <div className="admin-panel__zone-info">
-                <span className="admin-panel__cell admin-panel__cell--name" title={r.id}>{r.name + (r.here ? ' (here)' : '')}</span>
+                <span className="admin-panel__cell admin-panel__cell--name" title={r.id}>{r.here ? loc('adminPanel.weather.here', { name: r.name }) : r.name}</span>
                 <span className="admin-panel__cell admin-panel__cell--status" title={r.weather}>
                   <span className={'admin-panel__dot' + (r.forced ? ' admin-panel__dot--online' : '')} />
                   {statusText(r)}
                 </span>
               </div>
               <div className="admin-panel__zone-buttons">
-                <Button text="Pick" width={56} height={24} onClick={() => setForm({ ...form, region: r.id })} />
-                <Button text="Clear" width={64} height={24} disabled={!ev.weatherClear} onClick={() => send(ev.weatherClear, r.id)} />
+                <Button text={loc('adminPanel.weather.pick')} width={56} height={24} onClick={() => setForm({ ...form, region: r.id })} />
+                <Button text={loc('adminPanel.common.clear')} width={64} height={24} disabled={!ev.weatherClear} onClick={() => send(ev.weatherClear, r.id)} />
               </div>
             </div>
           ))
@@ -143,7 +144,7 @@ const WeatherTab = ({ data, now, ev, send }: WeatherTabProps) => {
       </div>
       <div className="admin-panel__form">
         <div className="admin-panel__field admin-panel__field--half">
-          Region
+          {loc('adminPanel.weather.region')}
           <Dropdown
             value={form.region}
             options={regionOptions}
@@ -152,31 +153,31 @@ const WeatherTab = ({ data, now, ev, send }: WeatherTabProps) => {
           />
         </div>
         <div className="admin-panel__field admin-panel__field--half">
-          Weather
+          {loc('adminPanel.weather.weather')}
           <Dropdown
             value={weatherPick}
-            placeholder={picked ? 'Choose a weather' : 'Pick a region first'}
+            placeholder={picked ? loc('adminPanel.weather.chooseWeather') : loc('adminPanel.weather.pickRegionFirst')}
             options={weatherOptions}
             disabled={!picked}
             onChange={(weather) => setForm({ ...form, weather })}
           />
         </div>
         <label className="admin-panel__field admin-panel__field--half">
-          Minutes (optional)
+          {loc('adminPanel.weather.minutes')}
           <input
             className="admin-panel__input"
-            placeholder="blank: until cleared"
+            placeholder={loc('adminPanel.weather.minutesPlaceholder')}
             value={form.minutes}
             onChange={(e) => setForm({ ...form, minutes: e.target.value })}
           />
         </label>
       </div>
       <div className="admin-panel__actions">
-        <Button text="Force" width={104} height={32} disabled={!canForce} onClick={force} />
-        <Button text="Clear" width={104} height={32} disabled={!(ev.weatherClear && picked)} onClick={() => picked && send(ev.weatherClear, picked.id)} />
+        <Button text={loc('adminPanel.weather.force')} width={104} height={32} disabled={!canForce} onClick={force} />
+        <Button text={loc('adminPanel.common.clear')} width={104} height={32} disabled={!(ev.weatherClear && picked)} onClick={() => picked && send(ev.weatherClear, picked.id)} />
       </div>
       <span className="admin-panel__hint">
-        Force holds the weather on the region for everyone in it until Clear, or for the minutes given (1 to {MAX_MINUTES}); Clear rolls one of the region&apos;s own weathers again. The picker lists the region&apos;s own weathers with their chances first, then every weather of the load order.
+        {loc('adminPanel.weather.hint', { max: MAX_MINUTES })}
       </span>
     </div>
   );

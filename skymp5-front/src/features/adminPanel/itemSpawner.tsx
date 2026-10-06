@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import Button from '../../constructorComponents/button';
 import Dropdown from './dropdown';
+import { loc } from '../../loc';
 
 export interface ItemRow {
   desc: string; // espm desc, e.g. 12eb7:Skyrim.esm
@@ -41,18 +42,18 @@ const pageNumbers = (pages: number): number[] => {
 };
 
 const KINDS: Array<{ id: string; label: string }> = [
-  { id: '', label: 'All' },
-  { id: 'WEAP', label: 'Weapons' },
-  { id: 'ARMO', label: 'Armor' },
-  { id: 'AMMO', label: 'Ammo' },
-  { id: 'ALCH', label: 'Potions' },
-  { id: 'INGR', label: 'Ingredients' },
-  { id: 'BOOK', label: 'Books' },
-  { id: 'MISC', label: 'Misc' },
-  { id: 'KEYM', label: 'Keys' },
-  { id: 'SCRL', label: 'Scrolls' },
-  { id: 'SLGM', label: 'Soul gems' },
-  { id: 'LIGH', label: 'Lights' },
+  { id: '', label: loc('adminPanel.common.all') },
+  { id: 'WEAP', label: loc('adminPanel.items.weapons') },
+  { id: 'ARMO', label: loc('adminPanel.items.armor') },
+  { id: 'AMMO', label: loc('adminPanel.items.ammo') },
+  { id: 'ALCH', label: loc('adminPanel.items.potions') },
+  { id: 'INGR', label: loc('adminPanel.items.ingredients') },
+  { id: 'BOOK', label: loc('adminPanel.items.books') },
+  { id: 'MISC', label: loc('adminPanel.items.misc') },
+  { id: 'KEYM', label: loc('adminPanel.items.keys') },
+  { id: 'SCRL', label: loc('adminPanel.items.scrolls') },
+  { id: 'SLGM', label: loc('adminPanel.items.soulGems') },
+  { id: 'LIGH', label: loc('adminPanel.items.lights') },
 ];
 
 // Same bound the server enforces per spawn
@@ -135,10 +136,10 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
   };
 
   let listText = '';
-  if (!searchable) listText = 'Type at least two letters or pick a type';
-  else if (!shown) listText = 'Searching';
-  else if (loading) listText = 'Item list is loading';
-  else if (!rows.length) listText = 'No items found';
+  if (!searchable) listText = loc('adminPanel.items.typeMore');
+  else if (!shown) listText = loc('adminPanel.items.searching');
+  else if (loading) listText = loc('adminPanel.items.listLoading');
+  else if (!rows.length) listText = loc('adminPanel.items.noItems');
 
   return (
     <div className="admin-panel__body">
@@ -146,7 +147,7 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
         <input
           ref={searchRef}
           className="admin-panel__search"
-          placeholder="Search items by name, editor ID or form ID"
+          placeholder={loc('adminPanel.items.search')}
           maxLength={MAX_QUERY_LENGTH}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -164,10 +165,10 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
         ))}
       </div>
       <div className="admin-panel__row admin-panel__row--head">
-        <span className="admin-panel__cell admin-panel__cell--name">Name</span>
-        <span className="admin-panel__cell admin-panel__cell--kind">Type</span>
-        <span className="admin-panel__cell admin-panel__cell--edid">Editor ID</span>
-        <span className="admin-panel__cell admin-panel__cell--desc">Form</span>
+        <span className="admin-panel__cell admin-panel__cell--name">{loc('adminPanel.common.name')}</span>
+        <span className="admin-panel__cell admin-panel__cell--kind">{loc('adminPanel.common.type')}</span>
+        <span className="admin-panel__cell admin-panel__cell--edid">{loc('adminPanel.common.editorId')}</span>
+        <span className="admin-panel__cell admin-panel__cell--desc">{loc('adminPanel.common.form')}</span>
       </div>
       <div className="admin-panel__list">
         {listText ? (
@@ -193,9 +194,9 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
       </div>
       {shown && !loading && (shown.pages || 1) > 1 ? (
         <div className="admin-panel__actions admin-panel__pager">
-          <span className="admin-panel__hint">{shown.total} items, {shown.pages} pages</span>
+          <span className="admin-panel__hint">{loc('adminPanel.items.pages', { total: shown.total, pages: shown.pages })}</span>
           <label className="admin-panel__checkbox">
-            Page
+            {loc('adminPanel.items.page')}
             <Dropdown
               className="admin-panel__pager-page"
               value={String(shown.page || page)}
@@ -203,16 +204,16 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
               onChange={(n) => setPage(Number(n))}
             />
           </label>
-          <Button text="Previous" width={92} height={30} disabled={page <= 1} onClick={() => setPage(page - 1)} />
-          <Button text="Next" width={72} height={30} disabled={page >= (shown.pages || 1)} onClick={() => setPage(page + 1)} />
+          <Button text={loc('adminPanel.items.previous')} width={92} height={30} disabled={page <= 1} onClick={() => setPage(page - 1)} />
+          <Button text={loc('common.next')} width={72} height={30} disabled={page >= (shown.pages || 1)} onClick={() => setPage(page + 1)} />
         </div>
       ) : null}
       <div className="admin-panel__actions admin-panel__spawn">
         <span className="admin-panel__spawn-item" title={pick ? pick.desc : undefined}>
-          {pick ? pick.name || pick.edid || pick.desc : 'Select an item'}
+          {pick ? pick.name || pick.edid || pick.desc : loc('adminPanel.items.selectItem')}
         </span>
         <label className="admin-panel__checkbox">
-          Count
+          {loc('adminPanel.items.count')}
           <input
             className="admin-panel__input admin-panel__spawn-count"
             value={count}
@@ -221,13 +222,13 @@ const ItemSpawner = ({ items, ev, send, selfActorId, selected, refreshKey }: Ite
         </label>
         <label className="admin-panel__checkbox">
           <input type="radio" name="item-spawn-target" checked={!giveToPlayer} onChange={() => setToPlayer(false)} />
-          You
+          {loc('adminPanel.common.you')}
         </label>
         <label className="admin-panel__checkbox">
           <input type="radio" name="item-spawn-target" checked={giveToPlayer} disabled={!selected} onChange={() => setToPlayer(true)} />
-          {selected ? selected.n || '(no name)' : 'Selected player'}
+          {selected ? selected.n || loc('adminPanel.common.noName') : loc('adminPanel.common.selectedPlayer')}
         </label>
-        <Button text="Spawn" width={104} height={32} disabled={!canSpawn} onClick={() => spawn(pick)} />
+        <Button text={loc('adminPanel.items.spawn')} width={104} height={32} disabled={!canSpawn} onClick={() => spawn(pick)} />
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ import WeatherTab, { WeatherMenuData } from './weatherTab';
 import PolymorphTab, { RaceMenuData } from './polymorphTab';
 import { diseaseStageName } from '../survivalReadout';
 import { formatCountdown, formatTimeLeft, isBlankOrNum, isNum, optionalNumber, pad2 } from './util';
+import { loc } from '../../loc';
 import './styles.scss';
 
 // One roster row as merged by the server (online actor data + backend record).
@@ -208,31 +209,31 @@ type AdminSub = 'players' | 'teleport' | 'modes' | 'npcs' | 'items' | 'weather' 
 
 // Admin shows only to confirmed staff; the other three are open to every player
 const TOP_TABS: Array<{ id: TopTab; label: string }> = [
-  { id: 'admin', label: 'Admin' },
-  { id: 'faction', label: 'Faction' },
-  { id: 'skills', label: 'Skills' },
-  { id: 'debug', label: 'Debug' },
+  { id: 'admin', label: loc('adminPanel.tabs.admin') },
+  { id: 'faction', label: loc('adminPanel.tabs.faction') },
+  { id: 'skills', label: loc('adminPanel.tabs.skills') },
+  { id: 'debug', label: loc('adminPanel.tabs.debug') },
 ];
 
 // Each sub-tab needs its server-sent cap; Item Spawner, Weather and Polymorph need it explicitly true
 const ADMIN_SUBS: Array<{ id: AdminSub; label: string }> = [
-  { id: 'players', label: 'Players' },
-  { id: 'teleport', label: 'Teleport' },
-  { id: 'modes', label: 'Modes' },
-  { id: 'npcs', label: 'NPCs' },
-  { id: 'items', label: 'Item Spawner' },
-  { id: 'weather', label: 'Weather' },
-  { id: 'polymorph', label: 'Polymorph' },
+  { id: 'players', label: loc('adminPanel.tabs.players') },
+  { id: 'teleport', label: loc('adminPanel.tabs.teleport') },
+  { id: 'modes', label: loc('adminPanel.tabs.modes') },
+  { id: 'npcs', label: loc('adminPanel.tabs.npcs') },
+  { id: 'items', label: loc('adminPanel.tabs.items') },
+  { id: 'weather', label: loc('adminPanel.tabs.weather') },
+  { id: 'polymorph', label: loc('adminPanel.tabs.polymorph') },
 ];
 
 // Teleport sections in display order; a missing or unknown group lands in Other
 const LOC_GROUPS: Array<{ id: string; label: string }> = [
-  { id: 'cities', label: 'Cities' },
-  { id: 'villages', label: 'Villages' },
-  { id: 'forts', label: 'Forts' },
-  { id: 'temples', label: 'Temples' },
-  { id: 'oblivion', label: 'Oblivion' },
-  { id: 'other', label: 'Other' }
+  { id: 'cities', label: loc('adminPanel.teleport.cities') },
+  { id: 'villages', label: loc('adminPanel.teleport.villages') },
+  { id: 'forts', label: loc('adminPanel.teleport.forts') },
+  { id: 'temples', label: loc('adminPanel.teleport.temples') },
+  { id: 'oblivion', label: loc('adminPanel.teleport.oblivion') },
+  { id: 'other', label: loc('adminPanel.teleport.other') }
 ];
 
 // The widget remounts on every open; the tabs and Teleport sections last opened this session survive it
@@ -256,18 +257,18 @@ const tabButtons = <T extends string>(tabs: Array<{ id: T; label: string }>, act
 type NpcSub = 'list' | 'add' | 'pets' | 'jobs';
 
 const NPC_SUBS: Array<{ id: NpcSub; label: string }> = [
-  { id: 'list', label: 'Zones' },
-  { id: 'add', label: 'Add' },
-  { id: 'pets', label: 'Pets' },
-  { id: 'jobs', label: 'Jobs' },
+  { id: 'list', label: loc('adminPanel.npcs.tabZones') },
+  { id: 'add', label: loc('adminPanel.common.add') },
+  { id: 'pets', label: loc('adminPanel.npcs.tabPets') },
+  { id: 'jobs', label: loc('adminPanel.npcs.tabJobs') },
 ];
 
 type PetKind = 'horse' | 'livestock' | 'dog';
 
 const PET_KINDS: Array<{ id: PetKind; label: string }> = [
-  { id: 'horse', label: 'Horse' },
-  { id: 'livestock', label: 'Livestock' },
-  { id: 'dog', label: 'Dog' },
+  { id: 'horse', label: loc('adminPanel.pets.horse') },
+  { id: 'livestock', label: loc('adminPanel.pets.livestock') },
+  { id: 'dog', label: loc('adminPanel.pets.dog') },
 ];
 
 // Same bound the server's cleanDisplayName applies to a pet name
@@ -276,9 +277,9 @@ const MAX_PET_NAME = 24;
 type ZoneFilter = 'cooldown' | 'active' | 'none';
 
 const ZONE_FILTERS: Array<{ id: ZoneFilter; label: string }> = [
-  { id: 'cooldown', label: 'On cooldown' },
-  { id: 'active', label: 'Active' },
-  { id: 'none', label: 'None' },
+  { id: 'cooldown', label: loc('adminPanel.npcs.filterCooldown') },
+  { id: 'active', label: loc('adminPanel.npcs.filterActive') },
+  { id: 'none', label: loc('common.none') },
 ];
 
 // Field names follow NPC-Spawns.json; the server applies its own defaults to a blank Size, Spread, Despawn or Respawn.
@@ -287,19 +288,19 @@ type ZoneForm = typeof EMPTY_ZONE_FORM;
 
 const ZONE_TYPES = ['Wildlife', 'Monster', 'Dungeon'];
 // Auto leaves Type blank, so the server infers it from the zone's cell and NPCs
-const ZONE_TYPE_CHOICES = [{ value: '', label: 'Auto' }].concat(ZONE_TYPES.map((t) => ({ value: t, label: t })));
-const ZONE_TYPE_FILTERS = [{ value: '', label: 'All types' }].concat(ZONE_TYPES.map((t) => ({ value: t, label: t })));
+const ZONE_TYPE_CHOICES = [{ value: '', label: loc('adminPanel.npcs.typeAuto') }].concat(ZONE_TYPES.map((t) => ({ value: t, label: t })));
+const ZONE_TYPE_FILTERS = [{ value: '', label: loc('adminPanel.npcs.allTypes') }].concat(ZONE_TYPES.map((t) => ({ value: t, label: t })));
 
 const ZONE_FIELDS: Array<{ key: keyof ZoneForm; label: string; placeholder: string }> = [
-  { key: 'name', label: 'Name', placeholder: 'Kagrenzel Falmer' },
-  { key: 'id', label: 'ID', placeholder: 'Kagrenzel01, Tamriel or 0x0001A26F' },
-  { key: 'x', label: 'X', placeholder: '191763' },
-  { key: 'y', label: 'Y', placeholder: '-29429' },
-  { key: 'z', label: 'Z', placeholder: '8280' },
-  { key: 'size', label: 'Size', placeholder: '2000' },
-  { key: 'spread', label: 'Spread', placeholder: 'blank: anywhere in Size, 0: rings' },
-  { key: 'despawn', label: 'Despawn (s)', placeholder: '120' },
-  { key: 'respawn', label: 'Respawn (s)', placeholder: '1800' },
+  { key: 'name', label: loc('adminPanel.common.name'), placeholder: loc('adminPanel.zone.namePlaceholder') },
+  { key: 'id', label: loc('adminPanel.zone.id'), placeholder: loc('adminPanel.zone.idPlaceholder') },
+  { key: 'x', label: loc('adminPanel.zone.x'), placeholder: '191763' },
+  { key: 'y', label: loc('adminPanel.zone.y'), placeholder: '-29429' },
+  { key: 'z', label: loc('adminPanel.zone.z'), placeholder: '8280' },
+  { key: 'size', label: loc('adminPanel.zone.size'), placeholder: '2000' },
+  { key: 'spread', label: loc('adminPanel.zone.spread'), placeholder: loc('adminPanel.zone.spreadPlaceholder') },
+  { key: 'despawn', label: loc('adminPanel.zone.despawn'), placeholder: '120' },
+  { key: 'respawn', label: loc('adminPanel.zone.respawn'), placeholder: '1800' },
 ];
 
 // Same bounds the server enforces for a mastery grant
@@ -309,9 +310,9 @@ const isGrantAmount = (text: string): boolean =>
   isNum(text) && Number.isInteger(Number(text)) && Number(text) !== 0 && Math.abs(Number(text)) <= MAX_GRANT_HOURS;
 
 const ATTR_FIELDS: Array<{ key: string; label: string }> = [
-  { key: 'health', label: 'Health' },
-  { key: 'magicka', label: 'Magicka' },
-  { key: 'stamina', label: 'Stamina' },
+  { key: 'health', label: loc('adminPanel.attrs.health') },
+  { key: 'magicka', label: loc('adminPanel.attrs.magicka') },
+  { key: 'stamina', label: loc('adminPanel.attrs.stamina') },
 ];
 
 // Same bounds the server enforces for a max attribute change
@@ -327,11 +328,11 @@ const attrForm = (av: PanelAttrs | null | undefined): Record<string, string> =>
 const craftSlots = (m: PanelMastery | null | undefined): MasterySlot[] | null => (m && m.slots && m.slots.length > 1 ? m.slots : null);
 
 const masteryText = (m: PanelMastery | null | undefined): string => {
-  if (!m) return 'unknown';
+  if (!m) return loc('adminPanel.common.unknown');
   const slots = craftSlots(m);
-  if (slots) return slots.map((s) => (s.profession ? (s.label || s.profession) + ', ' + s.rankName + ', ' + s.hours + ' h' : 'no ' + slotName(s).toLowerCase())).join(' \u00b7 ');
-  if (!m.profession) return 'No craft chosen' + (m.hours ? ' (' + m.hours + ' h banked)' : '');
-  return m.label + ' \u00b7 ' + m.rankName + ' \u00b7 ' + m.hours + (m.hours === 1 ? ' hour' : ' hours');
+  if (slots) return slots.map((s) => (s.profession ? loc('adminPanel.mastery.slotLine', { craft: s.label || s.profession, rank: s.rankName, hours: s.hours }) : loc('adminPanel.mastery.slotNone', { slot: slotName(s).toLowerCase() }))).join(' \u00b7 ');
+  if (!m.profession) return m.hours ? loc('adminPanel.mastery.noCraftBanked', { hours: m.hours }) : loc('adminPanel.mastery.noCraft');
+  return loc(m.hours === 1 ? 'adminPanel.mastery.lineOne' : 'adminPanel.mastery.lineMany', { craft: m.label, rank: m.rankName, hours: m.hours });
 };
 
 // survivalClimate.ts COLD_STAGE_NAMES
@@ -340,22 +341,23 @@ const COLD_STAGE_NAMES = ['Warm', 'Comfortable', 'Chilly', 'Very Cold', 'Freezin
 // survivalClimate.ts coldStageOf without the hot food bonus
 const coldStageName = (cold: number, stages: number[]): string => COLD_STAGE_NAMES[1 + stages.slice(1).filter((s) => cold >= s).length] || '';
 
-const AREA_NAMES: Record<string, string> = { none: 'no cold', interior: 'warm interior', chillyInterior: 'chilly interior' };
+const AREA_NAMES: Record<string, string> = { none: loc('adminPanel.survival.areaNone'), interior: loc('adminPanel.survival.areaInterior'), chillyInterior: loc('adminPanel.survival.areaChillyInterior') };
 
-const DISEASE_STAGE_CHOICES = [1, 2, 3].map((n) => ({ value: String(n), label: diseaseStageName('Stage ' + n, n) }));
+const DISEASE_STAGE_CHOICES = [1, 2, 3].map((n) => ({ value: String(n), label: diseaseStageName(loc('adminPanel.survival.stage', { n }), n) }));
 
 const survivalText = (sv: PanelSurvival): string => {
-  const cold = sv.cold < 0 ? 'cold off' : 'cold ' + sv.cold + ' (' + sv.stage + '), warmth ' + sv.warmth;
-  const area = sv.area ? 'area ' + (AREA_NAMES[sv.area] || sv.area) + ', level ' + sv.level + (sv.freezingArea ? ', freezing water' : '') : 'area not known yet';
+  const cold = sv.cold < 0 ? loc('adminPanel.survival.coldOff') : loc('adminPanel.survival.cold', { cold: sv.cold, stage: sv.stage, warmth: sv.warmth });
+  const areaVars = { area: AREA_NAMES[sv.area] || sv.area, level: sv.level };
+  const area = sv.area ? loc(sv.freezingArea ? 'adminPanel.survival.areaFreezing' : 'adminPanel.survival.area', areaVars) : loc('adminPanel.survival.areaUnknown');
   return cold + ' \u00b7 ' + area;
 };
 
 // Diseases with their next stage, then afflictions and food poisoning with the time they have left
 const sicknessText = (sv: PanelSurvival, now: number): string => {
-  const sick = sv.diseases.map((d) => diseaseStageName(d.name, d.stage) + (d.nextAt ? ', worse in ' + formatTimeLeft(d.nextAt, now) : ''))
-    .concat(sv.afflictions.map((a) => a.name + ', ' + formatTimeLeft(a.until, now) + ' left'))
-    .concat(sv.foodPoisonUntil > now ? ['Food poisoning, ' + formatTimeLeft(sv.foodPoisonUntil, now) + ' left'] : []);
-  return sick.length ? 'Sick: ' + sick.join('; ') : 'No sickness';
+  const sick = sv.diseases.map((d) => (d.nextAt ? loc('adminPanel.survival.diseaseWorse', { disease: diseaseStageName(d.name, d.stage), time: formatTimeLeft(d.nextAt, now) }) : diseaseStageName(d.name, d.stage)))
+    .concat(sv.afflictions.map((a) => loc('adminPanel.survival.afflictionLeft', { name: a.name, time: formatTimeLeft(a.until, now) })))
+    .concat(sv.foodPoisonUntil > now ? [loc('adminPanel.survival.foodPoison', { time: formatTimeLeft(sv.foodPoisonUntil, now) })] : []);
+  return sick.length ? loc('adminPanel.survival.sick', { list: sick.join('; ') }) : loc('adminPanel.survival.noSickness');
 };
 
 const MONTHS = ['Morning Star', "Sun's Dawn", 'First Seed', "Rain's Hand", 'Second Seed', 'Midyear', "Sun's Height", 'Last Seed', 'Hearthfire', 'Frostfall', "Sun's Dusk", 'Evening Star'];
@@ -367,12 +369,13 @@ const withDesc = (id: string, desc: string): string => hexId(id) + (desc ? ' (' 
 
 // One line for bug reports; the descs paste straight into the Item Spawner search
 const targetReport = (t: DebugTarget): string => {
-  const parts = [t.name || '(no name)'];
-  if (t.refId) parts.push((t.body ? 'body ' : t.player ? 'character ' : 'ref ') + withDesc(t.refId, t.refDesc) + (t.clientOnly ? ' client only' : ''));
-  if (t.baseId) parts.push('base ' + withDesc(t.baseId, t.baseDesc));
-  if (t.localBaseId) parts.push('local base ' + withDesc(t.localBaseId, t.localBaseDesc));
-  if (t.cell) parts.push('cell ' + hexId(t.cell) + (t.cellName ? ' ' + t.cellName : ''));
-  parts.push('pos ' + (t.pos || []).join(' '));
+  const parts = [t.name || loc('adminPanel.common.noName')];
+  const ref = withDesc(t.refId, t.refDesc) + (t.clientOnly ? ' ' + loc('adminPanel.debug.clientOnly') : '');
+  if (t.refId) parts.push(loc(t.body ? 'adminPanel.debug.reportBody' : t.player ? 'adminPanel.debug.reportCharacter' : 'adminPanel.debug.reportRef', { id: ref }));
+  if (t.baseId) parts.push(loc('adminPanel.debug.reportBase', { id: withDesc(t.baseId, t.baseDesc) }));
+  if (t.localBaseId) parts.push(loc('adminPanel.debug.reportLocalBase', { id: withDesc(t.localBaseId, t.localBaseDesc) }));
+  if (t.cell) parts.push(loc('adminPanel.debug.reportCell', { id: hexId(t.cell) + (t.cellName ? ' ' + t.cellName : '') }));
+  parts.push(loc('adminPanel.debug.reportPos', { pos: (t.pos || []).join(' ') }));
   return parts.join(' | ');
 };
 
@@ -391,7 +394,7 @@ const formatClock = (ms: number, tzOffsetMin: number): string => {
 };
 
 const gameClock = (gt: DebugData['gameTime']): string => {
-  if (!gt) return 'unknown';
+  if (!gt) return loc('adminPanel.common.unknown');
   const h = Math.floor(gt.hour);
   return pad2(h) + ':' + pad2(Math.floor((gt.hour - h) * 60));
 };
@@ -400,7 +403,7 @@ const gameDate = (gt: DebugData['gameTime']): string | undefined => {
   if (!gt) return undefined;
   const month = MONTHS[Math.round(gt.month)] || '?';
   const weekday = WEEKDAYS[Math.round(gt.weekday)] || '?';
-  return weekday + ', ' + ordinal(Math.round(gt.day)) + ' of ' + month + ', 4E ' + Math.round(gt.year);
+  return loc('adminPanel.debug.gameDate', { weekday, day: ordinal(Math.round(gt.day)), month, year: Math.round(gt.year) });
 };
 
 interface DebugCell {
@@ -416,42 +419,42 @@ const debugCells = (d: DebugData, now: number): DebugCell[] => {
   const cell = d.cell;
   const t = d.target;
   const hidden = !!t && t.player && !t.refId;
-  const inGame = (desc: string): string => desc || 'created in game';
+  const inGame = (desc: string): string => desc || loc('adminPanel.debug.createdInGame');
   const place = cell ? [cell.name || cell.location, !cell.interior && cell.world ? '(' + cell.world + ')' : ''].filter(Boolean).join(' ') : '';
   const av = d.av || { health: [], magicka: [], stamina: [] };
   const pair = (v: number[]): string => (v && v.length ? Math.round(v[0]) + '/' + Math.round(v[1] || 0) : '-');
   return [
-    { label: 'Account Name', value: d.account || '-' },
-    { label: 'Character Name', value: d.character || '-' },
-    { label: 'FormID', value: hexId(d.formId || d.actorId) },
-    { label: 'Server Name', value: server ? server.name || '-' : 'unknown' },
-    { label: 'Character POS (X Y Z)', value: (d.pos || []).map((n) => Math.round(n)).join(' ') || '-' },
-    { label: 'LocationID (Cell ID)', value: cell ? hexId(cell.id) : 'unknown', sub: place || undefined },
-    { label: 'Direction Facing', value: d.heading ? d.heading.compass + ' ' + Math.round(d.heading.deg) + '°' : '-' },
+    { label: loc('adminPanel.debug.accountName'), value: d.account || '-' },
+    { label: loc('adminPanel.debug.characterName'), value: d.character || '-' },
+    { label: loc('adminPanel.debug.formId'), value: hexId(d.formId || d.actorId) },
+    { label: loc('adminPanel.debug.serverName'), value: server ? server.name || '-' : loc('adminPanel.common.unknown') },
+    { label: loc('adminPanel.debug.characterPos'), value: (d.pos || []).map((n) => Math.round(n)).join(' ') || '-' },
+    { label: loc('adminPanel.debug.locationId'), value: cell ? hexId(cell.id) : loc('adminPanel.common.unknown'), sub: place || undefined },
+    { label: loc('adminPanel.debug.direction'), value: d.heading ? d.heading.compass + ' ' + Math.round(d.heading.deg) + '°' : '-' },
     {
-      label: 'Target Distance',
-      value: t ? (t.name || hexId(t.baseId)) + ' ' + Math.round(t.dist) + ' u' : 'no target',
-      hint: t && !t.live ? 'Last seen' : 'Whatever you face, objects included',
+      label: loc('adminPanel.debug.targetDistance'),
+      value: t ? loc('adminPanel.debug.targetAt', { name: t.name || hexId(t.baseId), dist: Math.round(t.dist) }) : loc('adminPanel.debug.noTarget'),
+      hint: t && !t.live ? loc('adminPanel.debug.lastSeen') : loc('adminPanel.debug.targetHint'),
     },
-    { label: 'Magicka / Health / Stamina', value: [av.magicka, av.health, av.stamina].map(pair).join(' | ') },
-    { label: 'Game Time/Date', value: gameClock(d.gameTime), sub: gameDate(d.gameTime) },
-    { label: 'Local Time/Date', value: formatClock(now, new Date(now).getTimezoneOffset()) },
-    { label: 'Server Time/Date', value: server ? formatClock(now + server.offsetMs, server.tzOffsetMin) : 'unknown' },
+    { label: loc('adminPanel.debug.vitals'), value: [av.magicka, av.health, av.stamina].map(pair).join(' | ') },
+    { label: loc('adminPanel.debug.gameTime'), value: gameClock(d.gameTime), sub: gameDate(d.gameTime) },
+    { label: loc('adminPanel.debug.localTime'), value: formatClock(now, new Date(now).getTimezoneOffset()) },
+    { label: loc('adminPanel.debug.serverTime'), value: server ? formatClock(now + server.offsetMs, server.tzOffsetMin) : loc('adminPanel.common.unknown') },
     {
-      label: 'Target Ref ID',
-      value: !t ? '-' : hidden ? 'Staff only' : hexId(t.refId),
-      sub: !t || hidden ? undefined : t.clientOnly ? 'client only' : t.body ? 'body' : t.player ? 'character' : inGame(t.refDesc),
+      label: loc('adminPanel.debug.targetRefId'),
+      value: !t ? '-' : hidden ? loc('adminPanel.debug.staffOnly') : hexId(t.refId),
+      sub: !t || hidden ? undefined : t.clientOnly ? loc('adminPanel.debug.clientOnly') : t.body ? loc('adminPanel.debug.body') : t.player ? loc('adminPanel.debug.character') : inGame(t.refDesc),
     },
     {
-      label: 'Target POS (X Y Z)',
+      label: loc('adminPanel.debug.targetPos'),
       value: t ? (t.pos || []).map((n) => Math.round(n)).join(' ') || '-' : '-',
       sub: t && t.cell ? hexId(t.cell) + (t.cellName ? ' ' + t.cellName : '') : undefined,
     },
     {
-      label: 'Target Base ID',
+      label: loc('adminPanel.debug.targetBaseId'),
       value: t ? hexId(t.baseId) : '-',
       sub: t && t.baseId ? inGame(t.baseDesc) : undefined,
-      hint: t && t.localBaseId ? 'Local ' + withDesc(t.localBaseId, t.localBaseDesc) : undefined,
+      hint: t && t.localBaseId ? loc('adminPanel.debug.localBase', { id: withDesc(t.localBaseId, t.localBaseDesc) }) : undefined,
     },
   ];
 };
@@ -539,10 +542,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     if (report) copyText(report).then((ok) => setCopied({ text: report, ok }));
   };
   const copyHint = !report
-    ? 'Face something and press X, or press F6 and look around'
+    ? loc('adminPanel.debug.copyNoTarget')
     : copied && copied.text === report
-      ? copied.ok ? 'Copied' : 'Copy failed, select the ids instead'
-      : 'Name, ids, cell and position';
+      ? copied.ok ? loc('adminPanel.debug.copied') : loc('adminPanel.debug.copyFailed')
+      : loc('adminPanel.debug.copyHint');
 
   const refresh = (): void => {
     if (topTab === 'debug' && ev.debugRefresh) send(ev.debugRefresh);
@@ -588,7 +591,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   // Mastery rows stay tied to the selected character.
   const masteryRows: Array<{ key: string; who: string; target: string; m: PanelMastery | null | undefined }> = [];
-  if (actionsEnabled && selectedPlayer && selectedPlayer.a) masteryRows.push({ key: 'sel', who: selectedPlayer.n || '(no name)', target: selectedPlayer.a, m: selectedPlayer.m });
+  if (actionsEnabled && selectedPlayer && selectedPlayer.a) masteryRows.push({ key: 'sel', who: selectedPlayer.n || loc('adminPanel.common.noName'), target: selectedPlayer.a, m: selectedPlayer.m });
   const canGrant = !!ev.masteryGrant && isGrantAmount(grantHours);
   // Filled from the selected row, so the fields show what the character carries now
   const canSetAttrs = !!ev.attrSet && actionsEnabled && ATTR_FIELDS.every((f) => isAttrAmount(attrs[f.key]));
@@ -604,7 +607,8 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
     .sort((x, y) => Number(!!heldDisease(y.id)) - Number(!!heldDisease(x.id)) || x.name.localeCompare(y.name))
     .map((d) => {
       const held = heldDisease(d.id);
-      return { value: d.id, label: d.name + (d.contagious ? ', contagious' : '') + (held ? ' (has stage ' + held.stage + ')' : '') };
+      const name = d.contagious ? loc('adminPanel.survival.contagious', { name: d.name }) : d.name;
+      return { value: d.id, label: held ? loc('adminPanel.survival.hasStage', { name, stage: held.stage }) : name };
     });
   const diseaseId = diseaseOptions.some((o) => o.value === sickPick) ? sickPick : diseaseOptions.length ? diseaseOptions[0].value : '';
   const diseaseHeld = heldDisease(diseaseId);
@@ -614,10 +618,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
   const survivalNow = Date.now();
   const hasSickness = !!sv && (sv.diseases.length > 0 || sv.afflictions.length > 0 || sv.foodPoisonUntil > survivalNow);
   const survivalHint = !actionsEnabled
-    ? 'Select an online player to see their cold and sickness'
+    ? loc('adminPanel.survival.selectHint')
     : !sv
-      ? 'Survival has not settled on this character yet (just logged in or still in creation)'
-      : sicknessText(sv, survivalNow) + (coldOk && coldNumber !== sv.cold && catalog ? ' · cold ' + coldNumber + ' is ' + coldStageName(coldNumber, catalog.coldStages) : '');
+      ? loc('adminPanel.survival.notSettled')
+      : sicknessText(sv, survivalNow) + (coldOk && coldNumber !== sv.cold && catalog ? ' · ' + loc('adminPanel.survival.coldPreview', { cold: coldNumber, stage: coldStageName(coldNumber, catalog.coldStages) }) : '');
   const survivalAct = (action: string, fields?: Record<string, unknown>): void => {
     if (selectedPlayer && selectedPlayer.a) send(ev.survival, JSON.stringify({ action, target: selectedPlayer.a, ...fields }));
   };
@@ -664,10 +668,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
 
   const zoneStatus = (z: PanelNpcZone): string => {
     const left = zoneLeft(z);
-    const ready = left === 0 ? 'Ready' : left < 0 ? 'No respawn' : 'Ready in ' + formatCountdown(left);
+    const ready = left === 0 ? loc('adminPanel.npcs.ready') : left < 0 ? loc('adminPanel.npcs.noRespawn') : loc('adminPanel.npcs.readyIn', { time: formatCountdown(left) });
     if (!z.active) return ready;
-    const alive = z.alive + '/' + z.total + ' alive';
-    return left === 0 ? alive : alive + ', ' + ready.toLowerCase();
+    const counts = { alive: z.alive, total: z.total };
+    return left === 0 ? loc('adminPanel.npcs.alive', counts) : loc('adminPanel.npcs.aliveWaiting', { ...counts, ready: ready.toLowerCase() });
   };
 
   // On cooldown: any slot still waiting to respawn, "No respawn" included
@@ -750,12 +754,12 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
       <div className="admin-panel__window">
         <div className="admin-panel__header">
           <span className="admin-panel__title">
-            Personal Menu
+            {loc('adminPanel.header.title')}
             {data.admin && data.tier ? <span style={{ fontSize: 14, opacity: 0.7, marginLeft: 6 }}>({data.tier})</span> : null}
           </span>
           <div className="admin-panel__header-buttons">
-            <Button text="Refresh" width={104} height={32} onClick={refresh} />
-            <Button text="Close" width={104} height={32} onClick={() => send(ev.close)} />
+            <Button text={loc('adminPanel.header.refresh')} width={104} height={32} onClick={refresh} />
+            <Button text={loc('common.close')} width={104} height={32} onClick={() => send(ev.close)} />
           </div>
         </div>
 
@@ -776,7 +780,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             {skills && skills.professions && skills.professions.length ? (
               <MasteryMenu embedded data={{ ...skills, events: { choose: ev.skillChoose, reset: ev.skillReset, close: ev.close } }} />
             ) : (
-              <div className="admin-panel__empty">Loading skills</div>
+              <div className="admin-panel__empty">{loc('adminPanel.skills.loading')}</div>
             )}
           </div>
         ) : null}
@@ -794,22 +798,22 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   </div>
                 ))}
                 <div className="admin-panel__field">
-                  Target Report
-                  <Button text="Copy IDs" width={104} height={32} disabled={!report} onClick={copyReport} />
+                  {loc('adminPanel.debug.targetReport')}
+                  <Button text={loc('adminPanel.debug.copyIds')} width={104} height={32} disabled={!report} onClick={copyReport} />
                   <span className="admin-panel__hint">{copyHint}</span>
                 </div>
               </div>
             ) : (
-              <div className="admin-panel__empty">Waiting for game data</div>
+              <div className="admin-panel__empty">{loc('adminPanel.debug.waiting')}</div>
             )}
             <div className="admin-panel__row admin-panel__row--head">
-              <span className="admin-panel__cell admin-panel__cell--name">Active effects</span>
-              <span className="admin-panel__cell admin-panel__cell--form">Form ID</span>
-              <span className="admin-panel__cell admin-panel__cell--elapsed">Elapsed</span>
+              <span className="admin-panel__cell admin-panel__cell--name">{loc('adminPanel.debug.effects')}</span>
+              <span className="admin-panel__cell admin-panel__cell--form">{loc('adminPanel.common.formId')}</span>
+              <span className="admin-panel__cell admin-panel__cell--elapsed">{loc('adminPanel.debug.elapsed')}</span>
             </div>
             <div className="admin-panel__list admin-panel__list--effects">
               {!debug || debug.effects.length === 0 ? (
-                <div className="admin-panel__empty">No active effects</div>
+                <div className="admin-panel__empty">{loc('adminPanel.debug.noEffects')}</div>
               ) : (
                 debug.effects.map((fx) => (
                   <div key={fx.id} className="admin-panel__row">
@@ -826,32 +830,32 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
         {view === 'players' ? (
           <div className="admin-panel__body">
             <div className="admin-panel__actions">
-              <Button text="TP to" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.tp)} />
-              <Button text="Summon" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.summon)} />
-              {ev.needsReset ? <Button text="Reset needs" width={124} height={32} disabled={!actionsEnabled} onClick={() => act(ev.needsReset)} /> : null}
-              {canKick ? <Button text="Kick" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} /> : null}
+              <Button text={loc('adminPanel.players.tpTo')} width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.tp)} />
+              <Button text={loc('adminPanel.players.summon')} width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.summon)} />
+              {ev.needsReset ? <Button text={loc('adminPanel.players.resetNeeds')} width={124} height={32} disabled={!actionsEnabled} onClick={() => act(ev.needsReset)} /> : null}
+              {canKick ? <Button text={loc('adminPanel.players.kick')} width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.kick)} /> : null}
               {canKick && ev.pk ? (
                 selectedPlayer && selectedPlayer.a && pkArmed === selectedPlayer.a ? (
-                  <Button text="Confirm PK" width={104} height={32} disabled={!actionsEnabled} onClick={() => { setPkArmed(''); act(ev.pk); }} />
+                  <Button text={loc('adminPanel.players.confirmPk')} width={104} height={32} disabled={!actionsEnabled} onClick={() => { setPkArmed(''); act(ev.pk); }} />
                 ) : (
-                  <Button text="PK" width={104} height={32} disabled={!actionsEnabled} onClick={() => setPkArmed(selectedPlayer?.a || '')} />
+                  <Button text={loc('adminPanel.players.pk')} width={104} height={32} disabled={!actionsEnabled} onClick={() => setPkArmed(selectedPlayer?.a || '')} />
                 )
               ) : null}
-              {canBan ? <Button text="Ban" width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} /> : null}
+              {canBan ? <Button text={loc('adminPanel.players.ban')} width={104} height={32} disabled={!actionsEnabled} onClick={() => act(ev.ban)} /> : null}
             </div>
             {ev.masteryGrant && selectedPlayer ? (
               <div className="admin-panel__mastery">
                 <div className="admin-panel__mastery-row">
-                  <span className="admin-panel__mastery-who">Mastery hours</span>
+                  <span className="admin-panel__mastery-who">{loc('adminPanel.mastery.hours')}</span>
                   <input
                     className="admin-panel__input admin-panel__mastery-amount"
                     value={grantHours}
                     onChange={(e) => setGrantHours(e.target.value)}
                   />
-                  <span className="admin-panel__hint">Whole hours to grant; negative takes them back, rank and recipes follow</span>
+                  <span className="admin-panel__hint">{loc('adminPanel.mastery.hoursHint')}</span>
                 </div>
                 {masteryRows.length === 0 ? (
-                  <span className="admin-panel__hint">Select an online player to grant mastery hours</span>
+                  <span className="admin-panel__hint">{loc('adminPanel.mastery.selectHint')}</span>
                 ) : (
                   masteryRows.map((r) => {
                     const slots = craftSlots(r.m);
@@ -868,12 +872,12 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                           <Dropdown
                             className="admin-panel__mastery-slot"
                             value={String(slot)}
-                            options={slots.map((s) => ({ value: String(s.slot), label: slotName(s) + ': ' + (s.profession ? s.label || s.profession : 'empty') }))}
+                            options={slots.map((s) => ({ value: String(s.slot), label: s.profession ? loc('adminPanel.mastery.slotOption', { slot: slotName(s), craft: s.label || s.profession }) : loc('adminPanel.mastery.slotEmpty', { slot: slotName(s) }) }))}
                             onChange={setGrantSlot}
                           />
                         ) : null}
-                        <Button text="Grant" width={96} height={30} disabled={!grantOk} onClick={() => send(ev.masteryGrant, r.target, Number(grantHours), slot)} />
-                        <Button text="Reset craft" width={116} height={30} disabled={!resetOk} onClick={() => send(ev.masteryReset, r.target, slot)} />
+                        <Button text={loc('adminPanel.mastery.grant')} width={96} height={30} disabled={!grantOk} onClick={() => send(ev.masteryGrant, r.target, Number(grantHours), slot)} />
+                        <Button text={loc('adminPanel.mastery.resetCraft')} width={116} height={30} disabled={!resetOk} onClick={() => send(ev.masteryReset, r.target, slot)} />
                       </div>
                     );
                   })
@@ -883,7 +887,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             {ev.attrSet && selectedPlayer ? (
               <div className="admin-panel__mastery">
                 <div className="admin-panel__mastery-row">
-                  <span className="admin-panel__mastery-who">Max attributes</span>
+                  <span className="admin-panel__mastery-who">{loc('adminPanel.attrs.title')}</span>
                   {ATTR_FIELDS.map((f) => (
                     <input
                       key={f.key}
@@ -895,7 +899,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     />
                   ))}
                   <Button
-                    text="Apply"
+                    text={loc('adminPanel.attrs.apply')}
                     width={96}
                     height={30}
                     disabled={!canSetAttrs}
@@ -904,53 +908,53 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 </div>
                 <span className="admin-panel__hint">
                   {actionsEnabled
-                    ? 'Health, magicka and stamina, permanent and kept through relogs; 0 leaves the character on its base values'
-                    : 'Select an online player to change their max attributes'}
+                    ? loc('adminPanel.attrs.hint')
+                    : loc('adminPanel.attrs.selectHint')}
                 </span>
               </div>
             ) : null}
             {showSurvival ? (
               <div className="admin-panel__mastery">
                 <div className="admin-panel__mastery-row">
-                  <span className="admin-panel__mastery-who">Survival</span>
+                  <span className="admin-panel__mastery-who">{loc('adminPanel.survival.title')}</span>
                   <span className="admin-panel__mastery-info" title={sv ? survivalText(sv) : ''}>{sv ? survivalText(sv) : '-'}</span>
                   {survivalActs ? (
                     <>
                       <input
                         className="admin-panel__input admin-panel__survival-cold"
-                        placeholder="Cold"
-                        title={'Cold from 0 to ' + coldMax}
+                        placeholder={loc('adminPanel.survival.coldPlaceholder')}
+                        title={loc('adminPanel.survival.coldRange', { max: coldMax })}
                         value={coldText}
                         disabled={!sv || sv.cold < 0}
                         onChange={(e) => setColdText(e.target.value)}
                       />
-                      <Button text="Set cold" width={96} height={30} disabled={!coldOk} onClick={() => survivalAct('survivalCold', { cold: coldNumber })} />
-                      <Button text="Details" width={96} height={30} disabled={!actionsEnabled} onClick={() => survivalAct('survivalInfo')} />
-                      <Button text="Reset" width={96} height={30} disabled={!sv} onClick={() => survivalAct('survivalReset')} />
+                      <Button text={loc('adminPanel.survival.setCold')} width={96} height={30} disabled={!coldOk} onClick={() => survivalAct('survivalCold', { cold: coldNumber })} />
+                      <Button text={loc('adminPanel.survival.details')} width={96} height={30} disabled={!actionsEnabled} onClick={() => survivalAct('survivalInfo')} />
+                      <Button text={loc('adminPanel.common.reset')} width={96} height={30} disabled={!sv} onClick={() => survivalAct('survivalReset')} />
                     </>
                   ) : null}
                 </div>
                 {survivalActs ? (
                   <div className="admin-panel__mastery-row">
-                    <span className="admin-panel__mastery-who">Disease</span>
+                    <span className="admin-panel__mastery-who">{loc('adminPanel.survival.disease')}</span>
                     <Dropdown
                       className="admin-panel__survival-disease"
                       value={diseaseId}
                       options={diseaseOptions}
-                      placeholder="No diseases in the plugin"
+                      placeholder={loc('adminPanel.survival.noDiseases')}
                       disabled={!sv || !diseaseOptions.length}
                       onChange={setSickPick}
                     />
                     <Dropdown className="admin-panel__survival-stage" value={sickStage} options={DISEASE_STAGE_CHOICES} disabled={!sv} onChange={setSickStage} />
                     <Button
-                      text={diseaseHeld ? 'Set stage' : 'Give'}
+                      text={diseaseHeld ? loc('adminPanel.survival.setStage') : loc('adminPanel.survival.give')}
                       width={104}
                       height={30}
                       disabled={!sv || !diseaseId || (!!diseaseHeld && diseaseHeld.stage === Number(sickStage))}
                       onClick={() => survivalAct('survivalDisease', { disease: diseaseId, stage: Number(sickStage) })}
                     />
-                    <Button text="Cure" width={80} height={30} disabled={!diseaseHeld} onClick={() => survivalAct('survivalCure', { disease: diseaseId })} />
-                    <Button text="Cure all" width={96} height={30} disabled={!hasSickness} onClick={() => survivalAct('survivalCure')} />
+                    <Button text={loc('adminPanel.survival.cure')} width={80} height={30} disabled={!diseaseHeld} onClick={() => survivalAct('survivalCure', { disease: diseaseId })} />
+                    <Button text={loc('adminPanel.survival.cureAll')} width={96} height={30} disabled={!hasSickness} onClick={() => survivalAct('survivalCure')} />
                   </div>
                 ) : null}
                 <span className="admin-panel__hint">{survivalHint}</span>
@@ -961,14 +965,14 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                 {selectedPlayer.f.map((c) => (
                   <div key={c.a} className="admin-panel__mastery-row">
                     <span className="admin-panel__mastery-who" title={c.n}>{c.n}</span>
-                    <span className="admin-panel__mastery-info">{c.r + (c.s != null ? ', character ' + (c.s + 1) : '')}</span>
-                    <Button text="Revive" width={96} height={30} disabled={selectedPlayer.ok === false} onClick={() => send(ev.revive, c.a)} />
+                    <span className="admin-panel__mastery-info">{c.s != null ? loc('adminPanel.revive.slot', { realm: c.r, n: c.s + 1 }) : c.r}</span>
+                    <Button text={loc('adminPanel.revive.revive')} width={96} height={30} disabled={selectedPlayer.ok === false} onClick={() => send(ev.revive, c.a)} />
                   </div>
                 ))}
                 <span className="admin-panel__hint">
                   {selectedPlayer.ok === false
-                    ? 'Delete the character made in the extra slot first'
-                    : 'A revived character wakes at the Temple of Kynareth; faction ranks are not given back'}
+                    ? loc('adminPanel.revive.limitHint')
+                    : loc('adminPanel.revive.hint')}
                 </span>
               </div>
             ) : null}
@@ -978,7 +982,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             <div className="admin-panel__filters">
               <input
                 className="admin-panel__search"
-                placeholder="Search players"
+                placeholder={loc('adminPanel.players.search')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -988,23 +992,23 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   checked={onlineOnly}
                   onChange={(e) => setOnlineOnly(e.target.checked)}
                 />
-                Online only
+                {loc('adminPanel.players.onlineOnly')}
               </label>
             </div>
             <div className="admin-panel__row admin-panel__row--head">
               <span className="admin-panel__dot" />
-              <span className="admin-panel__cell admin-panel__cell--ping">Ping</span>
-              <span className="admin-panel__cell admin-panel__cell--profile">Profile</span>
-              <span className="admin-panel__cell admin-panel__cell--name">Character</span>
-              <span className="admin-panel__cell admin-panel__cell--form">Form ID</span>
-              <span className="admin-panel__cell admin-panel__cell--discord">Discord</span>
-              <span className="admin-panel__cell admin-panel__cell--discord-id">Discord ID</span>
-              <span className="admin-panel__cell admin-panel__cell--ip">IP</span>
-              <span className="admin-panel__cell admin-panel__cell--hwid">HWID</span>
+              <span className="admin-panel__cell admin-panel__cell--ping">{loc('adminPanel.players.ping')}</span>
+              <span className="admin-panel__cell admin-panel__cell--profile">{loc('adminPanel.players.profile')}</span>
+              <span className="admin-panel__cell admin-panel__cell--name">{loc('adminPanel.players.character')}</span>
+              <span className="admin-panel__cell admin-panel__cell--form">{loc('adminPanel.common.formId')}</span>
+              <span className="admin-panel__cell admin-panel__cell--discord">{loc('adminPanel.players.discord')}</span>
+              <span className="admin-panel__cell admin-panel__cell--discord-id">{loc('adminPanel.players.discordId')}</span>
+              <span className="admin-panel__cell admin-panel__cell--ip">{loc('adminPanel.players.ip')}</span>
+              <span className="admin-panel__cell admin-panel__cell--hwid">{loc('adminPanel.players.hwid')}</span>
             </div>
             <div className="admin-panel__list">
               {shownPlayers.length === 0 ? (
-                <div className="admin-panel__empty">No players found</div>
+                <div className="admin-panel__empty">{loc('adminPanel.players.none')}</div>
               ) : (
                 shownPlayers.map((pl) => (
                   <div
@@ -1018,7 +1022,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   >
                     <span className={'admin-panel__dot' + (pl.online ? ' admin-panel__dot--online' : '')} />
                     <span className="admin-panel__cell admin-panel__cell--ping">
-                      {pl.online && pl.ping != null ? pl.ping + 'ms' : '-'}
+                      {pl.online && pl.ping != null ? loc('adminPanel.players.pingMs', { ms: pl.ping }) : '-'}
                     </span>
                     <span className="admin-panel__cell admin-panel__cell--profile">{pl.p}</span>
                     <span className="admin-panel__cell admin-panel__cell--name">{pl.n || '-'}</span>
@@ -1039,7 +1043,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             <div className="admin-panel__filters">
               <input
                 className="admin-panel__search"
-                placeholder="Search locations"
+                placeholder={loc('adminPanel.teleport.search')}
                 value={locSearch}
                 onChange={(e) => {
                   setLocSearch(e.target.value);
@@ -1049,13 +1053,13 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             </div>
             <div className="admin-panel__list">
               {locSections.length === 0 ? (
-                <div className="admin-panel__empty">{locations.length === 0 ? 'No locations configured' : 'No locations match the search'}</div>
+                <div className="admin-panel__empty">{locations.length === 0 ? loc('adminPanel.teleport.none') : loc('adminPanel.teleport.noMatch')}</div>
               ) : (
                 locSections.map((g) => (
                   <React.Fragment key={g.id}>
                     <div className="admin-panel__row admin-panel__row--head admin-panel__row--clickable" onClick={() => toggleGroup(g.id)}>
                       <span className="admin-panel__cell admin-panel__cell--name">
-                        {(groupOpen(g.id) ? '▾ ' : '▸ ') + g.label + ' (' + g.rows.length + ')'}
+                        {(groupOpen(g.id) ? '▾ ' : '▸ ') + loc('adminPanel.teleport.group', { group: g.label, n: g.rows.length })}
                       </span>
                     </div>
                     {groupOpen(g.id)
@@ -1063,7 +1067,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                         <div key={l.name} className="admin-panel__row admin-panel__row--location">
                           <span className="admin-panel__cell admin-panel__cell--name">{l.name}</span>
                           {l.kind ? <span className="admin-panel__cell admin-panel__cell--kind">{l.kind}</span> : null}
-                          <Button text="Teleport" width={112} height={30} onClick={() => send(ev.tpLoc, l.name)} />
+                          <Button text={loc('adminPanel.teleport.go')} width={112} height={30} onClick={() => send(ev.tpLoc, l.name)} />
                         </div>
                       ))
                       : null}
@@ -1140,7 +1144,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               <div className="admin-panel__filters">
                 <input
                   className="admin-panel__search"
-                  placeholder="Search zones"
+                  placeholder={loc('adminPanel.npcs.search')}
                   value={zoneSearch}
                   onChange={(e) => setZoneSearch(e.target.value)}
                 />
@@ -1151,7 +1155,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
             {npcSub === 'list' ? (
               <div className="admin-panel__list">
                 {shownZones.length === 0 ? (
-                  <div className="admin-panel__empty">{npcZones.length === 0 ? 'No zones configured' : 'No zones match the filter'}</div>
+                  <div className="admin-panel__empty">{npcZones.length === 0 ? loc('adminPanel.npcs.none') : loc('adminPanel.npcs.noMatch')}</div>
                 ) : (
                   shownZones.map((z) => (
                     <div key={z.name} className="admin-panel__row admin-panel__row--zone">
@@ -1163,12 +1167,12 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                         </span>
                       </div>
                       <div className="admin-panel__zone-buttons">
-                        <Button text="TP" width={48} height={24} onClick={() => send(ev.npcTp, z.name)} />
-                        {ev.npcActivate ? <Button text="Activate" width={84} height={24} onClick={() => send(ev.npcActivate, z.name)} /> : null}
-                        {ev.npcDeactivate ? <Button text="Deactivate" width={100} height={24} onClick={() => send(ev.npcDeactivate, z.name)} /> : null}
-                        <Button text="Reset" width={64} height={24} onClick={() => send(ev.npcReset, z.name)} />
-                        {z.entry && ev.npcAdd ? <Button text="Edit" width={52} height={24} onClick={() => editZone(z)} /> : null}
-                        <Button text="Delete" width={68} height={24} onClick={() => send(ev.npcDelete, z.name)} />
+                        <Button text={loc('adminPanel.npcs.tp')} width={48} height={24} onClick={() => send(ev.npcTp, z.name)} />
+                        {ev.npcActivate ? <Button text={loc('adminPanel.npcs.activate')} width={84} height={24} onClick={() => send(ev.npcActivate, z.name)} /> : null}
+                        {ev.npcDeactivate ? <Button text={loc('adminPanel.npcs.deactivate')} width={100} height={24} onClick={() => send(ev.npcDeactivate, z.name)} /> : null}
+                        <Button text={loc('adminPanel.common.reset')} width={64} height={24} onClick={() => send(ev.npcReset, z.name)} />
+                        {z.entry && ev.npcAdd ? <Button text={loc('adminPanel.common.edit')} width={52} height={24} onClick={() => editZone(z)} /> : null}
+                        <Button text={loc('adminPanel.common.delete')} width={68} height={24} onClick={() => send(ev.npcDelete, z.name)} />
                       </div>
                     </div>
                   ))
@@ -1180,7 +1184,7 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
               <div className="admin-panel__body">
                 <div className="admin-panel__form">
                   <div className="admin-panel__field admin-panel__field--half">
-                    Kind
+                    {loc('adminPanel.pets.kind')}
                     <div className="admin-panel__filters">
                       {PET_KINDS.map((k) => (
                         <label key={k.id} className="admin-panel__checkbox">
@@ -1191,10 +1195,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     </div>
                   </div>
                   <div className="admin-panel__field admin-panel__field--half">
-                    Base
+                    {loc('adminPanel.pets.base')}
                     <div className="admin-panel__filters admin-panel__filters--grid">
                       {petBaseList.length === 0 ? (
-                        <span className="admin-panel__hint">{data.petBases ? 'No bases configured' : 'Loading...'}</span>
+                        <span className="admin-panel__hint">{data.petBases ? loc('adminPanel.pets.noBases') : loc('adminPanel.pets.loading')}</span>
                       ) : petBaseList.map((b) => (
                         <label key={b.desc} className="admin-panel__checkbox" title={b.editorId}>
                           <input type="radio" name="pet-base" checked={petPick === b.desc} onChange={() => setPetBase(b.desc)} />
@@ -1204,10 +1208,10 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     </div>
                   </div>
                   <label className="admin-panel__field admin-panel__field--half">
-                    Name (optional)
+                    {loc('adminPanel.pets.name')}
                     <input
                       className="admin-panel__input"
-                      placeholder="blank: the species name"
+                      placeholder={loc('adminPanel.pets.namePlaceholder')}
                       maxLength={MAX_PET_NAME}
                       value={petName}
                       onChange={(e) => setPetName(e.target.value)}
@@ -1215,9 +1219,9 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   </label>
                 </div>
                 <div className="admin-panel__actions">
-                  <Button text="Add to my pets" width={168} height={32} disabled={!petPick} onClick={grantPet} />
+                  <Button text={loc('adminPanel.pets.add')} width={168} height={32} disabled={!petPick} onClick={grantPet} />
                 </div>
-                <span className="admin-panel__hint">Stored for your own character; bring it out with the Pets option at a stable, farm or home door.</span>
+                <span className="admin-panel__hint">{loc('adminPanel.pets.hint')}</span>
               </div>
             ) : (
               <div className="admin-panel__body">
@@ -1234,11 +1238,11 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                     </label>
                   ))}
                   <div className="admin-panel__field">
-                    Type
+                    {loc('adminPanel.common.type')}
                     <Dropdown value={zoneForm.type} options={ZONE_TYPE_CHOICES} onChange={(v) => setField('type', v)} />
                   </div>
                   <label className="admin-panel__field admin-panel__field--wide">
-                    NPC entries, one per line: base id and count
+                    {loc('adminPanel.zone.npcEntries')}
                     <textarea
                       className="admin-panel__textarea"
                       placeholder={'00023A99 4\n23a99:Skyrim.esm 2'}
@@ -1248,13 +1252,13 @@ const AdminPanel = ({ data }: { data: AdminPanelData }) => {
                   </label>
                 </div>
                 <div className="admin-panel__actions">
-                  {ev.npcPos ? <Button text="Get current pos" width={168} height={32} onClick={() => send(ev.npcPos)} /> : null}
-                  <Button text="Add" width={104} height={32} disabled={!canAddZone} onClick={() => submitZone(false)} />
-                  {editingZone ? <Button text="Save" width={104} height={32} disabled={!canAddZone} onClick={() => submitZone(true)} /> : null}
-                  {editingZone ? <Button text="Cancel" width={104} height={32} onClick={clearZoneForm} /> : null}
+                  {ev.npcPos ? <Button text={loc('adminPanel.zone.getPos')} width={168} height={32} onClick={() => send(ev.npcPos)} /> : null}
+                  <Button text={loc('adminPanel.common.add')} width={104} height={32} disabled={!canAddZone} onClick={() => submitZone(false)} />
+                  {editingZone ? <Button text={loc('common.save')} width={104} height={32} disabled={!canAddZone} onClick={() => submitZone(true)} /> : null}
+                  {editingZone ? <Button text={loc('common.cancel')} width={104} height={32} onClick={clearZoneForm} /> : null}
                 </div>
                 {editingZone ? (
-                  <span className="admin-panel__hint">Editing {editingZone}: Save replaces it in place, Add stores the form as a new zone.</span>
+                  <span className="admin-panel__hint">{loc('adminPanel.zone.editing', { name: editingZone })}</span>
                 ) : null}
               </div>
             )}

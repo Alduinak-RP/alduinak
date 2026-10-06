@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import Button from '../../constructorComponents/button';
 import Dropdown from './dropdown';
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
+import { loc } from '../../loc';
 
 export type FactionType = 'hold' | 'military' | 'guild';
 
@@ -85,14 +86,24 @@ interface FactionTabProps {
 
 type Tab = FactionType | 'main' | 'regency';
 
+// The hold type reads Territory everywhere a player or staff member sees it
+export const TYPE_LABEL: Record<FactionType, string> = {
+  hold: loc('adminPanel.faction.typeHold'),
+  military: loc('adminPanel.faction.typeMilitary'),
+  guild: loc('adminPanel.faction.typeGuild'),
+};
+
 const TYPE_TABS: Array<{ id: FactionType; label: string }> = [
-  { id: 'hold', label: 'Territory' },
-  { id: 'military', label: 'Military' },
-  { id: 'guild', label: 'Guild' },
+  { id: 'hold', label: TYPE_LABEL.hold },
+  { id: 'military', label: TYPE_LABEL.military },
+  { id: 'guild', label: TYPE_LABEL.guild },
 ];
 
-// The hold type reads Territory everywhere a player or staff member sees it
-export const TYPE_LABEL: Record<FactionType, string> = { hold: 'Territory', military: 'Military', guild: 'Guild' };
+const memberName = (m: FactionMember): string => {
+  const name = m.self ? loc('adminPanel.common.nameYou', { name: m.name }) : m.name;
+  if (m.acting) return loc('adminPanel.faction.memberActing', { name });
+  return m.regent ? loc('adminPanel.faction.memberRegent', { name }) : name;
+};
 
 interface MenuState {
   x: number;
@@ -116,8 +127,8 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
     return () => window.removeEventListener('mousedown', close);
   }, [menu]);
 
-  if (!data) return <div className="admin-panel__empty">Loading factions</div>;
-  if (!data.available) return <div className="admin-panel__empty">Factions are unavailable right now.</div>;
+  if (!data) return <div className="admin-panel__empty">{loc('adminPanel.faction.loading')}</div>;
+  if (!data.available) return <div className="admin-panel__empty">{loc('adminPanel.faction.unavailable')}</div>;
 
   const main = data.main || [];
   const detail = data.detail;
@@ -131,9 +142,9 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
   const target = (m: FactionMember) => ({ profileId: m.profileId, slot: m.slot });
 
   // A type tab is shown while the character belongs to that type, and to staff so they can browse every faction
-  const shownTabs: Array<{ id: Tab; label: string }> = [{ id: 'main', label: 'Main' }];
+  const shownTabs: Array<{ id: Tab; label: string }> = [{ id: 'main', label: loc('adminPanel.faction.tabMain') }];
   for (const t of TYPE_TABS) if (data.byType[t.id] || data.staff) shownTabs.push(t);
-  if (regency) shownTabs.push({ id: 'regency', label: 'Regency' });
+  if (regency) shownTabs.push({ id: 'regency', label: loc('adminPanel.faction.tabRegency') });
   const activeTab: Tab = shownTabs.some((t) => t.id === tab) ? tab : 'main';
 
   // Switching to a type tab asks the server for that faction's roster
@@ -161,7 +172,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
       if (seat) {
         items.push(
           <button key="unseat" className="admin-panel__menu-item" onClick={() => act(factionId, { action: 'regentRemove', profileId: seat.profileId, slot: seat.slot })}>
-            Remove regent
+            {loc('adminPanel.faction.removeRegent')}
           </button>
         );
       }
@@ -169,14 +180,14 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
       for (const r of m.promote) {
         items.push(
           <button key={'r' + r.slug} className="admin-panel__menu-item" onClick={() => act(factionId, Object.assign({ action: 'promote', rank: r.slug }, target(m)))}>
-            {'Set rank: ' + r.name}
+            {loc('adminPanel.faction.setRank', { rank: r.name })}
           </button>
         );
       }
       if (m.canRegent) {
         items.push(
           <button key="regent" className="admin-panel__menu-item" onClick={() => act(factionId, Object.assign({ action: 'regentAdd' }, target(m)))}>
-            Add Regent
+            {loc('adminPanel.faction.addRegent')}
           </button>
         );
       }
@@ -184,17 +195,17 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
         items.push(
           confirm === m.key ? (
             <button key="remove" className="admin-panel__menu-item admin-panel__menu-item--danger" onClick={() => act(factionId, Object.assign({ action: 'remove' }, target(m)))}>
-              Confirm removal
+              {loc('adminPanel.faction.confirmRemoval')}
             </button>
           ) : (
             <button key="remove" className="admin-panel__menu-item admin-panel__menu-item--danger" onMouseDown={(e) => e.stopPropagation()} onClick={() => setConfirm(m.key)}>
-              Remove from faction
+              {loc('adminPanel.faction.removeFromFaction')}
             </button>
           )
         );
       }
     }
-    if (!items.length) items.push(<span key="none" className="admin-panel__menu-empty">Nothing you may do here</span>);
+    if (!items.length) items.push(<span key="none" className="admin-panel__menu-empty">{loc('adminPanel.faction.nothingToDo')}</span>);
     return (
       <div className="admin-panel__menu" style={{ left: menu.x, top: menu.y }} onMouseDown={(e) => e.stopPropagation()}>
         {items}
@@ -203,26 +214,26 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
   };
 
   const mainTab = (): React.ReactNode => {
-    if (!main.length) return <div className="admin-panel__empty admin-panel__empty--placeholder">Not apart of any factions.</div>;
+    if (!main.length) return <div className="admin-panel__empty admin-panel__empty--placeholder">{loc('adminPanel.faction.noFactions')}</div>;
     return (
       <div className="admin-panel__columns">
         {main.map((c) => (
           <div key={c.id} className="admin-panel__column">
-            <div className="admin-panel__column-row"><span>Name:</span><span style={{ color: '#' + c.color }}>{c.name}</span></div>
-            <div className="admin-panel__column-row"><span>Type:</span><span>{TYPE_LABEL[c.type] || c.type}{c.province ? ' (' + c.province + ')' : ''}</span></div>
-            <div className="admin-panel__column-row"><span>Rank:</span><span>{c.rankName}</span></div>
-            <div className="admin-panel__column-row"><span>Leader:</span><span>{c.leaderName}</span></div>
-            <div className="admin-panel__column-row"><span>Members:</span><span>{c.members}</span></div>
-            <div className="admin-panel__column-row"><span>Tenure:</span><span>{c.tenure}</span></div>
+            <div className="admin-panel__column-row"><span>{loc('adminPanel.faction.colName')}</span><span style={{ color: '#' + c.color }}>{c.name}</span></div>
+            <div className="admin-panel__column-row"><span>{loc('adminPanel.faction.colType')}</span><span>{c.province ? loc('adminPanel.faction.typeProvince', { type: TYPE_LABEL[c.type] || c.type, province: c.province }) : TYPE_LABEL[c.type] || c.type}</span></div>
+            <div className="admin-panel__column-row"><span>{loc('adminPanel.faction.colRank')}</span><span>{c.rankName}</span></div>
+            <div className="admin-panel__column-row"><span>{loc('adminPanel.faction.colLeader')}</span><span>{c.leaderName}</span></div>
+            <div className="admin-panel__column-row"><span>{loc('adminPanel.faction.colMembers')}</span><span>{c.members}</span></div>
+            <div className="admin-panel__column-row"><span>{loc('adminPanel.faction.colTenure')}</span><span>{c.tenure}</span></div>
             <label className="admin-panel__check">
               <input
                 type="checkbox"
                 checked={data.titleFactionId === c.id}
                 onChange={() => act(c.id, { action: 'title' })}
               />
-              {'Show Title' + (c.title ? ' (' + c.title + ')' : '')}
+              {c.title ? loc('adminPanel.faction.showTitleNamed', { title: c.title }) : loc('adminPanel.faction.showTitle')}
             </label>
-            <Button text="Leave Faction" width={150} height={32} onClick={() => setConfirm('leave:' + c.id)} />
+            <Button text={loc('adminPanel.faction.leaveFaction')} width={150} height={32} onClick={() => setConfirm('leave:' + c.id)} />
           </div>
         ))}
       </div>
@@ -230,7 +241,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
   };
 
   const rosterTab = (type: FactionType): React.ReactNode => {
-    if (!detail || detail.type !== type) return <div className="admin-panel__empty">Loading members</div>;
+    if (!detail || detail.type !== type) return <div className="admin-panel__empty">{loc('adminPanel.faction.loadingMembers')}</div>;
     return (
       <>
         <div className="admin-panel__filters">
@@ -244,7 +255,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
           ) : null}
           <span className="admin-panel__faction-name" style={{ color: '#' + detail.color }}>{detail.name}</span>
           <span className="admin-panel__hint">
-            {detail.myRank ? 'Your rank: ' + detail.myRank + (detail.acting ? ' (acting leader)' : '') : 'Staff view'}
+            {detail.myRank ? loc(detail.acting ? 'adminPanel.faction.yourRankActing' : 'adminPanel.faction.yourRank', { rank: detail.myRank }) : loc('adminPanel.faction.staffView')}
           </span>
         </div>
 
@@ -258,13 +269,13 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
 
         <div className="admin-panel__row admin-panel__row--head">
           <span className="admin-panel__dot" />
-          <span className="admin-panel__cell admin-panel__cell--name">Name</span>
-          <span className="admin-panel__cell admin-panel__cell--rank">Rank</span>
-          <span className="admin-panel__cell admin-panel__cell--status">Tenure</span>
+          <span className="admin-panel__cell admin-panel__cell--name">{loc('adminPanel.common.name')}</span>
+          <span className="admin-panel__cell admin-panel__cell--rank">{loc('adminPanel.faction.rank')}</span>
+          <span className="admin-panel__cell admin-panel__cell--status">{loc('adminPanel.faction.tenure')}</span>
         </div>
         <div className="admin-panel__list">
           {detail.members.length === 0 ? (
-            <div className="admin-panel__empty">No members yet</div>
+            <div className="admin-panel__empty">{loc('adminPanel.faction.noMembers')}</div>
           ) : (
             detail.members.map((m) => (
               <div
@@ -274,8 +285,8 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
                 onContextMenu={(e) => openMenu(e, m, '')}
               >
                 <span className={'admin-panel__dot' + (m.online ? ' admin-panel__dot--online' : '')} />
-                <span className="admin-panel__cell admin-panel__cell--name" title={m.slot === null ? 'Every character of this account' : 'Character ' + (m.slot + 1)}>
-                  {m.name + (m.self ? ' (you)' : '') + (m.acting ? ' - acting' : m.regent ? ' - regent' : '')}
+                <span className="admin-panel__cell admin-panel__cell--name" title={m.slot === null ? loc('adminPanel.faction.everyCharacter') : loc('adminPanel.faction.character', { n: m.slot + 1 })}>
+                  {memberName(m)}
                 </span>
                 <span className="admin-panel__cell admin-panel__cell--rank">{m.rankName}</span>
                 <span className="admin-panel__cell admin-panel__cell--status">{m.tenure}</span>
@@ -285,21 +296,21 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
         </div>
         {detail.recruitRank ? (
           <div className="admin-panel__mastery">
-            <span className="admin-panel__hint">{'Recruit brings them in as ' + detail.recruitRank.name + '.'}</span>
+            <span className="admin-panel__hint">{loc('adminPanel.faction.recruitAs', { rank: detail.recruitRank.name })}</span>
             {detail.nearby.length === 0 ? (
-              <span className="admin-panel__hint">Nobody is close enough to recruit</span>
+              <span className="admin-panel__hint">{loc('adminPanel.faction.nobodyNear')}</span>
             ) : (
               detail.nearby.map((p) => (
                 <div key={p.target} className="admin-panel__mastery-row">
                   <span className="admin-panel__mastery-info">{p.name}</span>
-                  <Button text="Recruit" width={96} height={30} onClick={() => act(detail.id, { action: 'recruit', target: p.target })} />
+                  <Button text={loc('adminPanel.faction.recruit')} width={96} height={30} onClick={() => act(detail.id, { action: 'recruit', target: p.target })} />
                 </div>
               ))
             )}
           </div>
         ) : null}
         <span className="admin-panel__hint">
-          Click a member to promote, remove or seat them. You can also look at a player and press the interact key to Recruit.
+          {loc('adminPanel.faction.rosterHint')}
         </span>
       </>
     );
@@ -320,7 +331,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
   };
 
   const regencyTab = (): React.ReactNode => {
-    if (!regency) return <div className="admin-panel__empty">You do not lead a faction.</div>;
+    if (!regency) return <div className="admin-panel__empty">{loc('adminPanel.faction.notLeader')}</div>;
     const seats = order.length === regency.seats.length
       ? (order.map((k) => regency.seats.find((s) => s.key === k)).filter(Boolean) as FactionRegency['seats'])
       : regency.seats;
@@ -328,10 +339,10 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
       <>
         <div className="admin-panel__filters">
           <span className="admin-panel__faction-name">{regency.name}</span>
-          <span className="admin-panel__hint">{'Regents act as ' + regency.regentTitle + ' while you are offline.'}</span>
+          <span className="admin-panel__hint">{loc('adminPanel.faction.regentsActAs', { title: regency.regentTitle })}</span>
           <div className="admin-panel__filters admin-panel__filters--end admin-panel__actions">
             <Button
-              text={regency.enabled ? 'Disable regency' : 'Enable regency'}
+              text={regency.enabled ? loc('adminPanel.faction.disableRegency') : loc('adminPanel.faction.enableRegency')}
               width={170}
               height={32}
               onClick={() => act(regency.factionId, { action: 'regency', enabled: !regency.enabled })}
@@ -340,7 +351,7 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
         </div>
         <div className="admin-panel__list">
           {seats.length === 0 ? (
-            <div className="admin-panel__empty">No regents yet. Right click a member on the roster and choose Add Regent.</div>
+            <div className="admin-panel__empty">{loc('adminPanel.faction.noRegents')}</div>
           ) : (
             seats.map((s, i) => (
               <div
@@ -354,13 +365,13 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
                 onContextMenu={(e) => openMenu(e, null, s.key)}
               >
                 <span className={'admin-panel__dot' + (s.online ? ' admin-panel__dot--online' : '')} />
-                <span className="admin-panel__cell admin-panel__cell--name">{(i + 1) + '. ' + s.name + (s.acting ? ' - acting now' : '')}</span>
+                <span className="admin-panel__cell admin-panel__cell--name">{loc(s.acting ? 'adminPanel.faction.seatActing' : 'adminPanel.faction.seat', { n: i + 1, name: s.name })}</span>
                 <span className="admin-panel__cell admin-panel__cell--rank">{s.rankName}</span>
               </div>
             ))
           )}
         </div>
-        <span className="admin-panel__hint">Drag a regent to change the order of succession, click one to remove them.</span>
+        <span className="admin-panel__hint">{loc('adminPanel.faction.regencyHint')}</span>
       </>
     );
   };
@@ -384,9 +395,9 @@ const FactionTab = ({ data, ev, send }: FactionTabProps) => {
       {contextMenu()}
       {leaving ? (
         <ConfirmDialog
-          title={`Leave ${leaving.name}?`}
-          body="You give up your rank and title in this faction."
-          confirmLabel="Leave"
+          title={loc('adminPanel.faction.leaveTitle', { name: leaving.name })}
+          body={loc('adminPanel.faction.leaveBody')}
+          confirmLabel={loc('adminPanel.faction.leave')}
           onConfirm={() => act(leaving.id, { action: 'leave' })}
           onCancel={() => setConfirm('')}
         />

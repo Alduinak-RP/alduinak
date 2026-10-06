@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+import { loc } from '../../loc';
+
 export interface DropdownOption {
   value: string;
   label: string;
@@ -87,7 +89,7 @@ const Dropdown = ({ value, options, onChange, disabled, placeholder, className }
             >
               {o.label}
             </button>
-          )) : <span className="admin-panel__menu-empty">Nothing to choose</span>}
+          )) : <span className="admin-panel__menu-empty">{loc('adminPanel.common.nothingToChoose')}</span>}
         </div>
       ) : null}
     </>
